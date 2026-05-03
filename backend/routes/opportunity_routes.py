@@ -272,7 +272,7 @@ async def list_event_stage_submissions(event_id: str, user: dict = Depends(get_a
     """
     Admin/Institution: List all stage-specific submissions (PPTs, Files, Links).
     """
-    from db import submission_data_col
+    from db import submission_data_col, teams_col, users_col
     try:
         cursor = submission_data_col.find({"event_id": str(event_id)})
         items = []
@@ -315,16 +315,43 @@ async def learner_upload_stage_file(
     if not p:
         raise HTTPException(status_code=403, detail="Not registered for this event")
 
-    # 2. Save file
+    # 2. Basic file validation
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    
+    # Check file size (limit to 50MB)
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    file.file.seek(0, 2)  # Seek to end
+    file_size = file.file.tell()
+    file.file.seek(0)  # Reset to beginning
+    
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413, 
+            detail=f"File too large. Maximum size is 50MB"
+        )
+    
+    # Check file extension
+    allowed_extensions = {'.pdf', '.ppt', '.pptx', '.doc', '.docx', '.zip', '.rar', '.txt', '.jpg', '.jpeg', '.png', '.gif'}
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"File type {file_ext} is not allowed. Allowed types: {', '.join(allowed_extensions)}"
+        )
+
+    # 3. Save file
     STAGE_UPLOADS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "stages")
     os.makedirs(STAGE_UPLOADS, exist_ok=True)
     
-    file_ext = os.path.splitext(file.filename)[1]
     unique_filename = f"{stage_id}_{uid}_{uuid.uuid4().hex}{file_ext}"
     file_path = os.path.join(STAGE_UPLOADS, unique_filename)
     
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
     
     # Generate accessible URL
     file_url = f"/uploads/stages/{unique_filename}"
@@ -403,13 +430,27 @@ async def learner_submit_stage_data(
     if stype != "SUBMISSION":
          raise HTTPException(status_code=400, detail=f"Stage type '{stype}' does not accept manual file/link submissions")
 
-    # 3. Store the submission data
+    # 3. Validate submission data
+    submission_data = payload.get("data") or {}
+    if not submission_data:
+        raise HTTPException(status_code=400, detail="No submission data provided")
+    
+    # Validate URLs if present
+    for key, value in submission_data.items():
+        if key.lower().endswith('_url') or key.lower() == 'url':
+            if not isinstance(value, str) or not value.strip():
+                raise HTTPException(status_code=400, detail=f"URL field '{key}' cannot be empty")
+            # Basic URL validation
+            if not (value.startswith('http://') or value.startswith('https://')):
+                raise HTTPException(status_code=400, detail=f"Invalid URL format for '{key}'. Must start with http:// or https://")
+
+    # 4. Store the submission data
     submission_entry = {
         "event_id": str(event_id),
         "stage_id": str(stage_id),
         "user_id": uid,
         "team_id": p.get("team_id"),
-        "data": payload.get("data") or {}, # contains links, ppt_url, etc.
+        "data": submission_data, # contains links, ppt_url, etc.
         "submitted_at": datetime.utcnow().isoformat(),
         "status": "Submitted"
     }
