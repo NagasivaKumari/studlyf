@@ -115,6 +115,23 @@ const EventHub: React.FC = () => {
         setSubmitting(stageId);
         setSubmissionError(null);
         
+        // Check file size (50MB limit)
+        const MAX_FILE_SIZE = 50 * 1024 * 1024;
+        if (file.size > MAX_FILE_SIZE) {
+            setSubmissionError(`File too large. Maximum size is 50MB. Your file is ${(file.size / (1024 * 1024)).toFixed(1)}MB`);
+            setSubmitting(null);
+            return;
+        }
+
+        // Check file extension
+        const allowedExtensions = ['.pdf', '.ppt', '.pptx', '.doc', '.docx', '.zip', '.rar', '.txt', '.jpg', '.jpeg', '.png', '.gif'];
+        const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
+        if (!allowedExtensions.includes(fileExt)) {
+            setSubmissionError(`File type ${fileExt} is not allowed. Allowed types: ${allowedExtensions.join(', ')}`);
+            setSubmitting(null);
+            return;
+        }
+        
         const formData = new FormData();
         formData.append('file', file);
         formData.append('stage_id', stageId);
@@ -125,15 +142,16 @@ const EventHub: React.FC = () => {
                 headers: { ...authHeaders() },
                 body: formData
             });
+            
             if (res.ok) {
                 alert("File uploaded successfully!");
                 await fetchData();
             } else {
                 const err = await res.json();
-                setSubmissionError(err.detail || "Upload failed");
+                setSubmissionError(err.detail || "Upload failed. Please check your file and try again.");
             }
         } catch (e) {
-            setSubmissionError("Network error during upload");
+            setSubmissionError("Network error during upload. Please check your connection and try again.");
         } finally {
             setSubmitting(null);
         }
@@ -141,7 +159,16 @@ const EventHub: React.FC = () => {
 
     const handleSubmission = async (stageId: string) => {
         const data = submissionData[stageId];
-        if (!data) return;
+        if (!data) {
+            setSubmissionError("Please enter a URL or select a file first");
+            return;
+        }
+        
+        // Basic URL validation
+        if (!data.startsWith('http://') && !data.startsWith('https://')) {
+            setSubmissionError("URL must start with http:// or https://");
+            return;
+        }
         
         setSubmitting(stageId);
         setSubmissionError(null);
@@ -152,15 +179,15 @@ const EventHub: React.FC = () => {
                 body: JSON.stringify({ data: { url: data } })
             });
             if (res.ok) {
-                alert("Submission successful!");
+                alert("URL submitted successfully!");
                 await fetchData();
                 setSubmissionData(prev => ({ ...prev, [stageId]: '' }));
             } else {
                 const err = await res.json();
-                setSubmissionError(err.detail || "Submission failed");
+                setSubmissionError(err.detail || "Submission failed. Please check your URL and try again.");
             }
         } catch (e) {
-            setSubmissionError("Network error");
+            setSubmissionError("Network error during submission. Please check your connection and try again.");
         } finally {
             setSubmitting(null);
         }
