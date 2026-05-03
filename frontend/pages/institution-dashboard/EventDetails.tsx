@@ -490,7 +490,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         setAssigningSubmission(submissionId);
         try {
             const res = await fetch(
-                `${API_BASE_URL}/api/v1/institution/events/${eventId}/submissions/${submissionId}/assign-judges`,
+                `${API_BASE_URL}/api/events/${eventId}/submissions/${submissionId}/assign-judges`,
                 {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', ...authHeaders() },

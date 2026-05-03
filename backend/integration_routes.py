@@ -572,9 +572,7 @@ async def assign_judges_to_submission_route(
 ):
     """Restrict which panel judges may score a given submission (emails must exist on the event)."""
     ev = await assert_institution_owns_event(event_id, user)
-    sub = await submissions_col.find_one({"_id": ObjectId(submission_id), "event_id": event_id})
-    if not sub:
-        sub = await submissions_col.find_one({"_id": ObjectId(submission_id), "event_id": str(event_id)})
+    sub = await submissions_col.find_one({"_id": ObjectId(submission_id), "event_id": str(event_id)})
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found for this event")
     raw = body.get("judge_emails") or body.get("emails") or []
