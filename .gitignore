@@ -24,3 +24,9 @@ backend/cloud_test*.pdf
 # AI Logs & Scratch
 brain/
 .gemini/
+backend/scratch/
+scratch/
+backend/uploads/
+backend/check_*.py
+backend/check_institution_user.py
+backend/check_user.py

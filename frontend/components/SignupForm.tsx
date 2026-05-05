@@ -48,9 +48,31 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
         return score;
     };
 
-    // Role detection from URL
+    // Role detection from URL or email context
     const queryParams = new URLSearchParams(location.search);
-    const selectedRole = queryParams.get('role') || 'student';
+    let selectedRole = queryParams.get('role') || 'student';
+    
+    // Auto-detect judge role if coming from judge invitation
+    const nextPath = queryParams.get('next');
+    if (nextPath && nextPath.includes('judge-portal') && !selectedRole) {
+        selectedRole = 'judge';
+        console.log('[SignupForm] Auto-detected judge role from nextPath:', nextPath);
+    }
+    
+    // Also check if email looks like it's from judge invitation
+    if (!selectedRole && email) {
+        // Check if this email exists in judges collection (would need API call)
+        // For now, assume judge if accessing from judge invitation flow
+        const judgeIndicators = ['judge', 'evaluator', 'reviewer'];
+        if (nextPath?.includes('judge-portal') || 
+            document.referrer.includes('judge-invitation') ||
+            localStorage.getItem('pendingJudgeRole') === 'true') {
+            selectedRole = 'judge';
+            console.log('[SignupForm] Auto-detected judge role from invitation flow:', selectedRole);
+        }
+    }
+    
+    console.log('[SignupForm] Final selected role:', selectedRole, 'email:', email);
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -90,6 +112,10 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
             });
 
             if (signupRes.ok) {
+                // Clear judge role flag if set
+                if (selectedRole === 'judge') {
+                    localStorage.removeItem('pendingJudgeRole');
+                }
                 setStep(3);
                 setTimeout(() => onSwitchToLogin(), 3000);
             } else {

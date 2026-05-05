@@ -19,3 +19,4 @@ bcrypt
 slowapi
 qrcode[pil]
 reportlab
+python-magic

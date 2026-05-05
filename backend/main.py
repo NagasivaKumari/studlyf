@@ -399,10 +399,18 @@ from fastapi import Request
 async def global_exception_handler(request: Request, exc: Exception):
     print(f"GLOBAL ERROR: {exc}")
     traceback.print_exc()
-    return JSONResponse(
+    response = JSONResponse(
         status_code=500,
         content={"detail": str(exc), "traceback": traceback.format_exc()},
     )
+    # Add CORS headers manually to error responses since middleware might be bypassed
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 # ─── Ads / Advertisements API ────────────────────────────────────────────────
 from db import ads_col

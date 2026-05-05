@@ -41,7 +41,12 @@ class JudgePortalService:
             "invitation_sent_at": datetime.now(timezone.utc).isoformat(),
             "event_id": event_id,
             "institution_id": institution_id,
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "email_preferences": {
+                "email_judge_assigned": True,
+                "email_judge_invitation": True,
+                "email_evaluation_reminder": True
+            }
         }
         
         # Insert judge record

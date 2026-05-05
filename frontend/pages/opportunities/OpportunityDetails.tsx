@@ -161,8 +161,8 @@ const OpportunityDetails: React.FC = () => {
                     }) || null;
                 setMyApplication(mine);
                 setIsApplied(Boolean(mine));
-            } catch (err) {
-                console.error("Fetch error:", err);
+            } catch (error) {
+                console.error('Failed to fetch opportunity details', error);
             } finally {
                 setLoading(false);
             }

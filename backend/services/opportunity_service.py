@@ -355,37 +355,67 @@ async def get_opportunity_by_id(
     Mirrored listings stay hidden until the source event is published, except applicants
     who already applied may still open the record (see ``listingPendingPublish``).
     """
-    doc = await opportunities_col.find_one({"_id": ObjectId(opportunity_id)})
-    if not doc:
-        return None
-    doc["_id"] = str(doc["_id"])
-    eid = doc.get("event_link_id")
-    if eid:
-        try:
-            ev = await events_col.find_one({"_id": ObjectId(str(eid))})
-        except Exception:
-            ev = None
-        if not ev:
+    try:
+        doc = await opportunities_col.find_one({"_id": ObjectId(opportunity_id)})
+        if not doc:
             return None
-        if not _event_status_listable(ev.get("status")):
-            if applicant_user_id:
-                has_app = await opportunity_applications_col.count_documents(
-                    {"opportunity_id": str(doc["_id"]), "user_id": applicant_user_id}
-                )
-                if has_app:
-                    doc["listingPendingPublish"] = True
-                    doc["sourceEventStatus"] = str(ev.get("status") or "")
-                    _apply_event_snapshot_to_opportunity(doc, ev)
+        doc["_id"] = str(doc["_id"])
+        eid = doc.get("event_link_id")
+        if eid:
+            try:
+                ev = await events_col.find_one({"_id": ObjectId(str(eid))})
+            except Exception as e:
+                print(f"[ERROR] Failed to fetch event {eid}: {e}")
+                ev = None
+            if not ev:
+                # Return the opportunity without event data if event not found
+                try:
                     await _hydrate_institution_branding(doc)
-                    await _hydrate_public_process_stats(doc)
-                    return doc
-            return None
-        _apply_event_snapshot_to_opportunity(doc, ev)
-        await _hydrate_institution_branding(doc)
-        await _hydrate_public_process_stats(doc)
+                except Exception:
+                    pass
+                return doc
+            if not _event_status_listable(ev.get("status")):
+                if applicant_user_id:
+                    try:
+                        has_app = await opportunity_applications_col.count_documents(
+                            {"opportunity_id": str(doc["_id"]), "user_id": applicant_user_id}
+                        )
+                    except Exception:
+                        has_app = 0
+                    if has_app:
+                        doc["listingPendingPublish"] = True
+                        doc["sourceEventStatus"] = str(ev.get("status") or "")
+                        _apply_event_snapshot_to_opportunity(doc, ev)
+                        try:
+                            await _hydrate_institution_branding(doc)
+                        except Exception:
+                            pass
+                        try:
+                            await _hydrate_public_process_stats(doc)
+                        except Exception:
+                            pass
+                        return doc
+                return None
+            _apply_event_snapshot_to_opportunity(doc, ev)
+            try:
+                await _hydrate_institution_branding(doc)
+            except Exception:
+                pass
+            try:
+                await _hydrate_public_process_stats(doc)
+            except Exception:
+                pass
+            return doc
+        try:
+            await _hydrate_institution_branding(doc)
+        except Exception:
+            pass
         return doc
-    await _hydrate_institution_branding(doc)
-    return doc
+    except Exception as e:
+        print(f"[ERROR] get_opportunity_by_id failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 async def apply_for_opportunity(application_data: dict) -> dict:
     """Saves a new application for an opportunity."""

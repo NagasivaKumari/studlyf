@@ -286,6 +286,10 @@ async def list_event_stage_submissions(event_id: str, user: dict = Depends(get_a
                 user_rec = await users_col.find_one({"user_id": doc["user_id"]})
                 if user_rec: doc["user_name"] = user_rec.get("name")
             
+            # Include assigned judges if available
+            if doc.get("assigned_judges"):
+                doc["assigned_judges"] = doc["assigned_judges"]
+            
             items.append(doc)
         return items
     except Exception as e:

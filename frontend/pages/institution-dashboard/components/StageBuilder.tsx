@@ -17,22 +17,11 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import FieldBuilder from './FieldBuilder';
 import JudgeAssignment from './JudgeAssignment';
-
-interface Stage {
-    id: string;
-    name: string;
-    type: 'Registration' | 'Quiz' | 'Submission' | 'Review' | 'Final' | 'Custom';
-    startDate: string;
-    endDate: string;
-    status: 'Upcoming' | 'Active' | 'Locked' | 'Completed';
-    visibility: 'Public' | 'Private' | 'Shortlisted Only';
-    roundMode?: 'Online' | 'Offline' | 'Hybrid';
-    config?: any;
-}
+import { IStage } from '../../../types/event';
 
 interface StageBuilderProps {
-    stages: Stage[];
-    onUpdate: (stages: Stage[]) => void;
+    stages: IStage[];
+    onUpdate: (stages: IStage[]) => void;
     onConfigureQuiz?: (stageId: string) => void;
 }
 
@@ -48,14 +37,27 @@ const STAGE_TYPES = [
 const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigureQuiz }) => {
     const [expandedStage, setExpandedStage] = useState<string | null>(null);
 
+    const calculateStatus = (startDate: string, endDate: string): IStage['status'] => {
+        const now = new Date();
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        
+        if (now < start) return 'Upcoming';
+        if (now > end) return 'Completed';
+        return 'Active';
+    };
+
     const addStage = () => {
-        const newStage: Stage = {
+        const startDate = new Date().toISOString().split('T')[0];
+        const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        const newStage: IStage = {
             id: Math.random().toString(36).substr(2, 9),
             name: 'New Stage',
             type: 'Submission',
-            startDate: new Date().toISOString().split('T')[0],
-            endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'Upcoming',
+            start_date: startDate,
+            end_date: endDate,
+            status: calculateStatus(startDate, endDate),
             visibility: 'Public',
             roundMode: 'Online',
         };
@@ -68,7 +70,20 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
     };
 
     const updateStage = (id: string, updates: Partial<Stage>) => {
-        onUpdate(stages.map(s => s.id === id ? { ...s, ...updates } : s));
+        onUpdate(stages.map(s => {
+            if (s.id === id) {
+                const updated = { ...s, ...updates };
+                // Recalculate status if dates changed
+                if (updates.start_date || updates.end_date) {
+                    updated.status = calculateStatus(
+                        updates.start_date || s.start_date,
+                        updates.end_date || s.end_date
+                    );
+                }
+                return updated;
+            }
+            return s;
+        }));
     };
 
     const moveStage = (index: number, direction: 'up' | 'down') => {
@@ -137,7 +152,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                     <div className="flex items-center gap-3 mt-1">
                                         <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
                                             <Clock size={12} />
-                                            {stage.startDate} — {stage.endDate}
+                                            {stage.start_date} — {stage.end_date}
                                         </span>
                                         <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
                                             <CheckCircle2 size={12} />
@@ -223,8 +238,8 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Start Date</label>
                                                     <input 
                                                         type="date" 
-                                                        value={stage.startDate}
-                                                        onChange={(e) => updateStage(stage.id, { startDate: e.target.value })}
+                                                        value={stage.start_date}
+                                                        onChange={(e) => updateStage(stage.id, { start_date: e.target.value })}
                                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none"
                                                     />
                                                 </div>
@@ -232,8 +247,8 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">End Date</label>
                                                     <input 
                                                         type="date" 
-                                                        value={stage.endDate}
-                                                        onChange={(e) => updateStage(stage.id, { endDate: e.target.value })}
+                                                        value={stage.end_date}
+                                                        onChange={(e) => updateStage(stage.id, { end_date: e.target.value })}
                                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none"
                                                     />
                                                 </div>

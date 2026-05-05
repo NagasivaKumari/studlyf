@@ -46,6 +46,7 @@ import { useNavigate } from 'react-router-dom';
 import StageBuilder from './components/StageBuilder';
 import JudgeInviteModal from './components/JudgeInviteModal';
 import QuizDesignerModal from './components/QuizDesignerModal';
+import { IEvent, IParticipant, ITeam, IStage, ISubmission } from '../../types/event';
 
 interface EventDetailsProps {
     eventId: string | null;
@@ -64,10 +65,10 @@ const BUNDLE_TAB_LABEL: Record<string, string> = {
 const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutionId: institutionIdProp }) => {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('dashboard');
-    const [event, setEvent] = useState<any>(null);
+    const [event, setEvent] = useState<IEvent | null>(null);
     const [institution, setInstitution] = useState<any>(null);
-    const [participants, setParticipants] = useState<any[]>([]);
-    const [stages, setStages] = useState<any[]>([]);
+    const [participants, setParticipants] = useState<IParticipant[]>([]);
+    const [stages, setStages] = useState<IStage[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [criteria, setCriteria] = useState<any[]>([]);
@@ -77,12 +78,13 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [bundleTab, setBundleTab] = useState<string>('shortlisted');
     const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
     const [isInviting, setIsInviting] = useState(false);
-    const [teams, setTeams] = useState<any[]>([]);
-    const [submissions, setSubmissions] = useState<any[]>([]);
+    const [teams, setTeams] = useState<ITeam[]>([]);
+    const [submissions, setSubmissions] = useState<ISubmission[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     const [quizzes, setQuizzes] = useState<any[]>([]);
     const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
+    const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string; type: string } | null>(null);
     const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
     const [quizStageId, setQuizStageId] = useState<string | null>(null);
     const [codingAttempts, setCodingAttempts] = useState<Record<string, any[]>>({});
@@ -91,7 +93,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [portalReviewNotice, setPortalReviewNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
     const [subJudgePick, setSubJudgePick] = useState<Record<string, string[]>>({});
     const [assigningSubmission, setAssigningSubmission] = useState<string | null>(null);
-    const [stageSubmissions, setStageSubmissions] = useState<any[]>([]);
+    const [stageSubmissions, setStageSubmissions] = useState<ISubmission[]>([]);
     const [submissionSubTab, setSubmissionSubTab] = useState<'projects' | 'assets'>('projects');
 
     const portalRegistrationStatusLabel = (raw: string | undefined) => {
@@ -490,7 +492,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         setAssigningSubmission(submissionId);
         try {
             const res = await fetch(
-                `${API_BASE_URL}/api/events/${eventId}/submissions/${submissionId}/assign-judges`,
+                `${API_BASE_URL}/api/v1/events/${eventId}/submissions/${submissionId}/assign-judges`,
                 {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -503,6 +505,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 });
                 const data = await subRes.json();
                 setSubmissions(Array.isArray(data) ? data : []);
+                setStageSubmissions(Array.isArray(data) ? data : []);
             }
         } catch (e) {
             console.error(e);
@@ -1159,6 +1162,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Phase / Stage</th>
                                             <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Submitted By</th>
                                             <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Deliverable Asset</th>
+                                            <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Assigned Judges</th>
                                             <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Timestamp</th>
                                         </tr>
                                     </thead>
@@ -1179,15 +1183,17 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                         <td className="px-10 py-6">
                                                             <div className="flex flex-col gap-2">
                                                                 {sub.data?.file_url && (
-                                                                    <a 
-                                                                        href={`${API_BASE_URL}${sub.data.file_url}`} 
-                                                                        target="_blank" 
-                                                                        rel="noreferrer"
+                                                                    <button 
+                                                                        onClick={() => setPreviewAsset({
+                                                                            url: `${API_BASE_URL}${sub.data.file_url}`,
+                                                                            filename: sub.data.filename || 'Deliverable',
+                                                                            type: 'file'
+                                                                        })}
                                                                         className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 text-blue-700 rounded-2xl hover:bg-blue-600 hover:text-white transition-all w-fit shadow-sm"
                                                                     >
-                                                                        <FileText size={16} />
-                                                                        <span className="text-[10px] font-black uppercase tracking-widest">{sub.data.filename || 'View Deliverable'}</span>
-                                                                    </a>
+                                                                        <Eye size={16} />
+                                                                        <span className="text-[10px] font-black uppercase tracking-widest">Preview Asset</span>
+                                                                    </button>
                                                                 )}
                                                                 {sub.data?.url && (
                                                                     <a 
@@ -1202,6 +1208,46 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                                 )}
                                                             </div>
                                                         </td>
+                                                        <td className="px-10 py-6">
+                                                            <div className="flex flex-col gap-2">
+                                                                {/* Show assigned judges */}
+                                                                {sub.assigned_judges && sub.assigned_judges.length > 0 ? (
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {sub.assigned_judges.map((judge: any, jIdx: number) => (
+                                                                            <span key={jIdx} className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-emerald-100">
+                                                                                {judge.name || judge.email}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-[10px] text-slate-400 font-medium">No judges assigned</span>
+                                                                )}
+                                                                {/* Judge assignment dropdown */}
+                                                                {event.judges && event.judges.length > 0 && (
+                                                                    <div className="relative">
+                                                                        <select
+                                                                            value={subJudgePick[sub._id]?.join(',') || ''}
+                                                                            onChange={(e) => {
+                                                                                const selectedEmails = Array.from(e.target.selectedOptions).map(o => o.value);
+                                                                                setSubJudgePick(prev => ({ ...prev, [sub._id]: selectedEmails }));
+                                                                                handleAssignJudgesToSubmission(sub._id, selectedEmails);
+                                                                            }}
+                                                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-purple-50 focus:border-purple-200 transition-all cursor-pointer"
+                                                                        >
+                                                                            <option value="">Assign judges...</option>
+                                                                            {event.judges.map((judge: any, jIdx: number) => (
+                                                                                <option key={jIdx} value={judge.email}>
+                                                                                    {judge.name} ({judge.email})
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+                                                                )}
+                                                                {assigningSubmission === sub._id && (
+                                                                    <span className="text-[9px] font-black text-purple-600 uppercase tracking-widest animate-pulse">Assigning...</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
                                                         <td className="px-10 py-6 text-right">
                                                             <div className="text-sm font-bold text-slate-500">{new Date(sub.submitted_at).toLocaleString()}</div>
                                                             <div className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mt-1">Live Sync Active</div>
@@ -1211,7 +1257,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             })
                                         ) : (
                                             <tr>
-                                                <td colSpan={4} className="px-12 py-32 text-center">
+                                                <td colSpan={5} className="px-12 py-32 text-center">
                                                     <div className="flex flex-col items-center opacity-30">
                                                         <Info size={48} className="mb-4" />
                                                         <p className="font-black text-xs uppercase tracking-widest">No phase deliverables detected yet</p>
@@ -1412,6 +1458,132 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 loading={isCreatingQuiz}
             />
             <JudgeInviteModal isOpen={isJudgeModalOpen} onClose={() => setIsJudgeModalOpen(false)} onInvite={handleInviteJudge} loading={isInviting} />
+
+            {/* Asset Preview Modal */}
+            <AnimatePresence>
+                {previewAsset && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                            className="bg-white w-full max-w-6xl h-[90vh] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden"
+                        >
+                            <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">{previewAsset.filename}</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Institutional Asset Intelligence Protocol • Secure Preview</p>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <a 
+                                        href={previewAsset.url} 
+                                        download 
+                                        className="flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all"
+                                    >
+                                        <Download size={14} /> Download
+                                    </a>
+                                    <button 
+                                        onClick={() => setPreviewAsset(null)}
+                                        className="p-4 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex-1 bg-slate-100 p-8 relative">
+                                <div className="w-full h-full rounded-[2rem] overflow-hidden shadow-2xl bg-white relative">
+                                    {/* File Preview by type */}
+                                    {previewAsset.filename.toLowerCase().match(/\.(pdf)$/) ? (
+                                        <iframe 
+                                            src={previewAsset.url}
+                                            className="w-full h-full border-none"
+                                            title="PDF Preview"
+                                        />
+                                    ) : previewAsset.filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|svg)$/) ? (
+                                        <img 
+                                            src={previewAsset.url}
+                                            className="w-full h-full object-contain"
+                                            alt={previewAsset.filename}
+                                        />
+                                    ) : previewAsset.filename.toLowerCase().match(/\.(mp4|webm|mov)$/) ? (
+                                        <video 
+                                            src={previewAsset.url}
+                                            controls
+                                            className="w-full h-full"
+                                        />
+                                    ) : previewAsset.filename.toLowerCase().match(/\.(pptx|ppt|docx|doc|xlsx|xls)$/) ? (
+                                        // Office files require download to view - browsers can't render PPT/DOCX natively
+                                        <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
+                                            <div className="w-24 h-24 bg-purple-50 rounded-3xl flex items-center justify-center text-5xl shadow-inner">
+                                                {previewAsset.filename.toLowerCase().match(/\.(pptx|ppt)$/) ? '📊' : 
+                                                 previewAsset.filename.toLowerCase().match(/\.(docx|doc)$/) ? '📝' : '📈'}
+                                            </div>
+                                            <div className="text-center space-y-3 max-w-md">
+                                                <p className="text-2xl font-black text-slate-900">{previewAsset.filename}</p>
+                                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                                                    <p className="text-sm font-bold text-amber-700">
+                                                        📢 This file type requires download to view
+                                                    </p>
+                                                    <p className="text-xs text-amber-600 mt-1">
+                                                        Browsers cannot display PPT/DOCX files. Please download and open with the appropriate application.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-3">
+                                                <a 
+                                                    href={previewAsset.url} 
+                                                    download 
+                                                    className="flex items-center gap-2 px-10 py-5 bg-[#6C3BFF] text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-purple-900/20"
+                                                >
+                                                    <Download size={20} /> Download File
+                                                </a>
+                                                <a 
+                                                    href={previewAsset.url} 
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-2 px-8 py-5 bg-slate-100 text-slate-700 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                                                >
+                                                    <ExternalLink size={18} /> Try Browser View
+                                                </a>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
+                                            <div className="w-24 h-24 bg-slate-50 rounded-3xl flex items-center justify-center text-5xl">📎</div>
+                                            <div className="text-center space-y-2">
+                                                <p className="text-xl font-black text-slate-900">{previewAsset.filename}</p>
+                                                <p className="text-sm text-slate-500 font-medium">Preview not available for this file type</p>
+                                            </div>
+                                            <div className="flex gap-3">
+                                                <a 
+                                                    href={previewAsset.url} 
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-2 px-8 py-4 bg-slate-900 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-lg"
+                                                >
+                                                    <ExternalLink size={18} /> Open File
+                                                </a>
+                                                <a 
+                                                    href={previewAsset.url} 
+                                                    download 
+                                                    className="flex items-center gap-2 px-8 py-4 bg-slate-100 text-slate-700 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                                                >
+                                                    <Download size={18} /> Download
+                                                </a>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

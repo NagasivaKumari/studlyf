@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Eye, CheckCircle, XCircle, ExternalLink, Github, Play, FileText, MessageSquare } from 'lucide-react';
+import { Search, Filter, Eye, CheckCircle, XCircle, ExternalLink, Github, Play, FileText, MessageSquare, TrendingUp, X, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL, authHeaders } from '../../../apiConfig';
 
@@ -13,6 +13,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
     const [loading, setLoading] = useState(true);
     const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
     const [isAssigning, setIsAssigning] = useState<string | null>(null); // Submission ID being assigned
+    const [assigningJudgeId, setAssigningJudgeId] = useState<string | null>(null); // Judge being assigned
     const [judges, setJudges] = useState<any[]>([]);
     const [filterStatus, setFilterStatus] = useState('All');
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -225,7 +226,15 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                     </div>
                                 </td>
                                 <td className="px-8 py-6">
-                                    {sub.judge_id ? (
+                                    {sub.assigned_judges && sub.assigned_judges.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1">
+                                            {sub.assigned_judges.map((judge: any, jIdx: number) => (
+                                                <span key={jIdx} className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-emerald-100">
+                                                    {judge.name || judge.email}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : sub.judge_id ? (
                                         <div className="flex items-center gap-2">
                                             <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center text-[#6C3BFF] text-[8px] font-black uppercase">
                                                 {sub.judge_name?.charAt(0) || 'J'}
@@ -385,8 +394,16 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                             initial={{ scale: 0.95, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.95, opacity: 0 }}
-                            className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl border border-white/20"
+                            className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl border border-white/20 relative"
                         >
+                            {/* Close button */}
+                            <button 
+                                onClick={() => setIsAssigning(null)}
+                                className="absolute top-6 right-6 p-2 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-xl transition-all"
+                            >
+                                <X size={20} />
+                            </button>
+                            
                             <h2 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Assign Evaluator</h2>
                             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-8">Select a judge for this submission</p>
                             
@@ -394,26 +411,78 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                 {judges.length > 0 ? judges.map((j) => (
                                     <button 
                                         key={j._id}
+                                        disabled={assigningJudgeId === j._id}
                                         onClick={async () => {
-                                            const res = await fetch(`${API_BASE_URL}/api/v1/institution/submissions/${isAssigning}/assign-judge`, {
-                                                method: 'PATCH',
-                                                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                                                body: JSON.stringify({ judge_email: j.email, judge_id: j._id })
-                                            });
-                                            if (res.ok) {
-                                                setSubmissions(submissions.map(s => s._id === isAssigning ? { ...s, judge_id: j._id, judge_name: j.full_name, assigned_judge_emails: [j.email], status: 'Under Review' } : s));
-                                                setIsAssigning(null);
+                                            setAssigningJudgeId(j._id);
+                                            try {
+                                                const res = await fetch(`${API_BASE_URL}/api/judges/assign`, {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                                                    body: JSON.stringify({ submission_id: isAssigning, judge_id: j._id })
+                                                });
+                                                if (res.ok) {
+                                                    // Refresh submissions to get updated assigned_judges from backend
+                                                    const refreshRes = await fetch(
+                                                        `${API_BASE_URL}/api/v1/institution/submissions/${encodeURIComponent(institutionId || '')}`,
+                                                        { headers: { ...authHeaders() } }
+                                                    );
+                                                    if (refreshRes.ok) {
+                                                        const refreshData = await refreshRes.json();
+                                                        if (Array.isArray(refreshData)) {
+                                                            setSubmissions(refreshData);
+                                                        }
+                                                    }
+                                                    
+                                                    // Send notification to judge
+                                                    try {
+                                                        await fetch(`${API_BASE_URL}/api/notifications/judge`, {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                                                            body: JSON.stringify({
+                                                                judge_email: j.email,
+                                                                notification_type: 'judge_assigned',
+                                                                title: 'New Project Assignment',
+                                                                message: `You have been assigned to evaluate a new submission. Please log in to the judge portal to review.`,
+                                                                event_id: j.institution_id || '',
+                                                                metadata: { submission_id: isAssigning }
+                                                            })
+                                                        });
+                                                    } catch (e) {
+                                                        console.log('Notification send failed (non-critical)');
+                                                    }
+                                                    
+                                                    setIsAssigning(null);
+                                                } else {
+                                                    const errData = await res.json().catch(() => ({}));
+                                                    alert(errData.detail || 'Failed to assign judge. Please try again.');
+                                                }
+                                            } catch (err) {
+                                                console.error('Assign judge error:', err);
+                                                alert('Network error. Please try again.');
+                                            } finally {
+                                                setAssigningJudgeId(null);
                                             }
                                         }}
-                                        className="w-full flex items-center gap-4 p-4 bg-slate-50 rounded-2xl hover:bg-purple-50 border border-slate-100 hover:border-purple-200 transition-all text-left group"
+                                        className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left group ${
+                                            assigningJudgeId === j._id 
+                                                ? 'bg-purple-50 border-purple-200 opacity-70' 
+                                                : 'bg-slate-50 hover:bg-purple-50 border-slate-100 hover:border-purple-200'
+                                        }`}
                                     >
                                         <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#6C3BFF] font-black shadow-sm group-hover:shadow-md transition-all">
-                                            {j.full_name.charAt(0).toUpperCase()}
+                                            {assigningJudgeId === j._id ? (
+                                                <Loader2 size={18} className="animate-spin" />
+                                            ) : (
+                                                j.full_name.charAt(0).toUpperCase()
+                                            )}
                                         </div>
-                                        <div>
+                                        <div className="flex-1">
                                             <p className="font-bold text-slate-900 group-hover:text-[#6C3BFF] transition-colors">{j.full_name}</p>
                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{j.specialization || 'General Judge'}</p>
                                         </div>
+                                        {assigningJudgeId === j._id && (
+                                            <span className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Assigning...</span>
+                                        )}
                                     </button>
                                 )) : (
                                     <div className="p-10 text-center border-2 border-dashed border-slate-100 rounded-3xl">
