@@ -1377,6 +1377,10 @@ async def update_event_details(event_id: str, update_data: dict, user: dict = De
         for s in update_data["stages"]:
             if isinstance(s, dict) and not s.get("id"):
                 s["id"] = str(uuid.uuid4())
+        # Debug: log the stages being saved
+        print(f"[DEBUG] Saving {len(update_data['stages'])} stages")
+        for s in update_data["stages"]:
+            print(f"[DEBUG] Stage '{s.get('name')}': type={s.get('type')}, config={s.get('config')}")
     await events_col.update_one({"_id": ObjectId(event_id)}, {"$set": update_data})
     return {"status": "success"}
 

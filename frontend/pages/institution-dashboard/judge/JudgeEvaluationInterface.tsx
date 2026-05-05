@@ -21,6 +21,7 @@ import {
     ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_BASE_URL, authHeaders } from '../../../apiConfig';
 
 interface TeamSubmission {
     id: string;
@@ -72,13 +73,44 @@ const JudgeEvaluationInterface: React.FC<JudgeEvaluationInterfaceProps> = ({
     onSave,
     onBack
 }) => {
+    const [eventCriteria, setEventCriteria] = useState<EvaluationCriteria[]>([]);
+    
+    // Fetch evaluation criteria from event
+    useEffect(() => {
+        const fetchCriteria = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/v1/events/${eventId}/criteria`, {
+                    headers: { ...authHeaders() }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const criteria: EvaluationCriteria[] = data.map((item: any) => ({
+                        id: item._id,
+                        name: item.name,
+                        description: item.description || '',
+                        maxScore: item.max_points || 10,
+                        weight: item.weight || 1,
+                        icon: <Award size={18} />
+                    }));
+                    setEventCriteria(criteria);
+                }
+            } catch (error) {
+                console.error('Failed to fetch criteria:', error);
+            }
+        };
+        
+        if (eventId && !providedCriteria) {
+            fetchCriteria();
+        }
+    }, [eventId, providedCriteria]);
+
     // Default criteria if none provided
-    const criteria = useMemo(() => providedCriteria || [
+    const criteria = useMemo(() => providedCriteria || eventCriteria.length > 0 ? eventCriteria : [
         { id: 'innovation', name: 'Innovation', description: 'Originality and uniqueness of the solution', maxScore: 10, weight: 1, icon: <Zap size={18} /> },
         { id: 'technical', name: 'Technicality', description: 'Code quality and technical complexity', maxScore: 10, weight: 1, icon: <ShieldCheck size={18} /> },
         { id: 'impact', name: 'Impact', description: 'Potential real-world impact and viability', maxScore: 10, weight: 1, icon: <Target size={18} /> },
         { id: 'presentation', name: 'Presentation', description: 'Clarity of the pitch and UI/UX quality', maxScore: 10, weight: 1, icon: <Award size={18} /> },
-    ], [providedCriteria]);
+    ], [providedCriteria, eventCriteria]);
 
     const [assignedSubmissions, setAssignedSubmissions] = useState<TeamSubmission[]>([]);
     const [activeSubmission, setActiveSubmission] = useState<TeamSubmission | null>(null);
@@ -89,42 +121,43 @@ const JudgeEvaluationInterface: React.FC<JudgeEvaluationInterfaceProps> = ({
     const [savedSubmissions, setSavedSubmissions] = useState<Set<string>>(new Set());
 
     useEffect(() => {
-        // Mocking assignments for demonstration
-        const mockSubmissions: TeamSubmission[] = [
-            {
-                id: 'sub1',
-                teamId: 'team1',
-                teamName: 'Cyber Sentinels',
-                projectTitle: 'AI-Powered Threat Detection',
-                description: 'A revolutionary cybersecurity platform using deep learning to predict zero-day attacks before they happen.',
-                submittedAt: new Date().toISOString(),
-                status: 'pending',
-                submissionUrl: '#',
-                demoUrl: '#',
-                githubUrl: '#',
-                members: [
-                    { name: 'Alex Rivera', email: 'alex@cyber.com', role: 'AI Researcher' },
-                    { name: 'Sasha V', email: 'sasha@cyber.com', role: 'Security Ops' }
-                ]
-            },
-            {
-                id: 'sub2',
-                teamId: 'team2',
-                teamName: 'Quant Finance',
-                projectTitle: 'Algo-Trading Protocol',
-                description: 'Low-latency quantitative trading system built on Solana for institutional-grade DeFi liquidity.',
-                submittedAt: new Date().toISOString(),
-                status: 'pending',
-                submissionUrl: '#',
-                githubUrl: '#',
-                members: [
-                    { name: 'James K', email: 'james@quant.com', role: 'Core dev' }
-                ]
+        // Fetch judge's assigned submissions from API
+        const fetchAssignments = async () => {
+            try {
+                setLoading(true);
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/judge/my-assignments`, {
+                    headers: { ...authHeaders() }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    // Transform API data to match TeamSubmission interface
+                    const submissions: TeamSubmission[] = data.map((item: any) => ({
+                        id: item._id,
+                        teamId: item.team_id || item.id,
+                        teamName: item.team_name || item.project_title,
+                        projectTitle: item.project_title,
+                        description: item.description || '',
+                        submittedAt: item.submitted_at,
+                        status: item.status === 'Under Review' ? 'in_review' : 
+                                item.status === 'Evaluation Complete' ? 'completed' : 'pending',
+                        submissionUrl: item.data?.file_url,
+                        demoUrl: item.data?.url,
+                        githubUrl: item.data?.github_url,
+                        members: item.team_members || []
+                    }));
+                    setAssignedSubmissions(submissions);
+                } else {
+                    console.error('Failed to fetch assignments');
+                }
+            } catch (error) {
+                console.error('Error fetching assignments:', error);
+            } finally {
+                setLoading(false);
             }
-        ];
-        setAssignedSubmissions(mockSubmissions);
-        setLoading(false);
-    }, []);
+        };
+        
+        fetchAssignments();
+    }, [judgeId, eventId]);
 
     const handleScoreChange = (id: string, val: number) => {
         setScores(prev => ({ ...prev, [id]: val }));
@@ -143,12 +176,33 @@ const JudgeEvaluationInterface: React.FC<JudgeEvaluationInterfaceProps> = ({
     const handleSave = async () => {
         if (!activeSubmission) return;
         setSaving(true);
-        // Simulate API call
-        await new Promise(r => setTimeout(r, 1500));
-        setSavedSubmissions(prev => new Set([...prev, activeSubmission.id]));
-        setSaving(false);
-        setActiveSubmission(null);
-        alert("Evaluation successfully synced to blockchain!");
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/judges/score`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({
+                    submission_id: activeSubmission.id,
+                    scores: scores,
+                    feedback: feedback
+                })
+            });
+            
+            if (res.ok) {
+                setSavedSubmissions(prev => new Set([...prev, activeSubmission.id]));
+                setSaving(false);
+                setActiveSubmission(null);
+                setFeedback('');
+                alert("Evaluation submitted successfully!");
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                alert(errData.detail || 'Failed to submit evaluation');
+                setSaving(false);
+            }
+        } catch (error) {
+            console.error('Submit evaluation error:', error);
+            alert('Network error. Please try again.');
+            setSaving(false);
+        }
     };
 
     if (loading) return (

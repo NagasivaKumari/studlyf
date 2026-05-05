@@ -71,6 +71,9 @@ const JudgeInvitation: React.FC = () => {
             if (!res.ok) throw new Error(body?.detail || 'Failed to update invitation');
             setNotice({ kind: 'ok', text: accept ? 'Invitation accepted! You can now review assigned submissions.' : 'Invitation declined.' });
             if (accept) {
+                // Set flag for auto-detecting judge role in signup
+                localStorage.setItem('pendingJudgeRole', 'true');
+                
                 // Redirect to login after acceptance so they can create/access their account
                 setTimeout(() => {
                     setNotice({ kind: 'ok', text: 'Please create an account or login to access the judge portal.' });

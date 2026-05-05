@@ -48,7 +48,10 @@ class NotificationService:
         notification_id = str(result.inserted_id)
         
         # Send email notification if enabled
-        await self._send_email_notification_if_enabled(user_id, notification_doc)
+        try:
+            await self._send_email_notification_if_enabled(user_id, notification_doc)
+        except Exception as e:
+            print(f"[EMAIL] Failed to send email notification: {e}")
         
         # Create institution notification if applicable
         if institution_id:
@@ -203,15 +206,21 @@ class NotificationService:
     ):
         """Create notification for a judge"""
         
-        # Find judge user by email
+        # Find judge in judges collection first
+        from db import judges_col
+        judge = await judges_col.find_one({"email": judge_email.lower().strip()})
+        if not judge:
+            raise ValueError("Judge not found")
+        
+        # Check if judge has a user account
         judge_user = await users_col.find_one({"email": judge_email.lower().strip()})
         if not judge_user:
-            raise ValueError("Judge user not found")
-        
-        # Get user ID
-        user_id = judge_user.get("user_id")
-        if not user_id:
-            raise ValueError("Judge user ID not found")
+            # Judge hasn't created account yet - create notification with judge email as user_id
+            user_id = judge_email
+        else:
+            user_id = judge_user.get("user_id")
+            if not user_id:
+                raise ValueError("Judge user ID not found")
         
         # Create notification with judge category
         return await self.create_notification(

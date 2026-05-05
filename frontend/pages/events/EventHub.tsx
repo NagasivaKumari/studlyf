@@ -5,16 +5,17 @@ import { useAuth } from '../../AuthContext';
 import { ChevronLeft, UsersRound, Link as LinkIcon, Loader2, Upload, FileText, CheckCircle2, Clock, Trophy } from 'lucide-react';
 import TeamManager from '../opportunities/components/TeamManager';
 import Leaderboard from './Leaderboard';
+import { IEvent, IParticipant, ITeam } from '../../types/event';
 
-type HubResp = { participant?: any; team?: any };
+type HubResp = { participant?: IParticipant; team?: ITeam };
 
 const EventHub: React.FC = () => {
     const { eventId } = useParams();
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
-    const [event, setEvent] = useState<any>(null);
-    const [participant, setParticipant] = useState<any>(null);
-    const [team, setTeam] = useState<any>(null);
+    const [event, setEvent] = useState<IEvent | null>(null);
+    const [participant, setParticipant] = useState<IParticipant | null>(null);
+    const [team, setTeam] = useState<ITeam | null>(null);
     const [activeTab, setActiveTab] = useState('timeline');
     
     // Team management state
@@ -25,7 +26,7 @@ const EventHub: React.FC = () => {
 
     // Submission state
     const [submitting, setSubmitting] = useState<string | null>(null); // stage_id
-    const [submissionData, setSubmissionData] = useState<Record<string, string>>({});
+    const [submissionData, setSubmissionData] = useState<Record<string, string | boolean>>({});
     const [submissionError, setSubmissionError] = useState<string | null>(null);
 
     const fetchData = async () => {
@@ -51,6 +52,22 @@ const EventHub: React.FC = () => {
 
     useEffect(() => {
         fetchData();
+        
+        // Real-time polling for team/submission updates
+        const interval = setInterval(async () => {
+            try {
+                const hubRes = await fetch(`${API_BASE_URL}/api/v1/events/${eventId}/hub`, { headers: { ...authHeaders() } });
+                if (hubRes.ok) {
+                    const data: HubResp = await hubRes.json();
+                    setParticipant(data.participant || null);
+                    setTeam(data.team || null);
+                }
+            } catch (e) {
+                /* non-fatal */
+            }
+        }, 15000); // Poll every 15s
+
+        return () => clearInterval(interval);
     }, [eventId]);
 
     const createTeam = async () => {
@@ -135,6 +152,8 @@ const EventHub: React.FC = () => {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('stage_id', stageId);
+        formData.append('user_email', user?.email || '');
+        formData.append('user_name', user?.full_name || '');
 
         try {
             const res = await fetch(`${API_BASE_URL}/api/opportunities/events/${eventId}/stages/${stageId}/upload`, {
@@ -158,15 +177,30 @@ const EventHub: React.FC = () => {
     };
 
     const handleSubmission = async (stageId: string) => {
-        const data = submissionData[stageId];
-        if (!data) {
-            setSubmissionError("Please enter a URL or select a file first");
-            return;
+        const stage = event?.stages?.find((s: any) => s.id === stageId);
+        const fields = stage?.config?.fields || [];
+        
+        // Collect all field data for this stage
+        const fieldData: any = {};
+        let hasData = false;
+        
+        for (const field of fields) {
+            const key = `${stageId}-${field.id}`;
+            const value = submissionData[key];
+            
+            if (field.required && !value) {
+                setSubmissionError(`${field.label} is required`);
+                return;
+            }
+            
+            if (value) {
+                fieldData[field.id] = value;
+                hasData = true;
+            }
         }
         
-        // Basic URL validation
-        if (!data.startsWith('http://') && !data.startsWith('https://')) {
-            setSubmissionError("URL must start with http:// or https://");
+        if (!hasData) {
+            setSubmissionError("Please fill in at least one field");
             return;
         }
         
@@ -176,15 +210,26 @@ const EventHub: React.FC = () => {
             const res = await fetch(`${API_BASE_URL}/api/opportunities/events/${eventId}/stages/${stageId}/submit`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ data: { url: data } })
+                body: JSON.stringify({ 
+                    data: {
+                        ...fieldData,
+                        user_email: user?.email || '',
+                        user_name: user?.full_name || ''
+                    } 
+                })
             });
             if (res.ok) {
-                alert("URL submitted successfully!");
+                alert("Submitted successfully!");
                 await fetchData();
-                setSubmissionData(prev => ({ ...prev, [stageId]: '' }));
+                // Clear submission data for this stage
+                const newData = { ...submissionData };
+                for (const field of fields) {
+                    delete newData[`${stageId}-${field.id}`];
+                }
+                setSubmissionData(newData);
             } else {
                 const err = await res.json();
-                setSubmissionError(err.detail || "Submission failed. Please check your URL and try again.");
+                setSubmissionError(err.detail || "Submission failed. Please try again.");
             }
         } catch (e) {
             setSubmissionError("Network error during submission. Please check your connection and try again.");
@@ -358,6 +403,8 @@ const EventHub: React.FC = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     {(event.stages || []).filter((s: any) => s.type?.toUpperCase() === 'SUBMISSION').map((stage: any, idx: number) => {
                                         const isCompleted = participant.last_stage_submitted === stage.id;
+                                        const fields = stage.config?.fields || [];
+                                        
                                         return (
                                             <div key={idx} className="p-10 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">
                                                 <div className="flex items-center justify-between">
@@ -371,51 +418,109 @@ const EventHub: React.FC = () => {
                                                 </div>
                                                 <p className="text-sm text-slate-500 font-medium leading-relaxed">{stage.description}</p>
                                                 
-                                                <div className="p-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center gap-4 group hover:border-purple-300 transition-all">
-                                                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-purple-600 shadow-sm transition-colors">
-                                                        <FileText size={24} />
-                                                    </div>
-                                                    <div className="text-center">
-                                                        <p className="text-sm font-black text-slate-900">Upload Project Assets</p>
-                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">PPT, PDF, or ZIP (Max 50MB)</p>
-                                                    </div>
-                                                    <input 
-                                                        type="file"
-                                                        id={`file-${stage.id}`}
-                                                        className="hidden"
-                                                        disabled={isCompleted || submitting === stage.id}
-                                                        onChange={(e) => {
-                                                            const file = e.target.files?.[0];
-                                                            if (file) handleFileUpload(stage.id, file);
-                                                        }}
-                                                    />
-                                                    <label 
-                                                        htmlFor={`file-${stage.id}`}
-                                                        className={`px-8 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm ${isCompleted ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {submitting === stage.id ? 'Uploading...' : 'Select File'}
-                                                    </label>
-                                                </div>
-
-                                                <div className="space-y-3 pt-4 border-t border-slate-100">
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">External Project URL (Optional)</p>
-                                                    <div className="flex gap-2">
+                                                {fields.length === 0 ? (
+                                                    <div className="p-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center gap-4 group hover:border-purple-300 transition-all">
+                                                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-purple-600 shadow-sm transition-colors">
+                                                            <FileText size={24} />
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-sm font-black text-slate-900">Upload Project Assets</p>
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">PPT, PDF, or ZIP (Max 50MB)</p>
+                                                        </div>
                                                         <input 
-                                                            disabled={isCompleted}
-                                                            value={submissionData[stage.id] || ''}
-                                                            onChange={(e) => setSubmissionData(prev => ({ ...prev, [stage.id]: e.target.value }))}
-                                                            placeholder="https://github.com/..."
-                                                            className="flex-1 px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all"
+                                                            type="file"
+                                                            id={`file-${stage.id}`}
+                                                            className="hidden"
+                                                            disabled={isCompleted || submitting === stage.id}
+                                                            onChange={(e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (file) handleFileUpload(stage.id, file);
+                                                            }}
                                                         />
+                                                        <label 
+                                                            htmlFor={`file-${stage.id}`}
+                                                            className={`px-8 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm ${isCompleted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {submitting === stage.id ? 'Uploading...' : 'Select File'}
+                                                        </label>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-4">
+                                                        {fields.map((field: any, fIdx: number) => (
+                                                            <div key={fIdx} className="space-y-2">
+                                                                <label className="text-sm font-bold text-slate-900">
+                                                                    {field.label}
+                                                                    {field.required && <span className="text-red-500 ml-1">*</span>}
+                                                                </label>
+                                                                {field.type === 'file' ? (
+                                                                    <div className="p-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center gap-3">
+                                                                        <input 
+                                                                            type="file"
+                                                                            id={`field-${stage.id}-${fIdx}`}
+                                                                            className="hidden"
+                                                                            disabled={isCompleted || submitting === stage.id}
+                                                                            onChange={(e) => {
+                                                                                const file = e.target.files?.[0];
+                                                                                if (file) handleFileUpload(stage.id, file);
+                                                                            }}
+                                                                        />
+                                                                        <label 
+                                                                            htmlFor={`field-${stage.id}-${fIdx}`}
+                                                                            className={`px-6 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm ${isCompleted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                        >
+                                                                            {submitting === stage.id ? 'Uploading...' : 'Select File'}
+                                                                        </label>
+                                                                    </div>
+                                                                ) : field.type === 'url' ? (
+                                                                    <input 
+                                                                        type="url"
+                                                                        disabled={isCompleted}
+                                                                        value={String(submissionData[`${stage.id}-${field.id}`] || '')}
+                                                                        onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
+                                                                        placeholder={field.placeholder || 'https://...'}
+                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all"
+                                                                    />
+                                                                ) : field.type === 'text' ? (
+                                                                    <input 
+                                                                        type="text"
+                                                                        disabled={isCompleted}
+                                                                        value={String(submissionData[`${stage.id}-${field.id}`] || '')}
+                                                                        onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
+                                                                        placeholder={field.placeholder || ''}
+                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all"
+                                                                    />
+                                                                ) : field.type === 'number' ? (
+                                                                    <input 
+                                                                        type="number"
+                                                                        disabled={isCompleted}
+                                                                        value={String(submissionData[`${stage.id}-${field.id}`] || '')}
+                                                                        onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
+                                                                        placeholder={field.placeholder || ''}
+                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all"
+                                                                    />
+                                                                ) : field.type === 'checkbox' ? (
+                                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                                        <input 
+                                                                            type="checkbox"
+                                                                            disabled={isCompleted}
+                                                                            checked={!!submissionData[`${stage.id}-${field.id}`]}
+                                                                            onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.checked }))}
+                                                                            className="w-5 h-5 accent-purple-600"
+                                                                        />
+                                                                        <span className="text-sm text-slate-700">{field.placeholder || 'I agree'}</span>
+                                                                    </label>
+                                                                ) : null}
+                                                            </div>
+                                                        ))}
                                                         <button 
                                                             onClick={() => handleSubmission(stage.id)}
-                                                            disabled={isCompleted || submitting === stage.id || !submissionData[stage.id]}
-                                                            className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-purple-700 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
+                                                            disabled={isCompleted || submitting === stage.id}
+                                                            className="w-full px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-purple-700 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
                                                         >
-                                                            {submitting === stage.id ? '...' : 'Save'}
+                                                            {submitting === stage.id ? 'Submitting...' : 'Submit'}
                                                         </button>
                                                     </div>
-                                                </div>
+                                                )}
                                             </div>
                                         );
                                     })}

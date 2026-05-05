@@ -1,15 +1,17 @@
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
 from services.event_service import (
-    create_event, 
-    get_all_events, 
-    get_event_by_id, 
-    update_event, 
+    create_event,
+    get_all_events,
+    get_event_by_id,
+    update_event,
     delete_event,
     update_event_status
 )
 from typing import List, Optional
+from auth_institution import get_auth_user
+from bson import ObjectId
 
-router = APIRouter(prefix="/api/events", tags=["Events"])
+router = APIRouter(prefix="/api/v1/events", tags=["Events"])
 
 @router.post("/")
 async def post_event(data: dict = Body(...)):
@@ -43,3 +45,40 @@ async def remove_event(event_id: str):
 @router.patch("/{event_id}/status")
 async def change_event_status(event_id: str, status: str = Body(embed=True)):
     return await update_event_status(event_id, status)
+
+@router.get("/{event_id}/hub")
+async def get_event_hub_data(event_id: str, user: dict = Depends(get_auth_user)):
+    from db import participants_col, teams_col
+    uid = str(user.get("user_id") or "")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
+    team = None
+    if p and p.get("team_id"):
+        try:
+            team = await teams_col.find_one({"_id": ObjectId(str(p.get("team_id")))})
+        except Exception:
+            team = None
+            
+    if p:
+        p["_id"] = str(p["_id"])
+        # Standardize fields for frontend
+        p = {
+            "_id": p["_id"],
+            "event_id": p.get("event_id"),
+            "user_id": p.get("user_id"),
+            "team_id": p.get("team_id"),
+            "status": p.get("status", "pending"),
+            "current_stage": p.get("current_stage"),
+            "last_stage_submitted": p.get("last_stage_submitted")
+        }
+        
+    if team:
+        team["_id"] = str(team["_id"])
+        if "members" in team:
+            for m in team["members"]:
+                if "user_id" in m:
+                    m["user_id"] = str(m["user_id"])
+                    
+    return {"participant": p, "team": team}

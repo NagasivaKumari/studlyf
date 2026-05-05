@@ -24,6 +24,9 @@ class MockCollection:
     async def count_documents(self, *args, **kwargs):
         return 0
     
+    def aggregate(self, *args, **kwargs):
+        return MockCursor()
+    
     async def create_index(self, *args, **kwargs):
         pass
 
@@ -50,8 +53,8 @@ class MockResult:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("db_service")
 
-# Load from current directory .env
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+# Load from root directory .env
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
 class DatabaseManager:
     """
@@ -108,6 +111,8 @@ class DatabaseManager:
 
     async def ensure_indexes(self):
         """Enforces performance and data integrity."""
+        if self.db is None:
+            return
         try:
             await self.db.users.create_index("user_id", unique=True)
             await self.db.users.create_index("email", unique=True)
@@ -115,7 +120,6 @@ class DatabaseManager:
             await self.db.institutions.create_index("institution_id", unique=True)
         except Exception as e:
             logger.warning(f"Index creation warning: {e}")
-            pass
 
     def __getitem__(self, collection_name: str):
         """Allows db['collection'] access with lazy connection."""
@@ -123,6 +127,10 @@ class DatabaseManager:
             # Return a mock collection that doesn't crash
             return MockCollection()
         return self.db[collection_name]
+
+    def __getattr__(self, name: str):
+        """Allows db.collection access."""
+        return self.__getitem__(name)
 
 # --- Global Instance renamed to 'db' as requested ---
 db = DatabaseManager()

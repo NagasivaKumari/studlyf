@@ -130,16 +130,58 @@ const App: React.FC = () => {
           navigate('/institution-dashboard', { replace: true });
         }
       } else if (role === 'judge') {
-        if (!pathname.startsWith('/judge-portal') && (pathname.startsWith('/dashboard') || pathname === '/')) {
+        // Judges ONLY get access to judge portal - multiple safety checks
+        if (!pathname.startsWith('/judge-portal') || pathname.startsWith('/institution-dashboard') || pathname.startsWith('/dashboard')) {
+          console.log('[JudgeRedirect] CRITICAL: Judge user on forbidden path:', pathname, '- FORCING redirect to judge portal');
+          // Clear any potential cached data
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('pendingJudgeRole');
           navigate('/judge-portal', { replace: true });
+          return;
         }
+        console.log('[JudgeRedirect] Judge user correctly on judge portal:', pathname);
       } else if (role === 'student') {
         if (pathname.startsWith('/institution-dashboard') || pathname.startsWith('/judge-portal')) {
           navigate('/dashboard/learner', { replace: true });
         }
       }
     }
+    
+    // Additional safety check: If user email looks like judge but role not set, force judge role
+    if (user?.email && !role) {
+      const judgeIndicators = ['judge', 'evaluator', 'reviewer'];
+      const emailDomain = user.email.split('@')[1]?.toLowerCase();
+      const isJudgeEmail = judgeIndicators.some(indicator => 
+        user.email.toLowerCase().includes(indicator) || 
+        emailDomain?.includes(indicator) ||
+        user.email.toLowerCase().includes('court') || 
+        user.email.toLowerCase().includes('legal')
+      );
+      
+      if (isJudgeEmail && !pathname.startsWith('/judge-portal') && (pathname.startsWith('/dashboard') || pathname === '/')) {
+        console.log('[JudgeRedirect] Forcing judge redirect based on email:', user.email);
+        navigate('/judge-portal', { replace: true });
+        return;
+      }
+    }
   }, [user, role, pathname, loading, navigate]);
+
+// Debug: Log all auth state changes
+useEffect(() => {
+    console.log('[AuthDebug] State changed:', {
+        user: user?.email,
+        role: role,
+        pathname: pathname,
+        loading: loading
+    });
+    
+    // Force redirect check for judge users
+    if (user?.role === 'judge' && !pathname.startsWith('/judge-portal')) {
+        console.log('[AuthDebug] CRITICAL: Judge user detected on wrong path:', pathname, '- IMMEDIATE redirect to judge portal');
+        navigate('/judge-portal', { replace: true });
+        return;
+    }
+}, [user, role, pathname, loading, navigate]);
 
   return (
     <div className={`relative min-h-screen flex flex-col selection:bg-[#7C3AED] selection:text-white ${isDashboard || isAdmin ? 'bg-transparent' : 'bg-white'}`}>

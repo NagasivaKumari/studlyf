@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Filter, Briefcase, Calendar, MapPin, ChevronRight, ChevronLeft, Sparkles, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../apiConfig';
+import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
 import { plainTextFromRichContent, formatOpportunityLocation } from '../../utils/text';
 
@@ -22,14 +22,16 @@ const OpportunitiesList: React.FC = () => {
             try {
                 const [oppRes, appRes] = await Promise.all([
                     fetch(`${API_BASE_URL}/api/opportunities`),
-                    user ? fetch(`${API_BASE_URL}/api/opportunities/user/${user.user_id}/applications`) : Promise.resolve({ json: () => [] })
+                    user ? fetch(`${API_BASE_URL}/api/opportunities/user/${user.user_id}/applications`, {
+                        headers: { ...authHeaders() }
+                    }) : Promise.resolve({ ok: true, json: () => [] } as any)
                 ]);
                 
-                const opps = await oppRes.json();
-                const apps = await (appRes as any).json();
+                const opps = oppRes.ok ? await oppRes.json() : [];
+                const apps = (appRes as any).ok ? await (appRes as any).json() : [];
                 
-                setOpportunities(opps);
-                setAppliedIds(apps.map((a: any) => a.opportunity_id));
+                setOpportunities(Array.isArray(opps) ? opps : []);
+                setAppliedIds(Array.isArray(apps) ? apps.map((a: any) => a.opportunity_id) : []);
             } catch (err) {
                 console.error("Fetch error:", err);
             } finally {
