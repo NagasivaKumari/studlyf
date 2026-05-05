@@ -47,10 +47,26 @@ const JudgeDashboard: React.FC = () => {
                 // Calculate Stats
                 const completed = data.filter((a: any) => a.existing_scores).length;
                 const pending = data.length - completed;
+                
+                let totalScoreSum = 0;
+                let scoredAssignmentsCount = 0;
+                data.forEach((a: any) => {
+                    if (a.existing_scores && a.existing_scores.scores) {
+                        const scoresObj = a.existing_scores.scores;
+                        const scoreValues = Object.values(scoresObj) as number[];
+                        if (scoreValues.length > 0) {
+                            const avgAssignmentScore = scoreValues.reduce((sum, val) => sum + val, 0) / scoreValues.length;
+                            totalScoreSum += avgAssignmentScore;
+                            scoredAssignmentsCount++;
+                        }
+                    }
+                });
+                const avgScore = scoredAssignmentsCount > 0 ? Number((totalScoreSum / scoredAssignmentsCount).toFixed(1)) : 0;
+
                 setStats({
                     pending,
                     completed,
-                    avgScore: 8.5, // Mock or calculated
+                    avgScore,
                     activeEvents: new Set(data.map((a: any) => a.event_id)).size
                 });
             }
@@ -147,10 +163,10 @@ const JudgeDashboard: React.FC = () => {
     }, [assignments, filterStatus, searchQuery]);
 
     const statCards = [
-        { label: 'Pending Assessment', value: stats.pending, icon: <Clock size={20} />, color: 'from-orange-500/20 to-orange-600/10', border: 'border-orange-500/20', text: 'text-orange-400' },
-        { label: 'Evaluations Completed', value: stats.completed, icon: <CheckCircle size={20} />, color: 'from-emerald-500/20 to-emerald-600/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
-        { label: 'Average Score Given', value: stats.avgScore, icon: <TrendingUp size={20} />, color: 'from-purple-500/20 to-purple-600/10', border: 'border-purple-500/20', text: 'text-purple-400' },
-        { label: 'Active Hackathons', value: stats.activeEvents, icon: <Trophy size={20} />, color: 'from-blue-500/20 to-blue-600/10', border: 'border-blue-500/20', text: 'text-blue-400' },
+        { label: 'Pending Assessment', value: stats.pending, icon: <Clock size={20} />, color: 'from-purple-500/20 to-purple-600/10', border: 'border-purple-500/20', text: 'text-purple-600', valueText: 'text-slate-800' },
+        { label: 'Evaluations Completed', value: stats.completed, icon: <CheckCircle size={20} />, color: 'from-purple-500/20 to-purple-600/10', border: 'border-purple-500/20', text: 'text-purple-600', valueText: 'text-slate-800' },
+        { label: 'Average Score Given', value: stats.avgScore, icon: <TrendingUp size={20} />, color: 'from-purple-500/20 to-purple-600/10', border: 'border-purple-500/20', text: 'text-purple-600', valueText: 'text-slate-800' },
+        { label: 'Active Hackathons', value: stats.activeEvents, icon: <Trophy size={20} />, color: 'from-purple-500/20 to-purple-600/10', border: 'border-purple-500/20', text: 'text-purple-600', valueText: 'text-slate-800' },
     ];
 
     if (loading && assignments.length === 0) return (
@@ -201,14 +217,14 @@ const JudgeDashboard: React.FC = () => {
                         transition={{ delay: i * 0.1 }}
                         className={`p-8 bg-gradient-to-br ${s.color} border ${s.border} rounded-[2.5rem] relative overflow-hidden group hover:scale-[1.02] transition-all cursor-default shadow-xl`}
                     >
-                        <div className="absolute top-[-20px] right-[-20px] opacity-10 group-hover:scale-150 transition-transform duration-700 text-white">
+                        <div className={`absolute top-[-20px] right-[-20px] opacity-10 group-hover:scale-150 transition-transform duration-700 ${s.text}`}>
                             {s.icon}
                         </div>
-                        <div className={`w-12 h-12 ${s.color} rounded-2xl flex items-center justify-center ${s.text} border ${s.border} mb-6 shadow-inner`}>
+                        <div className={`w-12 h-12 bg-gradient-to-br ${s.color} rounded-2xl flex items-center justify-center ${s.text} border ${s.border} mb-6 shadow-inner`}>
                             {s.icon}
                         </div>
-                        <h3 className="text-3xl font-black text-white mb-1 tracking-tighter">{s.value}</h3>
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{s.label}</p>
+                        <h3 className={`text-3xl font-black mb-1 tracking-tighter ${s.valueText}`}>{s.value}</h3>
+                        <p className={`text-[10px] font-black uppercase tracking-widest ${s.text}`}>{s.label}</p>
                     </motion.div>
                 ))}
             </div>
