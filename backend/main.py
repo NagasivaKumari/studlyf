@@ -40,7 +40,11 @@ logger = logging.getLogger("main_service")
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
 additional_origins = os.getenv("ADDITIONAL_CORS_ORIGINS", "").split(",") if os.getenv("ADDITIONAL_CORS_ORIGINS") else []
 
-origins = list(set([frontend_url] + [origin.strip() for origin in additional_origins if origin.strip()]))
+origins = list(set([
+    frontend_url, 
+    "https://studlyff.vercel.app",
+    "https://studlyff.onrender.com"
+] + [origin.strip() for origin in additional_origins if origin.strip()]))
 
 # Add localhost origins for development
 if os.getenv("ENVIRONMENT", "development").lower() == "development":

@@ -867,7 +867,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         </div>
                     </div>
                 );
-            case 'participants':
+            case 'registrations':
                 return (
                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
