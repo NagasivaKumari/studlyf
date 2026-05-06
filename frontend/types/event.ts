@@ -31,6 +31,8 @@ export interface IEvent {
     judges?: any[];
     judging_criteria?: any[];
     opportunity_id?: string;
+    min_team_size?: number;
+    max_team_size?: number;
 }
 
 export interface ITeamMember {

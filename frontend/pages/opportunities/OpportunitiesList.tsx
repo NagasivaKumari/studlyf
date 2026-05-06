@@ -15,7 +15,7 @@ const OpportunitiesList: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
 
-    const types = ['All', 'Hackathon', 'Internship', 'Job', 'Competition'];
+    const types = ['All', 'My Events', 'Hackathon', 'Internship', 'Job', 'Competition'];
 
     useEffect(() => {
         const fetchData = async () => {
@@ -44,12 +44,15 @@ const OpportunitiesList: React.FC = () => {
     const filteredOpportunities = opportunities.filter(opp => {
         const matchesSearch = opp.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                              opp.organization.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesType = selectedType === 'All' || opp.type.toLowerCase() === selectedType.toLowerCase();
+        const matchesType = selectedType === 'All' || 
+                           (selectedType === 'My Events' && appliedIds.includes(opp._id)) ||
+                           opp.type.toLowerCase() === selectedType.toLowerCase();
         return matchesSearch && matchesType;
     });
 
     const getTypeColor = (type: string) => {
         switch (type.toLowerCase()) {
+            case 'my events': return 'text-emerald-600 bg-emerald-50 border-emerald-100';
             case 'hackathon': return 'text-purple-600 bg-purple-50 border-purple-100';
             case 'internship': return 'text-blue-600 bg-blue-50 border-blue-100';
             case 'job': return 'text-green-600 bg-green-50 border-green-100';

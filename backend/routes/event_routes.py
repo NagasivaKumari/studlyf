@@ -86,9 +86,31 @@ async def get_event_hub_data(event_id: str, user: dict = Depends(get_auth_user))
                 team["leader_id"] = team["team_leader_id"]
                 
         if "members" in team:
+            # Enrich team members with user details
+            from db import users_col
+            member_user_ids = [str(m.get("user_id")) for m in team["members"] if m.get("user_id")]
+            users = {}
+            if member_user_ids:
+                cursor = users_col.find({"user_id": {"$in": member_user_ids}})
+                async for user_doc in cursor:
+                    users[str(user_doc["user_id"])] = {
+                        "name": user_doc.get("name", ""),
+                        "email": user_doc.get("email", "")
+                    }
+            
             for m in team["members"]:
                 if "user_id" in m:
-                    m["user_id"] = str(m["user_id"])
+                    user_id = str(m["user_id"])
+                    m["user_id"] = user_id
+                    # Add user details
+                    if user_id in users:
+                        m["name"] = users[user_id]["name"]
+                        m["email"] = users[user_id]["email"]
+                    else:
+                        m["name"] = "Unknown User"
+                        m["email"] = ""
+                    # Set leader flag
+                    m["is_leader"] = str(m.get("role", "MEMBER")) == "LEADER" or user_id == str(team.get("leader_id", ""))
                     
     # Check for existing evaluations (to lock submissions)
     from db import scores_col

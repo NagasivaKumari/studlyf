@@ -128,7 +128,24 @@ const InstitutionDashboard: React.FC = () => {
         if (!institutionId && role !== 'judge') {
             return (
                 <div className="p-10 max-w-xl mx-auto rounded-3xl border border-amber-200 bg-amber-50 text-amber-950 text-sm font-bold leading-relaxed">
-                    Your account is missing an <strong>institution_id</strong>. Ask your Studlyf administrator to link this login to your institution profile so dashboards load real data (no placeholder IDs).
+                    <div className="space-y-4">
+                        <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto">
+                            <Building2 size={32} className="text-amber-600" />
+                        </div>
+                        <h3 className="text-xl font-black text-center">Institution Setup Required</h3>
+                        <p className="text-center leading-relaxed">
+                            Your institution account needs to be properly configured to access the dashboard. 
+                            Please contact your Studlyf administrator to complete the institution profile setup.
+                        </p>
+                        <div className="bg-amber-100 rounded-2xl p-4 text-xs font-medium text-amber-800">
+                            <p className="font-black mb-2">What's needed:</p>
+                            <ul className="space-y-1">
+                                <li>• Institution profile creation</li>
+                                <li>• Account linking to institution</li>
+                                <li>• Proper permissions setup</li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
             );
         }
@@ -177,10 +194,10 @@ const InstitutionDashboard: React.FC = () => {
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-2">
                             <div>
                                 <h1 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                    Welcome Back, {user?.name || 'Admin'} <span className="animate-bounce">👋</span>
+                                    Institution Dashboard <span className="animate-bounce">🏢</span>
                                 </h1>
                                 <p className="text-sm text-slate-500 font-medium flex items-center gap-2 mt-1">
-                                    Here is the summary of overall performance <Info size={14} className="text-slate-300" />
+                                    Manage your events, opportunities, and participants <Info size={14} className="text-slate-300" />
                                 </p>
                             </div>
                             <div className="flex items-center gap-2">
@@ -200,62 +217,28 @@ const InstitutionDashboard: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Top Stats & Customise Grid */}
-                        <div className="flex flex-col xl:flex-row gap-6">
-                            <div className="flex-1" id="stats-section">
-                                <StatsSection 
-                                    institutionId={institutionId} 
-                                    key={profileRefreshTrigger} 
-                                    onUpgrade={() => handleTabChange('settings')} 
-                                    onContact={() => setIsConsultationOpen(true)}
-                                    onNavigate={(tab) => {
-                                        if (tab === 'opportunities') handleTabChange('opportunities');
-                                        else handleTabChange('events');
-                                    }}
-                                />
-                            </div>
-                            
-                            {/* Customise Card */}
-                            <motion.div 
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                className="w-full xl:w-[340px] bg-gradient-to-br from-[#F5F3FF] to-[#EDE9FE] rounded-2xl p-6 relative overflow-hidden group shadow-xl shadow-purple-900/5"
-                            >
-                                <div className="relative z-10">
-                                    <h3 className="text-lg font-black text-slate-900 mb-1">Customise your Experience</h3>
-                                    <p className="text-[11px] text-slate-500 font-medium leading-relaxed mb-4 max-w-[180px]">
-                                        Enhance your experience with tailored services designed to meet your specific requirements.
-                                    </p>
-                                    <button 
-                                        onClick={() => setIsConsultationOpen(true)}
-                                        className="px-5 py-2 bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-900 transition-all"
-                                    >
-                                        Contact Us <ChevronRight size={12} />
-                                    </button>
-                                </div>
-                                {/* 3D Icon Effect */}
-                                <div className="absolute right-[-10px] top-1/2 -translate-y-1/2 w-32 h-32 bg-white rounded-full flex items-center justify-center shadow-2xl border-4 border-slate-50/50">
-                                    <div className="w-20 h-20 bg-[#7C3AED] rounded-[1.5rem] flex items-center justify-center text-white text-3xl font-black rotate-[-15deg]">
-                                        <span className="text-[12px] uppercase tracking-tighter">Studlyf</span>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        </div>
+                        {/* Stats Section - High Fidelity Dynamic Metrics */}
+                        <StatsSection 
+                            institutionId={institutionId} 
+                            onNavigate={handleTabChange}
+                            onContact={() => setIsConsultationOpen(true)}
+                        />
 
-                        {/* Recent Listings & Alerts */}
-                        <div className="flex flex-col lg:flex-row gap-8">
-                            <div className="flex-1">
+                        <div className="flex flex-col xl:flex-row gap-8">
+                            {/* Main Activity Column */}
+                            <div className="flex-1 space-y-8">
                                 <RecentListings 
                                     institutionId={institutionId} 
-                                    onViewEvent={handleViewEvent} 
-                                    onViewAll={() => handleTabChange('events')}
+                                    onViewEvent={handleViewEvent}
+                                    onViewAll={() => handleTabChange('opportunities')}
                                 />
+                                
                             </div>
-                            <div className="w-full lg:w-80 xl:w-96" id="alerts-panel">
-                                <AlertsPanel 
-                                    institutionId={institutionId} 
-                                    onUpgrade={() => handleTabChange('settings')}
-                                />
+
+                            {/* Secondary Column - Intelligence & Utilities */}
+                            <div className="w-full xl:w-[400px] space-y-8">
+                                <AlertsPanel institutionId={institutionId} />
+
                             </div>
                         </div>
                     </div>
@@ -267,11 +250,13 @@ const InstitutionDashboard: React.FC = () => {
         <div className="h-screen bg-[#F8FAFC] flex overflow-hidden font-sans">
             {/* Sidebar: Fixed width, full height */}
             {role !== 'judge' && (
-                <Sidebar 
-                    activeTab={activeTab} 
-                    onTabChange={handleTabChange} 
-                    onPost={() => setIsSelectionModalOpen(true)}
-                />
+                <div className="shrink-0">
+                    <Sidebar 
+                        activeTab={activeTab} 
+                        onTabChange={handleTabChange} 
+                        onPost={() => setIsSelectionModalOpen(true)}
+                    />
+                </div>
             )}
 
             {/* Main Content Area: Fills remaining width, has its own scrollbar */}

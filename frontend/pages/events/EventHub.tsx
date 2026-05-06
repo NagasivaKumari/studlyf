@@ -648,6 +648,31 @@ const EventHub: React.FC = () => {
                                                 <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
                                                     <p className="text-2xl font-black text-slate-900">{team.team_name}</p>
                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Active Unit • {(team.members || []).length} Members</p>
+                                                    
+                                                    {/* Team Members List */}
+                                                    {(team.members || []).length > 0 && (
+                                                        <div className="mt-4 space-y-2">
+                                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Team Members</p>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {(team.members || []).map((member: any, idx: number) => (
+                                                                    <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-100 rounded-xl">
+                                                                        <div className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xs font-bold">
+                                                                            {member.name?.charAt(0) || member.email?.charAt(0) || '?'}
+                                                                        </div>
+                                                                        <div className="flex flex-col">
+                                                                            <span className="text-xs font-bold text-slate-700">{member.name || member.email || 'Member'}</span>
+                                                                            {member.email && (
+                                                                                <span className="text-[9px] text-slate-400">{member.email}</span>
+                                                                            )}
+                                                                        </div>
+                                                                        {member.is_leader && (
+                                                                            <span className="ml-1 px-1.5 py-0.5 bg-purple-600 text-white rounded text-[8px] font-black uppercase tracking-widest">Lead</span>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                                                                 {isLeader && (
                                                     <div className="space-y-4">
@@ -728,45 +753,77 @@ const EventHub: React.FC = () => {
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="space-y-6">
-                                                <p className="text-sm text-slate-500 font-medium">Initialize a new team to begin the collaborative phase.</p>
-                                                <input
-                                                    value={teamName}
-                                                    onChange={(e) => setTeamName(e.target.value)}
-                                                    placeholder="Unit Designation (Team Name)"
-                                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
-                                                />
-                                                <button
-                                                    onClick={createTeam}
-                                                    disabled={working || !teamName.trim()}
-                                                    className="w-full py-4 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all"
-                                                >
-                                                    Initialize Team
-                                                </button>
-                                            </div>
+                                            // Check if this is a solo-only event
+                                            (event as any)?.min_team_size === 1 && (event as any)?.max_team_size === 1 ? (
+                                                <div className="space-y-6">
+                                                    <div className="p-6 bg-emerald-50 border border-emerald-100 rounded-3xl">
+                                                        <div className="flex items-center gap-3 mb-3">
+                                                            <div className="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center">
+                                                                <Check size={16} />
+                                                            </div>
+                                                            <p className="text-lg font-black text-emerald-900">Solo Participation</p>
+                                                        </div>
+                                                        <p className="text-sm text-emerald-700 font-medium">
+                                                            This event is designed for individual participants only. You're all set to participate solo!
+                                                        </p>
+                                                    </div>
+                                                    <p className="text-xs text-slate-400 text-center">
+                                                        No team formation required for this event.
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-6">
+                                                    <p className="text-sm text-slate-500 font-medium">Initialize a new team to begin the collaborative phase.</p>
+                                                    <input
+                                                        value={teamName}
+                                                        onChange={(e) => setTeamName(e.target.value)}
+                                                        placeholder="Unit Designation (Team Name)"
+                                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
+                                                    />
+                                                    <button
+                                                        onClick={createTeam}
+                                                        disabled={working || !teamName.trim()}
+                                                        className="w-full py-4 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all"
+                                                    >
+                                                        Initialize Team
+                                                    </button>
+                                                </div>
+                                            )
                                         )}
                                     </div>
 
-                                    <div className="p-10 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">
-                                        <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">Join Existing</h2>
-                                        <div className="space-y-6">
-                                            <p className="text-sm text-slate-500 font-medium">Synchronize with an existing unit using a secure invite code.</p>
-                                            <input
-                                                value={inviteCode}
-                                                onChange={(e) => setInviteCode(e.target.value)}
-                                                disabled={Boolean(team)}
-                                                placeholder="Invite Code"
-                                                className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
-                                            />
-                                            <button
-                                                onClick={joinByCode}
-                                                disabled={working || !inviteCode.trim() || Boolean(team)}
-                                                className="w-full py-4 rounded-2xl bg-purple-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-purple-900/10 disabled:opacity-50"
-                                            >
-                                                Sync with Team
-                                            </button>
+                                    {(event as any)?.min_team_size === 1 && (event as any)?.max_team_size === 1 ? (
+                                        // Hide join section for solo-only events
+                                        <div className="p-10 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm">
+                                            <div className="text-center py-8">
+                                                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                    <Check size={24} className="text-slate-400" />
+                                                </div>
+                                                <p className="text-sm text-slate-400 font-medium">Team joining not available for solo events</p>
+                                            </div>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <div className="p-10 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">
+                                            <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">Join Existing</h2>
+                                            <div className="space-y-6">
+                                                <p className="text-sm text-slate-500 font-medium">Synchronize with an existing unit using a secure invite code.</p>
+                                                <input
+                                                    value={inviteCode}
+                                                    onChange={(e) => setInviteCode(e.target.value)}
+                                                    disabled={Boolean(team)}
+                                                    placeholder="Invite Code"
+                                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
+                                                />
+                                                <button
+                                                    onClick={joinByCode}
+                                                    disabled={working || !inviteCode.trim() || Boolean(team)}
+                                                    className="w-full py-4 rounded-2xl bg-purple-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-purple-900/10 disabled:opacity-50"
+                                                >
+                                                    Sync with Team
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}

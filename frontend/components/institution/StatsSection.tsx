@@ -67,7 +67,7 @@ const StatsSection: React.FC<StatsSectionProps> = ({ institutionId, onUpgrade, o
                         <Users size={20} className="text-blue-300" />
                     </div>
                 </div>
-                <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">Total Candidates</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">Total Participants</p>
             </motion.div>
 
             {/* Active J&I */}
@@ -132,7 +132,7 @@ const StatsSection: React.FC<StatsSectionProps> = ({ institutionId, onUpgrade, o
                 className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between min-h-[160px]"
             >
                 <div className="flex justify-between items-start">
-                    <span className="text-3xl font-black text-slate-300">0</span>
+                    <span className="text-3xl font-black text-slate-300">{stats?.active_assessments || 0}</span>
                     <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center">
                         <ClipboardCheck size={20} className="text-orange-500" />
                     </div>

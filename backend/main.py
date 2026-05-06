@@ -5257,25 +5257,30 @@ async def register_for_event(event_id: str, participant: Participant):
         p_doc["institution_id"] = inst_id
         p_doc["event_title"] = event.get("title")
         p_doc["registered_at"] = datetime.utcnow()
+        
+        # Check if this is from opportunity portal to avoid duplicate emails
+        is_from_opportunity = p_doc.get("source") == "opportunity_portal"
+        
         result = await participants_col.insert_one(p_doc)
         
-        # 6. TRIGGER EMAIL
-        inst_id = event.get("institution_id")
-        custom_msg = ""
-        institution = None
-        if inst_id:
-            institution = await institutions_col.find_one({"institution_id": inst_id})
-            if institution:
-                custom_msg = institution.get("email_custom_message", "")
+        # 6. TRIGGER EMAIL (skip if from opportunity portal to avoid duplicates)
+        if not is_from_opportunity:
+            inst_id = event.get("institution_id")
+            custom_msg = ""
+            institution = None
+            if inst_id:
+                institution = await institutions_col.find_one({"institution_id": inst_id})
+                if institution:
+                    custom_msg = institution.get("email_custom_message", "")
 
-        user_name = participant.college_name or "Participant"
-        subject = f"Registration Confirmed: {event['title']}"
-        body = get_registration_template(user_name, event['title'], custom_msg)
-        
-        user_record = await users_col.find_one({"user_id": participant.user_id})
-        target_email = user_record["email"] if user_record and "email" in user_record else participant.user_id
+            user_name = participant.college_name or "Participant"
+            subject = f"Registration Confirmed: {event['title']}"
+            body = get_registration_template(user_name, event['title'], custom_msg)
+            
+            user_record = await users_col.find_one({"user_id": participant.user_id})
+            target_email = user_record["email"] if user_record and "email" in user_record else participant.user_id
 
-        asyncio.create_task(send_notification_email(target_email, subject, body))
+            asyncio.create_task(send_notification_email(target_email, subject, body))
 
         # 7. DASHBOARD UPDATE (Implicit via real-time fetch)
         # Note: We removed admin email notifications for registrations as per 'Dashboard-First' policy.

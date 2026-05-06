@@ -511,6 +511,54 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
 
     if (loading) return <div className="h-96 flex items-center justify-center"><div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div></div>;
     if (!event) return <div>Event not found</div>;
+
+    const getCurrentStageInfo = () => {
+        const now = new Date();
+        const sortedStages = [...stages].sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+        const totalStages = sortedStages.length;
+        
+        // Find active stage (today falls within its date range)
+        let activeStageIndex = -1;
+        for (let i = 0; i < sortedStages.length; i++) {
+            const start = new Date(sortedStages[i].start_date);
+            const end = new Date(sortedStages[i].end_date);
+            end.setUTCHours(23, 59, 59, 999);
+            if (now >= start && now <= end) {
+                activeStageIndex = i;
+                break;
+            }
+        }
+        
+        // If no active stage found, find the most recent completed or upcoming stage
+        if (activeStageIndex === -1 && sortedStages.length > 0) {
+            for (let i = sortedStages.length - 1; i >= 0; i--) {
+                if (now >= new Date(sortedStages[i].end_date)) {
+                    activeStageIndex = i;
+                    break;
+                }
+            }
+            if (activeStageIndex === -1) activeStageIndex = 0;
+        }
+        
+        const stageNumber = activeStageIndex + 1; // 1-based
+        const stageName = sortedStages[activeStageIndex]?.name || `Stage ${stageNumber}`;
+        const isFinalStage = stageNumber === totalStages && totalStages > 0;
+        
+        // Get next stage name if available (for "advance to" messages)
+        const nextStageIndex = activeStageIndex + 1;
+        const nextStageName = nextStageIndex < totalStages 
+            ? sortedStages[nextStageIndex]?.name || `Stage ${nextStageIndex + 1}`
+            : isFinalStage ? "Final Round" : "";
+        
+        return {
+            stage_number: stageNumber,
+            total_stages: totalStages,
+            stage_name: stageName,
+            next_stage_name: nextStageName,
+            is_final_stage: isFinalStage
+        };
+    };
+
     const handleUpdateStatus = async (teamId: string, newStatus: string, item?: any) => {
         const instId = institutionIdProp || event?.institution_id;
         if (teamId.startsWith('portal_app:')) {
@@ -553,9 +601,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     setShowSaveSuccess(true);
                     setTimeout(() => setShowSaveSuccess(false), 2000);
                     
-                    // Send email notification
+                    // Send email notification with stage context
                     if (item) {
                         try {
+                            const stageInfo = getCurrentStageInfo();
                             await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/send-status-email`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -563,7 +612,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     team_id: teamId,
                                     status: newStatus,
                                     team_name: item.team_name,
-                                    emails: item.member_emails || []
+                                    emails: item.member_emails || [],
+                                    stage_context: stageInfo
                                 })
                             });
                         } catch (emailErr) {
