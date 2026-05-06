@@ -370,13 +370,12 @@ async def learner_upload_stage_file(
             detail=f"File type {file_ext} is not allowed. Allowed types: {', '.join(allowed_extensions)}"
         )
 
-    # 3. Save file
+    # 3. Deadline check + judge-score lock
     ev = await events_col.find_one({"_id": ObjectId(str(event_id))})
     if ev:
         stages = ev.get("stages") or []
         for s in stages:
             if str(s.get("id")) == stage_id:
-                # Use _safe_dt logic or manual check
                 from services.opportunity_service import _safe_dt
                 end = _safe_dt(s.get("deadline") or s.get("endDate") or s.get("end_date"))
                 if end:
@@ -385,7 +384,22 @@ async def learner_upload_stage_file(
                         end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
                     if datetime.utcnow() > end_dt:
                         raise HTTPException(status_code=403, detail=f"Submission deadline for {s.get('name')} has passed.")
-    
+
+    # Block resubmit if a judge has already assigned scores for this submission
+    from db import scores_col as _scores_col
+    score_query: dict = {"event_id": str(event_id), "stage_id": str(stage_id)}
+    if p.get("team_id"):
+        score_query["team_id"] = str(p["team_id"])
+    else:
+        score_query["user_id"] = uid
+    existing_score = await _scores_col.find_one(score_query)
+    if existing_score:
+        raise HTTPException(
+            status_code=403,
+            detail="Your submission has already been evaluated by a judge and can no longer be modified."
+        )
+
+
     # ── Upload to MongoDB GridFS (persistent — survives Render restarts) ──────
     from db import gridfs_bucket as _gfs
     from db import _get_gridfs_bucket

@@ -445,11 +445,23 @@ const EventHub: React.FC = () => {
                         {activeTab === 'submissions' && (
                             <div className="space-y-8">
                                 <h2 className="text-2xl font-black text-slate-900">Submission Portal</h2>
+
+                                {/* Inline error banner — shown when backend rejects (scored / deadline) */}
+                                {submissionError && (
+                                    <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-sm font-bold text-red-600 flex items-start gap-3">
+                                        <span className="mt-0.5">⚠</span>
+                                        <span className="flex-1">{submissionError}</span>
+                                        <button onClick={() => setSubmissionError(null)} className="text-red-300 hover:text-red-600">✕</button>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     {(event.stages || []).filter((s: any) => s.type?.toUpperCase() === 'SUBMISSION').map((stage: any, idx: number) => {
                                         const deadline = new Date(new Date(stage.end_date).setHours(23,59,59,999));
                                         const isPastDeadline = new Date() > deadline;
-                                        const isCompleted = participant.last_stage_submitted === stage.id;
+                                        const hasSubmitted = participant.last_stage_submitted === stage.id;
+                                        // UI only locks on deadline; judge-score lock comes from backend 403
+                                        const isLocked = isPastDeadline;
                                         const fields = stage.config?.fields || [];
                                         
                                         return (
@@ -461,39 +473,55 @@ const EventHub: React.FC = () => {
                                                         </div>
                                                         <h3 className="text-lg font-black text-slate-900">{stage.name}</h3>
                                                     </div>
-                                                    {isCompleted ? (
-                                                        <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Submitted</span>
+                                                    {hasSubmitted && !isPastDeadline ? (
+                                                        <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Submitted · Re-upload allowed</span>
                                                     ) : isPastDeadline ? (
                                                         <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">Closed</span>
                                                     ) : null}
                                                 </div>
                                                 <p className="text-sm text-slate-500 font-medium leading-relaxed">{stage.description}</p>
-                                                
+                                                {!isPastDeadline && (
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                                        Deadline: {deadline.toLocaleDateString()} {deadline.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                                                        {hasSubmitted && ' · You can re-upload until then'}
+                                                    </p>
+                                                )}
+
                                                 {fields.length === 0 ? (
-                                                    <div className="p-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center gap-4 group hover:border-purple-300 transition-all">
+                                                    <div className={`p-6 border-2 border-dashed rounded-3xl flex flex-col items-center gap-4 transition-all ${
+                                                        isLocked ? 'bg-slate-100 border-slate-200 opacity-60' : 'bg-slate-50 border-slate-200 hover:border-purple-300 group'
+                                                    }`}>
                                                         <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-purple-600 shadow-sm transition-colors">
                                                             <FileText size={24} />
                                                         </div>
                                                         <div className="text-center">
-                                                            <p className="text-sm font-black text-slate-900">Upload Project Assets</p>
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">PPT, PDF, or ZIP (Max 50MB)</p>
+                                                            <p className="text-sm font-black text-slate-900">
+                                                                {isLocked ? 'Submission Closed' : hasSubmitted ? 'Re-upload Project Assets' : 'Upload Project Assets'}
+                                                            </p>
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                                                {isLocked ? 'Deadline has passed' : 'PPT, PDF, or ZIP (Max 50MB)'}
+                                                            </p>
                                                         </div>
-                                                        <input 
-                                                            type="file"
-                                                            id={`file-${stage.id}`}
-                                                            className="hidden"
-                                                            disabled={isCompleted || submitting === stage.id}
-                                                            onChange={(e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (file) handleFileUpload(stage.id, file);
-                                                            }}
-                                                        />
-                                                        <label 
-                                                            htmlFor={`file-${stage.id}`}
-                                                            className={`px-8 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm ${isCompleted ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                        >
-                                                            {submitting === stage.id ? 'Uploading...' : 'Select File'}
-                                                        </label>
+                                                        {!isLocked && (
+                                                            <>
+                                                                <input
+                                                                    type="file"
+                                                                    id={`file-${stage.id}`}
+                                                                    className="hidden"
+                                                                    disabled={submitting === stage.id}
+                                                                    onChange={(e) => {
+                                                                        const file = e.target.files?.[0];
+                                                                        if (file) handleFileUpload(stage.id, file);
+                                                                    }}
+                                                                />
+                                                                <label
+                                                                    htmlFor={`file-${stage.id}`}
+                                                                    className="px-8 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm"
+                                                                >
+                                                                    {submitting === stage.id ? 'Uploading…' : hasSubmitted ? 'Re-upload File' : 'Select File'}
+                                                                </label>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div className="space-y-4">
@@ -505,55 +533,55 @@ const EventHub: React.FC = () => {
                                                                 </label>
                                                                 {field.type === 'file' ? (
                                                                     <div className="p-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center gap-3">
-                                                                        <input 
+                                                                        <input
                                                                             type="file"
                                                                             id={`field-${stage.id}-${fIdx}`}
                                                                             className="hidden"
-                                                                            disabled={isCompleted || submitting === stage.id}
+                                                                            disabled={isLocked || submitting === stage.id}
                                                                             onChange={(e) => {
                                                                                 const file = e.target.files?.[0];
                                                                                 if (file) handleFileUpload(stage.id, file);
                                                                             }}
                                                                         />
-                                                                        <label 
+                                                                        <label
                                                                             htmlFor={`field-${stage.id}-${fIdx}`}
-                                                                            className={`px-6 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm ${isCompleted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                            className={`px-6 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                                         >
-                                                                            {submitting === stage.id ? 'Uploading...' : 'Select File'}
+                                                                            {submitting === stage.id ? 'Uploading…' : hasSubmitted ? 'Re-upload' : 'Select File'}
                                                                         </label>
                                                                     </div>
                                                                 ) : field.type === 'url' ? (
-                                                                    <input 
+                                                                    <input
                                                                         type="url"
-                                                                        disabled={isCompleted}
+                                                                        disabled={isLocked}
                                                                         value={String(submissionData[`${stage.id}-${field.id}`] || '')}
                                                                         onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
                                                                         placeholder={field.placeholder || 'https://...'}
-                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all"
+                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all disabled:opacity-60"
                                                                     />
                                                                 ) : field.type === 'text' ? (
-                                                                    <input 
+                                                                    <input
                                                                         type="text"
-                                                                        disabled={isCompleted}
+                                                                        disabled={isLocked}
                                                                         value={String(submissionData[`${stage.id}-${field.id}`] || '')}
                                                                         onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
                                                                         placeholder={field.placeholder || ''}
-                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all"
+                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all disabled:opacity-60"
                                                                     />
                                                                 ) : field.type === 'number' ? (
-                                                                    <input 
+                                                                    <input
                                                                         type="number"
-                                                                        disabled={isCompleted}
+                                                                        disabled={isLocked}
                                                                         value={String(submissionData[`${stage.id}-${field.id}`] || '')}
                                                                         onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
                                                                         placeholder={field.placeholder || ''}
-                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all"
+                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all disabled:opacity-60"
                                                                     />
                                                                 ) : field.type === 'checkbox' ? (
                                                                     <label className="flex items-center gap-2 cursor-pointer">
-                                                                        <input 
+                                                                        <input
                                                                             type="checkbox"
-                                                                            disabled={isCompleted}
+                                                                            disabled={isLocked}
                                                                             checked={!!submissionData[`${stage.id}-${field.id}`]}
                                                                             onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.checked }))}
                                                                             className="w-5 h-5 accent-purple-600"
@@ -563,12 +591,12 @@ const EventHub: React.FC = () => {
                                                                 ) : null}
                                                             </div>
                                                         ))}
-                                                        <button 
+                                                        <button
                                                             onClick={() => handleSubmission(stage.id)}
-                                                            disabled={isCompleted || isPastDeadline || submitting === stage.id}
+                                                            disabled={isLocked || submitting === stage.id}
                                                             className="w-full px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-purple-700 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
                                                         >
-                                                            {submitting === stage.id ? 'Submitting...' : 'Submit'}
+                                                            {submitting === stage.id ? 'Submitting…' : hasSubmitted ? 'Re-submit' : 'Submit'}
                                                         </button>
                                                     </div>
                                                 )}
