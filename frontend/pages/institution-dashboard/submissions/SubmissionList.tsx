@@ -127,7 +127,12 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
 
     const handleUpdateStatus = async (submissionId: string, status: string) => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/submissions/${submissionId}/status`, {
+            if (!submissionId) {
+                console.error('Submission ID is undefined');
+                alert('Invalid submission ID');
+                return;
+            }
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/submissions/${submissionId}/status?t=${Date.now()}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({ status })
@@ -315,7 +320,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                             <tbody className="divide-y divide-slate-50">
                                 {filteredSubmissions.length > 0 ? filteredSubmissions.map((item, idx) => (
                                     <motion.tr 
-                                        key={item._id || idx}
+                                        key={item._id || item.submission_id || idx}
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         transition={{ delay: idx * 0.03 }}
@@ -350,7 +355,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                                 <button 
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        handleOpenJudgeAssignment(item.submission_id || item.team_id);
+                                                        handleOpenJudgeAssignment(item._id);
                                                     }}
                                                     className="text-[10px] font-black text-[#6C3BFF] uppercase tracking-widest hover:underline flex items-center gap-2 transition-all w-fit"
                                                 >
@@ -395,50 +400,53 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                                     
                                                     return (
                                                         <>
-                                                            {status !== 'shortlisted' && (
+                                                            {status === 'shortlisted' ? (
                                                                 <button 
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleUpdateStatus(item.submission_id || item.team_id, 'Shortlisted');
-                                                                    }}
-                                                                    className="p-3 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                                    title="Shortlist"
+                                                                    disabled
+                                                                    className="p-3 text-white bg-blue-600 rounded-xl transition-all shadow-sm cursor-default text-xs font-bold"
+                                                                    title="Shortlisted"
                                                                 >
-                                                                    <Star size={18} />
+                                                                    Shortlisted
                                                                 </button>
+                                                            ) : (
+                                                                <>
+                                                                    {status !== 'approved' && status !== 'rejected' && (
+                                                                        <button 
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleUpdateStatus(item.submission_id || item.team_id || item._id, 'Shortlisted');
+                                                                            }}
+                                                                            className="p-3 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
+                                                                            title="Shortlist"
+                                                                        >
+                                                                            Shortlist
+                                                                        </button>
+                                                                    )}
+                                                                    <button 
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleUpdateStatus(item.submission_id || item.team_id || item._id, 'Approved');
+                                                                        }}
+                                                                        className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
+                                                                        title="Approve"
+                                                                    >
+                                                                        Approve
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleUpdateStatus(item.submission_id || item.team_id || item._id, 'Rejected');
+                                                                        }}
+                                                                        className="p-3 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
+                                                                        title="Reject"
+                                                                    >
+                                                                        Reject
+                                                                    </button>
+                                                                </>
                                                             )}
-                                                            <button 
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleUpdateStatus(item.submission_id || item.team_id, 'Approved');
-                                                                }}
-                                                                className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                                title="Approve"
-                                                            >
-                                                                <CheckCircle2 size={18} />
-                                                            </button>
-                                                            <button 
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleUpdateStatus(item.submission_id || item.team_id, 'Rejected');
-                                                                }}
-                                                                className="p-3 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                                title="Reject"
-                                                            >
-                                                                <X size={18} />
-                                                            </button>
                                                         </>
                                                     );
                                                 })()}
-                                                <button 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setSelectedSubmission(item);
-                                                    }}
-                                                    className="p-3 text-slate-400 bg-white border border-slate-100 hover:bg-slate-900 hover:text-white rounded-xl transition-all shadow-sm"
-                                                >
-                                                    <ArrowRight size={18} />
-                                                </button>
                                             </div>
                                         </td>
                                     </motion.tr>
