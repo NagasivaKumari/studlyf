@@ -38,12 +38,33 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
         logger.error("[EMAIL ERROR] No Resend Key and no SMTP credentials found.")
         return False
 
+    def categorize_error(e: Exception) -> str:
+        err_str = str(e).lower()
+        if "authentication" in err_str or "login" in err_str:
+            return "AUTHENTICATION_FAILURE"
+        if "timeout" in err_str:
+            return "CONNECTION_TIMEOUT"
+        if "connection refused" in err_str:
+            return "CONNECTION_REFUSED"
+        if "hostname" in err_str or "dns" in err_str:
+            return "DNS_RESOLUTION_FAILURE"
+        if "relay" in err_str or "denied" in err_str:
+            return "RELAY_DENIED"
+        return "UNKNOWN_SMTP_ERROR"
+
+    def get_domain_category(email: str) -> str:
+        public_domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"]
+        domain = email.split("@")[-1].lower() if "@" in email else "unknown"
+        return "PUBLIC_DOMAIN" if domain in public_domains else "INSTITUTIONAL_DOMAIN"
+
     def send_sync_email():
         max_retries = 2
+        domain_cat = get_domain_category(to_email)
+        
         for attempt in range(max_retries):
+            start_time = time.time()
             try:
-                logger.info(f"[EMAIL] SMTP Fallback Attempt {attempt + 1}/{max_retries} to {to_email}")
-                logger.info(f"[EMAIL] SMTP Config: Server={smtp_server}, Port={smtp_port}, User={smtp_user}")
+                logger.info(f"[TELEMETRY] Attempting delivery to {domain_cat} ({to_email}) | Attempt {attempt + 1}")
                 
                 # Force SSL for 465, else use STARTTLS
                 if smtp_port == 465:
@@ -52,9 +73,7 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
                     server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
                     server.starttls()
                     
-                logger.info(f"[EMAIL] Attempting SMTP login with user: {smtp_user}")
                 server.login(smtp_user, smtp_pass)
-                logger.info(f"[EMAIL] SMTP login successful")
                 
                 msg = MIMEMultipart()
                 msg['From'] = f"{email_from} <{smtp_user}>"
@@ -62,14 +81,17 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
                 msg['Subject'] = subject
                 msg.attach(MIMEText(body_html, 'html'))
                 
-                logger.info(f"[EMAIL] Sending message to {to_email}")
                 server.send_message(msg)
                 server.quit()
-                logger.info(f"[EMAIL SUCCESS] Delivered via SMTP to {to_email}")
+                
+                duration = round(time.time() - start_time, 2)
+                logger.info(f"[TELEMETRY SUCCESS] Delivered to {to_email} ({domain_cat}) in {duration}s")
                 return True
             except Exception as e:
-                logger.error(f"[SMTP ATTEMPT {attempt + 1} FAILED] {str(e)}")
-                logger.error(f"[SMTP ERROR DETAILS] Server: {smtp_server}, Port: {smtp_port}, User: {smtp_user}")
+                error_cat = categorize_error(e)
+                duration = round(time.time() - start_time, 2)
+                logger.error(f"[TELEMETRY FAILURE] {error_cat} | Domain: {domain_cat} | Attempt: {attempt + 1} | Duration: {duration}s | Error: {str(e)}")
+                
                 if attempt < max_retries - 1:
                     time.sleep(2)
         return False

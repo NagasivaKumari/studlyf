@@ -28,6 +28,21 @@ BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
 logger = logging.getLogger(__name__)
 
 
+def _event_id_query(event_id: str) -> dict:
+    """
+    Build a MongoDB query that finds an event regardless of whether
+    the event_id is a 24-char ObjectId hex or a UUID/string.
+    Prevents bson.errors.InvalidId crashes on UUID-format IDs.
+    """
+    from bson.errors import InvalidId
+    or_clauses = [{"_id": event_id}]  # string _id fallback
+    try:
+        or_clauses.append({"_id": ObjectId(event_id)})
+    except (InvalidId, Exception):
+        pass
+    return {"$or": or_clauses}
+
+
 async def _list_submissions_for_judge_user(user: dict, event_id: Optional[str] = None) -> list:
     """Return submitted projects specifically assigned to the authenticated user's email."""
     email = (user.get("email") or "").strip().lower()
@@ -157,10 +172,15 @@ async def get_all_events(institution_id: str, user: dict = Depends(get_auth_user
         opp["category"] = opp.get("type", "Opportunity")
         events_list.append(opp)
 
-    events_list.sort(
-        key=lambda x: x.get("created_at") or x.get("createdAt") or x.get("deadline") or "",
-        reverse=True,
-    )
+    def _sort_key(x):
+        val = x.get("created_at") or x.get("createdAt") or x.get("deadline") or ""
+        # Normalize datetime objects to ISO string so str/datetime comparison never occurs
+        if hasattr(val, "isoformat"):
+            return val.isoformat()
+        return str(val)
+
+    events_list.sort(key=_sort_key, reverse=True)
+
     return events_list
 
 @router.get("/events/{event_id}/participants")
@@ -1124,17 +1144,14 @@ async def mark_my_notifications_read(user: dict = Depends(get_auth_user)):
         logger.error(f"[NOTIF ERROR] Mark read failed: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update notifications")
 
-@router.get("/submissions/{institution_id}")
-async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth_user)):
+@router.get("/submissions/all-deliverables")
+async def get_all_deliverables(institution_id: str, user: dict = Depends(get_auth_user)):
     """
-    Retrieves all project submissions filtered by institution.
-    Synchronized with submission_data for live evaluation status.
+    Global fetch for all phase-specific deliverables across all events of an institution.
+    Used for the 'Phase Deliverables' tab in the global command center.
     """
     assert_institution_scope(institution_id, user)
-    from db import submissions_col, submission_data_col
-    from bson import ObjectId
     
-    # Type-resilient institution_id variants
     inst_variants = [institution_id, str(institution_id)]
     try:
         if len(str(institution_id)) == 24:
@@ -1142,36 +1159,159 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
     except:
         pass
 
-    cursor = submissions_col.find({"institution_id": {"$in": inst_variants}})
-    subs = []
-    async for s in cursor:
+    # 1. Get all events for this institution to scope the search
+    events = await events_col.find({"institution_id": {"$in": inst_variants}}).to_list(length=None)
+    event_ids = [str(e["_id"]) for e in events]
+    event_titles = {str(e["_id"]): (e.get("title") or e.get("name") or "Event") for e in events}
+    
+    # 2. Fetch all submission_data (deliverables) for these events
+    cursor = submission_data_col.find({"event_id": {"$in": event_ids}})
+    deliverables = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        eid = str(doc.get("event_id") or "")
+        doc["event_title"] = event_titles.get(eid, "Unknown Event")
+        # Ensure name consistency for frontend
+        doc["team_name"] = doc.get("team_name") or doc.get("user_name") or doc.get("title") or "Participant"
+        deliverables.append(doc)
+        
+    return deliverables
+
+@router.get("/submissions/{institution_id}")
+async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth_user)):
+    """
+    Retrieves all project bundles filtered by institution, categorized by lifecycle status.
+    Parity with get_qualified_bundle for global institutional visibility.
+    """
+    assert_institution_scope(institution_id, user)
+    
+    inst_variants = [institution_id, str(institution_id)]
+    try:
+        if len(str(institution_id)) == 24:
+            inst_variants.append(ObjectId(institution_id))
+    except:
+        pass
+
+    # 1. Get all events
+    events = await events_col.find({"institution_id": {"$in": inst_variants}}).to_list(length=None)
+    event_ids = [str(e["_id"]) for e in events]
+    event_titles = {str(e["_id"]): (e.get("title") or e.get("name") or "Event") for e in events}
+    event_judges = {str(e["_id"]): len(e.get("judges") or []) for e in events}
+
+    # 2. Aggregate all teams and solo submissions
+    all_items = {} # key: team_id or solo:user_id
+    
+    # Fetch Teams
+    t_cursor = teams_col.find({"event_id": {"$in": event_ids}})
+    async for t in t_cursor:
+        tid = str(t["_id"])
+        eid = str(t.get("event_id") or "")
+        all_items[tid] = {
+            "type": "team",
+            "team_id": tid,
+            "team_name": t.get("name") or t.get("team_name") or "Unnamed Team",
+            "project_title": t.get("project_title") or t.get("name") or "Project",
+            "event_id": eid,
+            "event_title": event_titles.get(eid, "Unknown Event"),
+            "score": 0,
+            "judges_completed": 0,
+            "total_judges": event_judges.get(eid, 0),
+            "status": t.get("institution_selection") or "Pending",
+            "assigned_judges": [],
+            "source": "team_registry"
+        }
+
+    # Fetch Solo Submissions
+    s_cursor = submissions_col.find({
+        "event_id": {"$in": event_ids},
+        "team_id": {"$exists": False}
+    })
+    async for s in s_cursor:
+        uid = str(s.get("user_id") or "")
+        if not uid: continue
         sid = str(s["_id"])
-        s["_id"] = sid
+        eid = str(s.get("event_id") or "")
+        all_items[f"solo:{uid}"] = {
+            "type": "solo",
+            "user_id": uid,
+            "team_name": s.get("user_name") or s.get("full_name") or "Solo Participant",
+            "project_title": s.get("project_title") or "Project",
+            "event_id": eid,
+            "event_title": event_titles.get(eid, "Unknown Event"),
+            "score": 0,
+            "judges_completed": 0,
+            "total_judges": event_judges.get(eid, 0),
+            "status": s.get("status") or "Pending",
+            "assigned_judges": [],
+            "submission_id": sid,
+            "source": "solo_registry"
+        }
+
+    # 3. Sync with Submission Data
+    sd_cursor = submission_data_col.find({"event_id": {"$in": event_ids}})
+    async for sd in sd_cursor:
+        tid = sd.get("team_id")
+        uid = sd.get("user_id")
+        key = tid if tid else (f"solo:{uid}" if uid else None)
+        if not key or key not in all_items: continue
         
-        # Merge latest evaluation data from submission_data_col
-        # This ensures "Shortlisted" status propagates to the global dashboard
-        sub_data = await submission_data_col.find_one({
-            "$or": [
-                {"submission_id": sid},
-                {"team_id": s.get("team_id")},
-                {"_id": ObjectId(sid) if len(sid) == 24 else None}
-            ]
-        })
+        item = all_items[key]
+        item["assigned_judges"] = sd.get("assigned_judges", [])
+        # Update total judges based on actual assignment if available
+        if item["assigned_judges"]:
+            item["total_judges"] = len(item["assigned_judges"])
+            
+        item["submission_id"] = str(sd["_id"])
+        item["project_description"] = sd.get("project_description") or sd.get("description", "")
         
-        if sub_data:
-            # Override status if shortlisted/rejected by judge
-            recommendation = (sub_data.get("evaluation_recommendation") or "").lower()
-            if recommendation == "shortlist":
-                s["status"] = "Shortlisted"
-            elif recommendation == "reject":
-                s["status"] = "Rejected"
-            
-            # Sync scores
-            s["score"] = sub_data.get("evaluation_score") or s.get("score")
-            
-        s["submission_date"] = s.get("submitted_at", "2026-04-27")
-        subs.append(s)
-    return subs
+        rec = str(sd.get("evaluation_recommendation") or "").lower()
+        if "shortlist" in rec: item["status"] = "Shortlisted"
+        elif "reject" in rec: item["status"] = "Rejected"
+        elif "approve" in rec or "accept" in rec: item["status"] = "Approved"
+
+    # 4. Sync Scores
+    sc_cursor = scores_col.find({"event_id": {"$in": event_ids}})
+    async for sc in sc_cursor:
+        tid = sc.get("team_id")
+        sid = sc.get("submission_id")
+        target = all_items.get(str(tid)) if tid else None
+        if not target:
+            for it in all_items.values():
+                if it.get("submission_id") == str(sid):
+                    target = it
+                    break
+        if target:
+            # Aggregate or take latest score
+            target["score"] = sc.get("total_score") or sc.get("score") or target["score"]
+            target["judges_completed"] += 1
+
+    # 5. Categorization
+    shortlisted = []
+    approved = []
+    rejected = []
+    pending = []
+    
+    for item in all_items.values():
+        st = str(item["status"]).lower()
+        if "shortlist" in st: shortlisted.append(item)
+        elif "approve" in st or "accept" in st: approved.append(item)
+        elif "reject" in st: rejected.append(item)
+        else: pending.append(item)
+
+    return {
+        "summary": {
+            "shortlisted": len(shortlisted),
+            "approved": len(approved),
+            "rejected": len(rejected),
+            "pending": len(pending),
+            "total": len(all_items)
+        },
+        "shortlisted": shortlisted,
+        "approved": approved,
+        "rejected": rejected,
+        "pending": pending,
+        "all": list(all_items.values())
+    }
 
 @router.post("/submissions")
 async def create_submission(submission_data: dict):
@@ -1516,23 +1656,22 @@ async def verify_internal_process(participant_id: str, verification_data: dict):
 @router.get("/events/{event_id}/details")
 async def get_complex_event_details(event_id: str, user: dict = Depends(get_auth_user)):
     """Retrieves full event details including stages, fees, and rules."""
-    await assert_institution_owns_event(event_id, user)
-    from db import events_col
-    event = await events_col.find_one({"_id": ObjectId(event_id)})
-    if event:
-        event["_id"] = str(event["_id"])
-        # Ensure stages is always a list
-        if "stages" not in event or event["stages"] is None:
-            event["stages"] = []
-        # Ensure each stage has a stable id (persist back to DB so UI edits/delete are correct)
-        if isinstance(event.get("stages"), list):
-            mutated = False
-            for s in event["stages"]:
-                if isinstance(s, dict) and not s.get("id"):
-                    s["id"] = str(uuid.uuid4())
-                    mutated = True
-            if mutated:
-                await events_col.update_one({"_id": ObjectId(event_id)}, {"$set": {"stages": event["stages"]}})
+    ev = await assert_institution_owns_event(event_id, user)
+    # Re-use the already-fetched event doc from the auth check
+    event = dict(ev)
+    event["_id"] = str(event["_id"])
+    # Ensure stages is always a list
+    if "stages" not in event or event["stages"] is None:
+        event["stages"] = []
+    # Ensure each stage has a stable id (persist back to DB so UI edits/delete are correct)
+    if isinstance(event.get("stages"), list):
+        mutated = False
+        for s in event["stages"]:
+            if isinstance(s, dict) and not s.get("id"):
+                s["id"] = str(uuid.uuid4())
+                mutated = True
+        if mutated:
+            await events_col.update_one(_event_id_query(event_id), {"$set": {"stages": event["stages"]}})
     return event
 
 @router.patch("/events/{event_id}")
@@ -1553,7 +1692,7 @@ async def update_event_details(event_id: str, update_data: dict, user: dict = De
                 if reg_end:
                     update_data["registrationDeadline"] = reg_end
 
-    await events_col.update_one({"_id": ObjectId(event_id)}, {"$set": update_data})
+    await events_col.update_one(_event_id_query(event_id), {"$set": update_data})
     
     # Synchronize with linked opportunity portal
     try:
