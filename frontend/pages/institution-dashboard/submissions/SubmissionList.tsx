@@ -22,7 +22,8 @@ import {
     ShieldCheck, 
     BarChart3,
     Plus,
-    Gavel
+    Gavel,
+    Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL, authHeaders } from '../../../apiConfig';
@@ -126,7 +127,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
 
     const handleUpdateStatus = async (submissionId: string, status: string) => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/institution/submissions/${submissionId}/status`, {
+            const res = await fetch(`${API_BASE_URL}/api/submissions/${submissionId}/status`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({ status })
@@ -383,26 +384,52 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                         </td>
                                         <td className="px-10 py-8 text-right">
                                             <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-all">
-                                                <button 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleUpdateStatus(item.submission_id || item.team_id, 'Approved');
-                                                    }}
-                                                    className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                    title="Approve"
-                                                >
-                                                    <CheckCircle2 size={18} />
-                                                </button>
-                                                <button 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleUpdateStatus(item.submission_id || item.team_id, 'Rejected');
-                                                    }}
-                                                    className="p-3 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                    title="Reject"
-                                                >
-                                                    <X size={18} />
-                                                </button>
+                                                {(() => {
+                                                    const status = (item.status || '').toLowerCase();
+                                                    if (status === 'approved' || status === 'accepted') {
+                                                        return <div className="px-4 py-2 text-emerald-600 text-[10px] font-black uppercase tracking-widest bg-emerald-50 rounded-xl border border-emerald-100">Approved</div>;
+                                                    }
+                                                    if (status === 'rejected') {
+                                                        return <div className="px-4 py-2 text-rose-600 text-[10px] font-black uppercase tracking-widest bg-rose-50 rounded-xl border border-rose-100">Rejected</div>;
+                                                    }
+                                                    
+                                                    return (
+                                                        <>
+                                                            {status !== 'shortlisted' && (
+                                                                <button 
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleUpdateStatus(item.submission_id || item.team_id, 'Shortlisted');
+                                                                    }}
+                                                                    className="p-3 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                                    title="Shortlist"
+                                                                >
+                                                                    <Star size={18} />
+                                                                </button>
+                                                            )}
+                                                            <button 
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleUpdateStatus(item.submission_id || item.team_id, 'Approved');
+                                                                }}
+                                                                className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                                title="Approve"
+                                                            >
+                                                                <CheckCircle2 size={18} />
+                                                            </button>
+                                                            <button 
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleUpdateStatus(item.submission_id || item.team_id, 'Rejected');
+                                                                }}
+                                                                className="p-3 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                                title="Reject"
+                                                            >
+                                                                <X size={18} />
+                                                            </button>
+                                                        </>
+                                                    );
+                                                })()}
                                                 <button 
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -473,9 +500,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                         </div>
                                     </td>
                                     <td className="px-10 py-8 text-center">
-                                        <div className={`inline-flex items-center px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${
-                                            (sub.status || '').toLowerCase() === 'submitted' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'
-                                        }`}>
+                                        <div className={`inline-flex items-center px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${getStatusColor(sub.status)}`}>
                                             {sub.status || 'Received'}
                                         </div>
                                     </td>

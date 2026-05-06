@@ -201,10 +201,11 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
                 } else {
                     console.error("[PROFILE] Error:", res.status);
                 }
-            } catch (err) { 
-                console.error("[PROFILE] Failed", err);
-                // Set default profile on error to prevent infinite loading
-                setProfile({ name: 'Loading Error', logo: null });
+            } catch (err: any) { 
+                if (err.name !== 'AbortError') {
+                    console.error("[PROFILE] Failed", err);
+                    setProfile(null);
+                }
             }
         };
         fetchProfile();
@@ -239,7 +240,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
     };
 
     return (
-        <div className="w-full relative z-[100] font-sans px-6 pt-4">
+        <div className="w-full font-sans px-6 pt-4">
             <motion.div 
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
@@ -273,7 +274,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: 10 }}
-                                        className="absolute top-full left-0 right-0 mt-4 bg-white rounded-[2rem] shadow-2xl overflow-hidden p-3 border border-slate-100"
+                                        className="absolute top-full left-0 right-0 mt-4 bg-white rounded-[2rem] shadow-2xl overflow-hidden p-3 border border-slate-100 z-20"
                                     >
                                         {searchResults.length > 0 ? (
                                             <div className="space-y-1">
@@ -350,7 +351,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
                                         initial={{ opacity: 0, y: 20, scale: 0.9, filter: 'blur(10px)' }}
                                         animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
                                         exit={{ opacity: 0, y: 20, scale: 0.9, filter: 'blur(10px)' }}
-                                        className="absolute right-0 mt-5 w-80 bg-white/95 backdrop-blur-xl rounded-[2.5rem] shadow-[0_20px_50px_rgba(108,59,255,0.3)] border border-white overflow-hidden z-[999]"
+                                        className="absolute right-0 mt-5 w-80 bg-white/95 backdrop-blur-xl rounded-[2.5rem] shadow-[0_20px_50px_rgba(108,59,255,0.3)] border border-white overflow-hidden z-50"
                                     >
                                         <div className="p-7 border-b border-slate-50 flex items-center justify-between bg-gradient-to-r from-purple-50/50 to-transparent">
                                             <div>
@@ -437,7 +438,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
                         </div>
                         <div className="hidden sm:block max-w-[120px] overflow-hidden text-left">
                             <p className="text-xs font-bold text-white leading-tight truncate font-sans">
-                                {profile?.name || displayName}
+                                {profile?.name || displayName || 'Loading...'}
                             </p>
                             <p className="text-[9px] font-black text-purple-200/50 uppercase tracking-widest font-sans">
                                 {role === 'judge' ? 'Judge' : 'Admin'}

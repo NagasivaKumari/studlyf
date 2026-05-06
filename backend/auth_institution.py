@@ -28,6 +28,20 @@ async def get_auth_user(authorization: Optional[str] = Header(None)) -> dict:
             payload["institution_id"] = user.get("institution_id")
             payload["role"] = user.get("role") or payload.get("role")
             payload["email"] = user.get("email") or payload.get("sub")
+            
+            # Auto-assign institution_id for institution users if missing
+            if payload.get("role") == "institution" and not payload.get("institution_id"):
+                from db import institutions_col
+                
+                # Find the first institution linked to this user
+                institution = await institutions_col.find_one({"created_by": uid})
+                if institution:
+                    await users_col.update_one(
+                        {"user_id": uid},
+                        {"$set": {"institution_id": institution.get("institution_id")}}
+                    )
+                    payload["institution_id"] = institution.get("institution_id")
+                    logger.info(f"Auto-linked institution user {uid} to institution {institution.get('institution_id')}")
         else:
             # User not found in database, but token is valid
             logger.warning(f"User {uid} not found in database")

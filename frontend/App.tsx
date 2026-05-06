@@ -191,7 +191,7 @@ const App: React.FC = () => {
     <div className={`relative min-h-screen flex flex-col selection:bg-[#7C3AED] selection:text-white ${isDashboard || isAdmin ? 'bg-transparent' : 'bg-white'}`}>
 
       {(() => {
-        const showNav = !isLoginPage && !isPlayer && !isCheckout && !isAdmin && !isHome && !isResume && !isVisualizer && !isCareerOnboarding && !pathname.startsWith('/evaluate/');
+        const showNav = !isLoginPage && !isPlayer && !isCheckout && !isAdmin && !isHome && !isResume && !isVisualizer && !isCareerOnboarding && !pathname.startsWith('/evaluate/') && !pathname.startsWith('/institution-dashboard');
         if (!showNav && pathname.startsWith('/institution-dashboard')) {
           console.log("[AuthDebug] Navigation hidden for Institution Dashboard");
         }

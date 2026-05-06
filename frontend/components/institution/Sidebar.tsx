@@ -51,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onPost }) => 
 
 
     return (
-        <div className="w-60 h-screen bg-white border-r border-gray-100 flex flex-col shrink-0 sticky top-0 overflow-hidden">
+        <div className="w-60 h-screen bg-white border-r border-gray-100 flex flex-col shrink-0 sticky top-0 overflow-hidden z-10">
             <div className="p-6 pb-2 flex items-center gap-2">
                 <img src="/images/studlyf.png" alt="Studlyf" className="h-8" />
             </div>

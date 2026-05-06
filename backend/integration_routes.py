@@ -79,6 +79,80 @@ async def _list_submissions_for_judge_user(user: dict, event_id: Optional[str] =
 
 router = APIRouter(prefix="/api/v1/institution", tags=["Institutional Integration"])
 
+@router.patch("/submissions/{submission_id}/status")
+@router.get("/submissions/{submission_id}/status") # Debug GET
+async def update_institutional_status(submission_id: str, status_data: dict = Body(None), user: dict = Depends(get_auth_user)):
+    """
+    Updates the institutional status (Shortlisted, Approved, Rejected) for a team or solo project.
+    Intelligently handles team_id, submission_id (solo), or submission_data_id.
+    """
+    # For GET requests, we just return current status if possible
+    if status_data is None:
+        # Debug logic to check if route is reachable
+        return {"status": "reachable", "id": submission_id}
+        
+    status = status_data.get("status")
+    if not status:
+        raise HTTPException(status_code=400, detail="Missing status")
+
+    # 0. Check if the ID is a submission_data_id (asset ID)
+    sd_id_query = {"$or": [{"_id": submission_id}]}
+    try: sd_id_query["$or"].append({"_id": ObjectId(submission_id)})
+    except: pass
+    
+    asset_doc = await submission_data_col.find_one(sd_id_query)
+    target_id = submission_id
+    
+    if asset_doc:
+        target_id = asset_doc.get("team_id") or asset_doc.get("user_id") or submission_id
+        await submission_data_col.update_one(sd_id_query, {"$set": {"status": status}})
+
+    # 1. Try updating as a team
+    t_id_query = {"$or": [{"_id": target_id}]}
+    try: t_id_query["$or"].append({"_id": ObjectId(target_id)})
+    except: pass
+
+    try:
+        t_res = await teams_col.update_one(
+            t_id_query,
+            {"$set": {
+                "institution_selection": status,
+                "selection_updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        if t_res.modified_count > 0:
+            return {"status": "success", "message": f"Team status updated to {status}"}
+    except Exception as e:
+        logger.error(f"[STATUS ERROR] Team update failed: {str(e)}")
+
+    # 2. Try updating as a solo submission
+    s_id_query = {"$or": [{"_id": target_id}]}
+    try: s_id_query["$or"].append({"_id": ObjectId(target_id)})
+    except: pass
+
+    try:
+        s_res = await submissions_col.update_one(
+            s_id_query,
+            {"$set": {
+                "status": status,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        if s_res.modified_count > 0:
+            return {"status": "success", "message": f"Submission status updated to {status}"}
+    except Exception as e:
+        logger.error(f"[STATUS ERROR] Submission update failed: {str(e)}")
+
+    # 3. Check if it was already that status
+    exists_team = await teams_col.find_one(t_id_query)
+    exists_sub = await submissions_col.find_one(s_id_query)
+    
+    if exists_team or exists_sub:
+        return {"status": "success", "message": "Status synchronized"}
+
+    raise HTTPException(status_code=404, detail=f"Entity {target_id} not found for status update")
+
+
 @router.post("/profile")
 async def create_institution_profile(profile: dict):
     """Saves a new institution profile to MongoDB."""
@@ -104,18 +178,8 @@ async def get_institution_profile(institution_id: str):
     """Retrieves the full profile of an institution including team and social links."""
     profile = await institutions_col.find_one({"institution_id": institution_id})
     if not profile:
-        # Fallback for new institutions
-        return {
-            "institution_id": institution_id,
-            "name": "Institutional Portal",
-            "website": "https://institution.edu",
-            "email": "admin@institution.com",
-            "phone": "+1 (555) 000-0000",
-            "bio": "A premier educational institution dedicated to excellence.",
-            "logo_url": "",
-            "social": {"linkedin": "", "twitter": "", "instagram": ""},
-            "notifications": {"registrations": False, "submissions": True, "evaluations": True, "updates": False}
-        }
+        # Don't return fallback - return 404 to force proper institution setup
+        raise HTTPException(status_code=404, detail="Institution profile not found. Please complete institution setup.")
     
     # Clean ID
     if "_id" in profile:
@@ -1164,13 +1228,28 @@ async def get_all_deliverables(institution_id: str, user: dict = Depends(get_aut
     event_ids = [str(e["_id"]) for e in events]
     event_titles = {str(e["_id"]): (e.get("title") or e.get("name") or "Event") for e in events}
     
-    # 2. Fetch all submission_data (deliverables) for these events
+    # 2. Fetch all teams/submissions to get global status
+    teams = await teams_col.find({"event_id": {"$in": event_ids}}).to_list(length=None)
+    team_status_map = {str(t["_id"]): t.get("institution_selection") or t.get("status") for t in teams}
+    
+    submissions = await submissions_col.find({"event_id": {"$in": event_ids}}).to_list(length=None)
+    sub_status_map = {str(s["user_id"]): s.get("status") for s in submissions if s.get("user_id")}
+
+    # 3. Fetch all submission_data (deliverables) for these events
     cursor = submission_data_col.find({"event_id": {"$in": event_ids}})
     deliverables = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
         eid = str(doc.get("event_id") or "")
         doc["event_title"] = event_titles.get(eid, "Unknown Event")
+        
+        # Cross-reference global status
+        tid = str(doc.get("team_id") or "")
+        uid = str(doc.get("user_id") or "")
+        
+        global_status = team_status_map.get(tid) or sub_status_map.get(uid) or doc.get("status") or "Received"
+        doc["status"] = global_status
+        
         # Ensure name consistency for frontend
         doc["team_name"] = doc.get("team_name") or doc.get("user_name") or doc.get("title") or "Participant"
         deliverables.append(doc)
@@ -1694,15 +1773,49 @@ async def send_status_email(event_id: str, email_data: dict, user: dict = Depend
         print(f"[EMAIL DEBUG] No email addresses found for team {team_id}")
         return {"status": "no_emails", "message": "No email addresses provided", "emails_found": emails}
     
-    # Create email content based on status
-    status_messages = {
-        "Approved": "Congratulations! Your team has been approved for the next stage of the competition.",
-        "Rejected": "We regret to inform you that your team has not been selected for the next stage.",
-        "Shortlisted": "Great news! Your team has been shortlisted for further consideration in the competition."
-    }
+    # Stage context from frontend
+    stage_context = email_data.get("stage_context", {})
+    stage_number = stage_context.get("stage_number", 1)
+    total_stages = stage_context.get("total_stages", 1)
+    stage_name = stage_context.get("stage_name", "")
+    next_stage_name = stage_context.get("next_stage_name", "")
+    is_final_stage = stage_context.get("is_final_stage", False)
+    
+    # Build dynamic messages using actual stage names from event data
+    if is_final_stage:
+        # Final stage messages - mention "Winner" or "Finalist"
+        status_messages = {
+            "Approved": f"Congratulations! Your team has been selected as a WINNER of {event.get('title', 'the event')}! You excelled in the final {stage_name}. Well done!",
+            "Rejected": f"We regret to inform you that your team has not been selected for the final {stage_name} of {event.get('title', 'the event')}. We appreciate your participation throughout the competition.",
+            "Shortlisted": f"Great news! Your team has been shortlisted for the final {stage_name} of {event.get('title', 'the event')}. The final results will be announced soon!",
+            "Winner": f"Congratulations! Your team has been declared a WINNER of {event.get('title', 'the event')}! You excelled in the final {stage_name}. Well done!"
+        }
+        subject = f"Final Round Result - {event.get('title', 'Event')}"
+    else:
+        # Regular stage messages - use actual stage names from frontend
+        if total_stages > 1:
+            # Multi-stage event - mention the actual next stage name for approvals
+            next_stage_display = next_stage_name if next_stage_name else f"Round {stage_number + 1}"
+            current_stage_display = stage_name if stage_name else f"Round {stage_number}"
+            
+            status_messages = {
+                "Approved": f"Congratulations! Your team has been selected and approved to advance to {next_stage_display}. Keep up the great work!",
+                "Rejected": f"We regret to inform you that your team has not been selected for {current_stage_display}. We encourage you to participate in future events.",
+                "Shortlisted": f"Great news! Your team has been shortlisted for {current_stage_display}. We will notify you of the final decision soon.",
+                "Winner": f"Congratulations! Your team has been declared a WINNER of {event.get('title', 'the event')}!"
+            }
+            subject = f"{current_stage_display} Result - {event.get('title', 'Event')}"
+        else:
+            # Single stage event
+            status_messages = {
+                "Approved": "Congratulations! Your team has been selected and approved.",
+                "Rejected": "We regret to inform you that your team has not been selected.",
+                "Shortlisted": "Great news! Your team has been shortlisted for further consideration.",
+                "Winner": f"Congratulations! Your team has been declared a WINNER of {event.get('title', 'the event')}!"
+            }
+            subject = f"Application Status Update - {event.get('title', 'Event')}"
     
     message = status_messages.get(status, f"Your team status has been updated to: {status}")
-    subject = f"Application Status Update - {event.get('title', 'Event')}"
     
     body_html = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
