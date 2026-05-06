@@ -60,6 +60,7 @@ import MyApplications from './pages/opportunities/MyApplications';
 import EventHub from './pages/events/EventHub';
 import EventQuizPage from './pages/events/EventQuizPage';
 import JudgePortalLayout from './pages/judge/JudgePortalLayout';
+import EvaluationPage from './pages/EvaluationPage';
 
 
 // Unique Components
@@ -117,6 +118,12 @@ const App: React.FC = () => {
     if (loading) return;
     console.log("[AuthDebug] Role:", role, "Path:", pathname);
 
+    // CRITICAL: Allow evaluation access without authentication - COMPLETELY BYPASS ALL AUTH
+    if (pathname.startsWith('/evaluate/')) {
+      console.log('[EvaluationAccess] Bypassing all authentication for evaluation page:', pathname);
+      return;
+    }
+
     if (user?.email?.toLowerCase() === 'admin@studlyf.com') {
       if (!pathname.startsWith('/admin')) {
         navigate('/admin', { replace: true });
@@ -131,63 +138,45 @@ const App: React.FC = () => {
         }
       } else if (role === 'judge') {
         // Judges ONLY get access to judge portal - multiple safety checks
-        if (!pathname.startsWith('/judge-portal') || pathname.startsWith('/institution-dashboard') || pathname.startsWith('/dashboard')) {
+        // CRITICAL: Allow judges to access institution dashboard for direct evaluation
+        const isAllowedPath = pathname.startsWith('/judge-portal') || 
+                            pathname.startsWith('/institution-dashboard') || 
+                            pathname.startsWith('/evaluate/');
+                            
+        if (!isAllowedPath || pathname.startsWith('/dashboard')) {
           console.log('[JudgeRedirect] CRITICAL: Judge user on forbidden path:', pathname, '- FORCING redirect to judge portal');
-          // Clear any potential cached data
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('pendingJudgeRole');
           navigate('/judge-portal', { replace: true });
           return;
         }
-        console.log('[JudgeRedirect] Judge user correctly on judge portal:', pathname);
-      } else if (role === 'student') {
+        console.log('[JudgeRedirect] Judge user correctly on allowed path:', pathname);
+      }
+      
+            
+      if (role === 'student') {
         if (pathname.startsWith('/institution-dashboard') || pathname.startsWith('/judge-portal')) {
           navigate('/dashboard/learner', { replace: true });
         }
       }
-    }
-    
-    // Additional safety check: If user email looks like judge but role not set, force judge role
-    if (user?.email && !role) {
-      const judgeIndicators = ['judge', 'evaluator', 'reviewer'];
-      const emailDomain = user.email.split('@')[1]?.toLowerCase();
-      const isJudgeEmail = judgeIndicators.some(indicator => 
-        user.email.toLowerCase().includes(indicator) || 
-        emailDomain?.includes(indicator) ||
-        user.email.toLowerCase().includes('court') || 
-        user.email.toLowerCase().includes('legal')
-      );
       
-      if (isJudgeEmail && !pathname.startsWith('/judge-portal') && (pathname.startsWith('/dashboard') || pathname === '/')) {
-        console.log('[JudgeRedirect] Forcing judge redirect based on email:', user.email);
-        navigate('/judge-portal', { replace: true });
+      // CRITICAL: Allow judge access regardless of role mismatch
+      if (user?.email && (localStorage.getItem('wasJudgeInvited') === 'true' || 
+                              localStorage.getItem('pendingJudgeRole') === 'true' ||
+                              pathname.startsWith('/judge-portal'))) {
+        // Don't redirect judges away from judge portal
+        console.log('[JudgeAccess] Allowing judge portal access for:', user.email);
         return;
       }
-    }
-  }, [user, role, pathname, loading, navigate]);
-
-// Debug: Log all auth state changes
-useEffect(() => {
-    console.log('[AuthDebug] State changed:', {
-        user: user?.email,
-        role: role,
-        pathname: pathname,
-        loading: loading
-    });
+      
+          }
     
-    // Force redirect check for judge users
-    if (user?.role === 'judge' && !pathname.startsWith('/judge-portal')) {
-        console.log('[AuthDebug] CRITICAL: Judge user detected on wrong path:', pathname, '- IMMEDIATE redirect to judge portal');
-        navigate('/judge-portal', { replace: true });
-        return;
-    }
-}, [user, role, pathname, loading, navigate]);
+      }, [user, role, pathname, loading, navigate]);
+
 
   return (
     <div className={`relative min-h-screen flex flex-col selection:bg-[#7C3AED] selection:text-white ${isDashboard || isAdmin ? 'bg-transparent' : 'bg-white'}`}>
 
       {(() => {
-        const showNav = !isLoginPage && !isPlayer && !isCheckout && !isAdmin && !isHome && !isResume && !isVisualizer && !isCareerOnboarding && !pathname.startsWith('/institution-dashboard');
+        const showNav = !isLoginPage && !isPlayer && !isCheckout && !isAdmin && !isHome && !isResume && !isVisualizer && !isCareerOnboarding && !pathname.startsWith('/institution-dashboard') && !pathname.startsWith('/evaluate/') && !pathname.startsWith('/judge-portal');
         if (!showNav && pathname.startsWith('/institution-dashboard')) {
           console.log("[AuthDebug] Navigation hidden for Institution Dashboard");
         }
@@ -262,6 +251,7 @@ useEffect(() => {
             <Route path="/dashboard/my-courses" element={<ProtectedRoute><MyCourses /></ProtectedRoute>} />
             <Route path="/institution-dashboard/*" element={<ProtectedRoute><InstitutionDashboard /></ProtectedRoute>} />
             <Route path="/judge-portal/*" element={<ProtectedRoute><JudgePortalLayout /></ProtectedRoute>} />
+            <Route path="/evaluate/:token" element={<EvaluationPage />} />
             <Route path="/opportunities" element={<ProtectedRoute><OpportunitiesList /></ProtectedRoute>} />
             <Route path="/opportunities/my-applications" element={<ProtectedRoute><MyApplications /></ProtectedRoute>} />
             <Route path="/opportunities/:id" element={<ProtectedRoute><OpportunityDetails /></ProtectedRoute>} />

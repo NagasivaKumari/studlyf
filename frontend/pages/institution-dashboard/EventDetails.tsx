@@ -38,15 +38,22 @@ import {
     Edit3,
     Eye,
     Building2,
-    Loader2
+    Loader2,
+    Square,
+    CheckSquare,
+    Bell,
+    TrendingUp,
+    UserPlus,
+    Copy
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence as FramerAnimatePresence } from 'framer-motion';
 import LeaderboardPage from './LeaderboardPage';
 import { useNavigate } from 'react-router-dom';
 import StageBuilder from './components/StageBuilder';
-import JudgeInviteModal from './components/JudgeInviteModal';
 import QuizDesignerModal from './components/QuizDesignerModal';
+import JudgeInviteModal from './components/JudgeInviteModal';
 import { IEvent, IParticipant, ITeam, IStage, ISubmission } from '../../types/event';
+import { useAuth } from '../../AuthContext';
 
 interface EventDetailsProps {
     eventId: string | null;
@@ -64,6 +71,7 @@ const BUNDLE_TAB_LABEL: Record<string, string> = {
 
 const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutionId: institutionIdProp }) => {
     const navigate = useNavigate();
+    const { user, role } = useAuth();
     const [activeTab, setActiveTab] = useState('dashboard');
     const [event, setEvent] = useState<IEvent | null>(null);
     const [institution, setInstitution] = useState<any>(null);
@@ -76,8 +84,6 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [threshold, setThreshold] = useState(90);
     const [debouncedThreshold, setDebouncedThreshold] = useState(90);
     const [bundleTab, setBundleTab] = useState<string>('shortlisted');
-    const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
-    const [isInviting, setIsInviting] = useState(false);
     const [teams, setTeams] = useState<ITeam[]>([]);
     const [submissions, setSubmissions] = useState<ISubmission[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -91,11 +97,30 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [editDescription, setEditDescription] = useState(false);
     const [reviewingParticipantId, setReviewingParticipantId] = useState<string | null>(null);
     const [portalReviewNotice, setPortalReviewNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-    const [subJudgePick, setSubJudgePick] = useState<Record<string, string[]>>({});
-    const [assigningSubmission, setAssigningSubmission] = useState<string | null>(null);
     const [stageSubmissions, setStageSubmissions] = useState<ISubmission[]>([]);
     const [submissionSubTab, setSubmissionSubTab] = useState<'projects' | 'assets'>('projects');
+    const [judgeAssignmentModal, setJudgeAssignmentModal] = useState<{ isOpen: boolean; submissionId: string | null }>({ isOpen: false, submissionId: null });
+    const [availableJudges, setAvailableJudges] = useState<any[]>([]);
+    const [isJudgeInviteOpen, setIsJudgeInviteOpen] = useState(false);
+    const [isInvitingJudge, setIsInvitingJudge] = useState(false);
+    const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([]);
+    const [isBulkMode, setIsBulkMode] = useState(false);
+    const [refreshCounter, setRefreshCounter] = useState(0);
+    const [notifying, setNotifying] = useState(false);
+    
+    // Track unsaved changes to lifecycle or criteria
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+    useEffect(() => {
+        if (!event) return;
+        const stagesChanged = JSON.stringify(stages) !== JSON.stringify(event.stages);
+        const criteriaChanged = JSON.stringify(criteria) !== JSON.stringify(event.judging_criteria);
+        setHasUnsavedChanges(stagesChanged || criteriaChanged);
+    }, [stages, criteria, event]);
+    
+        
+    
+    
     const portalRegistrationStatusLabel = (raw: string | undefined) => {
         const s = (raw || 'pending').toLowerCase();
         if (s === 'accepted' || s === 'shortlisted') return 'SHORTLISTED';
@@ -201,7 +226,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 .then(data => setStageSubmissions(Array.isArray(data) ? data : []))
                 .catch(() => setStageSubmissions([]));
         }
-    }, [eventId, activeTab, debouncedThreshold]);
+    }, [eventId, activeTab, debouncedThreshold, refreshCounter]);
 
     useEffect(() => {
         if (activeTab !== 'assessments' || !eventId || quizzes.length === 0) return;
@@ -259,6 +284,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     };
 
     const handleSaveEvent = async () => {
+        if (!eventId || !event) return;
         setSaving(true);
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}`, {
@@ -267,11 +293,42 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 body: JSON.stringify({ ...event, stages, judging_criteria: criteria })
             });
             if(res.ok) {
+                const updatedEvent = { ...event, stages, judging_criteria: criteria };
+                setEvent(updatedEvent);
+                setHasUnsavedChanges(false);
                 setShowSaveSuccess(true);
-                setTimeout(() => setShowSaveSuccess(false), 3000);
+                
+                // Simple direct sync - update all opportunities
+                try {
+                    console.log('DIRECT SYNC: Force updating all opportunities for event:', eventId);
+                    const syncRes = await fetch(`${API_BASE_URL}/api/direct-sync/force-update/${eventId}`, {
+                        method: 'POST',
+                        headers: { ...authHeaders() }
+                    });
+                    if (syncRes.ok) {
+                        const syncData = await syncRes.json();
+                        console.log('DIRECT SYNC: Force update successful:', syncData);
+                        alert(`Direct sync successful: ${syncData.message}`);
+                        
+                        // Also refresh the page to show changes immediately
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    } else {
+                        const errorData = await syncRes.json().catch(() => ({}));
+                        console.error('DIRECT SYNC: Force update failed:', errorData);
+                        alert(`Direct sync failed: ${errorData.message || 'Unknown error'}`);
+                    }
+                } catch (syncErr) {
+                    console.error('DIRECT SYNC: Network error:', syncErr);
+                    alert('Network error during direct sync');
+                }
+            } else {
+                const errorData = await res.json().catch(() => ({}));
+                alert(`Failed to save event: ${errorData.detail || 'Unknown error'}`);
             }
         } catch (err) {
-            console.error("Save failed");
+            alert('Network error while saving event');
         } finally {
             setSaving(false);
         }
@@ -323,6 +380,37 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             setIsQuizModalOpen(false);
         } finally {
             setIsCreatingQuiz(false);
+        }
+    };
+
+    const handleDispatchProtocol = async () => {
+        const currentBundle = bundleData?.[bundleTab] || [];
+        if (currentBundle.length === 0) return;
+
+        const teamIds = currentBundle.map((item: any) => item.team_id);
+        const nextStage = prompt("Enter the name of the next stage (e.g. Semi-Finals, Finale):", "Next Round");
+        
+        if (!nextStage) return;
+
+        setNotifying(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/bulk-notify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ team_ids: teamIds, next_stage: nextStage })
+            });
+
+            if (res.ok) {
+                const result = await res.json();
+                alert(`Successfully dispatched approval protocols to ${result.sent_to} candidates/teams!`);
+            } else {
+                alert('Failed to dispatch notifications');
+            }
+        } catch (error) {
+            console.error('Dispatch failed:', error);
+            alert('Network error during dispatch');
+        } finally {
+            setNotifying(false);
         }
     };
 
@@ -395,43 +483,21 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
-    const handleRemoveJudge = async (judgeEmail: string) => {
-        if (!window.confirm("Are you sure you want to revoke this judge's assignment? They will be notified immediately.")) return;
-        
+    const handleSendReminders = async () => {
+        if (!window.confirm('Send deadline reminder emails to all registered participants?')) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/judges/${encodeURIComponent(judgeEmail)}`, {
-                method: 'DELETE',
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/send-reminders`, {
+                method: 'POST',
                 headers: { ...authHeaders() },
             });
             if (res.ok) {
-                // Refresh local event state
-                const eventRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/details`, { headers: { ...authHeaders() } });
-                const eventData = await eventRes.json();
-                setEvent(eventData);
+                const data = await res.json();
+                alert(`Successfully sent ${data.count} reminders for ${data.stage}.`);
+            } else {
+                alert('Failed to send reminders.');
             }
         } catch (err) {
-            console.error("Failed to remove judge");
-        }
-    };
-
-    const handleInviteJudge = async (judgeData: any) => {
-        setIsInviting(true);
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/judges`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify(judgeData)
-            });
-            if(res.ok) {
-                setIsJudgeModalOpen(false);
-                const eventRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/details`, { headers: { ...authHeaders() } });
-                const eventData = await eventRes.json();
-                setEvent(eventData);
-            }
-        } catch (err) {
-            console.error("Failed to invite judge");
-        } finally {
-            setIsInviting(false);
+            alert('Network error.');
         }
     };
 
@@ -448,7 +514,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     ? 'rejected'
                     : newStatus === 'Shortlisted'
                       ? 'shortlisted'
-                      : 'pending';
+                      : newStatus === 'Approved'
+                        ? 'accepted'
+                        : 'pending';
             const body: Record<string, string> = {
                 institution_id: String(instId),
                 status: st,
@@ -487,33 +555,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
-    const handleAssignJudgesToSubmission = async (submissionId: string, emails: string[]) => {
-        if (!eventId) return;
-        setAssigningSubmission(submissionId);
-        try {
-            const res = await fetch(
-                `${API_BASE_URL}/api/v1/events/${eventId}/submissions/${submissionId}/assign-judges`,
-                {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                    body: JSON.stringify({ judge_emails: emails }),
-                },
-            );
-            if (res.ok) {
-                const subRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/submissions`, {
-                    headers: { ...authHeaders() },
-                });
-                const data = await subRes.json();
-                setSubmissions(Array.isArray(data) ? data : []);
-                setStageSubmissions(Array.isArray(data) ? data : []);
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setAssigningSubmission(null);
-        }
-    };
-
+    
     const handleCreateQuiz = async (quizData: any) => {
         await attachQuizToStage(quizData);
         try {
@@ -525,6 +567,114 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
+    const handleOpenJudgeAssignment = async (submissionId: string) => {
+        // Fetch available judges
+        try {
+            console.log('DEBUG: Fetching judges for submission:', submissionId);
+            const res = await fetch(`${API_BASE_URL}/api/judges`, { headers: { ...authHeaders() } });
+            console.log('DEBUG: Judges API response status:', res.status);
+            if (res.ok) {
+                const judges = await res.json();
+                console.log('DEBUG: Judges data received:', judges);
+                setAvailableJudges(judges);
+                setJudgeAssignmentModal({ isOpen: true, submissionId });
+            } else {
+                console.log('DEBUG: Failed to fetch judges, status:', res.status);
+                const errorData = await res.json().catch(() => ({}));
+                console.log('DEBUG: Judges API error:', errorData);
+                alert(`Failed to load judges: ${errorData.detail || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Failed to fetch judges:', error);
+            alert('Failed to load available judges');
+        }
+    };
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text).then(() => {
+            alert('Link copied to clipboard!');
+        }).catch(err => {
+            console.error('Failed to copy link: ', err);
+        });
+    };
+
+    const handleAssignJudge = async (judgeId: string, judgeEmail: string) => {
+        const isBulk = selectedSubmissions.length > 0 && judgeAssignmentModal.submissionId === 'bulk';
+        
+        try {
+            const body: any = { judge_id: judgeId };
+            if (isBulk) {
+                body.submission_ids = selectedSubmissions;
+            } else {
+                body.submission_id = judgeAssignmentModal.submissionId;
+            }
+
+            const res = await fetch(`${API_BASE_URL}/api/judges/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify(body)
+            });
+
+            if (res.ok) {
+                const result = await res.json();
+                
+                let msg = isBulk ? `Successfully assigned judge to ${selectedSubmissions.length} projects!` : 'Judge assigned successfully!';
+                
+                // NEW: Handle email delivery feedback
+                if (result.email_sent === false) {
+                    msg += "\n\n⚠️ NOTE: Invitation email could not be sent. Please share the evaluation link manually.";
+                }
+                
+                alert(msg);
+                
+                setJudgeAssignmentModal({ isOpen: false, submissionId: null });
+                setSelectedSubmissions([]);
+                setIsBulkMode(false);
+                // Refresh submissions
+                setRefreshCounter(prev => prev + 1);
+                fetchBundle(debouncedThreshold);
+            } else {
+                const error = await res.json();
+                alert(error.detail || 'Failed to assign judge');
+            }
+        } catch (error) {
+            console.error('Error assigning judge:', error);
+            alert('Network error while assigning judge');
+        }
+    };
+
+    const handleInviteJudge = async (judgeData: any) => {
+        setIsInvitingJudge(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/judges`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({
+                    ...judgeData,
+                    is_test: false
+                })
+            });
+
+            if (res.ok) {
+                alert('Judge invited successfully!');
+                setIsJudgeInviteOpen(false);
+                // Refresh judges list
+                if (judgeAssignmentModal.submissionId) {
+                    handleOpenJudgeAssignment(judgeAssignmentModal.submissionId);
+                }
+            } else {
+                const error = await res.json();
+                alert(error.detail || 'Failed to invite judge');
+            }
+        } catch (error) {
+            console.error('Error inviting judge:', error);
+            alert('Network error while inviting judge');
+        } finally {
+            setIsInvitingJudge(false);
+        }
+    };
+
+    
     const tabs = [
         { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
         { id: 'basic', label: 'Basic Info', icon: Info },
@@ -532,14 +682,14 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         { id: 'participants', label: 'Participants', icon: Users },
         { id: 'teams', label: 'Teams', icon: Layers },
         { id: 'submissions', label: 'Submissions', icon: FileText },
-        { id: 'judges', label: 'Judges', icon: Gavel },
-        { id: 'criteria', label: 'Scoring Rubrics', icon: ShieldCheck },
+                                { id: 'criteria', label: 'Scoring Rubrics', icon: ShieldCheck },
         { id: 'leaderboard', label: 'Leaderboard', icon: BarChart3 },
         { id: 'assessments', label: 'Assessments', icon: HelpCircle },
         { id: 'certificates', label: 'Certificates', icon: FileCheck },
         { id: 'prizes', label: 'Prizes & Rewards', icon: Trophy },
     ];
 
+    
     const renderTabContent = () => {
         switch (activeTab) {
             case 'dashboard':
@@ -595,22 +745,53 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 <div className="relative z-10">
                                     <h3 className="text-2xl font-black mb-6">Recent Stage Progress</h3>
                                     <div className="space-y-8">
-                                        {stages.map((s, i) => (
-                                            <div key={i} className="flex items-center gap-6 group">
-                                                <div className="relative">
-                                                    <div className="w-2 h-14 bg-white/10 rounded-full relative overflow-hidden">
-                                                        <div className="absolute top-0 left-0 right-0 bg-[#6C3BFF] transition-all duration-1000" style={{ height: i === 0 ? '100%' : i === 1 ? '45%' : '0%' }}></div>
+                                        {stages.map((s, i) => {
+                                            const calculateProgressHeight = (start: string, endStr: string) => {
+                                                const now = new Date();
+                                                const startDate = new Date(start);
+                                                const endDate = new Date(endStr);
+                                                endDate.setUTCHours(23, 59, 59, 999);
+                                                
+                                                if (now < startDate) return '0%';
+                                                if (now > endDate) return '100%';
+                                                
+                                                const total = endDate.getTime() - startDate.getTime();
+                                                const elapsed = now.getTime() - startDate.getTime();
+                                                return `${Math.min(100, Math.max(0, (elapsed / total) * 100))}%`;
+                                            };
+
+                                            return (
+                                                <div key={i} className="flex items-center gap-6 group">
+                                                    <div className="relative">
+                                                        <div className="w-2 h-14 bg-white/10 rounded-full relative overflow-hidden">
+                                                            <div 
+                                                                className="absolute top-0 left-0 right-0 bg-[#6C3BFF] transition-all duration-1000" 
+                                                                style={{ height: calculateProgressHeight(s.start_date, s.end_date) }}
+                                                            ></div>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-black text-sm tracking-tight">{s.name}</p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{s.type}</span>
+                                                            <span className="text-slate-700">•</span>
+                                                            <span className={`text-[9px] font-bold uppercase tracking-wider ${
+                                                                new Date() > new Date(new Date(s.end_date).setUTCHours(23, 59, 59, 999)) 
+                                                                    ? 'text-slate-500' 
+                                                                    : new Date() < new Date(s.start_date)
+                                                                        ? 'text-blue-400'
+                                                                        : 'text-emerald-400'
+                                                            }`}>
+                                                                {new Date() > new Date(new Date(s.end_date).setUTCHours(23, 59, 59, 999)) ? 'Completed' : new Date() < new Date(s.start_date) ? 'Upcoming' : 'Active'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="ml-auto opacity-0 group-hover:opacity-100 transition-all">
+                                                        <ChevronRight size={16} className="text-slate-500" />
                                                     </div>
                                                 </div>
-                                                <div>
-                                                    <p className="font-black text-sm tracking-tight">{s.name}</p>
-                                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">{s.type}</p>
-                                                </div>
-                                                <div className="ml-auto opacity-0 group-hover:opacity-100 transition-all">
-                                                    <ChevronRight size={16} className="text-slate-500" />
-                                                </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                                 <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-[#6C3BFF]/10 rounded-full blur-3xl"></div>
@@ -984,168 +1165,248 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             case 'submissions':
                 return (
                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="p-12 bg-slate-900 rounded-[3.5rem] text-white shadow-2xl relative overflow-hidden">
-                            <div className="relative z-10 mb-6">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Judge pipeline</p>
-                                <h3 className="text-xl font-black mt-1">Team scores & selection bundles</h3>
-                                <p className="text-slate-400 text-sm mt-2 max-w-xl">
-                                    <strong className="text-slate-300">Shortlisted</strong> lists portal applicants you marked shortlisted/accepted (same as Registrations).
-                                    <strong className="text-slate-300"> Approved / Pending / Rejected</strong> buckets are driven by judge scores and team rows once submissions exist.
-                                </p>
-                            </div>
-                            <div className="relative z-10">
-                                <div className="flex items-center gap-4 mb-8">
-                                    <div className="px-4 py-1 bg-[#6C3BFF] text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg shadow-purple-900/30">Selection Intelligence</div>
-                                    <h1 className="text-4xl font-black tracking-tight">Selection Command Center</h1>
-                                </div>
-                                <p className="text-slate-400 max-w-xl text-lg leading-relaxed opacity-80 font-medium">
-                                    Dynamically aggregate and approve candidate bundles using algorithmic scoring thresholds. 
-                                    Authorized for high-stakes talent filtering.
-                                </p>
-                            </div>
-
-                            <div className="mt-12 p-10 bg-white/5 backdrop-blur-xl rounded-[2.5rem] border border-white/10 flex flex-col md:flex-row items-center justify-between gap-12">
-                                <div className="flex-1 w-full space-y-6">
-                                    <div className="flex justify-between items-center px-2">
-                                        <div className="flex items-center gap-4">
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target Score Threshold</label>
-                                            {threshold !== debouncedThreshold && (
-                                                <span className="text-[10px] font-black text-[#6C3BFF] animate-pulse">RECALCULATING BUNDLES...</span>
-                                            )}
+                        {/* Selection Command Center Banner */}
+                        <div className="p-12 bg-slate-950 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
+                            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
+                                <div className="space-y-6 max-w-2xl text-center md:text-left">
+                                    <div className="flex flex-col md:flex-row items-center gap-4">
+                                        <div className="px-5 py-2 bg-[#6C3BFF] text-white rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(108,59,255,0.4)]">
+                                            Selection Intelligence
                                         </div>
-                                        <span className="text-3xl font-black text-[#6C3BFF] bg-white px-5 py-2 rounded-2xl shadow-xl">{threshold}%</span>
-                                    </div>
-                                    <div className="relative pt-2">
-                                        <input 
-                                            type="range" 
-                                            min="0" 
-                                            max="100" 
-                                            value={threshold} 
-                                            onChange={(e) => setThreshold(parseInt(e.target.value))}
-                                            className="w-full h-4 bg-white/10 rounded-full appearance-none cursor-pointer accent-[#6C3BFF] hover:accent-[#8B5CF6] transition-all" 
-                                        />
-                                        <div className="flex justify-between mt-4 px-1">
-                                            <span className="text-[10px] font-black text-slate-500">BASELINE</span>
-                                            <span className="text-[10px] font-black text-slate-500">EXCELLENCE</span>
+                                        <div className="px-5 py-2 bg-white/10 backdrop-blur-md text-[#6C3BFF] rounded-full text-[10px] font-black uppercase tracking-[0.2em] border border-[#6C3BFF]/20 animate-pulse">
+                                            {(() => {
+                                                const now = new Date();
+                                                const active = stages.find(s => {
+                                                    const start = new Date(s.start_date);
+                                                    const end = new Date(s.end_date);
+                                                    end.setUTCHours(23, 59, 59, 999);
+                                                    return now >= start && now <= end;
+                                                });
+                                                return active ? `${active.name} Active` : 'No Active Stage';
+                                            })()}
                                         </div>
                                     </div>
+                                    <div className="space-y-2">
+                                        <h3 className="text-5xl font-black tracking-tighter leading-tight">Selection Command Center</h3>
+                                        <p className="text-slate-400 text-lg font-medium leading-relaxed opacity-90">
+                                            Dynamically aggregate and approve candidate bundles using {event?.name || 'this event'}'s scoring protocol. View deliverables or dispatch final authorizations.
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
+                                        <button 
+                                            onClick={handleSendReminders}
+                                            className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 group"
+                                        >
+                                            <Bell size={18} className="text-[#6C3BFF] group-hover:scale-110 transition-transform" /> 
+                                            Broadcast Deadline Alerts
+                                        </button>
+                                        <button className="px-8 py-4 bg-slate-900 border border-white/10 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center gap-3">
+                                            <Download size={18} /> Export Protocol Data
+                                        </button>
+                                    </div>
                                 </div>
-                                
-                                <button 
-                                    onClick={() => {/* Bulk Action Logic */}}
-                                    className="px-12 py-6 bg-[#6C3BFF] text-white rounded-[1.8rem] font-black text-xs uppercase tracking-widest hover:scale-[1.05] hover:shadow-[0_20px_40px_rgba(108,59,255,0.4)] active:scale-95 transition-all flex items-center gap-4 shadow-2xl shadow-purple-900/40"
-                                >
-                                    <Send size={20} className="group-hover:translate-x-1 transition-transform" /> 
-                                    Dispatch Approval Protocol
-                                </button>
+                                <div className="relative hidden xl:block">
+                                    <div className="w-64 h-64 bg-[#6C3BFF]/20 rounded-full blur-[100px] absolute -top-10 -right-10"></div>
+                                    <div className="p-8 bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] shadow-2xl relative z-10 space-y-6 min-w-[280px]">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Global Progress</span>
+                                            <TrendingUp size={16} className="text-[#6C3BFF]" />
+                                        </div>
+                                        <div className="space-y-4">
+                                            {[
+                                                { label: 'Shortlisted', val: bundleData?.summary?.shortlisted || 0, color: 'bg-blue-500' },
+                                                { label: 'Evaluated', val: submissions.length, color: 'bg-emerald-500' }
+                                            ].map((m, i) => {
+                                                const total = (participants?.length || 1);
+                                                const progress = Math.min(100, (m.val / total) * 100);
+                                                return (
+                                                    <div key={i} className="space-y-2">
+                                                        <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
+                                                            <span className="text-slate-400">{m.label}</span>
+                                                            <span className="text-white">{m.val}</span>
+                                                        </div>
+                                                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                                            <div className={`h-full ${m.color} transition-all duration-1000`} style={{ width: `${progress}%` }}></div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-white/5 rounded-full blur-3xl"></div>
+                            <LayoutDashboard size={280} className="absolute -right-20 -bottom-20 text-white/[0.03] -rotate-12 pointer-events-none" />
                         </div>
 
-                        <div className="flex items-center gap-4 mb-8">
-                            <button 
-                                onClick={() => setSubmissionSubTab('projects')}
-                                className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'projects' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                            >
-                                Candidate Selection Bundles
-                            </button>
-                            <button 
-                                onClick={() => setSubmissionSubTab('assets')}
-                                className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'assets' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                            >
-                                Phase Deliverables (PPT/PDF)
-                            </button>
+                        {/* View Selection Toggle */}
+                        <div className="flex justify-center">
+                            <div className="flex bg-slate-100 p-2 rounded-[2rem] shadow-inner border border-slate-200/50">
+                                <button 
+                                    onClick={() => setSubmissionSubTab('projects')}
+                                    className={`px-10 py-4 rounded-[1.5rem] text-[11px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'projects' ? 'bg-slate-900 text-white shadow-2xl shadow-black/20' : 'text-slate-500 hover:text-slate-800'}`}
+                                >
+                                    Candidate Selection Bundles
+                                </button>
+                                <button 
+                                    onClick={() => setSubmissionSubTab('assets')}
+                                    className={`px-10 py-4 rounded-[1.5rem] text-[11px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'assets' ? 'bg-slate-900 text-white shadow-2xl shadow-black/20' : 'text-slate-500 hover:text-slate-800'}`}
+                                >
+                                    Phase Deliverables (PPT/PDF)
+                                </button>
+                            </div>
                         </div>
 
                         {submissionSubTab === 'projects' ? (
-                            <div className="space-y-8">
-                                <div className="flex gap-6 p-2 bg-slate-100 rounded-[2.5rem] w-fit shadow-inner flex-wrap">
-                                    {BUNDLE_TABS.map((tab) => (
+                            <>
+                                {hasUnsavedChanges && (
+                                    <div className="mx-6 mb-8 p-6 bg-amber-50 border border-amber-200 rounded-[2rem] flex items-center justify-between gap-6 animate-in fade-in slide-in-from-top-4">
+                                        <div className="flex items-center gap-4 text-amber-900">
+                                            <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 shadow-inner">
+                                                <AlertCircle size={20} />
+                                            </div>
+                                            <p className="text-sm font-bold leading-tight">
+                                                Unsaved Lifecycle Changes Detected<br />
+                                                <span className="text-[10px] font-medium opacity-70">Changes to your stages or deadlines might affect candidate qualification. Sync changes to refresh results.</span>
+                                            </p>
+                                        </div>
                                         <button 
-                                            key={tab} 
-                                            onClick={() => setBundleTab(tab)} 
-                                            className={`px-12 py-4 rounded-[1.8rem] font-black text-xs uppercase tracking-widest transition-all ${bundleTab === tab ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
+                                            onClick={handleSaveEvent}
+                                            className="px-6 py-3 bg-amber-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 transition-colors shadow-lg shadow-amber-900/10"
                                         >
-                                            {BUNDLE_TAB_LABEL[tab] || tab} ({bundleData?.[tab]?.length || 0})
+                                            Sync Now
+                                        </button>
+                                    </div>
+                                )}
+                                {/* Standardized Tabs (Matching Screenshot) */}
+                                <div className="flex items-center gap-10 border-b border-slate-100 px-6">
+                                    {['shortlisted', 'approved', 'pending', 'rejected'].map((tab) => (
+                                        <button
+                                            key={tab}
+                                            onClick={() => setBundleTab(tab)}
+                                            className={`text-[10px] font-black uppercase tracking-[0.2em] pb-5 relative transition-all ${
+                                                bundleTab === tab ? 'text-[#6C3BFF]' : 'text-slate-400 hover:text-slate-600'
+                                            }`}
+                                        >
+                                            {tab} ({bundleData?.summary?.[tab] || 0})
+                                            {bundleTab === tab && (
+                                                <motion.div layoutId="subTab" className="absolute bottom-0 left-0 right-0 h-1 bg-[#6C3BFF] rounded-full shadow-[0_2px_10px_rgba(108,59,255,0.4)]" />
+                                            )}
                                         </button>
                                     ))}
                                 </div>
 
-                                <div className="bg-white rounded-[3.5rem] border border-slate-100 overflow-hidden shadow-sm">
+                                <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
                                     <table className="w-full text-left">
-                                        <thead className="bg-slate-50/50">
-                                            <tr>
-                                                <th className="px-12 py-8 text-[11px] font-black text-slate-400 uppercase tracking-widest">Candidate Identity</th>
-                                                <th className="px-12 py-8 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Score Aggregate</th>
-                                                <th className="px-12 py-8 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Judges Verified</th>
-                                                <th className="px-12 py-8 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest">Authorization</th>
+                                        <thead>
+                                            <tr className="bg-slate-50/50">
+                                                <th className="px-10 py-6 w-10">
+                                                    <div className="w-5 h-5 rounded border-2 border-slate-200" />
+                                                </th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Candidate Identity</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Judge Status</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Authorization</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score Aggregate</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50">
                                             {(bundleData?.[bundleTab] || []).length > 0 ? (
-                                                bundleData[bundleTab].map((item: any) => (
-                                                    <tr key={item.team_id} className="hover:bg-slate-50/50 transition-colors group">
-                                                        <td className="px-12 py-10">
-                                                            <div className="font-black text-slate-900 text-lg tracking-tight">{item.team_name}</div>
-                                                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                                                                {item.source === 'portal_application'
-                                                                    ? `Portal · ${item.email || item.application_id || ''}`
-                                                                    : `ID: ${String(item.team_id).slice(-8)}`}
+                                                bundleData[bundleTab].map((item: any, idx: number) => (
+                                                    <motion.tr 
+                                                        key={item.team_id || idx}
+                                                        initial={{ opacity: 0, y: 10 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        transition={{ delay: idx * 0.03 }}
+                                                        className="hover:bg-slate-50/30 transition-colors group"
+                                                    >
+                                                        <td className="px-10 py-8">
+                                                            <div className="w-5 h-5 rounded border-2 border-slate-200 group-hover:border-[#6C3BFF] transition-all" />
+                                                        </td>
+                                                        <td className="px-10 py-8">
+                                                            <div className="flex flex-col">
+                                                                <span className="font-black text-slate-900 text-lg tracking-tight group-hover:text-[#6C3BFF] transition-colors">
+                                                                    {item.team_name}
+                                                                </span>
+                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                                                    {item.source === 'portal_application' ? 'Portal Application' : 'Event Participant'}
+                                                                </span>
                                                             </div>
                                                         </td>
-                                                        <td className="px-12 py-10 text-center">
-                                                            <div className="inline-flex items-center gap-3">
-                                                                <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
-                                                                    <div className="h-full bg-[#6C3BFF]" style={{ width: `${item.score}%` }}></div>
-                                                                </div>
-                                                                <span className="font-black text-slate-900 text-sm">{item.score}%</span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-12 py-10 text-center">
-                                                            <div className="flex items-center justify-center gap-2">
-                                                                <CheckCircle2 size={14} className={item.is_fully_evaluated ? "text-emerald-500" : "text-slate-300"} />
-                                                                <span className="font-bold text-slate-600 text-sm">{item.judges_completed} / {event.judges?.length || 0}</span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-12 py-10 text-right">
-                                                            <div className="flex items-center justify-end gap-3">
+                                                        <td className="px-10 py-8">
+                                                            <div className="flex flex-col gap-2">
+                                                                {item.total_judges > 0 ? (
+                                                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider w-fit ${
+                                                                        item.judges_completed >= item.total_judges 
+                                                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                                                                        : 'bg-purple-50 text-purple-600 border-purple-100'
+                                                                    }`}>
+                                                                        <CheckCircle2 size={12} />
+                                                                        {item.judges_completed}/{item.total_judges} Judges Verified
+                                                                    </div>
+                                                                ) : null}
                                                                 <button 
-                                                                    onClick={() =>
-                                                                        item.source === 'portal_application'
-                                                                            ? undefined
-                                                                            : handleUpdateStatus(item.team_id, 'Shortlisted', item)
-                                                                    }
-                                                                    disabled={item.source === 'portal_application'}
-                                                                    className={`px-6 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${
-                                                                        item.source === 'portal_application'
-                                                                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 cursor-default'
-                                                                            : item.status === 'Shortlisted'
-                                                                              ? 'bg-emerald-500 text-white'
-                                                                              : 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-500 hover:text-white'
-                                                                    }`}
+                                                                    onClick={() => handleOpenJudgeAssignment(item.submission_id || item.team_id)}
+                                                                    className="text-[10px] font-black text-[#6C3BFF] uppercase tracking-widest hover:underline flex items-center gap-2 transition-all w-fit"
                                                                 >
-                                                                    {item.source === 'portal_application'
-                                                                        ? 'Shortlisted (portal)'
-                                                                        : item.status === 'Shortlisted'
-                                                                          ? 'Shortlisted'
-                                                                          : 'Shortlist'}
+                                                                    <Plus size={14} /> {item.total_judges > 0 ? 'Re-assign Judge' : 'Assign Judge'}
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-10 py-8 text-center">
+                                                            {(() => {
+                                                                const status = item.status || 'Pending';
+                                                                const s = status.toLowerCase();
+                                                                let colors = "bg-slate-50 text-slate-400 border-slate-100";
+                                                                if (s === 'approved' || s === 'accepted') colors = "bg-emerald-50 text-emerald-600 border-emerald-100";
+                                                                if (s === 'shortlisted') colors = "bg-blue-50 text-blue-600 border-blue-100";
+                                                                if (s === 'rejected') colors = "bg-rose-50 text-rose-600 border-rose-100";
+                                                                
+                                                                return (
+                                                                    <div className={`inline-flex items-center px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${colors}`}>
+                                                                        {status}
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </td>
+                                                        <td className="px-10 py-8">
+                                                            <div className="flex flex-col items-center justify-center gap-2">
+                                                                <span className={`text-base font-black ${item.score >= 80 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                                                    {item.score || 0}%
+                                                                </span>
+                                                                <div className="w-16 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                                    <div 
+                                                                        className="h-full bg-[#6C3BFF] shadow-[0_0_10px_rgba(108,59,255,0.4)] transition-all duration-1000" 
+                                                                        style={{ width: `${item.score || 0}%` }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-10 py-8 text-right">
+                                                            <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-all">
+                                                                <button 
+                                                                    onClick={() => handleUpdateStatus(item.team_id, 'Approved', item)}
+                                                                    className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                                    title="Approve"
+                                                                >
+                                                                    <CheckCircle2 size={18} />
                                                                 </button>
                                                                 <button 
                                                                     onClick={() => handleUpdateStatus(item.team_id, 'Rejected', item)}
-                                                                    className={`px-6 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${item.status === 'Rejected' ? 'bg-red-500 text-white' : 'bg-red-50 text-red-600 border border-red-100 hover:bg-red-500 hover:text-white'}`}
+                                                                    className="p-3 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                                    title="Reject"
                                                                 >
-                                                                    Reject
+                                                                    <X size={18} />
                                                                 </button>
                                                             </div>
                                                         </td>
-                                                    </tr>
+                                                    </motion.tr>
                                                 ))
                                             ) : (
                                                 <tr>
-                                                    <td colSpan={4} className="px-12 py-32 text-center">
-                                                        <div className="flex flex-col items-center opacity-30">
-                                                            <Filter size={48} className="mb-4" />
-                                                            <p className="font-black text-xs uppercase tracking-widest">No candidates in this bundle protocol</p>
+                                                    <td colSpan={6} className="px-10 py-24 text-center">
+                                                        <div className="flex flex-col items-center opacity-20">
+                                                            <Filter size={64} className="mb-6" />
+                                                            <p className="font-black text-[11px] uppercase tracking-[0.3em]">No items found in {bundleTab} protocol</p>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -1153,114 +1414,92 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         </tbody>
                                     </table>
                                 </div>
-                            </div>
+                            </>
                         ) : (
-                            <div className="bg-white rounded-[3.5rem] border border-slate-100 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            /* Phase Deliverables View */
+                            <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
                                 <table className="w-full text-left">
-                                    <thead className="bg-slate-50/50">
-                                        <tr>
-                                            <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Phase / Stage</th>
-                                            <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Submitted By</th>
-                                            <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Deliverable Asset</th>
-                                            <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Assigned Judges</th>
-                                            <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Timestamp</th>
+                                    <thead>
+                                        <tr className="bg-slate-50/50">
+                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Team/Participant</th>
+                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Asset Details</th>
+                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Evaluation Dispatched</th>
+                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Submitted At</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {stageSubmissions.length > 0 ? (
-                                            stageSubmissions.map((sub: any) => {
-                                                const stageName = (event.stages || []).find((s: any) => s.id === sub.stage_id)?.name || 'Unknown Stage';
-                                                return (
-                                                    <tr key={sub._id} className="hover:bg-slate-50/50 transition-colors">
-                                                        <td className="px-10 py-6">
-                                                            <div className="font-black text-slate-900">{stageName}</div>
-                                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Ref ID: {String(sub.stage_id).slice(0, 8)}</div>
-                                                        </td>
-                                                        <td className="px-10 py-6">
-                                                            <div className="font-bold text-slate-700">{sub.team_name || sub.user_name || 'Anonymous Participant'}</div>
-                                                            <div className="text-[10px] font-black text-purple-600 uppercase tracking-widest mt-1">{sub.team_id ? 'Unit Submission' : 'Solo Asset'}</div>
-                                                        </td>
-                                                        <td className="px-10 py-6">
-                                                            <div className="flex flex-col gap-2">
-                                                                {sub.data?.file_url && (
-                                                                    <button 
-                                                                        onClick={() => setPreviewAsset({
-                                                                            url: `${API_BASE_URL}${sub.data.file_url}`,
-                                                                            filename: sub.data.filename || 'Deliverable',
-                                                                            type: 'file'
-                                                                        })}
-                                                                        className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 text-blue-700 rounded-2xl hover:bg-blue-600 hover:text-white transition-all w-fit shadow-sm"
-                                                                    >
-                                                                        <Eye size={16} />
-                                                                        <span className="text-[10px] font-black uppercase tracking-widest">Preview Asset</span>
-                                                                    </button>
-                                                                )}
-                                                                {sub.data?.url && (
-                                                                    <a 
-                                                                        href={sub.data.url} 
-                                                                        target="_blank" 
-                                                                        rel="noreferrer"
-                                                                        className="inline-flex items-center gap-3 px-4 py-3 bg-slate-900 text-white rounded-2xl hover:bg-[#6C3BFF] transition-all w-fit shadow-sm"
-                                                                    >
-                                                                        <ExternalLink size={16} />
-                                                                        <span className="text-[10px] font-black uppercase tracking-widest">External Protocol Link</span>
-                                                                    </a>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-10 py-6">
-                                                            <div className="flex flex-col gap-2">
-                                                                {/* Show assigned judges */}
-                                                                {sub.assigned_judges && sub.assigned_judges.length > 0 ? (
-                                                                    <div className="flex flex-wrap gap-1">
-                                                                        {sub.assigned_judges.map((judge: any, jIdx: number) => (
-                                                                            <span key={jIdx} className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-emerald-100">
-                                                                                {judge.name || judge.email}
-                                                                            </span>
-                                                                        ))}
+                                    <tbody className="divide-y divide-slate-50">
+                                        {stageSubmissions.length > 0 ? stageSubmissions.map((sub: any, idx: number) => (
+                                            <tr key={sub._id || idx} className="hover:bg-slate-50/30 transition-colors group">
+                                                <td className="px-10 py-8">
+                                                    <div className="font-black text-slate-900 text-lg tracking-tight">
+                                                        {sub.team_name || sub.user_name || 'Anonymous Participant'}
+                                                    </div>
+                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                                        {sub.team_id ? 'Team Deliverable' : 'Solo Submission'}
+                                                    </div>
+                                                </td>
+                                                <td className="px-10 py-8">
+                                                    <div className="flex items-center gap-3">
+                                                        {sub.data?.file_url ? (
+                                                            <button 
+                                                                onClick={() => setPreviewAsset({
+                                                                    url: `${API_BASE_URL}${sub.data.file_url}`,
+                                                                    filename: sub.data.filename || 'Deliverable',
+                                                                    type: 'file'
+                                                                })}
+                                                                className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
+                                                            >
+                                                                <Eye size={14} /> Preview Asset
+                                                            </button>
+                                                        ) : sub.data?.url ? (
+                                                            <a href={sub.data.url} target="_blank" rel="noreferrer" className="px-4 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-[#6C3BFF] transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                                                                <ExternalLink size={14} /> View Submission
+                                                            </a>
+                                                        ) : (
+                                                            <span className="text-slate-300 italic text-xs font-bold">No assets found</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-10 py-8">
+                                                    <div className="space-y-3">
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {(sub.assigned_judge_emails || []).length > 0 ? (
+                                                                sub.assigned_judge_emails.map((email: string, i: number) => (
+                                                                    <div key={i} className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-xl border border-purple-100 text-[9px] font-black uppercase tracking-wider flex items-center gap-2">
+                                                                        <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" />
+                                                                        {email.split('@')[0]}
                                                                     </div>
-                                                                ) : (
-                                                                    <span className="text-[10px] text-slate-400 font-medium">No judges assigned</span>
-                                                                )}
-                                                                {/* Judge assignment dropdown */}
-                                                                {event.judges && event.judges.length > 0 && (
-                                                                    <div className="relative">
-                                                                        <select
-                                                                            value={subJudgePick[sub._id]?.join(',') || ''}
-                                                                            onChange={(e) => {
-                                                                                const selectedEmails = Array.from(e.target.selectedOptions).map(o => o.value);
-                                                                                setSubJudgePick(prev => ({ ...prev, [sub._id]: selectedEmails }));
-                                                                                handleAssignJudgesToSubmission(sub._id, selectedEmails);
-                                                                            }}
-                                                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-purple-50 focus:border-purple-200 transition-all cursor-pointer"
-                                                                        >
-                                                                            <option value="">Assign judges...</option>
-                                                                            {event.judges.map((judge: any, jIdx: number) => (
-                                                                                <option key={jIdx} value={judge.email}>
-                                                                                    {judge.name} ({judge.email})
-                                                                                </option>
-                                                                            ))}
-                                                                        </select>
-                                                                    </div>
-                                                                )}
-                                                                {assigningSubmission === sub._id && (
-                                                                    <span className="text-[9px] font-black text-purple-600 uppercase tracking-widest animate-pulse">Assigning...</span>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-10 py-6 text-right">
-                                                            <div className="text-sm font-bold text-slate-500">{new Date(sub.submitted_at).toLocaleString()}</div>
-                                                            <div className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mt-1">Live Sync Active</div>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })
-                                        ) : (
+                                                                ))
+                                                            ) : (
+                                                                <button 
+                                                                    onClick={() => handleOpenJudgeAssignment(sub._id)}
+                                                                    className="px-3 py-1.5 bg-white text-[#6C3BFF] border border-[#6C3BFF]/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-[#6C3BFF] hover:text-white transition-all"
+                                                                >
+                                                                    + Assign Evaluator
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-10 py-8 text-center">
+                                                    <div className={`inline-flex items-center px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${
+                                                        (sub.status || '').toLowerCase() === 'submitted' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'
+                                                    }`}>
+                                                        {sub.status || 'Received'}
+                                                    </div>
+                                                </td>
+                                                <td className="px-10 py-8 text-right">
+                                                    <div className="text-xs font-bold text-slate-500">{new Date(sub.submitted_at).toLocaleString()}</div>
+                                                    <div className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mt-1">Live Sync Active</div>
+                                                </td>
+                                            </tr>
+                                        )) : (
                                             <tr>
-                                                <td colSpan={5} className="px-12 py-32 text-center">
-                                                    <div className="flex flex-col items-center opacity-30">
-                                                        <Info size={48} className="mb-4" />
-                                                        <p className="font-black text-xs uppercase tracking-widest">No phase deliverables detected yet</p>
+                                                <td colSpan={5} className="px-10 py-24 text-center">
+                                                    <div className="flex flex-col items-center opacity-20">
+                                                        <FileText size={64} className="mb-6" />
+                                                        <p className="font-black text-[11px] uppercase tracking-[0.3em]">No phase deliverables detected yet</p>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1271,65 +1510,32 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         )}
                     </div>
                 );
-            case 'judges':
-                return (
-                    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between bg-slate-900 p-12 rounded-[3.5rem] text-white relative overflow-hidden gap-10 shadow-2xl">
-                            <div className="relative z-10">
-                                <h3 className="text-3xl font-black tracking-tight">Evaluator Panel</h3>
-                                <p className="text-slate-400 max-w-md mt-3 text-lg opacity-80">Orchestrate expert reviews via professional invitations.</p>
-                            </div>
-                            <Gavel size={180} className="absolute -right-10 -bottom-10 text-white/5 rotate-12" />
-                            <button onClick={() => setIsJudgeModalOpen(true)} className="relative z-10 px-10 py-5 bg-white text-slate-900 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-[#6C3BFF] hover:text-white transition-all shadow-2xl shadow-black/40 flex items-center justify-center gap-3">
-                                <Plus size={22} /> External Appointment
-                            </button>
-                        </div>
 
-                        {institution?.team && (
-                            <div className="p-10 bg-purple-50/40 rounded-[3rem] border border-purple-100 shadow-inner">
-                                <h4 className="font-black text-slate-400 uppercase text-[10px] tracking-widest mb-8 flex items-center gap-3"><Users size={16} /> Rapid Faculty Assignment</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                                    {institution.team.map((member: any, i: number) => {
-                                        const isAlreadyJudge = event.judges?.some((j: any) => j.email === member.email);
-                                        return (
-                                            <button 
-                                                key={i} 
-                                                disabled={isAlreadyJudge}
-                                                onClick={() => handleInviteJudge({ name: member.name, email: member.email, expertise: member.role })}
-                                                className={`p-6 bg-white border-2 rounded-[2rem] text-center transition-all ${isAlreadyJudge ? 'opacity-40 grayscale' : 'hover:border-[#6C3BFF] hover:shadow-xl hover:-translate-y-1 border-slate-50 shadow-sm'}`}
-                                            >
-                                                <div className="font-black text-sm text-slate-900 truncate">{member.name}</div>
-                                                <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-2">{member.role}</div>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            {event.judges?.map((judge: any, idx: number) => (
-                                <div key={idx} className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-sm group hover:shadow-2xl transition-all relative overflow-hidden">
-                                    <div className="flex justify-between items-start mb-8">
-                                        <div className="w-20 h-20 bg-slate-50 text-[#6C3BFF] rounded-[1.5rem] flex items-center justify-center font-black text-2xl group-hover:bg-[#6C3BFF] group-hover:text-white transition-all shadow-inner">{judge.name.charAt(0)}</div>
-                                        <span className={`px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm ${judge.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>{judge.status || 'PENDING'}</span>
-                                    </div>
-                                    <h4 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">{judge.name}</h4>
-                                    <p className="text-sm text-slate-500 font-bold mb-8">{judge.email}</p>
-                                    <div className="flex flex-wrap gap-3 pt-8 border-t border-slate-50">
-                                        <button 
-                                            onClick={() => handleRemoveJudge(judge.email)}
-                                            className="flex-1 py-4 bg-slate-50 text-slate-400 hover:text-red-500 hover:bg-red-50 font-black text-[9px] uppercase tracking-widest rounded-xl transition-all"
-                                        >
-                                            Revoke Assignment
-                                        </button>
-                                        <button className="p-4 bg-slate-50 text-slate-400 hover:text-[#6C3BFF] hover:bg-purple-50 rounded-xl transition-all"><Mail size={16} /></button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             case 'criteria':
                 return (
                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1410,7 +1616,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         <div className="space-y-10 max-w-7xl mx-auto animate-in fade-in duration-700 pb-20">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
                 <div className="flex items-center gap-6">
-                    <button onClick={onBack} className="p-4 bg-white border border-slate-100 rounded-3xl text-slate-400 hover:text-[#6C3BFF] hover:shadow-xl transition-all active:scale-95"><ArrowLeft size={28} /></button>
+                    {role !== 'judge' && (
+                        <button onClick={onBack} className="p-4 bg-white border border-slate-100 rounded-3xl text-slate-400 hover:text-[#6C3BFF] hover:shadow-xl transition-all active:scale-95">
+                            <ArrowLeft size={28} />
+                        </button>
+                    )}
                     <div>
                          <div className="flex items-center gap-3 mb-1">
                              <h1 className="text-4xl font-black text-slate-900 tracking-tighter">{event.title}</h1>
@@ -1420,24 +1630,72 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
-                    <button onClick={handleSaveEvent} disabled={saving} className={`px-10 py-5 ${showSaveSuccess ? 'bg-emerald-500' : 'bg-slate-900'} text-white rounded-[1.8rem] font-black text-xs uppercase tracking-widest hover:scale-[1.05] active:scale-95 transition-all shadow-2xl shadow-black/10 flex items-center gap-3`}>
-                        {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : showSaveSuccess ? <CheckCircle2 size={18} /> : <Save size={18} />}
-                        {saving ? 'Syncing...' : showSaveSuccess ? 'Vaulted' : 'Sync Changes'}
-                    </button>
+                    {role !== 'judge' && (
+                        <button 
+                            onClick={handleSaveEvent} 
+                            disabled={saving} 
+                            className={`px-10 py-5 ${showSaveSuccess ? 'bg-emerald-500' : hasUnsavedChanges ? 'bg-[#6C3BFF] animate-pulse' : 'bg-slate-900'} text-white rounded-[1.8rem] font-black text-xs uppercase tracking-widest hover:scale-[1.05] active:scale-95 transition-all shadow-2xl shadow-black/10 flex items-center gap-3 relative`}
+                        >
+                            {hasUnsavedChanges && !saving && !showSaveSuccess && (
+                                <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-[8px] border-2 border-white animate-bounce shadow-lg">!</div>
+                            )}
+                            {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : showSaveSuccess ? <CheckCircle2 size={18} /> : <Save size={18} />}
+                            {saving ? 'Syncing...' : showSaveSuccess ? 'Vaulted' : hasUnsavedChanges ? 'Sync Changes' : 'All Changes Saved'}
+                        </button>
+                    )}
                 </div>
             </div>
 
-            <div className="flex items-center gap-1.5 bg-slate-100/40 p-2 rounded-[2.5rem] overflow-x-auto no-scrollbar shadow-inner backdrop-blur-md">
-                {tabs.map((tab) => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-3 px-8 py-4 rounded-[1.8rem] font-black text-xs uppercase tracking-widest whitespace-nowrap transition-all ${activeTab === tab.id ? 'bg-white text-[#6C3BFF] shadow-2xl shadow-purple-200' : 'text-slate-400 hover:text-slate-600'}`}>
-                        <tab.icon size={20} className={activeTab === tab.id ? 'text-[#6C3BFF]' : 'text-slate-300'} /> {tab.label}
-                    </button>
-                ))}
-            </div>
+            {/* Bulk Action Bar */}
+            <FramerAnimatePresence>
+                {selectedSubmissions.length > 0 && (
+                    <motion.div 
+                        initial={{ y: 100, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: 100, opacity: 0 }}
+                        className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[60] w-full max-w-2xl px-6"
+                    >
+                        <div className="bg-slate-900 text-white rounded-[2.5rem] p-4 shadow-2xl flex items-center justify-between gap-6 border border-white/10 backdrop-blur-xl bg-opacity-95">
+                            <div className="flex items-center gap-6 pl-4">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selection Active</span>
+                                    <span className="text-xl font-black">{selectedSubmissions.length} <span className="text-slate-500">Teams Selected</span></span>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-3 pr-2">
+                                <button 
+                                    onClick={() => handleOpenJudgeAssignment('bulk')}
+                                    className="px-8 py-4 bg-[#6C3BFF] hover:bg-[#5a2ee6] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 shadow-lg shadow-purple-500/20"
+                                >
+                                    <Gavel size={16} />
+                                    Assign Judge to Group
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedSubmissions([])}
+                                    className="p-4 bg-white/5 hover:bg-white/10 text-white rounded-2xl transition-all"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </FramerAnimatePresence>
+
+            {role !== 'judge' && (
+                <div className="flex items-center gap-1.5 bg-slate-100/40 p-2 rounded-[2.5rem] overflow-x-auto no-scrollbar shadow-inner backdrop-blur-md">
+                    {tabs.map((tab) => (
+                        <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-3 px-8 py-4 rounded-[1.8rem] font-black text-xs uppercase tracking-widest whitespace-nowrap transition-all ${activeTab === tab.id ? 'bg-white text-[#6C3BFF] shadow-2xl shadow-purple-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                            <tab.icon size={20} className={activeTab === tab.id ? 'text-[#6C3BFF]' : 'text-slate-300'} /> {tab.label}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             <div className="bg-white/40 backdrop-blur-xl border border-white/20 p-2.5 rounded-[4rem] shadow-2xl shadow-slate-200/50">
                 <div className="bg-white p-12 rounded-[3.5rem] shadow-inner min-h-[600px] border border-slate-50">
-                    <AnimatePresence mode="wait">
+                                        <FramerAnimatePresence mode="wait">
                         <motion.div
                             key={activeTab}
                             initial={{ opacity: 0, y: 10 }}
@@ -1447,7 +1705,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         >
                             {renderTabContent()}
                         </motion.div>
-                    </AnimatePresence>
+                    </FramerAnimatePresence>
                 </div>
             </div>
 
@@ -1457,10 +1715,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 onSave={handleCreateQuiz}
                 loading={isCreatingQuiz}
             />
-            <JudgeInviteModal isOpen={isJudgeModalOpen} onClose={() => setIsJudgeModalOpen(false)} onInvite={handleInviteJudge} loading={isInviting} />
 
             {/* Asset Preview Modal */}
-            <AnimatePresence>
+            <FramerAnimatePresence>
                 {previewAsset && (
                     <motion.div 
                         initial={{ opacity: 0 }}
@@ -1482,8 +1739,16 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 <div className="flex items-center gap-4">
                                     <a 
                                         href={previewAsset.url} 
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] hover:text-white transition-all"
+                                    >
+                                        <ExternalLink size={14} /> Open Original
+                                    </a>
+                                    <a 
+                                        href={previewAsset.url} 
                                         download 
-                                        className="flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all"
+                                        className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:shadow-xl transition-all"
                                     >
                                         <Download size={14} /> Download
                                     </a>
@@ -1517,40 +1782,62 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             className="w-full h-full"
                                         />
                                     ) : previewAsset.filename.toLowerCase().match(/\.(pptx|ppt|docx|doc|xlsx|xls)$/) ? (
-                                        // Office files require download to view - browsers can't render PPT/DOCX natively
-                                        <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
-                                            <div className="w-24 h-24 bg-purple-50 rounded-3xl flex items-center justify-center text-5xl shadow-inner">
-                                                {previewAsset.filename.toLowerCase().match(/\.(pptx|ppt)$/) ? '📊' : 
-                                                 previewAsset.filename.toLowerCase().match(/\.(docx|doc)$/) ? '📝' : '📈'}
+                                        <div className="w-full h-full flex flex-col bg-slate-50 relative">
+                                            <div className="absolute inset-0 flex items-center justify-center -z-0">
+                                                <div className="w-12 h-12 border-4 border-slate-200 border-t-[#6C3BFF] rounded-full animate-spin"></div>
                                             </div>
-                                            <div className="text-center space-y-3 max-w-md">
-                                                <p className="text-2xl font-black text-slate-900">{previewAsset.filename}</p>
-                                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-                                                    <p className="text-sm font-bold text-amber-700">
-                                                        📢 This file type requires download to view
-                                                    </p>
-                                                    <p className="text-xs text-amber-600 mt-1">
-                                                        Browsers cannot display PPT/DOCX files. Please download and open with the appropriate application.
-                                                    </p>
+                                            <iframe 
+                                                src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewAsset.url)}&embedded=true`}
+                                                className="flex-1 w-full border-none bg-white relative z-10"
+                                                title="Office Preview"
+                                            />
+                                            <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between px-8">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center text-orange-600 font-black text-xs">PPT</div>
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Document Intelligence Protocol Active</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <a 
+                                                        href={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewAsset.url)}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all"
+                                                    >
+                                                        Alternative Viewer (MS Office)
+                                                    </a>
                                                 </div>
                                             </div>
-                                            <div className="flex gap-3">
-                                                <a 
-                                                    href={previewAsset.url} 
-                                                    download 
-                                                    className="flex items-center gap-2 px-10 py-5 bg-[#6C3BFF] text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-purple-900/20"
-                                                >
-                                                    <Download size={20} /> Download File
-                                                </a>
-                                                <a 
-                                                    href={previewAsset.url} 
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex items-center gap-2 px-8 py-5 bg-slate-100 text-slate-700 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-                                                >
-                                                    <ExternalLink size={18} /> Try Browser View
-                                                </a>
-                                            </div>
+                                            {/* Localhost / Offline Fallback */}
+                                            {previewAsset.url.includes('localhost') && (
+                                                <div className="absolute inset-0 z-20 bg-white/90 backdrop-blur-sm flex items-center justify-center p-12 text-center">
+                                                    <div className="max-w-md space-y-6">
+                                                        <div className="w-20 h-20 bg-amber-50 rounded-[2rem] flex items-center justify-center text-4xl mx-auto shadow-inner">🚧</div>
+                                                        <div className="space-y-2">
+                                                            <h4 className="text-xl font-black text-slate-900 uppercase tracking-tight">Localhost Preview Blocked</h4>
+                                                            <p className="text-sm text-slate-500 leading-relaxed font-medium">
+                                                                Cloud viewers (Google/Microsoft) cannot access files stored on your local machine (localhost).
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex flex-col gap-3">
+                                                            <a 
+                                                                href={previewAsset.url} 
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="w-full py-4 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-purple-500/20"
+                                                            >
+                                                                Open File Directly
+                                                            </a>
+                                                            <a 
+                                                                href={previewAsset.url} 
+                                                                download
+                                                                className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest"
+                                                            >
+                                                                Download & View
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
@@ -1583,7 +1870,89 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         </motion.div>
                     </motion.div>
                 )}
-            </AnimatePresence>
+            </FramerAnimatePresence>
+            
+            {/* Judge Assignment Modal */}
+            {judgeAssignmentModal.isOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70]">
+                    <div className="bg-white rounded-[3rem] p-10 max-w-md w-full mx-4 shadow-2xl border border-slate-100">
+                        <div className="mb-8">
+                            <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                                {judgeAssignmentModal.submissionId === 'bulk' ? 'Bulk Assignment' : 'Assign Judge'}
+                            </h3>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                {judgeAssignmentModal.submissionId === 'bulk' ? `Assigning to ${selectedSubmissions.length} projects` : 'Single Project Evaluation'}
+                            </p>
+                        </div>
+                        <div className="space-y-4 max-h-64 overflow-y-auto">
+                            {availableJudges.length > 0 ? (
+                                availableJudges.map((judge: any) => (
+                                    <div key={judge._id} className="p-4 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h4 className="font-semibold text-slate-900">{judge.name || 'Unknown Judge'}</h4>
+                                                <p className="text-sm text-slate-600">{judge.email}</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => handleAssignJudge(judge._id, judge.email)}
+                                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                                                >
+                                                    Assign
+                                                </button>
+                                                {judgeAssignmentModal.submissionId !== 'bulk' && (
+                                                    <button 
+                                                        onClick={() => copyToClipboard(`${window.location.origin}/evaluate/${judgeAssignmentModal.submissionId}`)}
+                                                        className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
+                                                        title="Copy Evaluation Link"
+                                                    >
+                                                        <Copy size={16} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-center py-8">
+                                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                                        <UserPlus size={24} />
+                                    </div>
+                                    <p className="text-slate-600 font-bold">No judges available</p>
+                                    <p className="text-xs text-slate-400 mt-2 max-w-[200px] mx-auto">Invite professional evaluators to review this submission.</p>
+                                    <button 
+                                        onClick={() => setIsJudgeInviteOpen(true)}
+                                        className="mt-6 px-6 py-3 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-xl shadow-purple-500/20"
+                                    >
+                                        Invite New Judge
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-6 flex gap-3">
+                            <button 
+                                onClick={() => setIsJudgeInviteOpen(true)}
+                                className="flex-1 py-3 border border-slate-100 text-[#6C3BFF] rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all"
+                            >
+                                Add Another
+                            </button>
+                            <button 
+                                onClick={() => setJudgeAssignmentModal({ isOpen: false, submissionId: null })}
+                                className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <JudgeInviteModal 
+                isOpen={isJudgeInviteOpen}
+                onClose={() => setIsJudgeInviteOpen(false)}
+                onInvite={handleInviteJudge}
+                loading={isInvitingJudge}
+            />
         </div>
     );
 };

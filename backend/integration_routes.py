@@ -12,7 +12,7 @@ from services.email_service import send_notification_email
 from services.institutional_analytics_service import analytics_service
 from services.institutional_certificate_service import certificate_service
 from services.leaderboard_service import leaderboard_service
-from db import leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col
+from db import leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col
 from bson import ObjectId
 from services.audit_service import log_admin_action
 from notification_helpers import notify_institution
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _list_submissions_for_judge_user(user: dict, event_id: Optional[str] = None) -> list:
-    """Return submitted projects the authenticated user may judge (see ``assigned_judge_emails`` on each submission)."""
+    """Return submitted projects specifically assigned to the authenticated user's email."""
     email = (user.get("email") or "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Your account must have an email to load judge assignments")
@@ -39,12 +39,25 @@ async def _list_submissions_for_judge_user(user: dict, event_id: Optional[str] =
     out = []
     async for doc in submissions_col.find(q):
         assigned = doc.get("assigned_judge_emails") or []
-        if assigned:
-            norm = {str(a).strip().lower() for a in assigned if a}
-            if email not in norm:
-                continue
+        # CRITICAL: If no judge assigned, or this judge is not assigned, skip.
+        norm = {str(a).strip().lower() for a in assigned if a}
+        if email not in norm:
+            continue
+            
         row = dict(doc)
         row["_id"] = str(row["_id"])
+        
+        # PRIVACY: Sanitize student contact data
+        sanitized_data = row.get("data", {}).copy()
+        for field in ['user_email', 'user_name', 'email', 'contact', 'phone']:
+            if field in sanitized_data:
+                del sanitized_data[field]
+        row["data"] = sanitized_data
+        
+        # CLEANUP: Remove other judge emails for privacy
+        if "assigned_judge_emails" in row:
+            del row["assigned_judge_emails"]
+            
         out.append(row)
     return out
 
@@ -161,11 +174,19 @@ async def get_event_participants(event_id: str, user: dict = Depends(get_auth_us
     seen_row_ids = set()
     seen_user_ids = set()
 
-    linked_opp = await opportunities_col.find_one({"event_link_id": event_id})
+    # Robust event_id variants
+    ev_id_variants = [event_id, str(event_id)]
+    try:
+        if len(str(event_id)) == 24:
+            ev_id_variants.append(ObjectId(event_id))
+    except:
+        pass
+
+    linked_opp = await opportunities_col.find_one({"event_link_id": {"$in": ev_id_variants}})
     opp_id_ctx = str(linked_opp["_id"]) if linked_opp else None
 
     # 1. Traditional participants collection
-    cursor = participants_col.find({"event_id": event_id})
+    cursor = participants_col.find({"event_id": {"$in": ev_id_variants}})
     async for student in cursor:
         sid = str(student["_id"])
         student["_id"] = sid
@@ -247,10 +268,92 @@ async def institution_review_opportunity_application(data: dict = Body(...), use
         raise HTTPException(status_code=400, detail=str(e))
     except PermissionError:
         raise HTTPException(status_code=403, detail="Not allowed to update this application")
+    
     if not out:
         raise HTTPException(status_code=404, detail="Application not found")
     return out
 
+@router.post("/trigger-global-reminders")
+async def trigger_global_reminders(institution_id: str = Query(...), user: dict = Depends(get_auth_user)):
+    """
+    Manually triggers the participant notification engine for all events 
+    linked to this institution.
+    """
+    assert_institution_scope(institution_id, user)
+    from services.reminder_service import reminder_service
+    
+    # We run it as a task to not block the request
+    asyncio.create_task(reminder_service.send_participant_reminders())
+    
+    return {"status": "success", "message": "Global notification protocol initiated."}
+
+@router.post("/events/{event_id}/send-reminders")
+async def send_event_deadline_reminders(event_id: str, user: dict = Depends(get_auth_user)):
+    """
+    Institution triggers deadline reminder emails to all registered participants
+    for the current active stage.
+    """
+    await assert_institution_owns_event(user, event_id)
+    
+    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+        
+    # Find next deadline
+    from services.opportunity_service import _safe_dt
+    now = datetime.utcnow()
+    stages = ev.get("stages") or []
+    next_stage = None
+    next_deadline = None
+    
+    for s in stages:
+        end = _safe_dt(s.get("deadline") or s.get("endDate") or s.get("end_date"))
+        if end and end > now:
+            if not next_deadline or end < next_deadline:
+                next_deadline = end
+                next_stage = s
+    
+    if not next_stage:
+        return {"status": "success", "message": "No upcoming deadlines found."}
+        
+    # Fetch all participants
+    participants = await participants_col.find({"event_id": str(event_id)}).to_list(length=5000)
+    emails = [p.get("email") for p in participants if p.get("email")]
+    
+    if not emails:
+        return {"status": "success", "message": "No participants found to email."}
+        
+    subject = f"Deadline Reminder: {ev.get('title')} - {next_stage.get('name')}"
+    deadline_str = next_deadline.strftime("%d %B, %Y at %I:%M %p")
+    
+    # Send emails in background
+    for email in set(emails):
+        body = f"""
+        <html>
+            <body style="font-family: sans-serif; color: #333;">
+                <div style="max-width: 600px; margin: auto; padding: 30px; border: 1px solid #eee; border-radius: 20px; background: #fff;">
+                    <h2 style="color: #6C3BFF;">⏰ Deadline Approaching!</h2>
+                    <p>This is a friendly reminder for <strong>{ev.get('title')}</strong>.</p>
+                    <p>The submission window for <strong>{next_stage.get('name')}</strong> is closing soon.</p>
+                    <div style="background: #F5F3FF; padding: 20px; border-radius: 12px; margin: 20px 0;">
+                        <p style="margin: 0; color: #7C3AED; font-weight: bold;">Submission Deadline:</p>
+                        <p style="margin: 5px 0 0 0; font-size: 18px;">{deadline_str}</p>
+                    </div>
+                    <p>Please ensure you have uploaded your files or links before the cutoff. Late submissions will not be accepted.</p>
+                    <br>
+                    <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/#/events/{event_id}" 
+                       style="background: #6C3BFF; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+                       View Event Dashboard
+                    </a>
+                    <br><br>
+                    <p style="font-size: 12px; color: #999;">Best Regards,<br>{ev.get('organisation') or 'Organizing Team'}</p>
+                </div>
+            </body>
+        </html>
+        """
+        asyncio.create_task(send_notification_email(email, subject, body))
+        
+    return {"status": "success", "count": len(emails), "stage": next_stage.get("name")}
 
 @router.get("/participants/{institution_id}")
 async def get_all_institution_participants(institution_id: str, user: dict = Depends(get_auth_user)):
@@ -321,136 +424,114 @@ async def get_all_institution_participants(institution_id: str, user: dict = Dep
     return results
 
 @router.get("/events/{event_id}/qualified-bundle")
-async def get_qualified_bundle(
-    event_id: str,
-    user: dict = Depends(get_auth_user),
-    stage_name: Optional[str] = None,
-    threshold: float = 90.0,
-):
-    """
-    Advanced Filtering: Bundles teams into Approved, Rejected, or Pending 
-    based on a multi-criteria scoring matrix.
-    """
-    await assert_institution_owns_event(event_id, user)
-    from db import scores_col, teams_col, submissions_col
+async def get_qualified_bundle(event_id: str, threshold: float = 80.0, user: dict = Depends(get_auth_user)):
+    ev_id_variants = [event_id]
+    try:
+        ev_id_variants.append(ObjectId(event_id))
+    except Exception:
+        pass
     
-    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    event = await events_col.find_one({"_id": {"$in": ev_id_variants}})
     if not event: raise HTTPException(status_code=404, detail="Event not found")
     
-    # 1. Aggregate scores for all criteria (event_id may be stored as string or ObjectId string)
-    pipeline = [
-        {"$match": {"event_id": {"$in": [event_id, str(event_id)]}}},
-        {"$group": {
-            "_id": "$team_id",
-            "total_avg_score": {"$avg": "$total_score"},
-            "criteria_breakdown": {"$first": "$criteria_scores"}, # Assuming judge scores are stored here
-            "judge_count": {"$sum": 1}
-        }}
-    ]
-    results = await scores_col.aggregate(pipeline).to_list(None)
+    # --- NEW ROBUST CATEGORIZATION LOGIC ---
+    # 1. Start with ALL TEAMS and SOLO participants in this event
+    all_items = {} # key: team_id or solo_user_id
+    total_judges = len(event.get("judges", []))
     
+    t_cursor = teams_col.find({"event_id": {"$in": ev_id_variants}})
+    async for t in t_cursor:
+        tid = str(t["_id"])
+        all_items[tid] = {
+            "type": "team",
+            "team_id": tid,
+            "team_name": t.get("name") or t.get("team_name") or "Unnamed Team",
+            "score": 0,
+            "judges_completed": 0,
+            "total_judges": total_judges,
+            "is_fully_evaluated": False,
+            "status": t.get("institution_selection") or "Pending",
+            "assigned_judges": [],
+            "source": "team_registry"
+        }
+
+    s_cursor = submissions_col.find({
+        "event_id": {"$in": ev_id_variants},
+        "team_id": {"$exists": False}
+    })
+    async for s in s_cursor:
+        uid = str(s.get("user_id") or "")
+        if not uid: continue
+        sid = str(s["_id"])
+        all_items[f"solo:{uid}"] = {
+            "type": "solo",
+            "user_id": uid,
+            "team_name": s.get("user_name") or s.get("full_name") or "Solo Participant",
+            "score": 0,
+            "judges_completed": 0,
+            "total_judges": total_judges,
+            "is_fully_evaluated": False,
+            "status": s.get("status") or "Pending",
+            "assigned_judges": [],
+            "submission_id": sid,
+            "source": "solo_registry"
+        }
+
+    # 2. Synchronize with Submission Data (Assignments & Recs)
+    sd_cursor = submission_data_col.find({"event_id": {"$in": ev_id_variants}})
+    async for sd in sd_cursor:
+        tid = sd.get("team_id")
+        uid = sd.get("user_id")
+        key = tid if tid else (f"solo:{uid}" if uid else None)
+        if not key or key not in all_items: continue
+        
+        item = all_items[key]
+        item["assigned_judges"] = sd.get("assigned_judges", [])
+        item["total_judges"] = len(item["assigned_judges"]) if item["assigned_judges"] else total_judges
+        item["submission_id"] = str(sd["_id"])
+        
+        rec = str(sd.get("evaluation_recommendation") or "").lower()
+        if "shortlist" in rec: item["status"] = "Shortlisted"
+        elif "reject" in rec: item["status"] = "Rejected"
+        elif "approve" in rec or "accept" in rec: item["status"] = "Approved"
+
+    # 3. Apply Real-time Scores
+    sc_cursor = scores_col.find({"event_id": {"$in": ev_id_variants}})
+    async for sc in sc_cursor:
+        tid = sc.get("team_id")
+        sid = sc.get("submission_id")
+        target = all_items.get(str(tid)) if tid else None
+        if not target:
+            for it in all_items.values():
+                if it.get("submission_id") == str(sid):
+                    target = it
+                    break
+        if target:
+            target["score"] = sc.get("total_score") or sc.get("score") or 0
+            target["judges_completed"] += 1
+            target["is_fully_evaluated"] = target["judges_completed"] >= target["total_judges"]
+
+    # 4. Final Categorization
+    shortlisted = []
     approved = []
     rejected = []
     pending = []
     
-    # Total assigned judges count for 'Pending' logic
-    total_judges = len(event.get("judges", []))
-    
-    for res in results:
-        team = await teams_col.find_one({"_id": ObjectId(res["_id"])})
-        if not team: continue
-        
-        team_data = {
-            "team_id": str(team["_id"]),
-            "team_name": team["name"],
-            "score": round(res["total_avg_score"], 2),
-            "judges_completed": res["judge_count"],
-            "is_fully_evaluated": res["judge_count"] >= total_judges,
-            "status": team.get("institution_selection") or "Pending",
-        }
-        
-        if res["judge_count"] < total_judges:
-            pending.append(team_data)
-        elif res["total_avg_score"] >= threshold:
-            approved.append(team_data)
-        else:
-            rejected.append(team_data)
-            
-    # Also find teams with 0 scores (Pending)
-    scored_team_ids = [res["_id"] for res in results]
-    team_event_filter = {"$in": [event_id, str(event_id)]}
-    cursor = teams_col.find({"event_id": team_event_filter, "_id": {"$nin": scored_team_ids}})
-    async for team in cursor:
-        pending.append({
-            "team_id": str(team["_id"]),
-            "team_name": team["name"],
-            "score": 0,
-            "judges_completed": 0,
-            "is_fully_evaluated": False,
-            "status": team.get("institution_selection") or "Pending",
-        })
-
-    # Portal pipeline: shortlisted / accepted applicants on the linked opportunity (often no team row yet)
-    shortlisted_portal = []
-    linked_opp = await opportunities_col.find_one(
-        {"$or": [{"event_link_id": event_id}, {"event_link_id": str(event_id)}]}
-    )
-    if linked_opp:
-        opp_id = str(linked_opp["_id"])
-        opp_id_variants = [opp_id]
-        try:
-            opp_id_variants.append(ObjectId(opp_id))
-        except Exception:
-            pass
-
-        bundled_team_ids = {str(r["team_id"]) for r in approved + rejected + pending}
-
-        uid_to_team: dict = {}
-        tcur = teams_col.find({"event_id": team_event_filter})
-        async for t in tcur:
-            tid = str(t["_id"])
-            for m in t.get("members") or []:
-                if isinstance(m, dict):
-                    u = str(m.get("user_id") or "").strip()
-                    if u:
-                        uid_to_team[u] = tid
-                elif isinstance(m, str) and m.strip():
-                    # legacy string members (e.g. email)
-                    uid_to_team.setdefault(m.strip(), tid)
-
-        acur = opportunity_applications_col.find(
-            {"opportunity_id": {"$in": opp_id_variants}, "status": {"$in": ["shortlisted", "accepted"]}}
-        )
-        async for app in acur:
-            aid = str(app["_id"])
-            uid = str(app.get("user_id") or "").strip()
-            if uid and uid in uid_to_team:
-                if uid_to_team[uid] in bundled_team_ids:
-                    continue
-            name = app.get("name") or app.get("email") or "Applicant"
-            shortlisted_portal.append(
-                {
-                    "team_id": f"portal_app:{aid}",
-                    "team_name": name,
-                    "score": 0,
-                    "judges_completed": 0,
-                    "is_fully_evaluated": False,
-                    "status": "Shortlisted",
-                    "source": "portal_application",
-                    "application_id": aid,
-                    "opportunity_id": opp_id,
-                    "email": app.get("email"),
-                }
-            )
+    for item in all_items.values():
+        st = str(item["status"]).lower()
+        if "shortlist" in st: shortlisted.append(item)
+        elif "approve" in st or "accept" in st: approved.append(item)
+        elif "reject" in st: rejected.append(item)
+        else: pending.append(item)
 
     return {
         "summary": {
-            "shortlisted": len(shortlisted_portal),
+            "shortlisted": len(shortlisted),
             "approved": len(approved),
             "rejected": len(rejected),
             "pending": len(pending),
         },
-        "shortlisted": shortlisted_portal,
+        "shortlisted": shortlisted,
         "approved": approved,
         "rejected": rejected,
         "pending": pending,
@@ -471,16 +552,48 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
     
     success_count = 0
     for tid in team_ids:
+        # Handle solo participant submissions from bundle
+        if str(tid).startswith("sub:"):
+            sub_id = str(tid).split(":")[1]
+            sub = await submission_data_col.find_one({"_id": ObjectId(sub_id)})
+            if sub:
+                recipient_email = sub.get("user_email") or sub.get("email")
+                if recipient_email:
+                    name = sub.get("user_name") or sub.get("team_name") or "Participant"
+                    subject = f"Selection Alert: Your project is moving to {next_stage}!"
+                    body = f"""
+                    <html>
+                        <body style="font-family: Arial, sans-serif; color: #333;">
+                            <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 20px;">
+                                <h2 style="color: #6C3BFF;">Congratulations {name}!</h2>
+                                <p>Your submission has successfully qualified for the <strong>{next_stage}</strong> of <strong>{event['title']}</strong>.</p>
+                                <p>Our judges were impressed with your work!</p>
+                                <br>
+                                <p><strong>What's Next?</strong><br>Keep an eye on your dashboard for the next steps.</p>
+                                <br>
+                                <p>Best Regards,<br>{event['title']} Organizing Team</p>
+                            </div>
+                        </body>
+                    </html>
+                    """
+                    asyncio.create_task(send_notification_email(recipient_email, subject, body))
+                    success_count += 1
+            continue
+
         team = await teams_col.find_one({"_id": ObjectId(tid)})
         if team:
             # Send to all members of the team
-            for member_email in team.get("members", []):
-                subject = f"Selection Alert: {team['name']} is moving to {next_stage}!"
+            members = team.get("members", [])
+            for m in members:
+                member_email = m.get("email") if isinstance(m, dict) else m
+                if not member_email: continue
+                
+                subject = f"Selection Alert: {team.get('name', 'Your team')} is moving to {next_stage}!"
                 body = f"""
                 <html>
                     <body style="font-family: Arial, sans-serif; color: #333;">
                         <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 20px;">
-                            <h2 style="color: #6C3BFF;">Congratulations Team {team['name']}!</h2>
+                            <h2 style="color: #6C3BFF;">Congratulations Team {team.get('name', 'Success')}!</h2>
                             <p>You have successfully qualified for the <strong>{next_stage}</strong> of <strong>{event['title']}</strong>.</p>
                             <p>Our judges were impressed with your performance!</p>
                             <br>
@@ -543,24 +656,44 @@ async def update_team_institution_selection(
     body: dict,
     user: dict = Depends(get_auth_user),
 ):
-    """Persist Shortlist / Reject from the Selection Command Center (per team)."""
     await assert_institution_owns_event(event_id, user)
-    team = await teams_col.find_one({"_id": ObjectId(team_id), "event_id": event_id})
-    if not team:
-        team = await teams_col.find_one({"_id": ObjectId(team_id), "event_id": str(event_id)})
-    if not team:
-        raise HTTPException(status_code=404, detail="Team not found for this event")
     st = body.get("status", "Pending")
-    await teams_col.update_one(
-        {"_id": ObjectId(team_id)},
-        {
-            "$set": {
+    
+    # Robust event_id variants
+    ev_id_variants = [event_id, str(event_id)]
+    try:
+        if len(str(event_id)) == 24:
+            ev_id_variants.append(ObjectId(event_id))
+    except:
+        pass
+
+    # 1. Try Teams collection
+    team = await teams_col.find_one({"_id": ObjectId(team_id), "event_id": {"$in": ev_id_variants}})
+    
+    if team:
+        await teams_col.update_one(
+            {"_id": ObjectId(team_id)},
+            {"$set": {
                 "institution_selection": st,
                 "institution_selection_at": datetime.now(timezone.utc).isoformat(),
-            }
-        },
-    )
-    return {"status": "ok", "team_id": team_id, "institution_selection": st}
+            }}
+        )
+        return {"status": "ok", "team_id": team_id, "institution_selection": st}
+        
+    # 2. Try Submission Data (for Solo assets)
+    sub = await submissions_col.find_one({"_id": ObjectId(team_id), "event_id": {"$in": ev_id_variants}})
+    if sub:
+        await submissions_col.update_one(
+            {"_id": ObjectId(team_id)},
+            {"$set": {
+                "institution_selection": st,
+                "institution_selection_at": datetime.now(timezone.utc).isoformat(),
+                "evaluation_recommendation": st # Sync with recommendation for bundle visibility
+            }}
+        )
+        return {"status": "ok", "submission_id": team_id, "institution_selection": st}
+
+    raise HTTPException(status_code=404, detail="Candidate (Team or Solo) not found for this event")
 
 
 @router.patch("/events/{event_id}/submissions/{submission_id}/assign-judges")
@@ -993,13 +1126,49 @@ async def mark_my_notifications_read(user: dict = Depends(get_auth_user)):
 
 @router.get("/submissions/{institution_id}")
 async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth_user)):
-    """Retrieves all project submissions filtered by institution."""
+    """
+    Retrieves all project submissions filtered by institution.
+    Synchronized with submission_data for live evaluation status.
+    """
     assert_institution_scope(institution_id, user)
-    from db import submissions_col
-    cursor = submissions_col.find({"institution_id": institution_id})
+    from db import submissions_col, submission_data_col
+    from bson import ObjectId
+    
+    # Type-resilient institution_id variants
+    inst_variants = [institution_id, str(institution_id)]
+    try:
+        if len(str(institution_id)) == 24:
+            inst_variants.append(ObjectId(institution_id))
+    except:
+        pass
+
+    cursor = submissions_col.find({"institution_id": {"$in": inst_variants}})
     subs = []
     async for s in cursor:
-        s["_id"] = str(s["_id"])
+        sid = str(s["_id"])
+        s["_id"] = sid
+        
+        # Merge latest evaluation data from submission_data_col
+        # This ensures "Shortlisted" status propagates to the global dashboard
+        sub_data = await submission_data_col.find_one({
+            "$or": [
+                {"submission_id": sid},
+                {"team_id": s.get("team_id")},
+                {"_id": ObjectId(sid) if len(sid) == 24 else None}
+            ]
+        })
+        
+        if sub_data:
+            # Override status if shortlisted/rejected by judge
+            recommendation = (sub_data.get("evaluation_recommendation") or "").lower()
+            if recommendation == "shortlist":
+                s["status"] = "Shortlisted"
+            elif recommendation == "reject":
+                s["status"] = "Rejected"
+            
+            # Sync scores
+            s["score"] = sub_data.get("evaluation_score") or s.get("score")
+            
         s["submission_date"] = s.get("submitted_at", "2026-04-27")
         subs.append(s)
     return subs
@@ -1377,11 +1546,33 @@ async def update_event_details(event_id: str, update_data: dict, user: dict = De
         for s in update_data["stages"]:
             if isinstance(s, dict) and not s.get("id"):
                 s["id"] = str(uuid.uuid4())
-        # Debug: log the stages being saved
-        print(f"[DEBUG] Saving {len(update_data['stages'])} stages")
-        for s in update_data["stages"]:
-            print(f"[DEBUG] Stage '{s.get('name')}': type={s.get('type')}, config={s.get('config')}")
+            
+            # Synchronize registration deadline from stages
+            if isinstance(s, dict) and str(s.get("type", "")).upper() == "REGISTRATION":
+                reg_end = s.get("end_date") or s.get("endDate") or s.get("deadline")
+                if reg_end:
+                    update_data["registrationDeadline"] = reg_end
+
     await events_col.update_one({"_id": ObjectId(event_id)}, {"$set": update_data})
+    
+    # Synchronize with linked opportunity portal
+    try:
+        from db import opportunities_col
+        opp_update = {}
+        if "stages" in update_data:
+            opp_update["stages"] = update_data["stages"]
+        if "registrationDeadline" in update_data:
+            opp_update["deadline"] = update_data["registrationDeadline"]
+        if "title" in update_data:
+            opp_update["title"] = update_data["title"]
+        if "description" in update_data:
+            opp_update["description"] = update_data["description"]
+            
+        if opp_update:
+            await opportunities_col.update_many({"event_link_id": str(event_id)}, {"$set": opp_update})
+    except Exception as e:
+        print(f"[ERROR] Failed to sync opportunity: {e}")
+
     return {"status": "success"}
 
 @router.post("/events/{event_id}/stages")

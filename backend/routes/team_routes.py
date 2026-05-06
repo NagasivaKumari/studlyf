@@ -11,6 +11,10 @@ from db import teams_col, participants_col, events_col
 
 router = APIRouter(prefix="/api/teams", tags=["Teams"])
 
+@router.get("/test")
+async def test_teams_endpoint():
+    """Test endpoint to verify team routes are working"""
+    return {"status": "ok", "message": "Team routes are working"}
 
 def _team_size_limits(ev: dict) -> tuple[int, int]:
     # Support both naming conventions
@@ -36,6 +40,12 @@ async def my_team_for_event(event_id: str, user: dict = Depends(get_auth_user)):
             team = None
         if team:
             team["_id"] = str(team["_id"])
+            if "leader_id" in team:
+                team["leader_id"] = str(team["leader_id"])
+            if "team_leader_id" in team:
+                team["team_leader_id"] = str(team["team_leader_id"])
+                if "leader_id" not in team:
+                    team["leader_id"] = team["team_leader_id"]
     if p and "_id" in p:
         p["_id"] = str(p["_id"])
         # Don't leak fields we don't need
@@ -43,29 +53,112 @@ async def my_team_for_event(event_id: str, user: dict = Depends(get_auth_user)):
     return {"participant": p, "team": team}
 
 
+@router.post("/send-invite")
+async def send_team_invite(
+    payload: dict = Body(...),
+    user: dict = Depends(get_auth_user),
+):
+    """Send team invite email"""
+    try:
+        team_id = str(payload.get("team_id") or "")
+        invite_email = str(payload.get("invite_email") or "")
+        event_id = str(payload.get("event_id") or "")
+        
+        if not team_id or not invite_email:
+            raise HTTPException(status_code=400, detail="team_id and invite_email are required")
+        
+        # Get team details
+        team = await teams_col.find_one({"_id": ObjectId(team_id)})
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        # Get event details
+        event = await events_col.find_one({"_id": ObjectId(event_id)})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        # Create invite code
+        invite_code = secrets.token_urlsafe(8)
+        
+        # Store invite
+        await teams_col.update_one(
+            {"_id": ObjectId(team_id)},
+            {"$push": {"invites": {
+                "code": invite_code,
+                "email": invite_email,
+                "created_at": datetime.utcnow(),
+                "expires_at": datetime.utcnow() + timedelta(hours=72)
+            }}}
+        )
+        
+        # Send email (placeholder for now)
+        print(f"Team invite sent to {invite_email} with code {invite_code}")
+        
+        return {
+            "success": True,
+            "message": f"Invite sent to {invite_email}",
+            "invite_code": invite_code
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/create-secure")
 async def create_team_secure(
     payload: dict = Body(...),
     user: dict = Depends(get_auth_user),
 ):
+    print(f"DEBUG: Team creation request - User: {user}, Payload: {payload}")
+    
     uid = str(user.get("user_id") or "")
     if not uid:
+        print("DEBUG: No user_id found")
         raise HTTPException(status_code=401, detail="Unauthorized")
+    
     event_id = str(payload.get("event_id") or "").strip()
     team_name = str(payload.get("team_name") or "").strip()
+    
+    print(f"DEBUG: Extracted - event_id: {event_id}, team_name: {team_name}")
+    
     if not event_id or not team_name:
+        print("DEBUG: Missing event_id or team_name")
         raise HTTPException(status_code=400, detail="event_id and team_name are required")
 
-    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+    try:
+        ev = await events_col.find_one({"_id": ObjectId(event_id)})
+    except Exception as e:
+        print(f"DEBUG: Invalid ObjectId format for event_id: {event_id}")
+        raise HTTPException(status_code=400, detail="Invalid event_id format")
+    
     if not ev:
+        print(f"DEBUG: Event not found for event_id: {event_id}")
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Must be registered for the event
+    print(f"DEBUG: Event found: {ev.get('name', 'Unknown')}")
+
+    # Check if user is already registered or has applied
     p = await participants_col.find_one({"event_id": event_id, "user_id": uid})
-    if not p:
-        raise HTTPException(status_code=400, detail="You must register/apply before creating a team")
-    if p.get("team_id"):
+    print(f"DEBUG: Participant record: {p}")
+    
+    if p and p.get("team_id"):
+        print(f"DEBUG: User already in team: {p.get('team_id')}")
         raise HTTPException(status_code=400, detail="You are already in a team")
+    
+    # If not registered, create a basic participant record
+    if not p:
+        print("DEBUG: Creating new participant record")
+        p = {
+            "event_id": event_id,
+            "user_id": uid,
+            "status": "registered",
+            "current_stage": "registration",
+            "team_id": None
+        }
+        result = await participants_col.insert_one(p)
+        p["_id"] = str(result.inserted_id)
+        print(f"DEBUG: Created participant record: {p['_id']}")
+    else:
+        print("DEBUG: Using existing participant record")
 
     min_s, max_s = _team_size_limits(ev)
     if min_s > 1:

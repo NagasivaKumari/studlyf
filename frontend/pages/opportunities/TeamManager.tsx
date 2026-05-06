@@ -16,6 +16,8 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId }) => {
     const [joinCode, setJoinCode] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [showInviteForm, setShowInviteForm] = useState(false);
 
     const fetchTeam = async () => {
         setLoading(true);
@@ -44,26 +46,43 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId }) => {
 
     const handleCreateTeam = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!teamName.trim()) return;
+        if (!teamName.trim()) {
+            setError('Please enter a team name');
+            return;
+        }
         setActionLoading(true);
         setError('');
         setSuccess('');
 
         try {
-            const res = await fetch(`${API_BASE_URL}/api/teams/create-secure`, {
+            console.log('DEBUG: Creating team with:', { event_id: eventId, team_name: teamName });
+            console.log('DEBUG: API_BASE_URL:', API_BASE_URL);
+            
+            const url = `${API_BASE_URL}/api/teams/create-secure`;
+            console.log('DEBUG: Full URL:', url);
+            
+            const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({ event_id: eventId, team_name: teamName }),
             });
+            
+            console.log('DEBUG: Team creation response status:', res.status);
+            console.log('DEBUG: Response headers:', res.headers);
+            
             const data = await res.json();
+            console.log('DEBUG: Team creation response data:', data);
+            
             if (res.ok) {
                 setSuccess('Team created successfully!');
+                setTeamName('');
                 fetchTeam();
             } else {
-                setError(data.detail || 'Failed to create team');
+                setError(data.detail || `Failed to create team (${res.status})`);
             }
         } catch (err) {
-            setError('Network error creating team');
+            console.error('DEBUG: Team creation error:', err);
+            setError(`Network error: ${err}`);
         } finally {
             setActionLoading(false);
         }
@@ -124,6 +143,35 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId }) => {
         navigator.clipboard.writeText(code);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleSendInvite = async () => {
+        if (!inviteEmail.trim() || !teamData?._id) return;
+        setActionLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/teams/send-invite`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({
+                    team_id: teamData._id,
+                    invite_email: inviteEmail,
+                    event_id: eventId
+                }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setSuccess('Invite sent successfully!');
+                setInviteEmail('');
+                setShowInviteForm(false);
+            } else {
+                setError(data.detail || 'Failed to send invite');
+            }
+        } catch (err) {
+            setError('Error sending invite');
+        } finally {
+            setActionLoading(false);
+        }
     };
 
     if (loading) {

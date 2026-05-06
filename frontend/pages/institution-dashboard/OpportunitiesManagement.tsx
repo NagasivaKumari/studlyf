@@ -169,9 +169,20 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
                 return;
             }
             try {
+                console.log(`DEBUG: Fetching events for institution: ${institutionId}`);
                 const response = await fetch(`${API_BASE_URL}/api/v1/institution/events/${institutionId}`, { headers: { ...authHeaders() } });
-                if (!response.ok) throw new Error("Fetch failed");
+                console.log(`DEBUG: Response status: ${response.status}`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`DEBUG: API Error - Status: ${response.status}, Response: ${errorText}`);
+                    setEvents([]);
+                    setLoading(false);
+                    return;
+                }
+                
                 const data = await response.json();
+                console.log(`DEBUG: Events data received: ${data.length} events`);
                 
                 const filteredData = data.filter((e: any) => 
                     e.category !== 'Job' && e.category !== 'Internship'

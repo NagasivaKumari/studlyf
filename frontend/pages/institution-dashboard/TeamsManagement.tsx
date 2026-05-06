@@ -38,21 +38,46 @@ const TeamsManagement: React.FC = () => {
         }
     };
 
-    const handleAddTeam = (e: React.FormEvent) => {
-        e.preventDefault();
-        const newEntry: Team = {
-            teamId: 'T' + Math.floor(Math.random() * 1000).toString().padStart(3, '0'),
-            teamName: newTeam.teamName,
-            leader: newTeam.leader,
-            members: [{name: newTeam.leader, role: 'Leader'}],
-            membersCount: 1,
-            formationDate: new Date().toISOString().split('T')[0],
-            status: 'Pending Approval',
-            event: newTeam.event
-        };
-        setTeams([...teams, newEntry]);
-        setShowAddForm(false);
-        setNewTeam({ teamName: '', leader: '', event: 'Hackathon' });
+    const handleAddTeam = async () => {
+        try {
+            // Send team formation email
+            const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+            const response = await fetch(`${API_BASE_URL}/api/team-formation/send-email`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                },
+                body: JSON.stringify({
+                    teamName: newTeam.teamName,
+                    leader: newTeam.leader,
+                    event: newTeam.event
+                })
+            });
+
+            if (response.ok) {
+                alert('Team formation email sent successfully!');
+                
+                const newEntry: Team = {
+                    teamId: `TM${teams.length + 1}`,
+                    teamName: newTeam.teamName,
+                    leader: newTeam.leader,
+                    members: [],
+                    membersCount: 1,
+                    formationDate: new Date().toISOString(),
+                    status: 'Email Sent',
+                    event: newTeam.event
+                };
+                setTeams([...teams, newEntry]);
+                setShowAddForm(false);
+                setNewTeam({ teamName: '', leader: '', event: 'Hackathon' });
+            } else {
+                alert('Failed to send team formation email');
+            }
+        } catch (error) {
+            console.error('Error sending team formation email:', error);
+            alert('Error sending team formation email');
+        }
     };
 
     const getStatusBadgeClass = (status: string) => {

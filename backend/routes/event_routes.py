@@ -76,9 +76,20 @@ async def get_event_hub_data(event_id: str, user: dict = Depends(get_auth_user))
         
     if team:
         team["_id"] = str(team["_id"])
+        # Stringify leader_id for frontend comparison (EventHub.tsx:265)
+        if "leader_id" in team:
+            team["leader_id"] = str(team["leader_id"])
+        if "team_leader_id" in team:
+            team["team_leader_id"] = str(team["team_leader_id"])
+            # Map team_leader_id to leader_id for compatibility with EventHub.tsx
+            if "leader_id" not in team:
+                team["leader_id"] = team["team_leader_id"]
+                
         if "members" in team:
             for m in team["members"]:
                 if "user_id" in m:
                     m["user_id"] = str(m["user_id"])
                     
+    print(f"DEBUG: Participants endpoint response status: 200")
+    print(f"DEBUG: Participants data received: {p}")
     return {"participant": p, "team": team}

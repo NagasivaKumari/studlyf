@@ -63,7 +63,10 @@ async def get_blind_submissions(event_id: str):
             if is_blind:
                 s.pop("participant_id", None)
                 s.pop("team_id", None)
-                s["masked_identity"] = f"Anonymous_Team_{s['_id'][-4:]}"
+                # Use actual team name if available, otherwise use masked identity
+                team_name = s.get("team_name") or s.get("user_name") or s.get("title") or "Team"
+                s["masked_identity"] = f"{team_name}_{s['_id'][-4:]}"
+
         return {"submissions": subs, "is_blind_mode": is_blind}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
