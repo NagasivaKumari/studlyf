@@ -1444,7 +1444,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                         {sub.data?.file_url ? (
                                                             <button 
                                                                 onClick={() => setPreviewAsset({
-                                                                    url: `${API_BASE_URL}${sub.data.file_url}`,
+                                                                    url: sub.data.file_url.startsWith('http') ? sub.data.file_url : `${API_BASE_URL}${sub.data.file_url}`,
                                                                     filename: sub.data.filename || 'Deliverable',
                                                                     type: 'file'
                                                                 })}

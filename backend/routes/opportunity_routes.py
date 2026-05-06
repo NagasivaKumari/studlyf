@@ -386,22 +386,53 @@ async def learner_upload_stage_file(
                     if datetime.utcnow() > end_dt:
                         raise HTTPException(status_code=403, detail=f"Submission deadline for {s.get('name')} has passed.")
     
-    STAGE_UPLOADS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "stages")
-    os.makedirs(STAGE_UPLOADS, exist_ok=True)
-    
-    unique_filename = f"{stage_id}_{uid}_{uuid.uuid4().hex}{file_ext}"
-    file_path = os.path.join(STAGE_UPLOADS, unique_filename)
-    
-    try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
-    
-    # Generate accessible URL
-    file_url = f"/uploads/stages/{unique_filename}"
+    CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
+    CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
+    CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
 
-    # 3. Store in DB
+    unique_filename = f"{stage_id}_{uid}_{uuid.uuid4().hex}{file_ext}"
+
+    if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
+        # --- Cloudinary upload (persistent across Render restarts) ---
+        try:
+            import cloudinary
+            import cloudinary.uploader
+
+            cloudinary.config(
+                cloud_name=CLOUDINARY_CLOUD_NAME,
+                api_key=CLOUDINARY_API_KEY,
+                api_secret=CLOUDINARY_API_SECRET,
+                secure=True
+            )
+
+            file_bytes = await file.read()
+            upload_result = cloudinary.uploader.upload(
+                file_bytes,
+                public_id=f"stage_submissions/{unique_filename}",
+                resource_type="auto",
+                use_filename=True,
+                unique_filename=False
+            )
+            file_url = upload_result.get("secure_url", "")
+            if not file_url:
+                raise ValueError("Cloudinary returned no URL")
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"File upload to Cloudinary failed: {str(e)}")
+    else:
+        # --- Local disk fallback (dev only — NOT persistent on Render) ---
+        STAGE_UPLOADS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "stages")
+        os.makedirs(STAGE_UPLOADS, exist_ok=True)
+        file_path = os.path.join(STAGE_UPLOADS, unique_filename)
+        try:
+            contents = await file.read()
+            with open(file_path, "wb") as buffer:
+                buffer.write(contents)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+        file_url = f"/uploads/stages/{unique_filename}"
+
+    # Store in DB — file_url is now a full Cloudinary HTTPS URL or local path
     submission_entry = {
         "event_id": str(event_id),
         "stage_id": str(stage_id),
@@ -411,22 +442,23 @@ async def learner_upload_stage_file(
         "submitted_at": datetime.utcnow().isoformat(),
         "status": "Submitted"
     }
-    
+
     query = {"event_id": str(event_id), "stage_id": str(stage_id)}
     if p.get("team_id"):
         query["team_id"] = p.get("team_id")
     else:
         query["user_id"] = uid
-        
+
     await submission_data_col.update_one(query, {"$set": submission_entry}, upsert=True)
-    
+
     # Update participant progress
     await participants_col.update_one(
         {"_id": p["_id"]},
         {"$set": {"last_stage_submitted": stage_id, "updated_at": datetime.utcnow()}}
     )
-    
+
     return {"status": "success", "file_url": file_url}
+
 
 @router.post("/events/{event_id}/stages/{stage_id}/submit")
 async def learner_submit_stage_data(
