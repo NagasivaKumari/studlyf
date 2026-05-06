@@ -5,6 +5,8 @@ export const API_BASE_URL = import.meta.env.PROD
     ? 'https://studlyff.onrender.com'
     : 'http://localhost:8000';
 
+export const FRONTEND_URL = 'https://studlyff.vercel.app'; // Hardcoded as per user request for "Real" links
+
 /** Merge with fetch headers so institution / learner JWT routes work after server hardening. */
 export function authHeaders(): Record<string, string> {
     const t = localStorage.getItem('auth_token');

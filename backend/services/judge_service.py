@@ -155,15 +155,32 @@ async def assign_judge_to_multiple_submissions(submission_ids: list, judge_id: s
             "evaluation_url": evaluation_url
         }
         
-        # Update submission: Replace assigned judges with the new one
+        # Update submission: Add or update the judge in the assigned_judges array
+        # This allows multiple judges to evaluate the same submission
+        new_assigned_judges = sub.get("assigned_judges", [])
+        if not isinstance(new_assigned_judges, list):
+            new_assigned_judges = []
+            
+        # Check if judge already exists in the array
+        found = False
+        for i, aj in enumerate(new_assigned_judges):
+            if aj.get("judge_id") == judge_id:
+                new_assigned_judges[i] = judge_entry
+                found = True
+                break
+        
+        if not found:
+            new_assigned_judges.append(judge_entry)
+
+        # Update the submission record
         await submission_data_col.update_one(
             {"_id": target_id},
             {"$set": {
-                "assigned_judges": [judge_entry],
-                "assigned_judge_id": judge_id,
-                "assigned_judge_emails": [judge_email],
+                "assigned_judges": new_assigned_judges,
+                "assigned_judge_id": judge_id, # Latest assigned
+                "assigned_judge_emails": [j.get("email") for j in new_assigned_judges if j.get("email")],
                 "status": "Under Review",
-                "evaluation_token": token,
+                "evaluation_token": token, # Latest token for top-level
                 "evaluation_token_expires": expires_at
             }}
         )

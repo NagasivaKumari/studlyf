@@ -20,6 +20,7 @@ backend/test_stats.py
 backend/test_*.py
 backend/test_*.pdf
 backend/cloud_test*.pdf
+test_grid
 
 # AI Logs & Scratch
 brain/
@@ -30,3 +31,8 @@ backend/uploads/
 backend/check_*.py
 backend/check_institution_user.py
 backend/check_user.py
+.windsurf/
+migrate_gridfs_files.py
+test_gridfs_check.py
+test_pdf_serving.py
+test_upload.py

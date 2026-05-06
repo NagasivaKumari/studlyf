@@ -1641,6 +1641,98 @@ async def update_submission_status(submission_id: str, status_update: dict, user
     await log_admin_action("admin@institution.com", "SUBMISSION_PROCESSED", f"Processed submission {submission_id} with status {status_update['status']}")
     return {"status": "success"}
 
+@router.patch("/events/{event_id}/teams/{team_id}/status")
+async def update_team_status(event_id: str, team_id: str, status_update: dict, user: dict = Depends(get_auth_user)):
+    """Updates the status of a team in an institution event."""
+    await assert_institution_owns_event(event_id, user)
+    from db import participants_col, teams_col
+    
+    # Update participants with this team_id
+    result = await participants_col.update_many(
+        {"event_id": event_id, "team_id": team_id},
+        {"$set": {"status": status_update["status"]}}
+    )
+    
+    # Also update the team status if teams collection exists
+    try:
+        await teams_col.update_one(
+            {"_id": ObjectId(team_id)},
+            {"$set": {"status": status_update["status"]}}
+        )
+    except Exception:
+        pass  # Team might not exist or update might fail
+    
+    return {"status": "success", "updated_count": result.modified_count}
+
+@router.post("/events/{event_id}/send-status-email")
+async def send_status_email(event_id: str, email_data: dict, user: dict = Depends(get_auth_user)):
+    """Sends status update email to team members."""
+    await assert_institution_owns_event(event_id, user)
+    from db import events_col, participants_col
+    
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    team_name = email_data.get("team_name", "Team")
+    status = email_data.get("status", "Updated")
+    team_id = email_data.get("team_id")
+    emails = email_data.get("emails", [])
+    
+    print(f"[EMAIL DEBUG] Team ID: {team_id}, Status: {status}, Provided emails: {emails}")
+    
+    # If no emails provided, try to fetch from participants collection
+    if not emails and team_id:
+        participants = await participants_col.find({
+            "event_id": event_id,
+            "team_id": team_id
+        }).to_list(None)
+        emails = [p.get("email") for p in participants if p.get("email")]
+        print(f"[EMAIL DEBUG] Fetched {len(emails)} emails from participants: {emails}")
+    
+    if not emails:
+        print(f"[EMAIL DEBUG] No email addresses found for team {team_id}")
+        return {"status": "no_emails", "message": "No email addresses provided", "emails_found": emails}
+    
+    # Create email content based on status
+    status_messages = {
+        "Approved": "Congratulations! Your team has been approved for the next stage of the competition.",
+        "Rejected": "We regret to inform you that your team has not been selected for the next stage.",
+        "Shortlisted": "Great news! Your team has been shortlisted for further consideration in the competition."
+    }
+    
+    message = status_messages.get(status, f"Your team status has been updated to: {status}")
+    subject = f"Application Status Update - {event.get('title', 'Event')}"
+    
+    body_html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+        <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h2 style="color: #6C3BFF; margin-top: 0;">{subject}</h2>
+            <p style="font-size: 16px; color: #333;">Dear Team,</p>
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">{message}</p>
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">This is an automated message regarding your application for <strong>{event.get('title', 'the event')}</strong>.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="font-size: 14px; color: #666; margin-bottom: 5px;">Best regards,</p>
+            <p style="font-size: 14px; color: #333; font-weight: bold; margin-top: 0;">{event.get('title', 'Event Team')}</p>
+        </div>
+    </div>
+    """
+    
+    # Send emails to all team members
+    from services.email_service import send_notification_email
+    sent_count = 0
+    for email in emails:
+        try:
+            print(f"[EMAIL DEBUG] Attempting to send email to {email}")
+            result = await send_notification_email(email, subject, body_html)
+            print(f"[EMAIL DEBUG] Email sent to {email}, result: {result}")
+            sent_count += 1
+        except Exception as e:
+            print(f"[EMAIL DEBUG] Failed to send email to {email}: {e}")
+    
+    print(f"[EMAIL DEBUG] Email sending complete. Sent: {sent_count}/{len(emails)}")
+    return {"status": "success", "sent_count": sent_count, "total_emails": len(emails)}
+
 @router.patch("/participants/{participant_id}/verify")
 async def verify_internal_process(participant_id: str, verification_data: dict):
     """Handles internal verification: Payment (NIT) and Venue Assignment (SIRT)."""

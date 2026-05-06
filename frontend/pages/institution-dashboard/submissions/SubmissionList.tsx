@@ -616,8 +616,11 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                             <div className="p-10 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
                                 {availableJudges.length > 0 ? availableJudges.map((judge) => {
                                     // Robust evaluation link generation for manual sharing
-                                    const currentSub = submissions.all?.find((s: any) => (s.submission_id === judgeAssignmentModal.submissionId || s.team_id === judgeAssignmentModal.submissionId));
-                                    const existingAssignment = currentSub?.assigned_judges?.find((aj: any) => aj.judge_id === judge._id);
+                                    const currentSub = submissions.all?.find((s: any) => 
+                                        (String(s.submission_id) === String(judgeAssignmentModal.submissionId) || 
+                                         String(s.team_id) === String(judgeAssignmentModal.submissionId))
+                                    );
+                                    const existingAssignment = currentSub?.assigned_judges?.find((aj: any) => String(aj.judge_id) === String(judge._id));
                                     
                                     return (
                                         <div key={judge._id} className="p-6 bg-slate-50 border border-slate-50 rounded-[2rem] flex items-center justify-between group hover:bg-white hover:border-purple-100 transition-all shadow-sm">

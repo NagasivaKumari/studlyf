@@ -199,7 +199,12 @@ opportunity_applications_col = db["opportunity_applications"]
 def _get_gridfs_bucket():
     """Lazy GridFS bucket — only created once db.db is available."""
     if db.db is not None:
-        return AsyncIOMotorGridFSBucket(db.db, bucket_name="stage_files")
+        try:
+            return AsyncIOMotorGridFSBucket(db.db, bucket_name="stage_files")
+        except Exception as e:
+            logger.error(f"Failed to create GridFS bucket: {e}")
+            return None
     return None
 
-gridfs_bucket = _get_gridfs_bucket()
+# Remove global initialization - will be created lazily when needed
+gridfs_bucket = None
