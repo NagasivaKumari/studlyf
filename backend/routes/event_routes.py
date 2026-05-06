@@ -90,6 +90,18 @@ async def get_event_hub_data(event_id: str, user: dict = Depends(get_auth_user))
                 if "user_id" in m:
                     m["user_id"] = str(m["user_id"])
                     
-    print(f"DEBUG: Participants endpoint response status: 200")
-    print(f"DEBUG: Participants data received: {p}")
-    return {"participant": p, "team": team}
+    # Check for existing evaluations (to lock submissions)
+    from db import scores_col
+    is_evaluated = False
+    if p:
+        score_query = {"event_id": str(event_id)}
+        if p.get("team_id"):
+            score_query["team_id"] = str(p["team_id"])
+        else:
+            score_query["user_id"] = uid
+        
+        eval_count = await scores_col.count_documents(score_query)
+        is_evaluated = eval_count > 0
+
+    print(f"DEBUG: Hub Response - Evaluated: {is_evaluated}")
+    return {"participant": p, "team": team, "is_evaluated": is_evaluated}

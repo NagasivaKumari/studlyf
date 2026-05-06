@@ -18,10 +18,21 @@ async def get_evaluation_submission(token: str):
     
     print(f"DEBUG: Evaluation API called with token: {token}")
     
-    # Find submission by evaluation token
+    # Find submission by evaluation token (robust search: top-level or inside assigned_judges array)
     submission = await submission_data_col.find_one({
-        "evaluation_token": token,
-        "evaluation_token_expires": {"$gt": datetime.now(timezone.utc)}
+        "$or": [
+            {
+                "evaluation_token": token,
+                "evaluation_token_expires": {"$gt": datetime.now(timezone.utc)}
+            },
+            {
+                "assigned_judges": {
+                    "$elemMatch": {
+                        "evaluation_token": token
+                    }
+                }
+            }
+        ]
     })
     
     print(f"DEBUG: Found submission: {submission is not None}")
@@ -45,17 +56,39 @@ async def get_evaluation_submission(token: str):
         if field in sanitized_data:
             del sanitized_data[field]
             
+    # Find the judge_id associated with this specific token
+    judge_id = submission.get("assigned_judge_id")
+    judge_name = "Assigned Judge"
+    if "assigned_judges" in submission:
+        for j in submission["assigned_judges"]:
+            if j.get("evaluation_token") == token:
+                judge_id = j.get("judge_id")
+                judge_name = j.get("name", judge_name)
+                break
+    
+    # Check if judge has already submitted an evaluation
+    from db import scores_col
+    existing_evaluation = await scores_col.find_one({
+        "submission_id": str(submission["_id"]),
+        "judge_id": judge_id
+    })
+    
     submission_data = {
         "_id": str(submission["_id"]),
-        "title": submission.get("title", "Untitled Submission"),
-        "description": submission.get("description", ""),
-        "team_name": submission.get("team_name", "Unknown Team"),
-        "submitted_at": submission.get("submitted_at", ""),
-        "status": submission.get("status", "Submitted"),
-        "files": submission.get("files", []),
-        "external_links": submission.get("external_links", []),
+        "event_id": submission.get("event_id"),
+        "title": submission.get("project_name", "Untitled Project"),
+        "team_name": submission.get("team_name", "Solo Participant"),
+        "submitted_at": submission.get("submitted_at"),
+        "status": submission.get("status"),
         "data": sanitized_data,
-        "event_name": event.get("name", "Unknown Event") if event else "Unknown Event"
+        "criteria": event.get("judging_criteria", []) if event else [],
+        "judge_name": judge_name,
+        "existing_evaluation": {
+            "score": existing_evaluation.get("total_score"),
+            "recommendation": existing_evaluation.get("recommendation"),
+            "comments": existing_evaluation.get("comments"),
+            "submitted_at": existing_evaluation.get("evaluated_at")
+        } if existing_evaluation else None
     }
     
     return submission_data
@@ -65,10 +98,21 @@ async def submit_evaluation(token: str, evaluation_data: dict = Body(...)):
     """Submit evaluation for a submission"""
     from db import submission_data_col, scores_col
     
-    # Validate token
+    # Validate token (robust search: top-level or inside assigned_judges array)
     submission = await submission_data_col.find_one({
-        "evaluation_token": token,
-        "evaluation_token_expires": {"$gt": datetime.now(timezone.utc)}
+        "$or": [
+            {
+                "evaluation_token": token,
+                "evaluation_token_expires": {"$gt": datetime.now(timezone.utc)}
+            },
+            {
+                "assigned_judges": {
+                    "$elemMatch": {
+                        "evaluation_token": token
+                    }
+                }
+            }
+        ]
     })
     
     if not submission:

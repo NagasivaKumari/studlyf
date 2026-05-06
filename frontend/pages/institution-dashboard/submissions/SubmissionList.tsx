@@ -32,53 +32,123 @@ interface SubmissionListProps {
 }
 
 const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
-    const [submissions, setSubmissions] = useState<any[]>([]);
+    const [submissions, setSubmissions] = useState<any>({ shortlisted: [], approved: [], pending: [], rejected: [], summary: {}, all: [] });
     const [stageSubmissions, setStageSubmissions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('shortlisted');
     const [submissionSubTab, setSubmissionSubTab] = useState<'projects' | 'assets'>('projects');
+    const [availableJudges, setAvailableJudges] = useState<any[]>([]);
+    const [judgeAssignmentModal, setJudgeAssignmentModal] = useState<{isOpen: boolean, submissionId: string | null}>({ isOpen: false, submissionId: null });
+    const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([]);
+    const [isBulkMode, setIsBulkMode] = useState(false);
+    const [refreshCounter, setRefreshCounter] = useState(0);
+
+    const fetchAll = async () => {
+        if (!institutionId) return;
+        try {
+            setLoading(true);
+            const bundleRes = await fetch(
+                `${API_BASE_URL}/api/v1/institution/submissions/${encodeURIComponent(institutionId)}`,
+                { headers: { ...authHeaders() } }
+            );
+            const bundleData = await bundleRes.json();
+            setSubmissions(bundleData);
+
+            const assetRes = await fetch(
+                `${API_BASE_URL}/api/v1/institution/submissions/all-deliverables?institution_id=${institutionId}`,
+                { headers: { ...authHeaders() } }
+            );
+            if (assetRes.ok) {
+                const assetData = await assetRes.json();
+                setStageSubmissions(Array.isArray(assetData) ? assetData : []);
+            }
+        } catch (error) {
+            console.error('Error fetching submissions:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const fetchAll = async () => {
-            if (!institutionId) {
-                setSubmissions([]);
-                setLoading(false);
-                return;
-            }
-            try {
-                setLoading(true);
-                // 1. Fetch Global Bundles (Project Submissions)
-                const bundleRes = await fetch(
-                    `${API_BASE_URL}/api/v1/institution/submissions/${encodeURIComponent(institutionId)}`,
-                    { headers: { ...authHeaders() } }
-                );
-                const bundleData = await bundleRes.json();
-                setSubmissions(Array.isArray(bundleData) ? bundleData : []);
-
-                // 2. Fetch Global Stage Deliverables
-                try {
-                    const assetRes = await fetch(
-                        `${API_BASE_URL}/api/v1/institution/submissions/all-deliverables?institution_id=${institutionId}`,
-                        { headers: { ...authHeaders() } }
-                    );
-                    if (assetRes.ok) {
-                        const assetData = await assetRes.json();
-                        setStageSubmissions(Array.isArray(assetData) ? assetData : []);
-                    }
-                } catch (e) {
-                    console.warn("Global deliverable fetch failed", e);
-                }
-
-            } catch (error) {
-                console.error('Error fetching submissions:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
         fetchAll();
-    }, [institutionId]);
+    }, [institutionId, refreshCounter]);
+
+    const handleOpenJudgeAssignment = async (submissionId: string) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/judges`, { headers: { ...authHeaders() } });
+            if (res.ok) {
+                const judges = await res.json();
+                setAvailableJudges(judges);
+                setJudgeAssignmentModal({ isOpen: true, submissionId });
+            } else {
+                alert('Failed to load available judges');
+            }
+        } catch (error) {
+            console.error('Failed to fetch judges:', error);
+            alert('Failed to load available judges');
+        }
+    };
+
+    const handleAssignJudge = async (judgeId: string) => {
+        const isBulk = selectedSubmissions.length > 0 && judgeAssignmentModal.submissionId === 'bulk';
+        try {
+            const body: any = { judge_id: judgeId };
+            if (isBulk) body.submission_ids = selectedSubmissions;
+            else body.submission_id = judgeAssignmentModal.submissionId;
+
+            const res = await fetch(`${API_BASE_URL}/api/judges/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify(body)
+            });
+
+            if (res.ok) {
+                const result = await res.json();
+                let msg = isBulk ? `Successfully assigned judge to ${selectedSubmissions.length} projects!` : 'Judge assigned successfully!';
+                if (result.email_sent === false) {
+                    msg += "\n\n⚠️ NOTE: Invitation email could not be sent. Please share the evaluation link manually.";
+                }
+                alert(msg);
+                setJudgeAssignmentModal({ isOpen: false, submissionId: null });
+                setSelectedSubmissions([]);
+                setRefreshCounter(prev => prev + 1);
+            } else {
+                const error = await res.json();
+                alert(error.detail || 'Failed to assign judge');
+            }
+        } catch (error) {
+            console.error('Error assigning judge:', error);
+            alert('Network error while assigning judge');
+        }
+    };
+
+    const handleUpdateStatus = async (submissionId: string, status: string) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/submissions/${submissionId}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ status })
+            });
+            if (res.ok) {
+                setRefreshCounter(prev => prev + 1);
+                setSelectedSubmission(null);
+            } else {
+                alert('Failed to update status');
+            }
+        } catch (error) {
+            console.error('Error updating status:', error);
+        }
+    };
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text).then(() => {
+            alert('Link copied to clipboard!');
+        }).catch(err => {
+            console.error('Failed to copy link: ', err);
+        });
+    };
 
     const getStatusColor = (status: string) => {
         const s = (status || '').toLowerCase();
@@ -88,19 +158,13 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
         return 'bg-slate-50 text-slate-500 border-slate-100';
     };
 
-    const filteredSubmissions = submissions.filter(s => {
+    const currentBundle = (submissions[activeTab] || []) as any[];
+    
+    const filteredSubmissions = currentBundle.filter(s => {
         const matchesSearch = (s.project_title || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                              (s.team_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                              (s.event_title || '').toLowerCase().includes(searchTerm.toLowerCase());
-        
-        const sStatus = (s.status || 'pending').toLowerCase();
-        const matchesTab = activeTab === 'All' || 
-                          (activeTab === 'pending' && sStatus === 'pending') ||
-                          (activeTab === 'shortlisted' && sStatus === 'shortlisted') ||
-                          (activeTab === 'approved' && (sStatus === 'approved' || sStatus === 'accepted')) ||
-                          (activeTab === 'rejected' && sStatus === 'rejected');
-        
-        return matchesSearch && matchesTab;
+        return matchesSearch;
     });
 
     if (loading) return (
@@ -121,7 +185,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                 Global Command
                             </div>
                             <div className="px-5 py-2 bg-white/10 backdrop-blur-md text-slate-300 rounded-full text-[10px] font-black uppercase tracking-[0.2em]">
-                                {submissions.length} Active Protocols
+                                {submissions?.summary?.total || 0} Active Protocols
                             </div>
                         </div>
                         <div className="space-y-2">
@@ -164,8 +228,8 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                             </div>
                             <div className="space-y-4">
                                 {[
-                                    { label: 'Shortlisted', val: submissions.filter(s => (s.status||'').toLowerCase() === 'shortlisted').length, color: 'bg-blue-500' },
-                                    { label: 'Authorized', val: submissions.filter(s => ['approved','accepted'].includes((s.status||'').toLowerCase())).length, color: 'bg-emerald-500' }
+                                    { label: 'Shortlisted', val: submissions?.summary?.shortlisted || 0, color: 'bg-blue-500' },
+                                    { label: 'Authorized', val: submissions?.summary?.approved || 0, color: 'bg-emerald-500' }
                                 ].map((m, i) => (
                                     <div key={i} className="space-y-2">
                                         <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
@@ -173,7 +237,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                             <span className="text-white">{m.val}</span>
                                         </div>
                                         <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                                            <div className={`h-full ${m.color}`} style={{ width: `${(m.val / (submissions.length || 1)) * 100}%` }}></div>
+                                            <div className={`h-full ${m.color}`} style={{ width: `${(m.val / (submissions?.summary?.total || 1)) * 100}%` }}></div>
                                         </div>
                                     </div>
                                 ))}
@@ -212,11 +276,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                     onClick={() => setActiveTab(tab)}
                                     className={`text-[10px] font-black uppercase tracking-[0.2em] pb-5 relative transition-all ${activeTab === tab ? 'text-[#6C3BFF]' : 'text-slate-400 hover:text-slate-600'}`}
                                 >
-                                    {tab} ({submissions.filter(s => {
-                                        const st = (s.status||'').toLowerCase();
-                                        if (tab === 'approved') return st === 'approved' || st === 'accepted';
-                                        return st === tab;
-                                    }).length})
+                                    {tab} ({submissions?.summary?.[tab] || 0})
                                     {activeTab === tab && (
                                         <motion.div layoutId="subTab" className="absolute bottom-0 left-0 right-0 h-1 bg-[#6C3BFF] rounded-full shadow-[0_2px_10px_rgba(108,59,255,0.4)]" />
                                     )}
@@ -245,6 +305,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                     </th>
                                     <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Candidate Identity</th>
                                     <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Opportunity</th>
+                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Judge Status</th>
                                     <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Authorization</th>
                                     <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score Aggregate</th>
                                     <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
@@ -274,9 +335,32 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                             </div>
                                         </td>
                                         <td className="px-10 py-8">
+                                            <div className="flex flex-col gap-2">
+                                                {item.total_judges > 0 ? (
+                                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider w-fit ${
+                                                        item.judges_completed >= item.total_judges 
+                                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                                                        : 'bg-purple-50 text-purple-600 border-purple-100'
+                                                    }`}>
+                                                        <CheckCircle2 size={12} />
+                                                        {item.judges_completed}/{item.total_judges} Judges Verified
+                                                    </div>
+                                                ) : null}
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenJudgeAssignment(item.submission_id || item.team_id);
+                                                    }}
+                                                    className="text-[10px] font-black text-[#6C3BFF] uppercase tracking-widest hover:underline flex items-center gap-2 transition-all w-fit"
+                                                >
+                                                    <Plus size={14} /> {item.total_judges > 0 ? 'Re-assign Judge' : 'Assign Judge'}
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td className="px-10 py-8">
                                             <div className="flex items-center gap-2 text-slate-500 font-bold text-sm">
                                                 <Trophy size={14} className="text-[#6C3BFF]" />
-                                                {item.event_title}
+                                                <span className="line-clamp-1">{item.event_title}</span>
                                             </div>
                                         </td>
                                         <td className="px-10 py-8 text-center">
@@ -298,9 +382,37 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                             </div>
                                         </td>
                                         <td className="px-10 py-8 text-right">
-                                            <button className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white group-hover:border-slate-900 transition-all shadow-sm">
-                                                <ArrowRight size={20} />
-                                            </button>
+                                            <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-all">
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleUpdateStatus(item.submission_id || item.team_id, 'Approved');
+                                                    }}
+                                                    className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                    title="Approve"
+                                                >
+                                                    <CheckCircle2 size={18} />
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleUpdateStatus(item.submission_id || item.team_id, 'Rejected');
+                                                    }}
+                                                    className="p-3 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                    title="Reject"
+                                                >
+                                                    <X size={18} />
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedSubmission(item);
+                                                    }}
+                                                    className="p-3 text-slate-400 bg-white border border-slate-100 hover:bg-slate-900 hover:text-white rounded-xl transition-all shadow-sm"
+                                                >
+                                                    <ArrowRight size={18} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </motion.tr>
                                 )) : (
@@ -344,7 +456,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                         <div className="flex items-center gap-3">
                                             {sub.data?.file_url ? (
                                                 <a 
-                                                    href={`${API_BASE_URL}${sub.data.file_url}`}
+                                                    href={sub.data.file_url.startsWith('http') ? sub.data.file_url : `${API_BASE_URL}${sub.data.file_url}`}
                                                     target="_blank"
                                                     rel="noreferrer"
                                                     className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
@@ -456,14 +568,94 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                         )}
                                     </div>
                                     <div className="flex gap-3">
-                                        <button className="px-8 py-4 bg-emerald-50 text-emerald-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all">
+                                        <button 
+                                            onClick={() => handleUpdateStatus(selectedSubmission.submission_id || selectedSubmission.team_id, 'Approved')}
+                                            className="px-8 py-4 bg-emerald-50 text-emerald-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all"
+                                        >
                                             Approve Bundle
                                         </button>
-                                        <button className="px-8 py-4 bg-rose-50 text-rose-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all">
+                                        <button 
+                                            onClick={() => handleUpdateStatus(selectedSubmission.submission_id || selectedSubmission.team_id, 'Rejected')}
+                                            className="px-8 py-4 bg-rose-50 text-rose-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all"
+                                        >
                                             Reject Bundle
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Judge Assignment Modal */}
+            <AnimatePresence>
+                {judgeAssignmentModal.isOpen && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-950/40 backdrop-blur-md"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                            className="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl overflow-hidden border border-slate-100"
+                        >
+                            <div className="p-10 border-b border-slate-50 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">Assign Evaluator</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Select a verified expert to review this bundle</p>
+                                </div>
+                                <button onClick={() => setJudgeAssignmentModal({ isOpen: false, submissionId: null })} className="p-4 bg-slate-50 text-slate-400 hover:text-rose-500 rounded-2xl transition-all">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            
+                            <div className="p-10 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
+                                {availableJudges.length > 0 ? availableJudges.map((judge) => {
+                                    // Robust evaluation link generation for manual sharing
+                                    const currentSub = submissions.all?.find((s: any) => 
+                                        (String(s.submission_id) === String(judgeAssignmentModal.submissionId) || 
+                                         String(s.team_id) === String(judgeAssignmentModal.submissionId))
+                                    );
+                                    const existingAssignment = currentSub?.assigned_judges?.find((aj: any) => String(aj.judge_id) === String(judge._id));
+                                    
+                                    return (
+                                        <div key={judge._id} className="p-6 bg-slate-50 border border-slate-50 rounded-[2rem] flex items-center justify-between group hover:bg-white hover:border-purple-100 transition-all shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-xl shadow-inner group-hover:scale-110 transition-transform">🎓</div>
+                                                <div>
+                                                    <p className="font-black text-slate-900">{judge.full_name || judge.name}</p>
+                                                    <p className="text-xs font-bold text-slate-400">{judge.email}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {existingAssignment?.evaluation_url && (
+                                                    <button 
+                                                        onClick={() => copyToClipboard(existingAssignment.evaluation_url)}
+                                                        className="p-3 bg-white text-slate-400 hover:text-[#6C3BFF] border border-slate-100 rounded-xl transition-all"
+                                                        title="Copy Evaluation Link"
+                                                    >
+                                                        <ExternalLink size={16} />
+                                                    </button>
+                                                )}
+                                                <button 
+                                                    onClick={() => handleAssignJudge(judge._id)}
+                                                    className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all"
+                                                >
+                                                    Assign
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                }) : (
+                                    <div className="py-20 text-center space-y-4 opacity-40">
+                                        <User size={48} className="mx-auto" />
+                                        <p className="font-black text-[10px] uppercase tracking-widest">No verified evaluators found</p>
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     </motion.div>

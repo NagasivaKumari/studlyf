@@ -4,47 +4,55 @@ import {
     ArrowLeft, 
     Save, 
     X, 
-    Info, 
+    ChevronLeft, 
+    UsersRound, 
+    Link as LinkIcon, 
+    Loader2, 
+    Upload, 
+    FileText, 
+    CheckCircle2, 
+    Clock, 
+    Trophy, 
+    Share2, 
+    Copy, 
+    Check, 
+    Filter, 
+    Plus, 
+    AlertCircle, 
+    Download, 
+    ExternalLink, 
+    LayoutDashboard, 
+    Bell, 
+    TrendingUp, 
+    HelpCircle, 
+    BarChart3, 
+    PieChart, 
+    ShieldCheck, 
+    Award, 
+    Gavel, 
+    Calendar, 
+    RefreshCw, 
+    Eye, 
+    Star, 
+    XCircle, 
     Users, 
     Layers, 
-    FileText, 
-    Gavel, 
-    BarChart3,
-    Clock,
-    MapPin,
-    Trophy,
-    Calendar,
-    ChevronRight,
-    Award,
-    HelpCircle,
-    Plus,
-    ShieldCheck,
-    Trash2,
-    Settings2,
-    Filter,
-    Send,
-    CheckCircle2,
-    AlertCircle,
-    Timer,
-    ExternalLink,
-    Search,
-    Download,
-    Mail,
-    LayoutDashboard,
-    Share2,
-    FileCheck,
-    PieChart,
-    Settings,
-    Edit3,
-    Eye,
-    Building2,
-    Loader2,
-    Square,
-    CheckSquare,
-    Bell,
-    TrendingUp,
+    Info, 
+    MapPin, 
+    ChevronRight, 
+    Settings2, 
+    Send, 
+    Timer, 
+    Search, 
+    Mail, 
+    Settings, 
+    Edit3, 
+    Building2, 
+    Square, 
+    CheckSquare, 
     UserPlus,
-    Copy
+    FileCheck,
+    Zap
 } from 'lucide-react';
 import { motion, AnimatePresence as FramerAnimatePresence } from 'framer-motion';
 import LeaderboardPage from './LeaderboardPage';
@@ -503,55 +511,69 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
 
     if (loading) return <div className="h-96 flex items-center justify-center"><div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div></div>;
     if (!event) return <div>Event not found</div>;
-
     const handleUpdateStatus = async (teamId: string, newStatus: string, item?: any) => {
         const instId = institutionIdProp || event?.institution_id;
         if (teamId.startsWith('portal_app:')) {
             const appId = teamId.replace(/^portal_app:/, '');
-            if (!instId || !eventId) return;
-            const st =
-                newStatus === 'Rejected'
-                    ? 'rejected'
-                    : newStatus === 'Shortlisted'
-                      ? 'shortlisted'
-                      : newStatus === 'Approved'
-                        ? 'accepted'
-                        : 'pending';
-            const body: Record<string, string> = {
-                institution_id: String(instId),
-                status: st,
-                application_id: appId,
-            };
-            if (item?.opportunity_id) body.opportunity_id = String(item.opportunity_id);
+            if (!appId) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/v1/institution/opportunity-applications/status`, {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/portal-applications/${appId}/status`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                    body: JSON.stringify(body),
+                    body: JSON.stringify({ status: newStatus })
                 });
                 if (res.ok) {
-                    fetchBundle(debouncedThreshold);
-                    fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/participants`, { headers: { ...authHeaders() } })
-                        .then((r) => r.json())
-                        .then((data) => setParticipants(Array.isArray(data) ? data : []))
-                        .catch(() => {});
+                    setBundleData(prev => ({
+                        ...prev,
+                        [bundleTab]: prev?.[bundleTab]?.map((item: any) => 
+                            item.team_id === teamId ? { ...item, status: newStatus } : item
+                        )
+                    }));
+                    setShowSaveSuccess(true);
+                    setTimeout(() => setShowSaveSuccess(false), 2000);
                 }
             } catch (err) {
-                console.error('Portal bundle status update failed', err);
+                console.error('Failed to update application status:', err);
             }
-            return;
-        }
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams/${teamId}/selection`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ status: newStatus }),
-            });
-            if (res.ok) {
-                fetchBundle(debouncedThreshold);
+        } else {
+            // Update team status in participants collection
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams/${teamId}/status`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                if (res.ok) {
+                    setBundleData(prev => ({
+                        ...prev,
+                        [bundleTab]: prev?.[bundleTab]?.map((item: any) => 
+                            item.team_id === teamId ? { ...item, status: newStatus } : item
+                        )
+                    }));
+                    setShowSaveSuccess(true);
+                    setTimeout(() => setShowSaveSuccess(false), 2000);
+                    
+                    // Send email notification
+                    if (item) {
+                        try {
+                            await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/send-status-email`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                                body: JSON.stringify({
+                                    team_id: teamId,
+                                    status: newStatus,
+                                    team_name: item.team_name,
+                                    emails: item.member_emails || []
+                                })
+                            });
+                        } catch (emailErr) {
+                            console.error('Failed to send email:', emailErr);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to update team status:', err);
             }
-        } catch (err) {
-            console.error("Status update failed");
         }
     };
 
@@ -1334,15 +1356,16 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                         </td>
                                                         <td className="px-10 py-8">
                                                             <div className="flex flex-col gap-2">
-                                                                {item.total_judges > 0 ? (
-                                                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider w-fit ${
-                                                                        item.judges_completed >= item.total_judges 
-                                                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
-                                                                        : 'bg-purple-50 text-purple-600 border-purple-100'
-                                                                    }`}>
+                                                                {item.total_judges > 0 || item.score > 0 ? (
+                                                                    <>
+                                                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider w-fit ${item.judges_completed >= item.total_judges ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-purple-50 text-purple-600 border-purple-100'}`}>
                                                                         <CheckCircle2 size={12} />
                                                                         {item.judges_completed}/{item.total_judges} Judges Verified
                                                                     </div>
+                                                                    <div className="text-center mt-2">
+                                                                        <span className="text-lg font-bold text-slate-900">{item.score || 0}%</span>
+                                                                    </div>
+                                                                    </>
                                                                 ) : null}
                                                                 <button 
                                                                     onClick={() => handleOpenJudgeAssignment(item.submission_id || item.team_id)}
@@ -1382,21 +1405,62 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                             </div>
                                                         </td>
                                                         <td className="px-10 py-8 text-right">
-                                                            <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-all">
-                                                                <button 
-                                                                    onClick={() => handleUpdateStatus(item.team_id, 'Approved', item)}
-                                                                    className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                                    title="Approve"
-                                                                >
-                                                                    <CheckCircle2 size={18} />
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => handleUpdateStatus(item.team_id, 'Rejected', item)}
-                                                                    className="p-3 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                                    title="Reject"
-                                                                >
-                                                                    <X size={18} />
-                                                                </button>
+                                                            <div className="flex gap-2 justify-end">
+                                                                {(() => {
+                                                                    const status = (item.status || '').toLowerCase();
+                                                                    if (status === 'approved') {
+                                                                        return <div className="text-emerald-600 text-xs font-black uppercase">Approved</div>;
+                                                                    }
+                                                                    if (status === 'rejected') {
+                                                                        return <div className="text-rose-600 text-xs font-black uppercase">Rejected</div>;
+                                                                    }
+                                                                    if (status === 'shortlisted') {
+                                                                        return (
+                                                                            <>
+                                                                                <button 
+                                                                                    onClick={() => handleUpdateStatus(item.team_id, 'Approved', item)}
+                                                                                    className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                                                    title="Approve"
+                                                                                >
+                                                                                    <CheckCircle2 size={18} />
+                                                                                </button>
+                                                                                <button 
+                                                                                    onClick={() => handleUpdateStatus(item.team_id, 'Rejected', item)}
+                                                                                    className="p-3 text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                                                    title="Reject"
+                                                                                >
+                                                                                    <XCircle size={18} />
+                                                                                </button>
+                                                                            </>
+                                                                        );
+                                                                    }
+                                                                    // Default: show all buttons for pending status
+                                                                    return (
+                                                                        <>
+                                                                            <button 
+                                                                                onClick={() => handleUpdateStatus(item.team_id, 'Approved', item)}
+                                                                                className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                                                title="Approve"
+                                                                            >
+                                                                                <CheckCircle2 size={18} />
+                                                                            </button>
+                                                                            <button 
+                                                                                onClick={() => handleUpdateStatus(item.team_id, 'Rejected', item)}
+                                                                                className="p-3 text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                                                title="Reject"
+                                                                            >
+                                                                                <XCircle size={18} />
+                                                                            </button>
+                                                                            <button 
+                                                                                onClick={() => handleUpdateStatus(item.team_id, 'Shortlisted', item)}
+                                                                                className="p-3 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                                                title="Shortlist"
+                                                                            >
+                                                                                <Star size={18} />
+                                                                            </button>
+                                                                        </>
+                                                                    );
+                                                                })()}
                                                             </div>
                                                         </td>
                                                     </motion.tr>
@@ -1444,7 +1508,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                         {sub.data?.file_url ? (
                                                             <button 
                                                                 onClick={() => setPreviewAsset({
-                                                                    url: `${API_BASE_URL}${sub.data.file_url}`,
+                                                                    url: sub.data.file_url.startsWith('http') ? sub.data.file_url : `${API_BASE_URL}${sub.data.file_url}`,
                                                                     filename: sub.data.filename || 'Deliverable',
                                                                     type: 'file'
                                                                 })}

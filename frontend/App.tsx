@@ -139,10 +139,10 @@ const App: React.FC = () => {
       } else if (role === 'judge') {
         // Judges ONLY get access to judge portal - multiple safety checks
         // CRITICAL: Allow judges to access institution dashboard for direct evaluation
-        const isAllowedPath = pathname.startsWith('/judge-portal') || 
-                            pathname.startsWith('/institution-dashboard') || 
+        const isAllowedPath = pathname.startsWith('/judge-portal') ||
+                            pathname.startsWith('/institution-dashboard') ||
                             pathname.startsWith('/evaluate/');
-                            
+
         if (!isAllowedPath || pathname.startsWith('/dashboard')) {
           console.log('[JudgeRedirect] CRITICAL: Judge user on forbidden path:', pathname, '- FORCING redirect to judge portal');
           navigate('/judge-portal', { replace: true });
@@ -150,23 +150,38 @@ const App: React.FC = () => {
         }
         console.log('[JudgeRedirect] Judge user correctly on allowed path:', pathname);
       }
-      
-            
+
       if (role === 'student') {
+        console.log('[StudentCheck] Student user detected, current path:', pathname);
+        // Always redirect students to opportunities if they're on the landing page
+        if (pathname === '/') {
+          console.log('[StudentRedirect] Redirecting student from landing page to opportunities');
+          navigate('/opportunities', { replace: true });
+          return;
+        }
+        // Also redirect if they try to access institution or judge pages
         if (pathname.startsWith('/institution-dashboard') || pathname.startsWith('/judge-portal')) {
-          navigate('/dashboard/learner', { replace: true });
+          console.log('[StudentRedirect] Redirecting student from restricted pages to opportunities');
+          navigate('/opportunities', { replace: true });
+          return;
+        }
+        // Only redirect from base /dashboard, not /dashboard/learner
+        if (pathname === '/dashboard') {
+          console.log('[StudentRedirect] Redirecting student from /dashboard to opportunities');
+          navigate('/opportunities', { replace: true });
+          return;
         }
       }
-      
+
       // CRITICAL: Allow judge access regardless of role mismatch
-      if (user?.email && (localStorage.getItem('wasJudgeInvited') === 'true' || 
+      if (user?.email && (localStorage.getItem('wasJudgeInvited') === 'true' ||
                               localStorage.getItem('pendingJudgeRole') === 'true' ||
                               pathname.startsWith('/judge-portal'))) {
         // Don't redirect judges away from judge portal
         console.log('[JudgeAccess] Allowing judge portal access for:', user.email);
         return;
       }
-      
+
           }
     
       }, [user, role, pathname, loading, navigate]);
@@ -176,7 +191,7 @@ const App: React.FC = () => {
     <div className={`relative min-h-screen flex flex-col selection:bg-[#7C3AED] selection:text-white ${isDashboard || isAdmin ? 'bg-transparent' : 'bg-white'}`}>
 
       {(() => {
-        const showNav = !isLoginPage && !isPlayer && !isCheckout && !isAdmin && !isHome && !isResume && !isVisualizer && !isCareerOnboarding && !pathname.startsWith('/institution-dashboard') && !pathname.startsWith('/evaluate/') && !pathname.startsWith('/judge-portal');
+        const showNav = !isLoginPage && !isPlayer && !isCheckout && !isAdmin && !isHome && !isResume && !isVisualizer && !isCareerOnboarding && !pathname.startsWith('/evaluate/');
         if (!showNav && pathname.startsWith('/institution-dashboard')) {
           console.log("[AuthDebug] Navigation hidden for Institution Dashboard");
         }
@@ -243,7 +258,7 @@ const App: React.FC = () => {
 
             <Route path="/dashboard" element={
               <ProtectedRoute>
-                {role === 'institution' ? <Navigate to="/institution-dashboard" replace /> : <LearnerDashboard />}
+                {role === 'institution' ? <Navigate to="/institution-dashboard" replace /> : <Navigate to="/opportunities" replace />}
               </ProtectedRoute>
             } />
             <Route path="/dashboard/learner" element={<ProtectedRoute><DashboardHome /></ProtectedRoute>} />

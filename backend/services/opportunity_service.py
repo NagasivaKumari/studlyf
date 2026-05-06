@@ -365,7 +365,17 @@ async def get_opportunity_by_id(
     who already applied may still open the record (see ``listingPendingPublish``).
     """
     try:
-        doc = await opportunities_col.find_one({"_id": ObjectId(opportunity_id)})
+        doc = None
+        # Try finding by direct ID first
+        try:
+            doc = await opportunities_col.find_one({"_id": ObjectId(opportunity_id)})
+        except:
+            pass
+            
+        # Fallback to searching by event_link_id if not found or ID was invalid
+        if not doc:
+            doc = await opportunities_col.find_one({"event_link_id": str(opportunity_id)})
+            
         if not doc:
             return None
         doc["_id"] = str(doc["_id"])

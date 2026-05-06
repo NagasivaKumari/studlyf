@@ -297,6 +297,16 @@ const OpportunityDetails: React.FC = () => {
                 if (data) setMyApplication(data);
                 setSubmitted(true);
                 setIsApplied(true);
+                
+                // If there's a join code in the URL, redirect back to the hub to complete joining
+                const params = new URLSearchParams(window.location.search);
+                const joinCode = params.get('join');
+                if (joinCode) {
+                    const eid = opportunity.event_link_id || id;
+                    setTimeout(() => {
+                        navigate(`/events/${eid}?join=${joinCode}`);
+                    }, 1500);
+                }
             } else {
                 const errData = await response.json().catch(() => ({}));
                 alert(errData.detail || "Failed to submit application. Please check your details and try again.");

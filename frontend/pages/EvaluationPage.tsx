@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Eye, ExternalLink, Save, Gavel, Users, Calendar, FileText, X, Download } from 'lucide-react';
+import { Eye, ExternalLink, Save, Gavel, Users, Calendar, FileText, X, Download, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from '../apiConfig';
 import { useAuth } from '../AuthContext';
@@ -21,21 +21,16 @@ const EvaluationPage: React.FC = () => {
     const [success, setSuccess] = useState('');
     const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string } | null>(null);
 
-    // Redirect if already logged in as judge
-    useEffect(() => {
-        if (role === 'judge' && submission?.event_id) {
-            console.log('[EvaluationRedirect] Judge logged in, redirecting to dashboard view');
-            navigate(`/institution-dashboard/event-details?eventId=${submission.event_id}`);
-        }
-    }, [role, submission, navigate]);
-
+    // No forced redirect - allow judges to use the direct evaluation page
+    // even if they are logged in. This prevents access issues if they
+    // don't have full dashboard permissions.
+    
     useEffect(() => {
         if (!token) {
-            setError('Invalid evaluation link');
+            setError('The evaluation link is missing or invalid.');
             setLoading(false);
             return;
         }
-
         fetchSubmission();
     }, [token]);
 
@@ -45,6 +40,11 @@ const EvaluationPage: React.FC = () => {
             if (res.ok) {
                 const data = await res.json();
                 setSubmission(data);
+                if (data.existing_evaluation) {
+                    setScore(String(data.existing_evaluation.score || ''));
+                    setRecommendation(data.existing_evaluation.recommendation || '');
+                    setComments(data.existing_evaluation.comments || '');
+                }
             } else {
                 setError('Invalid or expired evaluation link');
             }
@@ -142,15 +142,28 @@ const EvaluationPage: React.FC = () => {
                                     <Users size={16} />
                                     {submission.team_name}
                                 </div>
+                                {submission.judge_name && (
+                                    <div className="flex items-center gap-2 text-purple-600 font-bold">
+                                        <Gavel size={16} />
+                                        Judge: {submission.judge_name}
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-2">
                                     <Calendar size={16} />
                                     {new Date(submission.submitted_at).toLocaleDateString()}
                                 </div>
                             </div>
                         </div>
-                        <span className="px-4 py-2 bg-purple-50 text-purple-600 rounded-full text-sm font-medium">
-                            {submission.status}
-                        </span>
+                        <div className="flex flex-col items-end gap-2">
+                            <span className="px-4 py-2 bg-purple-50 text-purple-600 rounded-full text-sm font-medium">
+                                {submission.status}
+                            </span>
+                            {submission.existing_evaluation && (
+                                <span className="px-4 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest">
+                                    Already Evaluated
+                                </span>
+                            )}
+                        </div>
                     </div>
 
                     {submission.description && (
@@ -177,17 +190,24 @@ const EvaluationPage: React.FC = () => {
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <button 
-                                                onClick={() => setPreviewAsset({
-                                                    url: `${API_BASE_URL}${submission.data.file_url}`,
-                                                    filename: submission.data.filename || 'Deliverable'
-                                                })}
+                                                onClick={() => {
+                                                    const rawUrl = submission.data.file_url;
+                                                    const fixedUrl = rawUrl.startsWith('/api/files/') 
+                                                        ? `/api/opportunities/files/${rawUrl.split('/').pop()}` 
+                                                        : rawUrl;
+                                                    
+                                                    setPreviewAsset({
+                                                        url: `${API_BASE_URL}${fixedUrl}`,
+                                                        filename: submission.data.filename || 'Deliverable'
+                                                    });
+                                                }}
                                                 className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                                             >
                                                 <Eye size={16} />
                                                 Preview
                                             </button>
                                             <a 
-                                                href={`${API_BASE_URL}${submission.data.file_url}`} 
+                                                href={`${API_BASE_URL}${submission.data.file_url.startsWith('/api/files/') ? '/api/opportunities' + submission.data.file_url : submission.data.file_url}`} 
                                                 target="_blank" 
                                                 rel="noopener noreferrer"
                                                 className="p-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"
@@ -300,7 +320,8 @@ const EvaluationPage: React.FC = () => {
                                 max="100" 
                                 value={score}
                                 onChange={(e) => setScore(e.target.value)}
-                                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                disabled={!!submission.existing_evaluation}
+                                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-slate-50 disabled:text-slate-500"
                                 placeholder="Enter score from 0 to 100"
                             />
                         </div>
@@ -310,7 +331,8 @@ const EvaluationPage: React.FC = () => {
                             <select 
                                 value={recommendation}
                                 onChange={(e) => setRecommendation(e.target.value)}
-                                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                disabled={!!submission.existing_evaluation}
+                                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-slate-50 disabled:text-slate-500"
                             >
                                 <option value="">Select recommendation...</option>
                                 <option value="shortlist">Shortlist</option>
@@ -324,29 +346,37 @@ const EvaluationPage: React.FC = () => {
                             <textarea 
                                 value={comments}
                                 onChange={(e) => setComments(e.target.value)}
+                                disabled={!!submission.existing_evaluation}
                                 rows={4}
-                                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none disabled:bg-slate-50 disabled:text-slate-500"
                                 placeholder="Add your evaluation comments..."
                             />
                         </div>
 
-                        <button 
-                            onClick={handleSubmitEvaluation}
-                            disabled={saving}
-                            className="w-full py-4 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                            {saving ? (
-                                <>
-                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                    Submitting...
-                                </>
-                            ) : (
-                                <>
-                                    <Save size={20} />
-                                    Submit Evaluation
-                                </>
-                            )}
-                        </button>
+                        {!submission.existing_evaluation ? (
+                            <button 
+                                onClick={handleSubmitEvaluation}
+                                disabled={saving}
+                                className="w-full py-4 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {saving ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        Submitting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save size={20} />
+                                        Submit Evaluation
+                                    </>
+                                )}
+                            </button>
+                        ) : (
+                            <div className="w-full py-4 bg-slate-100 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-2 border-2 border-dashed border-slate-200">
+                                <CheckCircle2 size={20} className="text-emerald-500" />
+                                Project Already Evaluated
+                            </div>
+                        )}
                     </div>
                 </motion.div>
             </div>

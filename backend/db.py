@@ -1,4 +1,4 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 import os
 import certifi
 import logging
@@ -192,3 +192,19 @@ internships_col = db["internships"]
 applications_col = db["applications"] # Tracks Selections, Rejections, and Status
 opportunities_col = db["opportunities"]
 opportunity_applications_col = db["opportunity_applications"]
+
+# ─── GRIDFS BUCKET (persistent file storage, survives Render restarts) ────────
+# Usage: await gridfs_bucket.upload_from_stream(filename, data) → ObjectId
+#        await gridfs_bucket.open_download_stream(file_id) → stream
+def _get_gridfs_bucket():
+    """Lazy GridFS bucket — only created once db.db is available."""
+    if db.db is not None:
+        try:
+            return AsyncIOMotorGridFSBucket(db.db, bucket_name="stage_files")
+        except Exception as e:
+            logger.error(f"Failed to create GridFS bucket: {e}")
+            return None
+    return None
+
+# Remove global initialization - will be created lazily when needed
+gridfs_bucket = None

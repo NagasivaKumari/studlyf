@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { API_BASE_URL, authHeaders } from '../../apiConfig';
+import { API_BASE_URL, authHeaders, FRONTEND_URL } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
 import { ChevronLeft, UsersRound, Link as LinkIcon, Loader2, Upload, FileText, CheckCircle2, Clock, Trophy, Share2, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -19,6 +19,7 @@ const EventHub: React.FC = () => {
     const [participant, setParticipant] = useState<IParticipant | null>(null);
     const [team, setTeam] = useState<ITeam | null>(null);
     const [activeTab, setActiveTab] = useState('timeline');
+    const [isEvaluated, setIsEvaluated] = useState(false);
     
     // Team management state
     const [teamName, setTeamName] = useState('');
@@ -27,6 +28,7 @@ const EventHub: React.FC = () => {
     const [generatedCode, setGeneratedCode] = useState('');
     const [showInviteLink, setShowInviteLink] = useState(false);
     const [linkCopied, setLinkCopied] = useState(false);
+    const [codeCopied, setCodeCopied] = useState(false);
 
     // Submission state
     const [submitting, setSubmitting] = useState<string | null>(null); // stage_id
@@ -43,9 +45,18 @@ const EventHub: React.FC = () => {
 
             if (evRes.ok) setEvent(await evRes.json());
             if (hubRes.ok) {
-                const data: HubResp = await hubRes.json();
+                const data: any = await hubRes.json();
                 setParticipant(data.participant);
                 setTeam(data.team);
+                setIsEvaluated(!!data.is_evaluated);
+                // Auto-surface the most recent active invite code so leader
+                // doesn't have to click "Generate" just to see it.
+                const invites: any[] = (data.team as any)?.invites || [];
+                const now = Date.now();
+                const active = [...invites].reverse().find(
+                    (inv: any) => !inv.revoked && (!inv.expires_at || new Date(inv.expires_at).getTime() > now)
+                );
+                if (active) setGeneratedCode(active.code);
             }
         } catch (error) {
             console.error("Failed to fetch hub data", error);
@@ -154,6 +165,7 @@ const EventHub: React.FC = () => {
             if (res.ok) {
                 const data = await res.json();
                 setGeneratedCode(data.code);
+                // If code was reused from DB, nothing new was written — that's fine
             }
         } finally {
             setWorking(false);
@@ -276,24 +288,35 @@ const EventHub: React.FC = () => {
         </div>
     );
 
-    if (!participant) return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
-            <UsersRound size={64} className="text-slate-300 mb-6" />
-            <h1 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Application Required</h1>
-            <p className="text-slate-600 max-w-md mb-8">
-                You are not registered for this event. Please apply through the opportunities portal to access this hub.
-            </p>
-            <Link 
-                to={`/opportunities/${eventId}`} 
-                className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-purple-700 transition-all shadow-xl"
-            >
-                View Opportunity Details
-            </Link>
-        </div>
-    );
+    if (!participant) {
+        const params = new URLSearchParams(location.search);
+        const joinCode = params.get('join');
+        
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+                <div className="w-24 h-24 bg-white rounded-[2rem] shadow-xl shadow-purple-500/10 flex items-center justify-center mb-8 border border-slate-100">
+                    {joinCode ? <UsersRound size={40} className="text-purple-600" /> : <LinkIcon size={40} className="text-purple-600" />}
+                </div>
+                <h1 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">
+                    {joinCode ? "You're Invited!" : "Application Required"}
+                </h1>
+                <p className="text-slate-600 max-w-md mb-8 font-medium">
+                    {joinCode 
+                        ? "A teammate has invited you to join their unit! To accept this invitation and access the project hub, you must first register for the event."
+                        : "You are not registered for this event. Please apply through the opportunities portal to access this hub and begin your collaborative phase."}
+                </p>
+                <Link 
+                    to={`/opportunities/${eventId}${joinCode ? `?join=${joinCode}` : ''}`} 
+                    className="px-10 py-5 bg-slate-900 text-white rounded-[2rem] font-black uppercase tracking-widest text-[10px] hover:bg-purple-700 transition-all shadow-2xl shadow-slate-900/20"
+                >
+                    {joinCode ? "Register to Join Team" : "View Opportunity Details"}
+                </Link>
+            </div>
+        );
+    }
 
     const event_id_as_opp = event?.opportunity_id || eventId;
-    const isLeader = team && team.leader_id === user?.user_id;
+    const isLeader = team && (String(team.leader_id || team.team_leader_id) === String(user?.user_id));
 
     const tabs = [
         { id: 'timeline', label: 'Timeline', icon: <Clock size={14} /> },
@@ -435,11 +458,24 @@ const EventHub: React.FC = () => {
                         {activeTab === 'submissions' && (
                             <div className="space-y-8">
                                 <h2 className="text-2xl font-black text-slate-900">Submission Portal</h2>
+
+                                {/* Inline error banner — shown when backend rejects (scored / deadline) */}
+                                {submissionError && (
+                                    <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-sm font-bold text-red-600 flex items-start gap-3">
+                                        <span className="mt-0.5">⚠</span>
+                                        <span className="flex-1">{submissionError}</span>
+                                        <button onClick={() => setSubmissionError(null)} className="text-red-300 hover:text-red-600">✕</button>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     {(event.stages || []).filter((s: any) => s.type?.toUpperCase() === 'SUBMISSION').map((stage: any, idx: number) => {
                                         const deadline = new Date(new Date(stage.end_date).setHours(23,59,59,999));
                                         const isPastDeadline = new Date() > deadline;
-                                        const isCompleted = participant.last_stage_submitted === stage.id;
+                                        const hasSubmitted = participant.last_stage_submitted === stage.id;
+                                        // UI locks on deadline OR if already evaluated
+                                        // Allow re-upload if submitted but not evaluated and deadline not passed
+                                        const isLocked = isPastDeadline || isEvaluated;
                                         const fields = stage.config?.fields || [];
                                         
                                         return (
@@ -451,39 +487,57 @@ const EventHub: React.FC = () => {
                                                         </div>
                                                         <h3 className="text-lg font-black text-slate-900">{stage.name}</h3>
                                                     </div>
-                                                    {isCompleted ? (
-                                                        <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Submitted</span>
+                                                    {isEvaluated ? (
+                                                        <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-amber-100">Locked · Already Evaluated</span>
+                                                    ) : hasSubmitted ? (
+                                                        <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Submission Received</span>
                                                     ) : isPastDeadline ? (
                                                         <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">Closed</span>
                                                     ) : null}
                                                 </div>
                                                 <p className="text-sm text-slate-500 font-medium leading-relaxed">{stage.description}</p>
-                                                
+                                                {!isPastDeadline && (
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                                        Deadline: {deadline.toLocaleDateString()} {deadline.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                                                        {hasSubmitted && ' · You can re-upload until then'}
+                                                    </p>
+                                                )}
+
                                                 {fields.length === 0 ? (
-                                                    <div className="p-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center gap-4 group hover:border-purple-300 transition-all">
+                                                    <div className={`p-6 border-2 border-dashed rounded-3xl flex flex-col items-center gap-4 transition-all ${
+                                                        isLocked ? 'bg-slate-100 border-slate-200 opacity-60' : 'bg-slate-50 border-slate-200 hover:border-purple-300 group'
+                                                    }`}>
                                                         <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-purple-600 shadow-sm transition-colors">
                                                             <FileText size={24} />
                                                         </div>
                                                         <div className="text-center">
-                                                            <p className="text-sm font-black text-slate-900">Upload Project Assets</p>
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">PPT, PDF, or ZIP (Max 50MB)</p>
+                                                            <p className="text-sm font-black text-slate-900">
+                                                                {isEvaluated ? 'Evaluation Complete' : isLocked ? 'Submission Locked' : 'Upload Project Assets'}
+                                                            </p>
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                                                {isEvaluated ? 'This project has been reviewed' : isLocked ? (hasSubmitted ? 'Modification restricted' : 'Deadline has passed') : 'PPT, PDF, or ZIP (Max 50MB)'}
+                                                            </p>
                                                         </div>
-                                                        <input 
-                                                            type="file"
-                                                            id={`file-${stage.id}`}
-                                                            className="hidden"
-                                                            disabled={isCompleted || submitting === stage.id}
-                                                            onChange={(e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (file) handleFileUpload(stage.id, file);
-                                                            }}
-                                                        />
-                                                        <label 
-                                                            htmlFor={`file-${stage.id}`}
-                                                            className={`px-8 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm ${isCompleted ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                        >
-                                                            {submitting === stage.id ? 'Uploading...' : 'Select File'}
-                                                        </label>
+                                                        {!isLocked && (
+                                                            <>
+                                                                <input
+                                                                    type="file"
+                                                                    id={`file-${stage.id}`}
+                                                                    className="hidden"
+                                                                    disabled={submitting === stage.id}
+                                                                    onChange={(e) => {
+                                                                        const file = e.target.files?.[0];
+                                                                        if (file) handleFileUpload(stage.id, file);
+                                                                    }}
+                                                                />
+                                                                <label
+                                                                    htmlFor={`file-${stage.id}`}
+                                                                    className="px-8 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm"
+                                                                >
+                                                                    {submitting === stage.id ? 'Uploading…' : hasSubmitted ? 'Re-upload File' : 'Select File'}
+                                                                </label>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div className="space-y-4">
@@ -495,55 +549,55 @@ const EventHub: React.FC = () => {
                                                                 </label>
                                                                 {field.type === 'file' ? (
                                                                     <div className="p-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center gap-3">
-                                                                        <input 
+                                                                        <input
                                                                             type="file"
                                                                             id={`field-${stage.id}-${fIdx}`}
                                                                             className="hidden"
-                                                                            disabled={isCompleted || submitting === stage.id}
+                                                                            disabled={isLocked || submitting === stage.id}
                                                                             onChange={(e) => {
                                                                                 const file = e.target.files?.[0];
                                                                                 if (file) handleFileUpload(stage.id, file);
                                                                             }}
                                                                         />
-                                                                        <label 
+                                                                        <label
                                                                             htmlFor={`field-${stage.id}-${fIdx}`}
-                                                                            className={`px-6 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm ${isCompleted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                            className={`px-6 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                                         >
-                                                                            {submitting === stage.id ? 'Uploading...' : 'Select File'}
+                                                                            {submitting === stage.id ? 'Uploading…' : hasSubmitted ? 'Re-upload' : 'Select File'}
                                                                         </label>
                                                                     </div>
                                                                 ) : field.type === 'url' ? (
-                                                                    <input 
+                                                                    <input
                                                                         type="url"
-                                                                        disabled={isCompleted}
+                                                                        disabled={isLocked}
                                                                         value={String(submissionData[`${stage.id}-${field.id}`] || '')}
                                                                         onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
                                                                         placeholder={field.placeholder || 'https://...'}
-                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all"
+                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all disabled:opacity-60"
                                                                     />
                                                                 ) : field.type === 'text' ? (
-                                                                    <input 
+                                                                    <input
                                                                         type="text"
-                                                                        disabled={isCompleted}
+                                                                        disabled={isLocked}
                                                                         value={String(submissionData[`${stage.id}-${field.id}`] || '')}
                                                                         onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
                                                                         placeholder={field.placeholder || ''}
-                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all"
+                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all disabled:opacity-60"
                                                                     />
                                                                 ) : field.type === 'number' ? (
-                                                                    <input 
+                                                                    <input
                                                                         type="number"
-                                                                        disabled={isCompleted}
+                                                                        disabled={isLocked}
                                                                         value={String(submissionData[`${stage.id}-${field.id}`] || '')}
                                                                         onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
                                                                         placeholder={field.placeholder || ''}
-                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all"
+                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all disabled:opacity-60"
                                                                     />
                                                                 ) : field.type === 'checkbox' ? (
                                                                     <label className="flex items-center gap-2 cursor-pointer">
-                                                                        <input 
+                                                                        <input
                                                                             type="checkbox"
-                                                                            disabled={isCompleted}
+                                                                            disabled={isLocked}
                                                                             checked={!!submissionData[`${stage.id}-${field.id}`]}
                                                                             onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.checked }))}
                                                                             className="w-5 h-5 accent-purple-600"
@@ -553,12 +607,12 @@ const EventHub: React.FC = () => {
                                                                 ) : null}
                                                             </div>
                                                         ))}
-                                                        <button 
+                                                        <button
                                                             onClick={() => handleSubmission(stage.id)}
-                                                            disabled={isCompleted || isPastDeadline || submitting === stage.id}
+                                                            disabled={isLocked || submitting === stage.id}
                                                             className="w-full px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-purple-700 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
                                                         >
-                                                            {submitting === stage.id ? 'Submitting...' : 'Submit'}
+                                                            {submitting === stage.id ? 'Submitting…' : hasSubmitted ? 'Re-submit' : 'Submit'}
                                                         </button>
                                                     </div>
                                                 )}
@@ -595,68 +649,81 @@ const EventHub: React.FC = () => {
                                                     <p className="text-2xl font-black text-slate-900">{team.team_name}</p>
                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Active Unit • {(team.members || []).length} Members</p>
                                                 </div>
-                                                
-                                                {isLeader ? (
+                                                                                {isLeader && (
                                                     <div className="space-y-4">
                                                         <button
                                                             onClick={generateInvite}
                                                             disabled={working}
                                                             className="w-full py-4 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
                                                         >
-                                                            {working ? 'Processing...' : 'Generate New Invite Code'}
+                                                            {working ? 'Processing...' : generatedCode ? 'Share Team Invite' : 'Generate Invite Code'}
                                                         </button>
-                                                        {generatedCode && (
-                                                            <div className="space-y-4">
-                                                                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-purple-50 border border-purple-100 rounded-[2rem] text-center">
-                                                                     <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-2">Access Token</p>
-                                                                     <p className="text-3xl font-black text-purple-700 tracking-tighter">{generatedCode}</p>
-                                                                     <button onClick={() => { navigator.clipboard.writeText(generatedCode); alert('Protocol Copied'); }} className="mt-4 text-[10px] font-black text-purple-600 uppercase tracking-widest hover:underline">Copy to Clipboard</button>
-                                                                 </motion.div>
-                                                                 
-                                                                 <button 
-                                                                     onClick={() => setShowInviteLink(!showInviteLink)}
-                                                                     className="w-full flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-purple-600 transition-colors"
-                                                                 >
-                                                                     <Share2 size={12} /> {showInviteLink ? 'Hide Invite Link' : 'Show Shareable Join Link'}
-                                                                 </button>
-
-                                                                 <AnimatePresence>
-                                                                     {showInviteLink && (
-                                                                         <motion.div 
-                                                                             initial={{ opacity: 0, height: 0 }}
-                                                                             animate={{ opacity: 1, height: 'auto' }}
-                                                                             exit={{ opacity: 0, height: 0 }}
-                                                                             className="overflow-hidden"
-                                                                         >
-                                                                             <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl space-y-3">
-                                                                                 <p className="text-[10px] font-bold text-slate-500 leading-relaxed">
-                                                                                     Share this direct link with your teammates. They will be automatically joined upon opening.
-                                                                                 </p>
-                                                                                 <div className="flex gap-2">
-                                                                                     <div className="flex-grow p-3 bg-white border border-slate-200 rounded-xl text-[10px] font-mono text-slate-500 truncate">
-                                                                                         {`${window.location.origin}${window.location.pathname}#/events/${eventId}?join=${generatedCode}`}
-                                                                                     </div>
-                                                                                     <button 
-                                                                                         onClick={() => {
-                                                                                             navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}#/events/${eventId}?join=${generatedCode}`);
-                                                                                             setLinkCopied(true);
-                                                                                             setTimeout(() => setLinkCopied(false), 2000);
-                                                                                         }}
-                                                                                         className="p-3 bg-slate-900 text-white rounded-xl hover:bg-purple-600 transition-colors"
-                                                                                     >
-                                                                                         {linkCopied ? <Check size={14} /> : <Copy size={14} />}
-                                                                                     </button>
-                                                                                 </div>
-                                                                             </div>
-                                                                         </motion.div>
-                                                                     )}
-                                                                 </AnimatePresence>
-                                                            </div>
-                                                        )}
                                                     </div>
-                                                ) : (
+                                                )}
+
+                                                {generatedCode && (
+                                                    <div className="space-y-4 mt-4">
+                                                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-purple-50 border border-purple-100 rounded-[2rem] text-center">
+                                                                <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-2">Team Invite Code</p>
+                                                                <p className="text-3xl font-black text-purple-700 tracking-tighter font-mono">{generatedCode}</p>
+                                                                <p className="text-[10px] text-purple-400 font-bold mt-2">Share this code to let teammates join</p>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        navigator.clipboard.writeText(generatedCode);
+                                                                        setCodeCopied(true);
+                                                                        setTimeout(() => setCodeCopied(false), 2000);
+                                                                    }}
+                                                                    className="mt-4 flex items-center gap-2 mx-auto text-[10px] font-black text-purple-600 uppercase tracking-widest hover:underline"
+                                                                >
+                                                                    {codeCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                                                                    {codeCopied ? 'Copied!' : 'Copy Code'}
+                                                                </button>
+                                                            </motion.div>
+                                                            
+                                                            <button 
+                                                                onClick={() => setShowInviteLink(!showInviteLink)}
+                                                                className="w-full flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-purple-600 transition-colors"
+                                                            >
+                                                                <Share2 size={12} /> {showInviteLink ? 'Hide Invite Link' : 'Show Shareable Join Link'}
+                                                            </button>
+
+                                                            <AnimatePresence>
+                                                                {showInviteLink && (
+                                                                    <motion.div 
+                                                                        initial={{ opacity: 0, height: 0 }}
+                                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                                        exit={{ opacity: 0, height: 0 }}
+                                                                        className="overflow-hidden"
+                                                                    >
+                                                                        <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl space-y-3">
+                                                                            <p className="text-[10px] font-bold text-slate-500 leading-relaxed">
+                                                                                Share this direct link with your teammates.
+                                                                            </p>
+                                                                            <div className="flex gap-2">
+                                                                                <div className="flex-grow p-3 bg-white border border-slate-200 rounded-xl text-[10px] font-mono text-slate-500 truncate">
+                                                                                    {`${FRONTEND_URL}/#/events/${eventId}?join=${generatedCode}`}
+                                                                                </div>
+                                                                                <button 
+                                                                                    onClick={() => {
+                                                                                        navigator.clipboard.writeText(`${FRONTEND_URL}/#/events/${eventId}?join=${generatedCode}`);
+                                                                                        setLinkCopied(true);
+                                                                                        setTimeout(() => setLinkCopied(false), 2000);
+                                                                                    }}
+                                                                                    className="p-3 bg-slate-900 text-white rounded-xl hover:bg-purple-600 transition-colors"
+                                                                                >
+                                                                                    {linkCopied ? <Check size={14} /> : <Copy size={14} />}
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </motion.div>
+                                                                )}
+                                                            </AnimatePresence>
+                                                    </div>
+                                                )}
+
+                                                {!isLeader && !generatedCode && (
                                                     <div className="p-6 bg-slate-50 border border-slate-100 rounded-3xl">
-                                                        <p className="text-xs font-bold text-slate-500">Only the unit leader can authorize new members.</p>
+                                                        <p className="text-xs font-bold text-slate-500 text-center">Only the unit leader can generate new invite codes.</p>
                                                     </div>
                                                 )}
                                             </div>

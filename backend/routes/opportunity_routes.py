@@ -370,13 +370,12 @@ async def learner_upload_stage_file(
             detail=f"File type {file_ext} is not allowed. Allowed types: {', '.join(allowed_extensions)}"
         )
 
-    # 3. Save file
+    # 3. Deadline check + judge-score lock
     ev = await events_col.find_one({"_id": ObjectId(str(event_id))})
     if ev:
         stages = ev.get("stages") or []
         for s in stages:
             if str(s.get("id")) == stage_id:
-                # Use _safe_dt logic or manual check
                 from services.opportunity_service import _safe_dt
                 end = _safe_dt(s.get("deadline") or s.get("endDate") or s.get("end_date"))
                 if end:
@@ -385,23 +384,148 @@ async def learner_upload_stage_file(
                         end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
                     if datetime.utcnow() > end_dt:
                         raise HTTPException(status_code=403, detail=f"Submission deadline for {s.get('name')} has passed.")
-    
-    STAGE_UPLOADS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "stages")
-    os.makedirs(STAGE_UPLOADS, exist_ok=True)
-    
-    unique_filename = f"{stage_id}_{uid}_{uuid.uuid4().hex}{file_ext}"
-    file_path = os.path.join(STAGE_UPLOADS, unique_filename)
-    
-    try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
-    
-    # Generate accessible URL
-    file_url = f"/uploads/stages/{unique_filename}"
 
-    # 3. Store in DB
+    # Check for existing submission and allow re-upload if not evaluated and deadline not passed
+    from db import submissions_col as _submissions_col, scores_col as _scores_col
+    
+    submission_query = {"event_id": str(event_id), "stage_id": str(stage_id)}
+    if p.get("team_id"):
+        submission_query["team_id"] = str(p["team_id"])
+    else:
+        submission_query["user_id"] = uid
+        
+    existing_submission = await _submissions_col.find_one(submission_query)
+    
+    # Check if judge has already evaluated this submission
+    score_query = {"event_id": str(event_id), "stage_id": str(stage_id)}
+    if p.get("team_id"):
+        score_query["team_id"] = str(p["team_id"])
+    else:
+        score_query["user_id"] = uid
+    
+    existing_score = await _scores_col.find_one(score_query)
+    
+    # Allow re-upload logic
+    if existing_submission:
+        if existing_score:
+            # Judge has already evaluated - NO re-upload allowed
+            raise HTTPException(
+                403,
+                detail="Your submission has already been evaluated by a judge and can no longer be modified."
+            )
+        
+        # Check deadline again for existing submission
+        ev = await events_col.find_one({"_id": ObjectId(str(event_id))})
+        if ev:
+            stages = ev.get("stages") or []
+            for s in stages:
+                if str(s.get("id")) == stage_id:
+                    from services.opportunity_service import _safe_dt
+                    end = _safe_dt(s.get("deadline") or s.get("endDate") or s.get("end_date"))
+                    if end:
+                        end_dt = end.replace(tzinfo=None)
+                        if end_dt.hour == 0 and end_dt.minute == 0:
+                            end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+                        if datetime.utcnow() > end_dt:
+                            # Deadline has passed - NO re-upload allowed
+                            raise HTTPException(
+                                403, 
+                                detail=f"Submission deadline for {s.get('name')} has passed. Re-uploads are not allowed after deadline."
+                            )
+        
+        # If we reach here: No evaluation AND deadline not passed - ALLOW re-upload
+        # Delete old submission data to allow clean re-upload
+        await _submissions_col.delete_one(submission_query)
+        
+        # Also delete old file from filesystem if it exists
+        try:
+            old_file_url = existing_submission.get("data", {}).get("file_url")
+            if old_file_url and old_file_url.startswith("/api/files/"):
+                old_file_id = old_file_url.split("/")[-1]
+                from db import _get_gridfs_bucket
+                bucket = _get_gridfs_bucket()
+                if bucket:
+                    # Get old file metadata to find filesystem path
+                    old_gridfs_cursor = bucket.find({"_id": ObjectId(old_file_id)})
+                    async for old_doc in old_gridfs_cursor:
+                        old_metadata = old_doc.metadata or {}
+                        old_file_path = old_metadata.get("file_path")
+                        if old_file_path and os.path.exists(old_file_path):
+                            os.remove(old_file_path)
+                            print(f"Deleted old file: {old_file_path}")
+                        break
+                    
+                    # Delete old GridFS entry
+                    await bucket.delete(ObjectId(old_file_id))
+        except Exception as e:
+            print(f"Warning: Could not delete old file: {str(e)}")
+        
+        print(f"ALLOWING RE-UPLOAD for user {uid}, stage {stage_id}")
+
+    # ── Store file in filesystem and path in GridFS metadata ──────
+    import os
+    import logging
+    from db import _get_gridfs_bucket
+
+    logger = logging.getLogger(__name__)
+
+    # Create upload directory if it doesn't exist
+    upload_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "events")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    unique_filename = f"{stage_id}_{uid}_{uuid.uuid4().hex}{file_ext}"
+    file_path = os.path.join(upload_dir, unique_filename)
+    
+    # Save file to filesystem
+    file_bytes = await file.read()
+    try:
+        logger.info(f"Saving file to filesystem: {file_path}")
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+        logger.info(f"File saved successfully: {file_path}")
+    except Exception as e:
+        logger.error(f"Failed to save file {unique_filename}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
+    # Store only the file path in GridFS metadata (not the file content)
+    bucket = _get_gridfs_bucket()
+    if bucket is None:
+        logger.error("GridFS bucket not available during file upload")
+        raise HTTPException(status_code=503, detail="File storage unavailable - database not connected")
+
+    try:
+        # Store minimal metadata with file path reference
+        metadata_doc = {
+            "event_id": str(event_id),
+            "stage_id": str(stage_id),
+            "user_id": uid,
+            "original_filename": file.filename,
+            "content_type": file.content_type or "application/octet-stream",
+            "file_path": file_path,  # Store the actual file path
+            "file_size": len(file_bytes),
+            "upload_type": "filesystem_path"  # Flag to indicate path-based storage
+        }
+        
+        # Store empty content with metadata
+        grid_id = await bucket.upload_from_stream(
+            unique_filename,
+            b"",  # Empty content since we store path in metadata
+            metadata=metadata_doc
+        )
+        logger.info(f"File path stored in GridFS with ID: {grid_id}")
+    except Exception as e:
+        logger.error(f"Failed to store file path metadata {unique_filename}: {str(e)}")
+        # Clean up the saved file if GridFS fails
+        try:
+            os.remove(file_path)
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to store file metadata: {str(e)}")
+
+    # Serve URL — routed through /api/opportunities/files/{id} which will read from filesystem
+    file_url = f"/api/opportunities/files/{str(grid_id)}"
+
+    # Store in DB
     submission_entry = {
         "event_id": str(event_id),
         "stage_id": str(stage_id),
@@ -411,22 +535,108 @@ async def learner_upload_stage_file(
         "submitted_at": datetime.utcnow().isoformat(),
         "status": "Submitted"
     }
-    
+
     query = {"event_id": str(event_id), "stage_id": str(stage_id)}
     if p.get("team_id"):
         query["team_id"] = p.get("team_id")
     else:
         query["user_id"] = uid
-        
+
     await submission_data_col.update_one(query, {"$set": submission_entry}, upsert=True)
-    
+
     # Update participant progress
     await participants_col.update_one(
         {"_id": p["_id"]},
         {"$set": {"last_stage_submitted": stage_id, "updated_at": datetime.utcnow()}}
     )
-    
+
     return {"status": "success", "file_url": file_url}
+
+
+@router.get("/files/{file_id}")
+async def serve_gridfs_file(file_id: str):
+    """Serve file from filesystem using path stored in GridFS metadata."""
+    from db import _get_gridfs_bucket
+    from bson import ObjectId
+    from bson.errors import InvalidId
+    from fastapi.responses import FileResponse, StreamingResponse
+    import os
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        oid = ObjectId(file_id)
+    except (InvalidId, Exception):
+        logger.error(f"Invalid file ID format: {file_id}")
+        raise HTTPException(status_code=400, detail="Invalid file id")
+
+    bucket = _get_gridfs_bucket()
+    if bucket is None:
+        logger.error("GridFS bucket not available - database not connected")
+        raise HTTPException(status_code=503, detail="File storage unavailable - database not connected")
+
+    try:
+        logger.info(f"Attempting to serve file: {file_id}")
+        
+        # Get GridFS document to read metadata (contains file path)
+        gridfs_cursor = bucket.find({"_id": oid})
+        gridfs_doc = None
+        async for doc in gridfs_cursor:
+            gridfs_doc = doc
+            break
+        
+        if not gridfs_doc:
+            logger.error(f"GridFS document not found for ID: {file_id}")
+            raise HTTPException(status_code=404, detail="File metadata not found")
+
+        metadata = gridfs_doc.metadata or {}
+        file_path = metadata.get("file_path")
+        upload_type = metadata.get("upload_type")
+        content_type = metadata.get("content_type", "application/octet-stream")
+        original_filename = metadata.get("original_filename", gridfs_doc.filename or file_id)
+
+        logger.info(f"File metadata found: path={file_path}, type={upload_type}")
+
+        if upload_type == "filesystem_path" and file_path and os.path.exists(file_path):
+            # Serve file from filesystem
+            logger.info(f"Serving file from filesystem: {file_path}")
+            return FileResponse(
+                path=file_path,
+                filename=original_filename,
+                media_type=content_type,
+                headers={
+                    "Cache-Control": "private, max-age=3600",
+                    "Content-Disposition": f'inline; filename="{original_filename}"'
+                }
+            )
+        else:
+            # Fallback: try to stream from GridFS (for backward compatibility)
+            logger.info(f"Attempting GridFS fallback for file: {file_id}")
+            stream = await bucket.open_download_stream(oid)
+            file_info = stream.grid_in
+            
+            async def _iter():
+                while True:
+                    chunk = await stream.read(65536)  # 64KB chunks
+                    if not chunk:
+                        break
+                    yield chunk
+
+            return StreamingResponse(
+                _iter(), 
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f'inline; filename="{original_filename}"',
+                    "Cache-Control": "private, max-age=3600",
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error serving file {file_id}: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
+
+
 
 @router.post("/events/{event_id}/stages/{stage_id}/submit")
 async def learner_submit_stage_data(

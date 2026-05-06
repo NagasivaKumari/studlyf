@@ -56,11 +56,18 @@ def assert_institution_scope(institution_id: Optional[str], user: dict) -> None:
 
 
 async def assert_institution_owns_event(event_id: str, user: dict) -> dict:
-    """Return event doc if the caller may manage it."""
+    """Return event doc if the caller may manage it. Handles both ObjectId and UUID-format event IDs."""
+    from bson.errors import InvalidId
+    
+    # Build a resilient query that works for both ObjectId (24-char hex) and UUID/string IDs
+    id_query: list = [{"event_id": event_id}]  # custom string field fallback
     try:
-        ev = await events_col.find_one({"_id": ObjectId(event_id)})
-    except Exception:
-        ev = None
+        id_query.append({"_id": ObjectId(event_id)})
+    except (InvalidId, Exception):
+        pass
+    id_query.append({"_id": event_id})  # string _id fallback
+    
+    ev = await events_col.find_one({"$or": id_query})
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
     role = user.get("role") or ""
