@@ -205,21 +205,39 @@ async def create_team_invite(
     if str(team.get("team_leader_id") or "") != uid:
         raise HTTPException(status_code=403, detail="Only the team leader can create invite codes")
 
+    now = datetime.utcnow()
+
+    # ── Return existing active code if one still exists ──────────────────────
+    existing_invites = team.get("invites") or []
+    for inv in reversed(existing_invites):           # most-recent first
+        if inv.get("revoked"):
+            continue
+        try:
+            exp = datetime.fromisoformat(str(inv.get("expires_at", "")).replace("Z", "+00:00"))
+            if now > exp.replace(tzinfo=None):
+                continue                              # expired — skip
+        except Exception:
+            pass                                     # no expiry stored — treat as valid
+        # Found a live code — return it without generating a new one
+        return {"status": "success", "code": inv["code"], "team_id": team_id, "reused": True}
+
+    # ── No active code — generate a fresh one ────────────────────────────────
     ttl = max(1, min(int(ttl_hours), 168))
     code = secrets.token_urlsafe(10)
     invite = {
         "code": code,
         "created_by": uid,
-        "created_at": datetime.utcnow().isoformat(),
-        "expires_at": (datetime.utcnow() + timedelta(hours=ttl)).isoformat(),
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(hours=ttl)).isoformat(),
         "uses": 0,
         "revoked": False,
     }
     await teams_col.update_one(
         {"_id": ObjectId(team_id)},
-        {"$push": {"invites": invite}, "$set": {"updated_at": datetime.utcnow()}},
+        {"$push": {"invites": invite}, "$set": {"updated_at": now}},
     )
-    return {"status": "success", "code": code, "team_id": team_id}
+    return {"status": "success", "code": code, "team_id": team_id, "reused": False}
+
 
 
 @router.post("/join-by-invite")

@@ -27,6 +27,7 @@ const EventHub: React.FC = () => {
     const [generatedCode, setGeneratedCode] = useState('');
     const [showInviteLink, setShowInviteLink] = useState(false);
     const [linkCopied, setLinkCopied] = useState(false);
+    const [codeCopied, setCodeCopied] = useState(false);
 
     // Submission state
     const [submitting, setSubmitting] = useState<string | null>(null); // stage_id
@@ -46,6 +47,14 @@ const EventHub: React.FC = () => {
                 const data: HubResp = await hubRes.json();
                 setParticipant(data.participant);
                 setTeam(data.team);
+                // Auto-surface the most recent active invite code so leader
+                // doesn't have to click "Generate" just to see it.
+                const invites: any[] = (data.team as any)?.invites || [];
+                const now = Date.now();
+                const active = [...invites].reverse().find(
+                    (inv: any) => !inv.revoked && (!inv.expires_at || new Date(inv.expires_at).getTime() > now)
+                );
+                if (active) setGeneratedCode(active.code);
             }
         } catch (error) {
             console.error("Failed to fetch hub data", error);
@@ -154,6 +163,7 @@ const EventHub: React.FC = () => {
             if (res.ok) {
                 const data = await res.json();
                 setGeneratedCode(data.code);
+                // If code was reused from DB, nothing new was written — that's fine
             }
         } finally {
             setWorking(false);
@@ -603,14 +613,25 @@ const EventHub: React.FC = () => {
                                                             disabled={working}
                                                             className="w-full py-4 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
                                                         >
-                                                            {working ? 'Processing...' : 'Generate New Invite Code'}
+                                                            {working ? 'Processing...' : generatedCode ? 'Refresh Invite Code' : 'Generate Invite Code'}
                                                         </button>
                                                         {generatedCode && (
                                                             <div className="space-y-4">
                                                                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-purple-50 border border-purple-100 rounded-[2rem] text-center">
-                                                                     <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-2">Access Token</p>
-                                                                     <p className="text-3xl font-black text-purple-700 tracking-tighter">{generatedCode}</p>
-                                                                     <button onClick={() => { navigator.clipboard.writeText(generatedCode); alert('Protocol Copied'); }} className="mt-4 text-[10px] font-black text-purple-600 uppercase tracking-widest hover:underline">Copy to Clipboard</button>
+                                                                     <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-2">Team Invite Code</p>
+                                                                     <p className="text-3xl font-black text-purple-700 tracking-tighter font-mono">{generatedCode}</p>
+                                                                     <p className="text-[10px] text-purple-400 font-bold mt-2">Valid for 72 hours · Share this code to let teammates join</p>
+                                                                     <button
+                                                                         onClick={() => {
+                                                                             navigator.clipboard.writeText(generatedCode);
+                                                                             setCodeCopied(true);
+                                                                             setTimeout(() => setCodeCopied(false), 2000);
+                                                                         }}
+                                                                         className="mt-4 flex items-center gap-2 mx-auto text-[10px] font-black text-purple-600 uppercase tracking-widest hover:underline"
+                                                                     >
+                                                                         {codeCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                                                                         {codeCopied ? 'Copied!' : 'Copy Code'}
+                                                                     </button>
                                                                  </motion.div>
                                                                  
                                                                  <button 
