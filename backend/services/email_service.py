@@ -26,6 +26,11 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
     Sends an email notification. 
     Priority: 1. SMTP SSL (Port 465) - User specified SMTP only
     """
+    # Diagnostic logging
+    logger.info(f"[EMAIL DEBUG] SMTP_SERVER: {os.getenv('SMTP_SERVER')}")
+    logger.info(f"[EMAIL DEBUG] SMTP_PORT: {os.getenv('SMTP_PORT')}")
+    logger.info(f"[EMAIL DEBUG] SMTP_USER: {os.getenv('SMTP_USER')[:3] if os.getenv('SMTP_USER') else 'NOT SET'}...")
+    
     # Skip API keys since user uses SMTP only
     smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
     smtp_port = int(os.getenv("SMTP_PORT", 465))
@@ -74,10 +79,11 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
                     server.starttls()
                     
                 server.login(smtp_user, smtp_pass)
+                logger.info(f"[SMTP] Logged in successfully as {smtp_user}")
                 
                 msg = MIMEMultipart()
                 msg['From'] = f"{email_from} <{smtp_user}>"
-                msg['to'] = to_email
+                msg['To'] = to_email
                 msg['Subject'] = subject
                 msg.attach(MIMEText(body_html, 'html'))
                 
@@ -91,9 +97,9 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
                 error_cat = categorize_error(e)
                 duration = round(time.time() - start_time, 2)
                 logger.error(f"[TELEMETRY FAILURE] {error_cat} | Domain: {domain_cat} | Attempt: {attempt + 1} | Duration: {duration}s | Error: {str(e)}")
-                
-                if attempt < max_retries - 1:
-                    time.sleep(2)
+                # CRITICAL: Print the full stack trace for SMTP errors to help debug
+                import traceback
+                traceback.print_exc()
         return False
 
     return await asyncio.to_thread(send_sync_email)
