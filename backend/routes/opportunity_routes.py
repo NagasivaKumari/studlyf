@@ -386,53 +386,36 @@ async def learner_upload_stage_file(
                     if datetime.utcnow() > end_dt:
                         raise HTTPException(status_code=403, detail=f"Submission deadline for {s.get('name')} has passed.")
     
-    CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
-    CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
-    CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+    # ── Upload to MongoDB GridFS (persistent — survives Render restarts) ──────
+    from db import gridfs_bucket as _gfs
+    from db import _get_gridfs_bucket
+
+    bucket = _gfs or _get_gridfs_bucket()
+    if bucket is None:
+        raise HTTPException(status_code=503, detail="File storage unavailable (GridFS not connected)")
 
     unique_filename = f"{stage_id}_{uid}_{uuid.uuid4().hex}{file_ext}"
+    file_bytes = await file.read()
 
-    if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
-        # --- Cloudinary upload (persistent across Render restarts) ---
-        try:
-            import cloudinary
-            import cloudinary.uploader
+    try:
+        grid_id = await bucket.upload_from_stream(
+            unique_filename,
+            file_bytes,
+            metadata={
+                "event_id": str(event_id),
+                "stage_id": str(stage_id),
+                "user_id": uid,
+                "original_filename": file.filename,
+                "content_type": file.content_type or "application/octet-stream",
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to store file: {str(e)}")
 
-            cloudinary.config(
-                cloud_name=CLOUDINARY_CLOUD_NAME,
-                api_key=CLOUDINARY_API_KEY,
-                api_secret=CLOUDINARY_API_SECRET,
-                secure=True
-            )
+    # Serve URL — routed through /api/files/{id} which streams from GridFS
+    file_url = f"/api/files/{str(grid_id)}"
 
-            file_bytes = await file.read()
-            upload_result = cloudinary.uploader.upload(
-                file_bytes,
-                public_id=f"stage_submissions/{unique_filename}",
-                resource_type="auto",
-                use_filename=True,
-                unique_filename=False
-            )
-            file_url = upload_result.get("secure_url", "")
-            if not file_url:
-                raise ValueError("Cloudinary returned no URL")
-
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"File upload to Cloudinary failed: {str(e)}")
-    else:
-        # --- Local disk fallback (dev only — NOT persistent on Render) ---
-        STAGE_UPLOADS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "stages")
-        os.makedirs(STAGE_UPLOADS, exist_ok=True)
-        file_path = os.path.join(STAGE_UPLOADS, unique_filename)
-        try:
-            contents = await file.read()
-            with open(file_path, "wb") as buffer:
-                buffer.write(contents)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
-        file_url = f"/uploads/stages/{unique_filename}"
-
-    # Store in DB — file_url is now a full Cloudinary HTTPS URL or local path
+    # Store in DB
     submission_entry = {
         "event_id": str(event_id),
         "stage_id": str(stage_id),
@@ -458,6 +441,48 @@ async def learner_upload_stage_file(
     )
 
     return {"status": "success", "file_url": file_url}
+
+
+@router.get("/files/{file_id}")
+async def serve_gridfs_file(file_id: str):
+    """Stream a file stored in MongoDB GridFS by its ObjectId."""
+    from db import _get_gridfs_bucket
+    from bson import ObjectId
+    from bson.errors import InvalidId
+    from fastapi.responses import StreamingResponse
+    import io
+
+    try:
+        oid = ObjectId(file_id)
+    except (InvalidId, Exception):
+        raise HTTPException(status_code=400, detail="Invalid file id")
+
+    bucket = _get_gridfs_bucket()
+    if bucket is None:
+        raise HTTPException(status_code=503, detail="File storage unavailable")
+
+    try:
+        stream = await bucket.open_download_stream(oid)
+        file_info = stream.grid_in
+        content_type = (file_info.metadata or {}).get("content_type", "application/octet-stream")
+        filename = file_info.filename or file_id
+
+        async def _iter():
+            while True:
+                chunk = await stream.read(65536)  # 64KB chunks
+                if not chunk:
+                    break
+                yield chunk
+
+        headers = {
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=3600",
+        }
+        return StreamingResponse(_iter(), media_type=content_type, headers=headers)
+
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="File not found")
+
 
 
 @router.post("/events/{event_id}/stages/{stage_id}/submit")

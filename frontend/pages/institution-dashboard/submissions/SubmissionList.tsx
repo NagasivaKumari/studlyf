@@ -456,7 +456,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                         <div className="flex items-center gap-3">
                                             {sub.data?.file_url ? (
                                                 <a 
-                                                    href={`${API_BASE_URL}${sub.data.file_url}`}
+                                                    href={sub.data.file_url.startsWith('http') ? sub.data.file_url : `${API_BASE_URL}${sub.data.file_url}`}
                                                     target="_blank"
                                                     rel="noreferrer"
                                                     className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
