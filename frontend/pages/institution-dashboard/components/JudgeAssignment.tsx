@@ -34,56 +34,11 @@ const JudgeAssignment: React.FC<JudgeAssignmentProps> = ({
     assignedJudgeIds, 
     onUpdate, 
     currentInstitutionId,
-    showInstitutionFilter = true 
+    showInstitutionFilter = true,
+    availableJudges
 }) => {
     const [selectedInstitution, setSelectedInstitution] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
-    const [availableJudges, setAvailableJudges] = useState<Judge[]>([
-        { 
-            id: 'j1', 
-            name: 'Dr. Sarah Wilson', 
-            email: 'sarah@ai-corp.com', 
-            expertise: ['AI', 'ML'], 
-            assigned: false,
-            institutionId: 'inst1',
-            institutionName: 'MIT',
-            department: 'Computer Science',
-            position: 'Professor'
-        },
-        { 
-            id: 'j2', 
-            name: 'Mark Chen', 
-            email: 'mark@dev.tech', 
-            expertise: ['Web3', 'System Design'], 
-            assigned: false,
-            institutionId: 'inst2',
-            institutionName: 'Stanford University',
-            department: 'Computer Science',
-            position: 'Assistant Professor'
-        },
-        { 
-            id: 'j3', 
-            name: 'Elena Rodriguez', 
-            email: 'elena@design.io', 
-            expertise: ['UI/UX', 'Product'], 
-            assigned: false,
-            institutionId: 'inst3',
-            institutionName: 'Harvard University',
-            department: 'Design School',
-            position: 'Lecturer'
-        },
-        { 
-            id: 'j4', 
-            name: 'Alex Thompson', 
-            email: 'alex@security.net', 
-            expertise: ['Cybersecurity'], 
-            assigned: false,
-            institutionId: 'inst4',
-            institutionName: 'UC Berkeley',
-            department: 'Electrical Engineering',
-            position: 'Research Scientist'
-        },
-    ]);
 
     // Get unique institutions for filter
     const institutions = Array.from(new Set(availableJudges.map(j => j.institutionName)));

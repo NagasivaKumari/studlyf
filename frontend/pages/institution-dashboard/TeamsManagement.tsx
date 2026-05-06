@@ -217,8 +217,8 @@ const TeamsManagement: React.FC = () => {
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{team.event}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.formationDate}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(team.status)}`}>
-                                                        {team.status}
+                                                    <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(team.status || 'Pending')}`}>
+                                                        {team.status || 'Pending'}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

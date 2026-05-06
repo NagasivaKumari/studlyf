@@ -8,6 +8,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import JudgeInviteModal from './components/JudgeInviteModal';
+import { getJudgeStatusById, getJudgeStatusColor, getJudgeStatusIcon, getJudgeStatusLabel } from '../../utils/judgeStatuses';
 
 const JudgeManagement: React.FC = () => {
     const [judges, setJudges] = useState<any[]>([]);
@@ -143,7 +144,13 @@ const JudgeManagement: React.FC = () => {
                         >
                             <div className="flex justify-between items-start mb-6">
                                 <div className="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center text-[#6C3BFF] font-black text-xl border border-purple-100">
-                                    {judge.name ? judge.name.charAt(0).toUpperCase() : <Users size={24} />}
+                                    {React.createElement('div', { 
+                                        dangerouslySetInnerHTML: { 
+                                            __html: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path d="${getJudgeStatusIcon(judge.status || 'pending')}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                    </svg>`
+                                                }
+                                            })}
                                 </div>
                                 <div className="flex gap-2">
                                     <button 
@@ -174,9 +181,9 @@ const JudgeManagement: React.FC = () => {
                                 
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <div className={`w-2 h-2 rounded-full ${judge.is_test ? 'bg-amber-400' : 'bg-emerald-500'}`} />
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getJudgeStatusColor(judge.status || 'pending') }} />
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                            {judge.is_test ? 'Sandbox Judge' : 'Verified Expert'}
+                                            {getJudgeStatusLabel(judge.status || 'pending')}
                                         </span>
                                     </div>
                                     <div className="text-[10px] font-bold text-slate-300">
