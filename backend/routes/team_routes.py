@@ -270,6 +270,12 @@ async def join_by_invite(
         raise HTTPException(status_code=400, detail="You must register/apply before joining a team")
     if p.get("team_id"):
         raise HTTPException(status_code=400, detail="You are already in a team")
+    
+    # Check if user is already a member of this team
+    existing_members = team.get("members", [])
+    is_already_member = any(member.get("user_id") == uid for member in existing_members)
+    if is_already_member:
+        raise HTTPException(status_code=400, detail="You are already a member of this team")
 
     # validate invite not expired/revoked
     invites = team.get("invites") or []

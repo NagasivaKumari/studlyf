@@ -20,9 +20,18 @@ import {
     Mail,
     Phone,
 } from 'lucide-react';
+import { getStatusById, getStatusColor, getStatusLabel } from '../../utils/calendarStatuses';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
+
+// Define User type for the component
+interface User {
+  user_id?: string;
+  full_name?: string;
+  name?: string;
+  email?: string;
+}
 import TeamManager from './TeamManager';
 import {
     formatOpportunityLocation,
@@ -708,18 +717,28 @@ const OpportunityDetails: React.FC = () => {
                         {isApplied && !submitted ? (
                             <div className="mt-8 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 flex flex-wrap items-center gap-4">
                                 {(() => {
-                                    const dec = applicationDecisionCopy(myApplication?.status);
+                                    const status = getStatusById(myApplication?.status || 'pending');
+                                    const statusColor = getStatusColor(myApplication?.status || 'pending');
+                                    const statusIcon = getStatusById(myApplication?.status || 'pending');
+                                    
                                     return (
                                         <>
-                                            <div className="w-11 h-11 rounded-xl bg-emerald-500 flex items-center justify-center text-white">
-                                                <CheckCircle2 size={22} />
+                                            <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white" style={{ backgroundColor: statusColor }}>
+                                                {React.createElement('div', { 
+                                                    dangerouslySetInnerHTML: { 
+                                                        __html: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                            <circle cx="12" cy="12" r="10" stroke="white" stroke-width="2"/>
+                                                            <path d="${statusIcon}" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                        </svg>`
+                                                    }
+                                                })}
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">
-                                                    {dec.headline}
+                                                    {getStatusLabel(myApplication?.status || 'pending')}
                                                 </p>
                                                 <p className="font-black text-emerald-900">{dec.title}</p>
-                                                <p className="text-sm text-emerald-800/90 mt-0.5">{dec.sub}</p>
+                                                <p className="text-sm text-emerald-800/90 mt-0.5">{dec.sub || ''}</p>
                                             </div>
                                         </>
                                     );

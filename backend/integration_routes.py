@@ -78,29 +78,62 @@ async def _list_submissions_for_judge_user(user: dict, event_id: Optional[str] =
 
 
 async def _dispatch_status_email(target_id: str, status: str, doc: dict):
-    """Sends a status update email to the team leader or solo participant."""
+    """Sends a status update email to team leader AND all team members."""
     from services.email_service import send_notification_email
     
-    # Get user email
-    user_email = ""
+    # Get all team member emails
+    recipient_emails = []
     user_name = "Participant"
     event_id = doc.get("event_id")
     
-    # 1. Try to get email from doc directly
-    user_email = doc.get("email") or doc.get("user_email")
-    user_name = doc.get("team_name") or doc.get("full_name") or doc.get("user_name") or "Participant"
+    # 1. Try to get emails from doc directly
+    leader_email = doc.get("email") or doc.get("user_email")
+    leader_name = doc.get("team_name") or doc.get("full_name") or doc.get("user_name") or "Participant"
     
-    # 2. If not found, look up leader/user
-    if not user_email:
+    if leader_email:
+        recipient_emails.append(leader_email)
+        user_name = leader_name
+    
+    # 2. If team, get all team member emails
+    team_id = doc.get("team_id") or doc.get("_id")
+    if team_id:
+        try:
+            team = await teams_col.find_one({"_id": ObjectId(team_id)})
+            if team:
+                # Get leader email
+                leader_id = team.get("team_leader_id") or team.get("leader_id")
+                if leader_id:
+                    leader_rec = await users_col.find_one({"user_id": leader_id})
+                    if leader_rec and leader_rec.get("email"):
+                        if leader_rec.get("email") not in recipient_emails:
+                            recipient_emails.append(leader_rec.get("email"))
+                            if not leader_email:  # Use leader name if not set earlier
+                                user_name = leader_rec.get("full_name") or leader_rec.get("name") or "Team"
+                
+                # Get all team member emails
+                members = team.get("members", [])
+                for member in members:
+                    member_id = member.get("user_id")
+                    if member_id:
+                        member_rec = await users_col.find_one({"user_id": member_id})
+                        if member_rec and member_rec.get("email"):
+                            member_email = member_rec.get("email")
+                            if member_email not in recipient_emails:
+                                recipient_emails.append(member_email)
+        except Exception:
+            pass
+    
+    # 3. Fallback for solo participants
+    if not recipient_emails:
         uid = doc.get("team_leader_id") or doc.get("user_id")
         if uid:
             user_rec = await users_col.find_one({"user_id": uid})
             if user_rec:
-                user_email = user_rec.get("email")
-                user_name = user_rec.get("full_name") or user_rec.get("name") or user_name
+                recipient_emails.append(user_rec.get("email"))
+                user_name = user_rec.get("full_name") or user_rec.get("name") or "Participant"
 
-    if not user_email:
-        logger.warning(f"[EMAIL] Skipping status email for {target_id}: No email found")
+    if not recipient_emails:
+        logger.warning(f"[EMAIL] Skipping status email for {target_id}: No emails found")
         return
 
     # Get event title
@@ -152,10 +185,19 @@ async def _dispatch_status_email(target_id: str, status: str, doc: dict):
     """
 
     try:
-        await send_notification_email(user_email, subject, body_html)
-        logger.info(f"[EMAIL SUCCESS] Sent {status} notification to {user_email}")
+        # Send to all team members
+        success_count = 0
+        for email in recipient_emails:
+            try:
+                await send_notification_email(email, subject, body_html)
+                success_count += 1
+                logger.info(f"[EMAIL SUCCESS] Sent {status} notification to {email}")
+            except Exception as e:
+                logger.error(f"[EMAIL ERROR] Failed to send {status} email to {email}: {str(e)}")
+        
+        logger.info(f"[EMAIL SUMMARY] Sent {status} notification to {success_count}/{len(recipient_emails)} team members")
     except Exception as e:
-        logger.error(f"[EMAIL ERROR] Failed to send {status} email: {str(e)}")
+        logger.error(f"[EMAIL ERROR] Failed to send {status} emails: {str(e)}")
 
 
 router = APIRouter(prefix="/api/v1/institution", tags=["Institutional Integration"])
@@ -1533,6 +1575,22 @@ async def create_submission(submission_data: dict):
     from db import submissions_col
     from datetime import datetime
     
+    # 1. Prevent Duplicates (Search by team_name and event_id)
+    team_name = submission_data.get("team_name")
+    event_id = submission_data.get("event_id")
+    
+    if team_name and event_id:
+        query = {"team_name": team_name, "event_id": event_id}
+        # If it's a manual entry without specific user_id, we just update the record
+        submission_data["updated_at"] = datetime.utcnow()
+        await submissions_col.update_one(
+            query,
+            {"$set": submission_data},
+            upsert=True
+        )
+        return {"status": "success", "message": "Submission recorded (updated if existed)"}
+    
+    # Fallback for legacy or partial data
     submission_data["submitted_at"] = datetime.utcnow()
     result = await submissions_col.insert_one(submission_data)
     
