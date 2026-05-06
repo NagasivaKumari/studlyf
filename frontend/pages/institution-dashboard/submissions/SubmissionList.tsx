@@ -355,7 +355,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                                 <button 
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        handleOpenJudgeAssignment(item._id);
+                                                        handleOpenJudgeAssignment(item.submission_id || item.team_id || item._id);
                                                     }}
                                                     className="text-[10px] font-black text-[#6C3BFF] uppercase tracking-widest hover:underline flex items-center gap-2 transition-all w-fit"
                                                 >

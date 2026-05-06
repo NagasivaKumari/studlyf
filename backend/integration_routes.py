@@ -77,6 +77,87 @@ async def _list_submissions_for_judge_user(user: dict, event_id: Optional[str] =
     return out
 
 
+async def _dispatch_status_email(target_id: str, status: str, doc: dict):
+    """Sends a status update email to the team leader or solo participant."""
+    from services.email_service import send_notification_email
+    
+    # Get user email
+    user_email = ""
+    user_name = "Participant"
+    event_id = doc.get("event_id")
+    
+    # 1. Try to get email from doc directly
+    user_email = doc.get("email") or doc.get("user_email")
+    user_name = doc.get("team_name") or doc.get("full_name") or doc.get("user_name") or "Participant"
+    
+    # 2. If not found, look up leader/user
+    if not user_email:
+        uid = doc.get("team_leader_id") or doc.get("user_id")
+        if uid:
+            user_rec = await users_col.find_one({"user_id": uid})
+            if user_rec:
+                user_email = user_rec.get("email")
+                user_name = user_rec.get("full_name") or user_rec.get("name") or user_name
+
+    if not user_email:
+        logger.warning(f"[EMAIL] Skipping status email for {target_id}: No email found")
+        return
+
+    # Get event title
+    event_title = "your event"
+    if event_id:
+        event = await events_col.find_one(_event_id_query(str(event_id)))
+        if event:
+            event_title = event.get("title", "your event")
+
+    subject = f"Update on your submission for {event_title}"
+    
+    status_colors = {
+        "Shortlisted": "#6C3BFF",
+        "Approved": "#10B981",
+        "Rejected": "#EF4444"
+    }
+    color = status_colors.get(status, "#6C3BFF")
+
+    body_html = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+            <div style="max-width: 600px; margin: auto; padding: 40px; border: 1px solid #edf2f7; border-radius: 24px; background: white;">
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <div style="display: inline-block; padding: 12px; background: {color}10; border-radius: 16px; margin-bottom: 15px;">
+                        <span style="font-size: 32px;">📢</span>
+                    </div>
+                    <h2 style="color: #1a202c; margin: 0; font-size: 24px; font-weight: 800;">Status Update</h2>
+                </div>
+
+                <p>Hello <strong>{user_name}</strong>,</p>
+                <p>We have an update regarding your project for <strong>{event_title}</strong>.</p>
+                
+                <div style="margin: 30px 0; padding: 25px; background: {color}08; border: 2px dashed {color}20; border-radius: 20px; text-align: center;">
+                    <p style="margin: 0; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; color: #64748b;">Current Status</p>
+                    <p style="margin: 10px 0 0 0; font-size: 32px; font-weight: 900; color: {color}; text-transform: uppercase;">{status}</p>
+                </div>
+
+                <p style="color: #4a5568;">
+                    {f"Congratulations! You have been <strong>{status.lower()}</strong>. Next steps will be shared soon." if status != "Rejected" else "Thank you for your participation. Unfortunately, your project was not selected for the next phase."}
+                </p>
+
+                <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #edf2f7; text-align: center; color: #a0aec0; font-size: 12px;">
+                    This is an automated notification from the Studlyf Institutional Portal.<br>
+                    Please do not reply directly to this email.
+                </div>
+            </div>
+        </body>
+    </html>
+    """
+
+    try:
+        await send_notification_email(user_email, subject, body_html)
+        logger.info(f"[EMAIL SUCCESS] Sent {status} notification to {user_email}")
+    except Exception as e:
+        logger.error(f"[EMAIL ERROR] Failed to send {status} email: {str(e)}")
+
+
 router = APIRouter(prefix="/api/v1/institution", tags=["Institutional Integration"])
 
 @router.patch("/submissions/{submission_id}/status")
@@ -143,14 +224,65 @@ async def update_institutional_status(submission_id: str, status_data: dict = Bo
     except Exception as e:
         logger.error(f"[STATUS ERROR] Submission update failed: {str(e)}")
 
-    # 3. Check if it was already that status
+    # 3. Try updating Opportunity Applications (Crucial for Student Dashboard)
+    try:
+        # Determine the user_id to update
+        # If target_id is a team_id, we should find the leader's user_id
+        actual_user_id = target_id
+        team = await teams_col.find_one({"team_id": target_id})
+        if not team:
+            try:
+                if len(target_id) == 24: team = await teams_col.find_one({"_id": ObjectId(target_id)})
+            except: pass
+            
+        if team:
+            actual_user_id = team.get("team_leader_id") or team.get("leader_id")
+            logger.info(f"[STATUS] Team detected. Updating opportunity application for leader: {actual_user_id}")
+
+        if actual_user_id:
+            oa_res = await opportunity_applications_col.update_many(
+                {"user_id": actual_user_id},
+                {"$set": {
+                    "status": status.lower(),
+                    "reviewed_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            if oa_res.modified_count > 0:
+                logger.info(f"[STATUS] Updated {oa_res.modified_count} opportunity applications for {actual_user_id}")
+    except Exception as e:
+        logger.error(f"[STATUS ERROR] Opportunity application update failed: {str(e)}")
+
+    # 4. Check if it was already that status
     exists_team = await teams_col.find_one(t_id_query)
     exists_sub = await submissions_col.find_one(s_id_query)
     
+    # [NEW] Dispatch Email Notifications
+    if status in ["Shortlisted", "Approved", "Rejected"]:
+        target_doc = exists_team or exists_sub
+        if target_doc:
+            asyncio.create_task(_dispatch_status_email(target_id, status, target_doc))
+
     if exists_team or exists_sub:
         return {"status": "success", "message": "Status synchronized"}
 
     raise HTTPException(status_code=404, detail=f"Entity {target_id} not found for status update")
+
+@router.post("/test-email")
+async def test_email_configuration(user: dict = Depends(get_auth_user)):
+    """Verifies that SMTP settings are working by sending a test email."""
+    from services.email_service import send_notification_email
+    email = user.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Authenticated user has no email")
+    
+    subject = "🔔 Studlyf SMTP Test"
+    body = f"<h1>Connection Successful!</h1><p>This is a test email to verify your SMTP configuration. If you received this, your email system is properly connected.</p>"
+    
+    success = await send_notification_email(email, subject, body)
+    if success:
+        return {"status": "success", "message": f"Test email sent to {email}"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to send test email. Check your SMTP credentials in the environment.")
 
 
 @router.post("/profile")

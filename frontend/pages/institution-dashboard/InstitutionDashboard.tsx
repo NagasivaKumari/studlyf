@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Building2, Info, ChevronRight } from 'lucide-react';
+import { Building2, Info, ChevronRight, Zap, Clock } from 'lucide-react';
 import Sidebar from '../../components/institution/Sidebar';
 import InstitutionNavbar from '../../components/institution/InstitutionNavbar';
 import StatsSection from '../../components/institution/StatsSection';
@@ -225,7 +225,7 @@ const InstitutionDashboard: React.FC = () => {
                         />
 
                         <div className="flex flex-col xl:flex-row gap-8">
-                            {/* Main Activity Column */}
+                             {/* Main Activity Column */}
                             <div className="flex-1 space-y-8">
                                 <RecentListings 
                                     institutionId={institutionId} 
@@ -233,12 +233,53 @@ const InstitutionDashboard: React.FC = () => {
                                     onViewAll={() => handleTabChange('opportunities')}
                                 />
                                 
+                                {/* Quick Protocols Card */}
+                                <div className="p-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                                        <Zap size={120} className="text-[#6C3BFF]" />
+                                    </div>
+                                    <div className="relative z-10">
+                                        <h3 className="text-lg font-black text-slate-900 uppercase tracking-widest mb-2">Quick Protocols</h3>
+                                        <p className="text-slate-400 text-sm mb-8">Execute common institutional commands with one click.</p>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            {[
+                                                { label: 'Bulk Shortlist', icon: Zap, color: 'bg-purple-50 text-[#6C3BFF]' },
+                                                { label: 'Issue Certificates', icon: Info, color: 'bg-emerald-50 text-emerald-600' },
+                                                { label: 'Export Analytics', icon: Clock, color: 'bg-blue-50 text-blue-600' }
+                                            ].map((action, i) => (
+                                                <button key={i} className="flex items-center gap-4 p-4 rounded-2xl border border-slate-50 hover:border-purple-100 hover:bg-slate-50 transition-all text-left">
+                                                    <div className={`w-10 h-10 ${action.color} rounded-xl flex items-center justify-center`}>
+                                                        <action.icon size={18} />
+                                                    </div>
+                                                    <span className="font-bold text-slate-700 text-xs">{action.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Secondary Column - Intelligence & Utilities */}
                             <div className="w-full xl:w-[400px] space-y-8">
                                 <AlertsPanel institutionId={institutionId} />
-
+                                
+                                {/* Customise Card */}
+                                <div className="p-8 bg-gradient-to-br from-[#6C3BFF] to-[#8E66FF] rounded-[2.5rem] text-white shadow-xl shadow-purple-200 relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+                                    <div className="relative z-10">
+                                        <h3 className="text-lg font-black uppercase tracking-widest mb-4">Customise your Experience</h3>
+                                        <p className="text-purple-100 text-xs leading-relaxed mb-8 opacity-80">
+                                            Tailor the institutional portal to your specific workflow and branding requirements.
+                                        </p>
+                                        <button 
+                                            onClick={() => handleTabChange('settings')}
+                                            className="w-full py-4 bg-white text-[#6C3BFF] rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-purple-50 transition-all"
+                                        >
+                                            Portal Settings
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

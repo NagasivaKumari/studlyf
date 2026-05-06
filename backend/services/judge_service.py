@@ -34,7 +34,7 @@ async def assign_judge_to_submission(submission_id: str, judge_id: str):
 
 async def assign_judge_to_multiple_submissions(submission_ids: list, judge_id: str):
     """Assign a judge to multiple submissions and send a SINGLE consolidated email."""
-    from db import submission_data_col, judges_col, events_col
+    from db import submission_data_col, judges_col, events_col, submissions_col, teams_col
     from datetime import datetime, timezone, timedelta
     import os
     from bson import ObjectId
@@ -77,27 +77,16 @@ async def assign_judge_to_multiple_submissions(submission_ids: list, judge_id: s
             pass
             
         sub = await submission_data_col.find_one(query)
+        target_id = None
         
         if not sub:
             print(f"DEBUG: No submission_data found for {sid_str}, attempting registration fallback")
-            # Fallback: if it's a team, we can create a record on the fly
-            # but we need event_id. Usually, sid is an ID from teams_col or submissions_col.
-            # For now, let's try to find the registration to get event_id.
-            reg_query = {}
+            reg_query = {"$or": [{"_id": sid_str}, {"team_id": sid_str}]}
             try:
-                if len(sid_str) == 24:
-                    reg_query["$or"] = [{"_id": ObjectId(sid_str)}, {"team_id": sid_str}]
-                else:
-                    reg_query["team_id"] = sid_str
-            except:
-                reg_query["team_id"] = sid_str
-
-            try:
-                reg = await submissions_col.find_one(reg_query)
-            except Exception as e:
-                print(f"DEBUG: Error finding registration record: {str(e)}")
-                reg = None
-
+                if len(sid_str) == 24: reg_query["$or"].append({"_id": ObjectId(sid_str)})
+            except: pass
+            
+            reg = await submissions_col.find_one(reg_query)
             if not reg:
                 # Try teams_col
                 try:
@@ -185,7 +174,15 @@ async def assign_judge_to_multiple_submissions(submission_ids: list, judge_id: s
             }}
         )
         
-        event = await events_col.find_one({"_id": ObjectId(sub.get("event_id"))})
+        # Get event details safely
+        event = None
+        eid = sub.get("event_id")
+        if eid:
+            try:
+                event = await events_col.find_one({"_id": ObjectId(eid) if isinstance(eid, str) and len(eid) == 24 else eid})
+            except Exception as e:
+                print(f"DEBUG: Error finding event {eid}: {str(e)}")
+        
         projects_data.append({
             "title": sub.get("title", "Untitled Project"),
             "team_name": sub.get("team_name") or sub.get("user_name") or sub.get("title") or "Team",
