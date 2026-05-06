@@ -155,10 +155,9 @@ const OpportunityDetails: React.FC = () => {
                 }
                 const list = Array.isArray(apps) ? apps : [];
                 const mine =
-                    list.find((a: any) => {
-                        const oid = a?.opportunity_id;
-                        return oid != null && String(oid) === String(id);
-                    }) || null;
+                    list &&
+                    Array.isArray(list) &&
+                    list.find((app: any) => String(app.opportunity_id) === String(id));
                 setMyApplication(mine);
                 setIsApplied(Boolean(mine));
             } catch (error) {
@@ -167,8 +166,14 @@ const OpportunityDetails: React.FC = () => {
                 setLoading(false);
             }
         };
+
         fetchData();
-    }, [id, user]);
+        
+        // Set up periodic refresh to check for stage updates
+        const refreshInterval = setInterval(fetchData, 30000); // Refresh every 30 seconds
+        
+        return () => clearInterval(refreshInterval);
+    }, [id, user?.user_id]);
 
     const registrationFields: RegField[] = Array.isArray(opportunity?.registrationFields)
         ? opportunity.registrationFields
@@ -292,6 +297,9 @@ const OpportunityDetails: React.FC = () => {
                 if (data) setMyApplication(data);
                 setSubmitted(true);
                 setIsApplied(true);
+            } else {
+                const errData = await response.json().catch(() => ({}));
+                alert(errData.detail || "Failed to submit application. Please check your details and try again.");
             }
         } catch (err) {
             console.error("Apply error:", err);
@@ -433,7 +441,14 @@ const OpportunityDetails: React.FC = () => {
     const logoSrc = opportunity.logo_url || opportunity.institution_logo_url || '';
     const orgDisplay = opportunity.organization || opportunity.institution_profile_name || 'Host institution';
     const registeredCount = Number(opportunity.applicantsCount ?? opportunity.registeredCount ?? 0);
-    const deadlineDate = opportunity.deadline ? new Date(opportunity.deadline) : null;
+    const deadlineDate = (() => {
+        if (!opportunity.deadline) return null;
+        const d = new Date(opportunity.deadline);
+        if (d.getHours() === 0 && d.getMinutes() === 0 && !String(opportunity.deadline).includes('T')) {
+            d.setHours(23, 59, 59, 999);
+        }
+        return d;
+    })();
     const daysLeft =
         deadlineDate && !Number.isNaN(deadlineDate.getTime())
             ? Math.max(0, Math.ceil((deadlineDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
@@ -832,6 +847,11 @@ const OpportunityDetails: React.FC = () => {
                                                         if (start && end) {
                                                             const startDate = new Date(start);
                                                             const endDate = new Date(end);
+                                                            
+                                                            // If end date is just a date (00:00:00), treat as end of day
+                                                            if (endDate.getHours() === 0 && endDate.getMinutes() === 0 && !end.includes('T')) {
+                                                                endDate.setHours(23, 59, 59, 999);
+                                                            }
                                                             
                                                             if (now < startDate) {
                                                                 const days = Math.max(1, Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));

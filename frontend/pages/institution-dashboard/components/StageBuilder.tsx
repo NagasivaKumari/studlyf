@@ -12,7 +12,8 @@ import {
     Gavel,
     Trophy,
     UserCheck,
-    CheckCircle2
+    CheckCircle2,
+    Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import FieldBuilder from './FieldBuilder';
@@ -27,6 +28,7 @@ interface StageBuilderProps {
 
 const STAGE_TYPES = [
     { id: 'Registration', icon: UserCheck, color: 'text-blue-500', bg: 'bg-blue-50' },
+    { id: 'Team Formation', icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50' },
     { id: 'Quiz', icon: FileText, color: 'text-amber-500', bg: 'bg-amber-50' },
     { id: 'Submission', icon: Plus, color: 'text-emerald-500', bg: 'bg-emerald-50' },
     { id: 'Review', icon: Gavel, color: 'text-purple-500', bg: 'bg-purple-50' },
@@ -41,6 +43,10 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
         const now = new Date();
         const start = new Date(startDate);
         const end = new Date(endDate);
+        
+        // Ensure end date includes the entire day (set to 23:59:59 UTC)
+        // This aligns with the backend enforcement
+        end.setUTCHours(23, 59, 59, 999);
         
         if (now < start) return 'Upcoming';
         if (now > end) return 'Completed';
@@ -69,7 +75,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
         onUpdate(stages.filter(s => s.id !== id));
     };
 
-    const updateStage = (id: string, updates: Partial<Stage>) => {
+    const updateStage = (id: string, updates: Partial<IStage>) => {
         onUpdate(stages.map(s => {
             if (s.id === id) {
                 const updated = { ...s, ...updates };

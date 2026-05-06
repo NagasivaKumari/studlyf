@@ -139,6 +139,15 @@ def _apply_event_snapshot_to_opportunity(doc: dict, ev: dict) -> None:
     rd = ev.get("registrationDeadline")
     if rd is not None:
         doc["deadline"] = rd
+        
+    # Override with Registration stage from the new engine if available
+    if isinstance(stages, list):
+        for s in stages:
+            if isinstance(s, dict) and str(s.get("type", "")).upper() == "REGISTRATION":
+                reg_end = s.get("end_date") or s.get("endDate") or s.get("deadline")
+                if reg_end:
+                    doc["deadline"] = reg_end
+                    break
 
     # Prizes (optional; only show if institution provided)
     if ev.get("prize_pool") is not None:
@@ -421,6 +430,38 @@ async def apply_for_opportunity(application_data: dict) -> dict:
     """Saves a new application for an opportunity."""
     oid = str(application_data.get("opportunity_id", ""))
     uid = str(application_data.get("user_id", ""))
+    
+    if oid:
+        try:
+            opp = await opportunities_col.find_one({"_id": ObjectId(oid)})
+        except:
+            opp = None
+            
+        if opp:
+            # Enforce registration deadline - with better error handling
+            deadline = opp.get("deadline")
+            if deadline:
+                if isinstance(deadline, str):
+                    try:
+                        # Use _safe_dt for robust conversion
+                        deadline = _safe_dt(deadline)
+                    except:
+                        deadline = None
+                
+                if deadline:
+                    try:
+                        # Ensure we include the full day if it's just a date
+                        # If it has no time info, set to 23:59:59
+                        deadline_dt = deadline.replace(tzinfo=None)
+                        if deadline_dt.hour == 0 and deadline_dt.minute == 0:
+                            deadline_dt = deadline_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+                            
+                        if datetime.utcnow() > deadline_dt:
+                            raise ValueError("Registration deadline has passed")
+                    except Exception as e:
+                        print(f"Deadline validation error: {e}")
+                        # Continue with application if deadline validation fails
+
     if oid and uid:
         existing = await opportunity_applications_col.find_one(
             {"opportunity_id": oid, "user_id": uid}

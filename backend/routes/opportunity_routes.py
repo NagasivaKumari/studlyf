@@ -101,6 +101,8 @@ async def apply(data: dict = Body(...)):
     """API to apply for an opportunity."""
     try:
         return await apply_for_opportunity(data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -273,27 +275,51 @@ async def list_event_stage_submissions(event_id: str, user: dict = Depends(get_a
     Admin/Institution: List all stage-specific submissions (PPTs, Files, Links).
     """
     from db import submission_data_col, teams_col, users_col
+    from bson import ObjectId
+    
     try:
+        print(f"DEBUG: Fetching stage submissions for event_id: {event_id}")
+        
+        # Validate event_id format
+        try:
+            ObjectId(event_id)
+        except Exception as ve:
+            print(f"DEBUG: Invalid event_id format: {event_id}")
+            raise HTTPException(status_code=400, detail=f"Invalid event_id format: {str(ve)}")
+        
         cursor = submission_data_col.find({"event_id": str(event_id)})
         items = []
         async for doc in cursor:
             doc["_id"] = str(doc["_id"])
+            print(f"DEBUG: Processing submission document: {doc['_id']}")
+            
             # Try to attach team name or user name if possible
             if doc.get("team_id"):
-                team = await teams_col.find_one({"_id": ObjectId(doc["team_id"])})
-                if team: doc["team_name"] = team.get("team_name")
+                try:
+                    team = await teams_col.find_one({"_id": ObjectId(doc["team_id"])})
+                    if team: doc["team_name"] = team.get("team_name")
+                except Exception as te:
+                    print(f"DEBUG: Error fetching team {doc['team_id']}: {str(te)}")
             else:
                 user_rec = await users_col.find_one({"user_id": doc["user_id"]})
                 if user_rec: doc["user_name"] = user_rec.get("name")
             
             # Include assigned judges if available
-            if doc.get("assigned_judges"):
-                doc["assigned_judges"] = doc["assigned_judges"]
+            if doc.get("assigned_judges") and isinstance(doc["assigned_judges"], list):
+                doc["assigned_judge_emails"] = [j.get("email") for j in doc["assigned_judges"] if j.get("email")]
             
             items.append(doc)
+        
+        print(f"DEBUG: Returning {len(items)} stage submissions for event {event_id}")
         return items
+        
+    except HTTPException as he:
+        print(f"DEBUG: HTTP Exception in stage submissions: {str(he)}")
+        raise he
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"DEBUG: Unexpected error in stage submissions: {str(e)}")
+        print(f"DEBUG: Error details - Event ID: {event_id}, Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch stage submissions: {str(e)}")
 
 @router.post("/events/{event_id}/stages/{stage_id}/upload")
 async def learner_upload_stage_file(
@@ -345,6 +371,21 @@ async def learner_upload_stage_file(
         )
 
     # 3. Save file
+    ev = await events_col.find_one({"_id": ObjectId(str(event_id))})
+    if ev:
+        stages = ev.get("stages") or []
+        for s in stages:
+            if str(s.get("id")) == stage_id:
+                # Use _safe_dt logic or manual check
+                from services.opportunity_service import _safe_dt
+                end = _safe_dt(s.get("deadline") or s.get("endDate") or s.get("end_date"))
+                if end:
+                    end_dt = end.replace(tzinfo=None)
+                    if end_dt.hour == 0 and end_dt.minute == 0:
+                        end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    if datetime.utcnow() > end_dt:
+                        raise HTTPException(status_code=403, detail=f"Submission deadline for {s.get('name')} has passed.")
+    
     STAGE_UPLOADS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "stages")
     os.makedirs(STAGE_UPLOADS, exist_ok=True)
     
@@ -428,6 +469,16 @@ async def learner_submit_stage_data(
             
     if not target_stage:
         raise HTTPException(status_code=404, detail="Stage not found")
+        
+    # Check deadline
+    from services.opportunity_service import _safe_dt
+    end = _safe_dt(target_stage.get("deadline") or target_stage.get("endDate") or target_stage.get("end_date"))
+    if end:
+        end_dt = end.replace(tzinfo=None)
+        if end_dt.hour == 0 and end_dt.minute == 0:
+            end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        if datetime.utcnow() > end_dt:
+            raise HTTPException(status_code=403, detail=f"Submission deadline for {target_stage.get('name')} has passed.")
         
     # Check if stage is of type SUBMISSION
     stype = str(target_stage.get("type") or "").upper()

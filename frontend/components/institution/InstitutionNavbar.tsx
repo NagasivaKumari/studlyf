@@ -8,7 +8,7 @@ import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { institutionIdFromUser } from '../../utils/institutionScope';
 
 const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: string) => void, onNavigateToSettings?: () => void }> = ({ refreshKey, onNavigate, onNavigateToSettings }) => {
-    const { user, logout } = useAuth();
+    const { user, role, logout } = useAuth();
     const navigate = useNavigate();
     const displayName = user?.institution_name || user?.full_name || 'Institutional Portal';
     const institutionId = institutionIdFromUser(user);
@@ -95,11 +95,11 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
 
     // Dynamic Notifications Logic
     useEffect(() => {
+        const controller = new AbortController();
         const fetchNotifications = async () => {
+            if (role !== 'institution') return;
             try {
-                // Add timeout to prevent infinite loading
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
 
                 const endpoint = institutionId
                     ? `${API_BASE_URL}/api/v1/institution/notifications/${institutionId}?t=${Date.now()}`
@@ -114,25 +114,25 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
                 
                 if (res.ok) {
                     const data = await res.json();
-                    console.log("[NOTIF] Data received:", data);
                     setNotifications(data);
                     setNotifCount(data.length);
-                } else {
-                    console.error("[NOTIF] Error:", res.status);
                 }
-            } catch (err) { 
-                console.error("[NOTIF] Failed", err);
-                // Set empty notifications on error to prevent infinite loading
-                setNotifications([]);
-                setNotifCount(0);
+            } catch (err: any) { 
+                if (err.name !== 'AbortError') {
+                    console.error("[NOTIF] Failed", err);
+                    setNotifications([]);
+                    setNotifCount(0);
+                }
             }
         };
         fetchNotifications();
         
-        // Poll every 30 seconds for new alerts
         const interval = setInterval(fetchNotifications, 30000);
-        return () => clearInterval(interval);
-    }, [institutionId]);
+        return () => {
+            controller.abort();
+            clearInterval(interval);
+        };
+    }, [institutionId, role]);
 
     const [isSearchFocused, setIsSearchFocused] = useState(false);
 
@@ -181,7 +181,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
 
     useEffect(() => {
         const fetchProfile = async () => {
-            if (!institutionId) return;
+            if (!institutionId || role !== 'institution') return;
             try {
                 // Cache bust: Force fresh data from server
                 const controller = new AbortController();
@@ -250,173 +250,177 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
 
                 {/* 2. Search (Centered & Visible) */}
                 <div className="flex-1 max-w-xl mx-auto relative z-10 hidden md:block">
-                    <div className="relative group/search">
-                        <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-white/60 group-focus-within/search:text-white transition-colors" size={18} />
-                        <input 
-                            ref={searchInputRef}
-                            type="text" 
-                            value={searchQuery}
-                            onFocus={() => setIsSearchFocused(true)}
-                            onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            onKeyDown={handleSearchKeyDown}
-                            placeholder="Search events, students, or reports..." 
-                            className="w-full pl-14 pr-6 py-2.5 bg-white/25 backdrop-blur-3xl border border-white/40 rounded-full text-white placeholder:text-white/60 outline-none focus:bg-white/30 focus:border-white/60 transition-all font-sans font-medium text-xs shadow-xl"
-                        />
-                        {/* CTRL K Badge Removed */}
- 
-                        {/* Search Results Dropdown */}
-                        <AnimatePresence>
-                            {isSearchFocused && (
-                                <motion.div 
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: 10 }}
-                                    className="absolute top-full left-0 right-0 mt-4 bg-white rounded-[2rem] shadow-2xl overflow-hidden p-3 border border-slate-100"
-                                >
-                                    {searchResults.length > 0 ? (
-                                        <div className="space-y-1">
-                                            {searchResults.map((result, idx) => (
-                                                <button 
-                                                    key={`${result.id}-${idx}`}
-                                                    onClick={() => {
-                                                        if (result.id === 'settings' && onNavigateToSettings) {
-                                                            onNavigateToSettings();
-                                                        } else if (result.type === 'Page' && onNavigate) {
-                                                            onNavigate(result.id);
-                                                        } else if (result.type === 'Event' || result.type === 'Student') {
-                                                            // Logic for deep links
-                                                            navigate(result.link);
-                                                        } else {
-                                                            navigate(result.link);
-                                                        }
-                                                        setSearchQuery('');
-                                                        setSearchResults([]);
-                                                    }}
-                                                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all text-left group"
-                                                >
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center text-[#6C3BFF]">
-                                                            <Zap size={18} />
+                    {role !== 'judge' && (
+                        <div className="relative group/search">
+                            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-white/60 group-focus-within/search:text-white transition-colors" size={18} />
+                            <input 
+                                ref={searchInputRef}
+                                type="text" 
+                                value={searchQuery}
+                                onFocus={() => setIsSearchFocused(true)}
+                                onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={handleSearchKeyDown}
+                                placeholder="Search events, students, or reports..." 
+                                className="w-full pl-14 pr-6 py-2.5 bg-white/25 backdrop-blur-3xl border border-white/40 rounded-full text-white placeholder:text-white/60 outline-none focus:bg-white/30 focus:border-white/60 transition-all font-sans font-medium text-xs shadow-xl"
+                            />
+                            {/* CTRL K Badge Removed */}
+     
+                            {/* Search Results Dropdown */}
+                            <AnimatePresence>
+                                {isSearchFocused && (
+                                    <motion.div 
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 10 }}
+                                        className="absolute top-full left-0 right-0 mt-4 bg-white rounded-[2rem] shadow-2xl overflow-hidden p-3 border border-slate-100"
+                                    >
+                                        {searchResults.length > 0 ? (
+                                            <div className="space-y-1">
+                                                {searchResults.map((result, idx) => (
+                                                    <button 
+                                                        key={`${result.id}-${idx}`}
+                                                        onClick={() => {
+                                                            if (result.id === 'settings' && onNavigateToSettings) {
+                                                                onNavigateToSettings();
+                                                            } else if (result.type === 'Page' && onNavigate) {
+                                                                onNavigate(result.id);
+                                                            } else if (result.type === 'Event' || result.type === 'Student') {
+                                                                // Logic for deep links
+                                                                navigate(result.link);
+                                                            } else {
+                                                                navigate(result.link);
+                                                            }
+                                                            setSearchQuery('');
+                                                            setSearchResults([]);
+                                                        }}
+                                                        className="w-full flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all text-left group"
+                                                    >
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center text-[#6C3BFF]">
+                                                                <Zap size={18} />
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-bold text-slate-900 text-sm">{result.title}</p>
+                                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{result.type}</p>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <p className="font-bold text-slate-900 text-sm">{result.title}</p>
-                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{result.type}</p>
-                                                        </div>
-                                                    </div>
-                                                    <ChevronDown className="-rotate-90 text-slate-300 group-hover:text-[#6C3BFF] transition-colors" size={16} />
-                                                </button>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="p-10 text-center text-slate-400 italic text-sm">
-                                            No matching results found...
-                                        </div>
-                                    )}
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
+                                                        <ChevronDown className="-rotate-90 text-slate-300 group-hover:text-[#6C3BFF] transition-colors" size={16} />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="p-10 text-center text-slate-400 italic text-sm">
+                                                No matching results found...
+                                            </div>
+                                        )}
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    )}
                 </div>
 
                 {/* 3. Right Side: Notifs & Profile (Far Right) */}
                 <div className="flex items-center gap-4 relative z-10 shrink-0">
                     {/* Notifications */}
                     {/* Notifications with Dynamic Dropdown */}
-                    <div className="relative" ref={notifRef}>
-                        <motion.button 
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => {
-                                console.log("Notification Bell Clicked! Current State:", !isNotifOpen);
-                                setIsNotifOpen(!isNotifOpen);
-                            }}
-                            className="relative p-3.5 bg-white/10 border border-white/10 rounded-2xl text-white hover:bg-white/20 transition-all group overflow-visible"
-                        >
-                            <Bell size={20} className={`${isNotifOpen ? 'fill-white' : ''} transition-all`} />
-                            {notifCount > 0 && (
-                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 border-2 border-[#6C3BFF] rounded-full flex items-center justify-center text-[9px] font-black text-white animate-pulse">
-                                    {notifCount}
-                                </span>
-                            )}
-                        </motion.button>
+                    {role !== 'judge' && (
+                        <div className="relative" ref={notifRef}>
+                            <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => {
+                                    console.log("Notification Bell Clicked! Current State:", !isNotifOpen);
+                                    setIsNotifOpen(!isNotifOpen);
+                                }}
+                                className="relative p-3.5 bg-white/10 border border-white/10 rounded-2xl text-white hover:bg-white/20 transition-all group overflow-visible"
+                            >
+                                <Bell size={20} className={`${isNotifOpen ? 'fill-white' : ''} transition-all`} />
+                                {notifCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 border-2 border-[#6C3BFF] rounded-full flex items-center justify-center text-[9px] font-black text-white animate-pulse">
+                                        {notifCount}
+                                    </span>
+                                )}
+                            </motion.button>
 
-                        <AnimatePresence>
-                            {isNotifOpen && (
-                                <motion.div 
-                                    initial={{ opacity: 0, y: 20, scale: 0.9, filter: 'blur(10px)' }}
-                                    animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-                                    exit={{ opacity: 0, y: 20, scale: 0.9, filter: 'blur(10px)' }}
-                                    className="absolute right-0 mt-5 w-80 bg-white/95 backdrop-blur-xl rounded-[2.5rem] shadow-[0_20px_50px_rgba(108,59,255,0.3)] border border-white overflow-hidden z-[999]"
-                                >
-                                    <div className="p-7 border-b border-slate-50 flex items-center justify-between bg-gradient-to-r from-purple-50/50 to-transparent">
-                                        <div>
-                                            <p className="font-black text-slate-900 uppercase tracking-[0.2em] text-[10px]">Command Center</p>
-                                            <p className="text-[10px] text-[#6C3BFF] font-bold mt-0.5">Real-time Activity</p>
+                            <AnimatePresence>
+                                {isNotifOpen && (
+                                    <motion.div 
+                                        initial={{ opacity: 0, y: 20, scale: 0.9, filter: 'blur(10px)' }}
+                                        animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+                                        exit={{ opacity: 0, y: 20, scale: 0.9, filter: 'blur(10px)' }}
+                                        className="absolute right-0 mt-5 w-80 bg-white/95 backdrop-blur-xl rounded-[2.5rem] shadow-[0_20px_50px_rgba(108,59,255,0.3)] border border-white overflow-hidden z-[999]"
+                                    >
+                                        <div className="p-7 border-b border-slate-50 flex items-center justify-between bg-gradient-to-r from-purple-50/50 to-transparent">
+                                            <div>
+                                                <p className="font-black text-slate-900 uppercase tracking-[0.2em] text-[10px]">Command Center</p>
+                                                <p className="text-[10px] text-[#6C3BFF] font-bold mt-0.5">Real-time Activity</p>
+                                            </div>
+                                            <div className="px-3 py-1.5 bg-[#6C3BFF] text-white rounded-full text-[10px] font-black shadow-lg shadow-purple-200">
+                                                {notifCount} LIVE
+                                            </div>
                                         </div>
-                                        <div className="px-3 py-1.5 bg-[#6C3BFF] text-white rounded-full text-[10px] font-black shadow-lg shadow-purple-200">
-                                            {notifCount} LIVE
-                                        </div>
-                                    </div>
 
-                                    <div className="max-h-[400px] overflow-y-auto custom-scrollbar p-3">
-                                        {notifications.length > 0 ? (
-                                            <div className="space-y-2">
-                                                {notifications.map((n, idx) => (
-                                                    <motion.div 
-                                                        key={n.id || idx}
-                                                        initial={{ x: -20, opacity: 0 }}
-                                                        animate={{ x: 0, opacity: 1 }}
-                                                        transition={{ delay: idx * 0.05 }}
-                                                        className="p-4 hover:bg-purple-50/50 rounded-3xl transition-all cursor-pointer group/item border border-transparent hover:border-purple-100"
-                                                    >
-                                                        <div className="flex gap-4">
-                                                            <div className="w-11 h-11 bg-white rounded-2xl shadow-sm border border-slate-50 flex items-center justify-center text-slate-400 group-hover/item:bg-[#6C3BFF] group-hover/item:text-white group-hover/item:scale-110 transition-all duration-300">
-                                                                <Zap size={18} />
-                                                            </div>
-                                                            <div className="flex-1">
-                                                                <p className="text-sm font-bold text-slate-900 leading-tight group-hover/item:text-[#6C3BFF] transition-colors">
-                                                                    {n.message || 'New system update available'}
-                                                                </p>
-                                                                <div className="flex items-center gap-2 mt-2">
-                                                                    <Clock size={10} className="text-slate-300" />
-                                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{n.time || 'Just now'}</p>
+                                        <div className="max-h-[400px] overflow-y-auto custom-scrollbar p-3">
+                                            {notifications.length > 0 ? (
+                                                <div className="space-y-2">
+                                                    {notifications.map((n, idx) => (
+                                                        <motion.div 
+                                                            key={n.id || idx}
+                                                            initial={{ x: -20, opacity: 0 }}
+                                                            animate={{ x: 0, opacity: 1 }}
+                                                            transition={{ delay: idx * 0.05 }}
+                                                            className="p-4 hover:bg-purple-50/50 rounded-3xl transition-all cursor-pointer group/item border border-transparent hover:border-purple-100"
+                                                        >
+                                                            <div className="flex gap-4">
+                                                                <div className="w-11 h-11 bg-white rounded-2xl shadow-sm border border-slate-50 flex items-center justify-center text-slate-400 group-hover/item:bg-[#6C3BFF] group-hover/item:text-white group-hover/item:scale-110 transition-all duration-300">
+                                                                    <Zap size={18} />
+                                                                </div>
+                                                                <div className="flex-1">
+                                                                    <p className="text-sm font-bold text-slate-900 leading-tight group-hover/item:text-[#6C3BFF] transition-colors">
+                                                                        {n.message || 'New system update available'}
+                                                                    </p>
+                                                                    <div className="flex items-center gap-2 mt-2">
+                                                                        <Clock size={10} className="text-slate-300" />
+                                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{n.time || 'Just now'}</p>
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
+                                                        </motion.div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="py-16 text-center">
+                                                    <motion.div 
+                                                        animate={{ 
+                                                            y: [0, -10, 0],
+                                                            rotate: [0, 5, -5, 0]
+                                                        }}
+                                                        transition={{ repeat: Infinity, duration: 4 }}
+                                                        className="w-24 h-24 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-6 text-[#6C3BFF]/20"
+                                                    >
+                                                        <Bell size={40} />
                                                     </motion.div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="py-16 text-center">
-                                                <motion.div 
-                                                    animate={{ 
-                                                        y: [0, -10, 0],
-                                                        rotate: [0, 5, -5, 0]
-                                                    }}
-                                                    transition={{ repeat: Infinity, duration: 4 }}
-                                                    className="w-24 h-24 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-6 text-[#6C3BFF]/20"
-                                                >
-                                                    <Bell size={40} />
-                                                </motion.div>
-                                                <p className="text-slate-900 font-black text-sm uppercase tracking-widest">Protocol Clear</p>
-                                                <p className="text-slate-400 text-[11px] mt-2 font-medium px-10">No pending institutional alerts at this timestamp.</p>
-                                            </div>
+                                                    <p className="text-slate-900 font-black text-sm uppercase tracking-widest">Protocol Clear</p>
+                                                    <p className="text-slate-400 text-[11px] mt-2 font-medium px-10">No pending institutional alerts at this timestamp.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        
+                                        {notifications.length > 0 && (
+                                            <button 
+                                                onClick={handleMarkAllAsRead}
+                                                className="w-full p-5 bg-slate-50 hover:bg-slate-100 text-[10px] font-black text-[#6C3BFF] uppercase tracking-[0.3em] transition-all border-t border-slate-100"
+                                            >
+                                                Mark all as read
+                                            </button>
                                         )}
-                                    </div>
-                                    
-                                    {notifications.length > 0 && (
-                                        <button 
-                                            onClick={handleMarkAllAsRead}
-                                            className="w-full p-5 bg-slate-50 hover:bg-slate-100 text-[10px] font-black text-[#6C3BFF] uppercase tracking-[0.3em] transition-all border-t border-slate-100"
-                                        >
-                                            Mark all as read
-                                        </button>
-                                    )}
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    )}
 
                     {/* Profile Section with Logo */}
                     <div 
@@ -435,7 +439,9 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
                             <p className="text-xs font-bold text-white leading-tight truncate font-sans">
                                 {profile?.name || displayName}
                             </p>
-                            <p className="text-[9px] font-black text-purple-200/50 uppercase tracking-widest font-sans">Admin</p>
+                            <p className="text-[9px] font-black text-purple-200/50 uppercase tracking-widest font-sans">
+                                {role === 'judge' ? 'Judge' : 'Admin'}
+                            </p>
                         </div>
                         
                         <div className="h-6 w-px bg-white/10 mx-1 hidden sm:block" />

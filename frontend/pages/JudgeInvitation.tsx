@@ -73,11 +73,12 @@ const JudgeInvitation: React.FC = () => {
             if (accept) {
                 // Set flag for auto-detecting judge role in signup
                 localStorage.setItem('pendingJudgeRole', 'true');
+                localStorage.setItem('wasJudgeInvited', 'true');
                 
                 // Redirect to login after acceptance so they can create/access their account
                 setTimeout(() => {
-                    setNotice({ kind: 'ok', text: 'Please create an account or login to access the judge portal.' });
-                    navigate(`/login?next=${encodeURIComponent('/judge-portal')}`);
+                    setNotice({ kind: 'ok', text: 'Please create an account or login to access your assigned submissions.' });
+                    navigate(`/login?next=${encodeURIComponent('/institution-dashboard/events')}`);
                 }, 2000);
             }
         } catch (e: any) {
@@ -130,6 +131,11 @@ const JudgeInvitation: React.FC = () => {
                                         <p className="text-xs text-slate-500">
                                             You've been invited to judge this event
                                         </p>
+                                        {invitationData.judge_email && (
+                                            <p className="text-xs text-slate-400 mt-1">
+                                                Email: {invitationData.judge_email}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                                 

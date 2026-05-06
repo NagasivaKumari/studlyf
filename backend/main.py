@@ -78,13 +78,18 @@ async def startup_event():
         logger.info("Application startup completed successfully")
         
         # Start background scheduler for reminders
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
-        from services.reminder_service import reminder_service
-        
-        scheduler = AsyncIOScheduler()
-        scheduler.add_job(reminder_service.send_judge_reminders, 'interval', hours=12)
-        scheduler.start()
-        logger.info("Background reminder scheduler started")
+        try:
+            from apscheduler.schedulers.asyncio import AsyncIOScheduler
+            from services.reminder_service import reminder_service
+            
+            scheduler = AsyncIOScheduler()
+            scheduler.add_job(reminder_service.send_judge_reminders, 'interval', hours=12)
+            scheduler.add_job(reminder_service.send_participant_reminders, 'interval', hours=6)
+            scheduler.start()
+            logger.info("Background reminder scheduler started")
+        except ImportError as e:
+            logger.warning(f"Scheduler not available - {e}")
+            logger.info("Application running without background reminders")
         
     except Exception as e:
         logger.error(f"Startup error: {e}")
@@ -347,7 +352,7 @@ def fix_progress(prog, default_status="locked"):
     return {**defaults, **fix_id(prog)}
 
 from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes
-from routes import judge_portal_routes, evaluation_criteria_routes, quiz_visibility_routes, notification_routes
+from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes
 from rate_limiter import rate_limit, check_rate_limit
 
 
@@ -374,10 +379,14 @@ app.include_router(dashboard_routes.router)
 app.include_router(integration_routes.router)
 app.include_router(opportunity_routes.router)
 app.include_router(team_routes.router)
-app.include_router(judge_portal_routes.router)
+app.include_router(evaluation_routes.router)
 app.include_router(evaluation_criteria_routes.router)
 app.include_router(quiz_visibility_routes.router)
 app.include_router(notification_routes.router)
+app.include_router(team_formation_routes.router)
+app.include_router(stage_sync_routes.router)
+app.include_router(test_sync_routes.router)
+app.include_router(direct_sync_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -5164,7 +5173,9 @@ async def get_judge_submissions_view(event_id: str, current_user: dict = Depends
                 # Remove all identifying info
                 s.pop("participant_id", None)
                 s.pop("team_id", None)
-                s["masked_identity"] = f"Anonymous_Team_{s['_id'][-4:]}" # Show last 4 chars of ID only
+                # Use actual team name if available, otherwise use masked identity
+                team_name = s.get("team_name") or s.get("user_name") or s.get("title") or "Team"
+                s["masked_identity"] = f"{team_name}_{s['_id'][-4:]}" # Show last 4 chars of ID only
         
         return {"is_blind_mode": is_blind, "submissions": subs}
     except Exception as e:
@@ -5358,9 +5369,17 @@ async def notify_event_participants(event_id: str, message: str, current_user: d
             # Trigger Email (Background)
             user_record = await users_col.find_one({"user_id": user_id})
             if user_record and "email" in user_record:
-                subject = f"Important Update: {event['title']}"
-                body = f"Hello,\n\nThere is an update regarding '{event['title']}':\n\n{message}\n\nBest regards,\nInstitution Team"
-                asyncio.create_task(send_notification_email(user_record["email"], subject, body))
+                try:
+                    # Add timeout to prevent hanging
+                    await asyncio.wait_for(
+                        asyncio.create_task(send_notification_email(user_record["email"], f"Important Update: {event['title']}", f"Hello,\n\nThere is an update regarding '{event['title']}':\n\n{message}\n\nBest regards,\nInstitution Team")),
+                        timeout=10.0  # 10 second timeout
+                    )
+                    print(f"DEBUG: Email notification sent for {user_record['email']}")
+                except asyncio.TimeoutError:
+                    print(f"DEBUG: Email sending timed out for {user_record['email']}")
+                except Exception as e:
+                    print(f"DEBUG: Email sending failed for {user_record['email']}: {str(e)}")
                 count += 1
 
         # Audit Log

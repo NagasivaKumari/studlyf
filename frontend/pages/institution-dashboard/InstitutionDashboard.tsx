@@ -22,7 +22,7 @@ import OpportunitiesManagement from './OpportunitiesManagement';
 import EventDetails from './EventDetails';
 import SettingsPage from './SettingsPage';
 import SubmissionList from './submissions/SubmissionList';
-import JudgeDashboard from './judge/JudgeDashboard';
+import JudgeManagement from './JudgeManagement';
 import ParticipantsManagement from './ParticipantsManagement';
 import TeamsManagement from './TeamsManagement';
 import LeaderboardPage from './LeaderboardPage';
@@ -40,6 +40,15 @@ const InstitutionDashboard: React.FC = () => {
     // Handle URL-based navigation to set active tab
     useEffect(() => {
         const path = location.pathname;
+        const searchParams = new URLSearchParams(location.search);
+        const eventIdFromUrl = searchParams.get('eventId');
+
+        if (eventIdFromUrl) {
+            setSelectedEventId(eventIdFromUrl);
+            setActiveTab('event-details');
+            return;
+        }
+
         if (path.includes('/judge')) {
             setActiveTab('judges');
         } else if (path.includes('/events')) {
@@ -63,7 +72,7 @@ const InstitutionDashboard: React.FC = () => {
         } else if (path.includes('/settings')) {
             setActiveTab('settings');
         }
-    }, [location.pathname]);
+    }, [location.pathname, location.search]);
 
     // Update URL when tab changes
     const handleTabChange = (tab: string) => {
@@ -82,7 +91,7 @@ const InstitutionDashboard: React.FC = () => {
     const [isTourOpen, setIsTourOpen] = useState(false);
     const [profileRefreshTrigger, setProfileRefreshTrigger] = useState(0);
 
-    const { user } = useAuth();
+    const { user, role } = useAuth();
     const institutionId = institutionIdFromUser(user);
 
     React.useEffect(() => {
@@ -116,7 +125,7 @@ const InstitutionDashboard: React.FC = () => {
 
     const renderContent = () => {
         console.log("[NAV] Rendering Content for Tab:", activeTab);
-        if (!institutionId) {
+        if (!institutionId && role !== 'judge') {
             return (
                 <div className="p-10 max-w-xl mx-auto rounded-3xl border border-amber-200 bg-amber-50 text-amber-950 text-sm font-bold leading-relaxed">
                     Your account is missing an <strong>institution_id</strong>. Ask your Studlyf administrator to link this login to your institution profile so dashboards load real data (no placeholder IDs).
@@ -149,7 +158,7 @@ const InstitutionDashboard: React.FC = () => {
             case 'submissions':
                 return <SubmissionList institutionId={institutionId} />;
             case 'judges':
-                return <JudgeDashboard institutionId={institutionId} />;
+                return <JudgeManagement />;
             case 'leaderboard':
                 return <LeaderboardPage institutionId={institutionId} />;
             case 'analytics':
@@ -257,11 +266,13 @@ const InstitutionDashboard: React.FC = () => {
     return (
         <div className="h-screen bg-[#F8FAFC] flex overflow-hidden font-sans">
             {/* Sidebar: Fixed width, full height */}
-            <Sidebar 
-                activeTab={activeTab} 
-                onTabChange={handleTabChange} 
-                onPost={() => setIsSelectionModalOpen(true)}
-            />
+            {role !== 'judge' && (
+                <Sidebar 
+                    activeTab={activeTab} 
+                    onTabChange={handleTabChange} 
+                    onPost={() => setIsSelectionModalOpen(true)}
+                />
+            )}
 
             {/* Main Content Area: Fills remaining width, has its own scrollbar */}
             <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">

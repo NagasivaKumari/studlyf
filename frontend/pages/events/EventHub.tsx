@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
-import { ChevronLeft, UsersRound, Link as LinkIcon, Loader2, Upload, FileText, CheckCircle2, Clock, Trophy } from 'lucide-react';
+import { ChevronLeft, UsersRound, Link as LinkIcon, Loader2, Upload, FileText, CheckCircle2, Clock, Trophy, Share2, Copy, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import TeamManager from '../opportunities/components/TeamManager';
 import Leaderboard from './Leaderboard';
 import { IEvent, IParticipant, ITeam } from '../../types/event';
@@ -12,6 +13,7 @@ type HubResp = { participant?: IParticipant; team?: ITeam };
 const EventHub: React.FC = () => {
     const { eventId } = useParams();
     const { user } = useAuth();
+    const location = useLocation();
     const [loading, setLoading] = useState(true);
     const [event, setEvent] = useState<IEvent | null>(null);
     const [participant, setParticipant] = useState<IParticipant | null>(null);
@@ -23,6 +25,8 @@ const EventHub: React.FC = () => {
     const [inviteCode, setInviteCode] = useState('');
     const [working, setWorking] = useState(false);
     const [generatedCode, setGeneratedCode] = useState('');
+    const [showInviteLink, setShowInviteLink] = useState(false);
+    const [linkCopied, setLinkCopied] = useState(false);
 
     // Submission state
     const [submitting, setSubmitting] = useState<string | null>(null); // stage_id
@@ -50,8 +54,35 @@ const EventHub: React.FC = () => {
         }
     };
 
+    const handleJoinByUrl = async (code: string) => {
+        setWorking(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/teams/join-by-invite`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ code })
+            });
+            if (res.ok) {
+                alert("Successfully joined team via invite link!");
+                await fetchData();
+                setActiveTab('team');
+            }
+        } catch (e) {
+            console.error("Auto-join failed", e);
+        } finally {
+            setWorking(false);
+        }
+    };
+
     useEffect(() => {
-        fetchData();
+        fetchData().then(() => {
+            // Check for join code in URL
+            const params = new URLSearchParams(location.search);
+            const code = params.get('join');
+            if (code && !team) {
+                handleJoinByUrl(code);
+            }
+        });
         
         // Real-time polling for team/submission updates
         const interval = setInterval(async () => {
@@ -74,10 +105,10 @@ const EventHub: React.FC = () => {
         if (!teamName.trim()) return;
         setWorking(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/events/${eventId}/teams`, {
+            const res = await fetch(`${API_BASE_URL}/api/teams/create-secure`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ name: teamName })
+                body: JSON.stringify({ event_id: eventId, team_name: teamName })
             });
             if (res.ok) {
                 await fetchData();
@@ -95,10 +126,10 @@ const EventHub: React.FC = () => {
         if (!inviteCode.trim()) return;
         setWorking(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/events/${eventId}/teams/join`, {
+            const res = await fetch(`${API_BASE_URL}/api/teams/join-by-invite`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ invite_code: inviteCode })
+                body: JSON.stringify({ code: inviteCode })
             });
             if (res.ok) {
                 await fetchData();
@@ -115,13 +146,14 @@ const EventHub: React.FC = () => {
     const generateInvite = async () => {
         setWorking(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/events/${eventId}/teams/invite`, {
+            const res = await fetch(`${API_BASE_URL}/api/teams/${team?._id}/invites`, {
                 method: 'POST',
-                headers: { ...authHeaders() }
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ ttl_hours: 72 })
             });
             if (res.ok) {
                 const data = await res.json();
-                setGeneratedCode(data.invite_code);
+                setGeneratedCode(data.code);
             }
         } finally {
             setWorking(false);
@@ -339,7 +371,7 @@ const EventHub: React.FC = () => {
                                                             {/* Contextual Action Button */}
                                                             {!isCompleted && (
                                                                 <div className="shrink-0">
-                                                                    {stype === 'TEAM_FORMATION' || stage.name?.toUpperCase().includes('TEAM') ? (
+                                                                    {stype === 'TEAM FORMATION' || stype === 'TEAM_FORMATION' || stage.name?.toUpperCase().includes('TEAM') ? (
                                                                         <button 
                                                                             onClick={() => setActiveTab('team')}
                                                                             className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-900 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm"
@@ -366,7 +398,10 @@ const EventHub: React.FC = () => {
                                                         </div>
                                                         <div className="flex items-center gap-4">
                                                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-lg">Type: {stage.type}</span>
-                                                            <span className="text-[10px] font-black uppercase tracking-widest text-purple-600 bg-purple-50 px-3 py-1 rounded-lg">Deadline: {new Date(stage.end_date).toLocaleDateString()}</span>
+                                                            <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg ${new Date() > new Date(new Date(stage.end_date).setHours(23,59,59,999)) ? 'text-red-600 bg-red-50' : 'text-purple-600 bg-purple-50'}`}>
+                                                                Deadline: {new Date(stage.end_date).toLocaleDateString()}
+                                                                {new Date() > new Date(new Date(stage.end_date).setHours(23,59,59,999)) && " (PASSED)"}
+                                                            </span>
                                                             {isCompleted && (
                                                                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg flex items-center gap-1">
                                                                     <CheckCircle2 size={10} /> Completed
@@ -402,6 +437,8 @@ const EventHub: React.FC = () => {
                                 <h2 className="text-2xl font-black text-slate-900">Submission Portal</h2>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     {(event.stages || []).filter((s: any) => s.type?.toUpperCase() === 'SUBMISSION').map((stage: any, idx: number) => {
+                                        const deadline = new Date(new Date(stage.end_date).setHours(23,59,59,999));
+                                        const isPastDeadline = new Date() > deadline;
                                         const isCompleted = participant.last_stage_submitted === stage.id;
                                         const fields = stage.config?.fields || [];
                                         
@@ -414,7 +451,11 @@ const EventHub: React.FC = () => {
                                                         </div>
                                                         <h3 className="text-lg font-black text-slate-900">{stage.name}</h3>
                                                     </div>
-                                                    {isCompleted && <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Submitted</span>}
+                                                    {isCompleted ? (
+                                                        <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Submitted</span>
+                                                    ) : isPastDeadline ? (
+                                                        <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">Closed</span>
+                                                    ) : null}
                                                 </div>
                                                 <p className="text-sm text-slate-500 font-medium leading-relaxed">{stage.description}</p>
                                                 
@@ -514,7 +555,7 @@ const EventHub: React.FC = () => {
                                                         ))}
                                                         <button 
                                                             onClick={() => handleSubmission(stage.id)}
-                                                            disabled={isCompleted || submitting === stage.id}
+                                                            disabled={isCompleted || isPastDeadline || submitting === stage.id}
                                                             className="w-full px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-purple-700 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
                                                         >
                                                             {submitting === stage.id ? 'Submitting...' : 'Submit'}
@@ -565,11 +606,52 @@ const EventHub: React.FC = () => {
                                                             {working ? 'Processing...' : 'Generate New Invite Code'}
                                                         </button>
                                                         {generatedCode && (
-                                                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-purple-50 border border-purple-100 rounded-[2rem] text-center">
-                                                                <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-2">Access Token</p>
-                                                                <p className="text-3xl font-black text-purple-700 tracking-tighter">{generatedCode}</p>
-                                                                <button onClick={() => { navigator.clipboard.writeText(generatedCode); alert('Protocol Copied'); }} className="mt-4 text-[10px] font-black text-purple-600 uppercase tracking-widest hover:underline">Copy to Clipboard</button>
-                                                            </motion.div>
+                                                            <div className="space-y-4">
+                                                                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-purple-50 border border-purple-100 rounded-[2rem] text-center">
+                                                                     <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-2">Access Token</p>
+                                                                     <p className="text-3xl font-black text-purple-700 tracking-tighter">{generatedCode}</p>
+                                                                     <button onClick={() => { navigator.clipboard.writeText(generatedCode); alert('Protocol Copied'); }} className="mt-4 text-[10px] font-black text-purple-600 uppercase tracking-widest hover:underline">Copy to Clipboard</button>
+                                                                 </motion.div>
+                                                                 
+                                                                 <button 
+                                                                     onClick={() => setShowInviteLink(!showInviteLink)}
+                                                                     className="w-full flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-purple-600 transition-colors"
+                                                                 >
+                                                                     <Share2 size={12} /> {showInviteLink ? 'Hide Invite Link' : 'Show Shareable Join Link'}
+                                                                 </button>
+
+                                                                 <AnimatePresence>
+                                                                     {showInviteLink && (
+                                                                         <motion.div 
+                                                                             initial={{ opacity: 0, height: 0 }}
+                                                                             animate={{ opacity: 1, height: 'auto' }}
+                                                                             exit={{ opacity: 0, height: 0 }}
+                                                                             className="overflow-hidden"
+                                                                         >
+                                                                             <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl space-y-3">
+                                                                                 <p className="text-[10px] font-bold text-slate-500 leading-relaxed">
+                                                                                     Share this direct link with your teammates. They will be automatically joined upon opening.
+                                                                                 </p>
+                                                                                 <div className="flex gap-2">
+                                                                                     <div className="flex-grow p-3 bg-white border border-slate-200 rounded-xl text-[10px] font-mono text-slate-500 truncate">
+                                                                                         {`${window.location.origin}${window.location.pathname}#/events/${eventId}?join=${generatedCode}`}
+                                                                                     </div>
+                                                                                     <button 
+                                                                                         onClick={() => {
+                                                                                             navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}#/events/${eventId}?join=${generatedCode}`);
+                                                                                             setLinkCopied(true);
+                                                                                             setTimeout(() => setLinkCopied(false), 2000);
+                                                                                         }}
+                                                                                         className="p-3 bg-slate-900 text-white rounded-xl hover:bg-purple-600 transition-colors"
+                                                                                     >
+                                                                                         {linkCopied ? <Check size={14} /> : <Copy size={14} />}
+                                                                                     </button>
+                                                                                 </div>
+                                                                             </div>
+                                                                         </motion.div>
+                                                                     )}
+                                                                 </AnimatePresence>
+                                                            </div>
                                                         )}
                                                     </div>
                                                 ) : (
