@@ -20,7 +20,7 @@ const JudgeInviteModal: React.FC<JudgeInviteModalProps> = ({ isOpen, onClose, on
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (formData.name && formData.email) {
+        if (formData.name && formData.expertise) {
             onInvite(formData);
         }
     };
@@ -72,33 +72,17 @@ const JudgeInviteModal: React.FC<JudgeInviteModalProps> = ({ isOpen, onClose, on
                             </div>
 
                             <div>
-                                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Email Address</label>
-                                <div className="relative">
-                                    <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300">
-                                        <Mail size={18} />
-                                    </div>
-                                    <input 
-                                        type="email" 
-                                        required
-                                        value={formData.email}
-                                        onChange={(e) => setFormData({...formData, email: e.target.value})}
-                                        placeholder="sarah.chen@example.com"
-                                        className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-[#6C3BFF]/10 focus:border-[#6C3BFF] transition-all font-medium"
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Area of Expertise</label>
+                                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Specialization / Domain</label>
                                 <div className="relative">
                                     <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300">
                                         <ShieldCheck size={18} />
                                     </div>
                                     <input 
                                         type="text" 
+                                        required
                                         value={formData.expertise}
                                         onChange={(e) => setFormData({...formData, expertise: e.target.value})}
-                                        placeholder="e.g. Artificial Intelligence, Blockchain"
+                                        placeholder="e.g. Artificial Intelligence, CSE"
                                         className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-[#6C3BFF]/10 focus:border-[#6C3BFF] transition-all font-medium"
                                     />
                                 </div>

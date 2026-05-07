@@ -41,15 +41,29 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
     const [activeTab, setActiveTab] = useState('shortlisted');
     const [submissionSubTab, setSubmissionSubTab] = useState<'projects' | 'assets'>('projects');
     const [availableJudges, setAvailableJudges] = useState<any[]>([]);
-    const [judgeAssignmentModal, setJudgeAssignmentModal] = useState<{isOpen: boolean, submissionId: string | null}>({ isOpen: false, submissionId: null });
+    const [judgeAssignmentModal, setJudgeAssignmentModal] = useState<{isOpen: boolean, submissionId: string | null, sourceType?: 'legacy' | 'hackathon'}>({ isOpen: false, submissionId: null });
     const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([]);
     const [isBulkMode, setIsBulkMode] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
+    const [hackathonSubmissions, setHackathonSubmissions] = useState<any[]>([]);
+    const [judgeFilter, setJudgeFilter] = useState('All Judges');
+    const [institutionJudges, setInstitutionJudges] = useState<any[]>([]);
+    const [evaluatingSubmission, setEvaluatingSubmission] = useState<any>(null);
+    const [evaluationScores, setEvaluationScores] = useState<any>({});
+    const [evaluationComment, setEvaluationComment] = useState('');
+    const [criteria, setCriteria] = useState<any[]>([]);
+    const [user, setUser] = useState<any>(null);
+
+    useEffect(() => {
+        const userData = localStorage.getItem('user');
+        if (userData) setUser(JSON.parse(userData));
+    }, []);
 
     const fetchAll = async () => {
         if (!institutionId) return;
         try {
             setLoading(true);
+            // Legacy Submissions
             const bundleRes = await fetch(
                 `${API_BASE_URL}/api/v1/institution/submissions/${encodeURIComponent(institutionId)}`,
                 { headers: { ...authHeaders() } }
@@ -57,6 +71,17 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
             const bundleData = await bundleRes.json();
             setSubmissions(bundleData);
 
+            // Hackathon Submissions (New)
+            const hackathonRes = await fetch(
+                `${API_BASE_URL}/api/hackathons/institution/${institutionId}/submissions`,
+                { headers: { ...authHeaders() } }
+            );
+            if (hackathonRes.ok) {
+                const hData = await hackathonRes.json();
+                setHackathonSubmissions(hData);
+            }
+
+            // Asset/Deliverables
             const assetRes = await fetch(
                 `${API_BASE_URL}/api/v1/institution/submissions/all-deliverables?institution_id=${institutionId}`,
                 { headers: { ...authHeaders() } }
@@ -65,6 +90,15 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                 const assetData = await assetRes.json();
                 setStageSubmissions(Array.isArray(assetData) ? assetData : []);
             }
+
+            // Fetch Judges
+            const judgesRes = await fetch(`${API_BASE_URL}/api/judges/`, { headers: authHeaders() });
+            if (judgesRes.ok) {
+                const jData = await judgesRes.json();
+                // Filter by institution if needed, but the endpoint usually handles context or returns all for now
+                setInstitutionJudges(jData);
+            }
+
         } catch (error) {
             console.error('Error fetching submissions:', error);
         } finally {
@@ -76,13 +110,13 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
         fetchAll();
     }, [institutionId, refreshCounter]);
 
-    const handleOpenJudgeAssignment = async (submissionId: string) => {
+    const handleOpenJudgeAssignment = async (submissionId: string, sourceType?: 'legacy' | 'hackathon') => {
         try {
             const res = await fetch(`${API_BASE_URL}/api/judges`, { headers: { ...authHeaders() } });
             if (res.ok) {
                 const judges = await res.json();
                 setAvailableJudges(judges);
-                setJudgeAssignmentModal({ isOpen: true, submissionId });
+                setJudgeAssignmentModal({ isOpen: true, submissionId, sourceType });
             } else {
                 alert('Failed to load available judges');
             }
@@ -95,33 +129,103 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
     const handleAssignJudge = async (judgeId: string) => {
         const isBulk = selectedSubmissions.length > 0 && judgeAssignmentModal.submissionId === 'bulk';
         try {
-            const body: any = { judge_id: judgeId };
-            if (isBulk) body.submission_ids = selectedSubmissions;
-            else body.submission_id = judgeAssignmentModal.submissionId;
+            const idToType = new Map<string, 'legacy' | 'hackathon'>(
+                filteredSubmissions.map((s: any) => [String(s.id || s.submission_id || s._id), s.sourceType || 'legacy'])
+            );
 
-            const res = await fetch(`${API_BASE_URL}/api/judges/assign`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify(body)
-            });
+            const targetIds = isBulk
+                ? selectedSubmissions.map(String)
+                : [String(judgeAssignmentModal.submissionId || '')].filter(Boolean);
 
-            if (res.ok) {
-                const result = await res.json();
-                let msg = isBulk ? `Successfully assigned judge to ${selectedSubmissions.length} projects!` : 'Judge assigned successfully!';
-                if (result.email_sent === false) {
-                    msg += "\n\n⚠️ NOTE: Invitation email could not be sent. Please share the evaluation link manually.";
+            const hackathonIds = targetIds.filter((id) => (idToType.get(String(id)) || judgeAssignmentModal.sourceType) === 'hackathon');
+            const legacyIds = targetIds.filter((id) => !hackathonIds.includes(id));
+
+            // 1) Assign hackathon submissions
+            if (hackathonIds.length > 0) {
+                const hr = await fetch(`${API_BASE_URL}/api/hackathons/submissions/assign-judge`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: JSON.stringify({ submission_ids: hackathonIds, judge_id: judgeId })
+                });
+                if (!hr.ok) {
+                    const err = await hr.json().catch(() => ({}));
+                    throw new Error(err?.detail || 'Failed to assign judge to hackathon submissions');
                 }
-                alert(msg);
-                setJudgeAssignmentModal({ isOpen: false, submissionId: null });
-                setSelectedSubmissions([]);
-                setRefreshCounter(prev => prev + 1);
-            } else {
-                const error = await res.json();
-                alert(error.detail || 'Failed to assign judge');
             }
+
+            // 2) Assign legacy submissions
+            if (legacyIds.length > 0) {
+                const body: any = { judge_id: judgeId };
+                if (isBulk) body.submission_ids = legacyIds;
+                else body.submission_id = legacyIds[0];
+
+                const lr = await fetch(`${API_BASE_URL}/api/judges/assign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: JSON.stringify(body)
+                });
+                if (!lr.ok) {
+                    const err = await lr.json().catch(() => ({}));
+                    throw new Error(err?.detail || 'Failed to assign judge');
+                }
+            }
+
+            let msg = isBulk ? `Successfully assigned judge to ${targetIds.length} projects!` : 'Judge assigned successfully!';
+            // Legacy endpoint may send email status; hackathon endpoint doesn't.
+            if (legacyIds.length > 0) {
+                msg += "\n\n(For hackathon submissions, email dispatch is not enabled yet.)";
+            }
+            alert(msg);
+            setJudgeAssignmentModal({ isOpen: false, submissionId: null, sourceType: undefined });
+            setSelectedSubmissions([]);
+            setRefreshCounter(prev => prev + 1);
         } catch (error) {
             console.error('Error assigning judge:', error);
-            alert('Network error while assigning judge');
+            alert((error as any)?.message || 'Network error while assigning judge');
+        }
+    };
+
+    const handleStartEvaluate = async (sub: any) => {
+        setEvaluatingSubmission(sub);
+        setEvaluationScores({});
+        setEvaluationComment('');
+        
+        try {
+            // Fetch criteria for this specific hackathon
+            const res = await fetch(`${API_BASE_URL}/api/events/${sub.hackathonId}`, { headers: authHeaders() });
+            if (res.ok) {
+                const eventData = await res.json();
+                setCriteria(eventData.judging_criteria || []);
+            }
+        } catch (err) {
+            console.error("Failed to fetch criteria", err);
+        }
+    };
+
+    const handleEvaluateSubmission = async () => {
+        if (!evaluatingSubmission || !user) return;
+        try {
+            const payload = {
+                judgeId: user.user_id,
+                rubricScores: evaluationScores,
+                feedback: evaluationComment
+            };
+            const res = await fetch(`${API_BASE_URL}/api/hackathons/submissions/${evaluatingSubmission._id}/evaluate`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                setEvaluatingSubmission(null);
+                setRefreshCounter(prev => prev + 1);
+                alert("Evaluation submitted!");
+            } else {
+                const err = await res.json();
+                alert(err.detail || "Failed to submit evaluation");
+            }
+        } catch (err) {
+            console.error("Evaluation error:", err);
+            alert("Network error while submitting evaluation");
         }
     };
 
@@ -164,13 +268,43 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
         return 'bg-slate-50 text-slate-500 border-slate-100';
     };
 
-    const currentBundle = (submissions[activeTab] || []) as any[];
-    
-    const filteredSubmissions = currentBundle.filter(s => {
+    const currentBundle: any[] = (() => {
+        const bucket = (submissions as any)?.[activeTab];
+        if (Array.isArray(bucket)) return bucket;
+        const all = (submissions as any)?.all;
+        if (Array.isArray(all)) return all;
+        return [];
+    })();
+
+    const filteredSubmissions = [
+        ...currentBundle.map(s => ({
+            ...s,
+            sourceType: 'legacy',
+            id: s.submission_id || s.team_id || s._id
+        })),
+        ...hackathonSubmissions.map(s => ({
+            _id: s._id,
+            id: s._id,
+            submission_id: s._id,
+            project_title: s.teamName,
+            team_name: s.teamLead || 'Hackathon Team',
+            event_title: 'Hackathon Submission', // We could fetch actual title if needed
+            total_judges: s.assignedJudgeId ? 1 : 0,
+            judges_completed: s.status === 'Evaluated' ? 1 : 0,
+            score: s.totalScore || 0,
+            status: s.status || 'Pending',
+            assignedJudgeId: s.assignedJudgeId,
+            hackathonId: s.hackathonId,
+            sourceType: 'hackathon',
+            solution: s.solution,
+            domain: s.domain
+        }))
+    ].filter(s => {
         const matchesSearch = (s.project_title || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                              (s.team_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                              (s.event_title || '').toLowerCase().includes(searchTerm.toLowerCase());
-        return matchesSearch;
+        const matchesJudge = judgeFilter === 'All Judges' || s.assignedJudgeId === judgeFilter;
+        return matchesSearch && matchesJudge;
     });
 
     if (loading) return (
@@ -290,15 +424,26 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                             ))}
                         </div>
 
-                        <div className="relative w-full lg:w-80 group">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#6C3BFF] transition-all" size={18} />
-                            <input 
-                                type="text" 
-                                placeholder="Filter selection..." 
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-100 rounded-2xl text-sm focus:outline-none focus:ring-4 focus:ring-purple-50 focus:border-[#6C3BFF] transition-all shadow-sm"
-                            />
+                        <div className="flex flex-wrap items-center gap-4">
+                            <div className="relative w-full lg:w-80 group">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#6C3BFF] transition-all" size={18} />
+                                <input 
+                                    type="text" 
+                                    placeholder="Filter selection..." 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-100 rounded-2xl text-sm focus:outline-none focus:ring-4 focus:ring-purple-50 focus:border-[#6C3BFF] transition-all shadow-sm"
+                                />
+                            </div>
+                            <select 
+                                value={judgeFilter}
+                                onChange={(e) => setJudgeFilter(e.target.value)}
+                                className="px-6 py-3.5 bg-white border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 transition-all max-w-[200px] truncate"
+                            >
+                                <option value="All Judges">All Judges</option>
+                                <option value="">Unassigned</option>
+                                {institutionJudges.map(j => <option key={j._id} value={j._id}>{j.name || j.email}</option>)}
+                            </select>
                         </div>
                     </div>
 
@@ -355,7 +500,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                                 <button 
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        handleOpenJudgeAssignment(item.submission_id || item.team_id || item._id);
+                                                        handleOpenJudgeAssignment(item.submission_id || item.team_id || item._id, item.sourceType);
                                                     }}
                                                     className="text-[10px] font-black text-[#6C3BFF] uppercase tracking-widest hover:underline flex items-center gap-2 transition-all w-fit"
                                                 >

@@ -25,12 +25,21 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ eventId }) => {
     const fetchLeaderboard = async () => {
         try {
             setLoading(true);
-            const res = await fetch(`${API_BASE_URL}/api/judge-portal/events/${eventId}/leaderboard`, {
+            const res = await fetch(`${API_BASE_URL}/api/judging/leaderboard/${eventId}`, {
                 headers: { ...authHeaders() }
             });
             if (res.ok) {
                 const data = await res.json();
-                setEntries(data);
+                const mapped = data.map((d: any) => ({
+                    rank: d.rank,
+                    team_id: d.student_id,
+                    team_name: d.team_name,
+                    project_title: d.student_name || 'Individual',
+                    score: d.total_score,
+                    evaluations_count: 1, // Placeholder
+                    status: 'Evaluated'
+                }));
+                setEntries(mapped);
                 setLastUpdated(new Date());
             }
         } catch (error) {

@@ -8,8 +8,26 @@ router = APIRouter(prefix="/api/submissions", tags=["Submissions"])
 @router.post("/")
 async def submit_project(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
     try:
-        # Check if user is team leader for team submissions
+        from db import submissions_col
+        from bson import ObjectId
+        
+        # Check if submission already exists for this team/user
+        event_id = data.get("event_id")
         team_id = data.get("team_id")
+        user_id = current_user.get("user_id")
+        
+        dup_query = {"event_id": event_id}
+        if team_id:
+            dup_query["team_id"] = team_id
+        else:
+            dup_query["user_id"] = user_id
+            dup_query["team_id"] = {"$exists": False}
+            
+        existing = await submissions_col.find_one(dup_query)
+        if existing:
+            raise HTTPException(status_code=400, detail="Team/User has already submitted for this opportunity")
+
+        # Check if user is team leader for team submissions
         if team_id:
             from db import teams_col
             team = await teams_col.find_one({"_id": ObjectId(team_id)})
@@ -17,11 +35,12 @@ async def submit_project(data: dict = Body(...), current_user: dict = Depends(ge
                 raise HTTPException(status_code=404, detail="Team not found")
             
             team_leader_id = team.get("team_leader_id") or team.get("leader_id")
-            if str(current_user.get("user_id")) != team_leader_id:
+            if str(user_id) != team_leader_id:
                 raise HTTPException(status_code=403, detail="Only team leaders can submit projects")
         
         return await create_submission(data)
     except Exception as e:
+        if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/")

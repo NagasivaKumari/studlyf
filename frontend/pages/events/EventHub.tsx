@@ -5,8 +5,8 @@ import { useAuth } from '../../AuthContext';
 import { ChevronLeft, UsersRound, Link as LinkIcon, Loader2, Upload, FileText, CheckCircle2, Clock, Trophy, Share2, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TeamManager from '../opportunities/components/TeamManager';
-import Leaderboard from './Leaderboard';
 import { IEvent, IParticipant, ITeam } from '../../types/event';
+import HackathonSubmissionForm from './HackathonSubmissionForm';
 
 type HubResp = { participant?: IParticipant; team?: ITeam };
 
@@ -20,6 +20,7 @@ const EventHub: React.FC = () => {
     const [team, setTeam] = useState<ITeam | null>(null);
     const [activeTab, setActiveTab] = useState('timeline');
     const [isEvaluated, setIsEvaluated] = useState(false);
+    const [evaluation, setEvaluation] = useState<any>(null);
     
     // Team management state
     const [teamName, setTeamName] = useState('');
@@ -49,6 +50,7 @@ const EventHub: React.FC = () => {
                 setParticipant(data.participant);
                 setTeam(data.team);
                 setIsEvaluated(!!data.is_evaluated);
+                setEvaluation(data.evaluation);
                 // Auto-surface the most recent active invite code so leader
                 // doesn't have to click "Generate" just to see it.
                 const invites: any[] = (data.team as any)?.invites || [];
@@ -321,7 +323,6 @@ const EventHub: React.FC = () => {
     const tabs = [
         { id: 'timeline', label: 'Timeline', icon: <Clock size={14} /> },
         { id: 'submissions', label: 'Submissions', icon: <FileText size={14} /> },
-        { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={14} /> },
         { id: 'team', label: 'My Team', icon: <UsersRound size={14} /> }
     ];
 
@@ -456,175 +457,34 @@ const EventHub: React.FC = () => {
                         )}
 
                         {activeTab === 'submissions' && (
-                            <div className="space-y-8">
-                                <h2 className="text-2xl font-black text-slate-900">Submission Portal</h2>
+                            <div className="space-y-10 max-w-3xl">
+                                <div>
+                                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">Submit Your Project</h2>
+                                    <p className="text-slate-500 font-medium mt-2">
+                                        Fill in your project details below. All fields are stored as text/links — no file uploads required.
+                                    </p>
+                                </div>
 
-                                {/* Inline error banner — shown when backend rejects (scored / deadline) */}
-                                {submissionError && (
-                                    <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-sm font-bold text-red-600 flex items-start gap-3">
-                                        <span className="mt-0.5">⚠</span>
-                                        <span className="flex-1">{submissionError}</span>
-                                        <button onClick={() => setSubmissionError(null)} className="text-red-300 hover:text-red-600">✕</button>
-                                    </div>
-                                )}
+                                <div className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-xl shadow-slate-900/5">
+                                    <HackathonSubmissionForm
+                                        eventId={eventId!}
+                                        opportunityId={event_id_as_opp}
+                                        onSuccess={fetchData}
+                                    />
+                                </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    {(event.stages || []).filter((s: any) => s.type?.toUpperCase() === 'SUBMISSION').map((stage: any, idx: number) => {
-                                        const deadline = new Date(new Date(stage.end_date).setHours(23,59,59,999));
-                                        const isPastDeadline = new Date() > deadline;
-                                        const hasSubmitted = participant.last_stage_submitted === stage.id;
-                                        // UI locks on deadline OR if already evaluated
-                                        // Allow re-upload if submitted but not evaluated and deadline not passed
-                                        const isLocked = isPastDeadline || isEvaluated;
-                                        const fields = stage.config?.fields || [];
-                                        
-                                        return (
-                                            <div key={idx} className="p-10 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600">
-                                                            <Upload size={20} />
-                                                        </div>
-                                                        <h3 className="text-lg font-black text-slate-900">{stage.name}</h3>
-                                                    </div>
-                                                    {isEvaluated ? (
-                                                        <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-amber-100">Locked · Already Evaluated</span>
-                                                    ) : hasSubmitted ? (
-                                                        <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Submission Received</span>
-                                                    ) : isPastDeadline ? (
-                                                        <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">Closed</span>
-                                                    ) : null}
-                                                </div>
-                                                <p className="text-sm text-slate-500 font-medium leading-relaxed">{stage.description}</p>
-                                                {!isPastDeadline && (
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                                        Deadline: {deadline.toLocaleDateString()} {deadline.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
-                                                        {hasSubmitted && ' · You can re-upload until then'}
-                                                    </p>
-                                                )}
-
-                                                {fields.length === 0 ? (
-                                                    <div className={`p-6 border-2 border-dashed rounded-3xl flex flex-col items-center gap-4 transition-all ${
-                                                        isLocked ? 'bg-slate-100 border-slate-200 opacity-60' : 'bg-slate-50 border-slate-200 hover:border-purple-300 group'
-                                                    }`}>
-                                                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-purple-600 shadow-sm transition-colors">
-                                                            <FileText size={24} />
-                                                        </div>
-                                                        <div className="text-center">
-                                                            <p className="text-sm font-black text-slate-900">
-                                                                {isEvaluated ? 'Evaluation Complete' : isLocked ? 'Submission Locked' : 'Upload Project Assets'}
-                                                            </p>
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                                                {isEvaluated ? 'This project has been reviewed' : isLocked ? (hasSubmitted ? 'Modification restricted' : 'Deadline has passed') : 'PPT, PDF, or ZIP (Max 50MB)'}
-                                                            </p>
-                                                        </div>
-                                                        {!isLocked && (
-                                                            <>
-                                                                <input
-                                                                    type="file"
-                                                                    id={`file-${stage.id}`}
-                                                                    className="hidden"
-                                                                    disabled={submitting === stage.id}
-                                                                    onChange={(e) => {
-                                                                        const file = e.target.files?.[0];
-                                                                        if (file) handleFileUpload(stage.id, file);
-                                                                    }}
-                                                                />
-                                                                <label
-                                                                    htmlFor={`file-${stage.id}`}
-                                                                    className="px-8 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm"
-                                                                >
-                                                                    {submitting === stage.id ? 'Uploading…' : hasSubmitted ? 'Re-upload File' : 'Select File'}
-                                                                </label>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <div className="space-y-4">
-                                                        {fields.map((field: any, fIdx: number) => (
-                                                            <div key={fIdx} className="space-y-2">
-                                                                <label className="text-sm font-bold text-slate-900">
-                                                                    {field.label}
-                                                                    {field.required && <span className="text-red-500 ml-1">*</span>}
-                                                                </label>
-                                                                {field.type === 'file' ? (
-                                                                    <div className="p-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center gap-3">
-                                                                        <input
-                                                                            type="file"
-                                                                            id={`field-${stage.id}-${fIdx}`}
-                                                                            className="hidden"
-                                                                            disabled={isLocked || submitting === stage.id}
-                                                                            onChange={(e) => {
-                                                                                const file = e.target.files?.[0];
-                                                                                if (file) handleFileUpload(stage.id, file);
-                                                                            }}
-                                                                        />
-                                                                        <label
-                                                                            htmlFor={`field-${stage.id}-${fIdx}`}
-                                                                            className={`px-6 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-900 hover:text-white transition-all shadow-sm ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                                        >
-                                                                            {submitting === stage.id ? 'Uploading…' : hasSubmitted ? 'Re-upload' : 'Select File'}
-                                                                        </label>
-                                                                    </div>
-                                                                ) : field.type === 'url' ? (
-                                                                    <input
-                                                                        type="url"
-                                                                        disabled={isLocked}
-                                                                        value={String(submissionData[`${stage.id}-${field.id}`] || '')}
-                                                                        onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
-                                                                        placeholder={field.placeholder || 'https://...'}
-                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all disabled:opacity-60"
-                                                                    />
-                                                                ) : field.type === 'text' ? (
-                                                                    <input
-                                                                        type="text"
-                                                                        disabled={isLocked}
-                                                                        value={String(submissionData[`${stage.id}-${field.id}`] || '')}
-                                                                        onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
-                                                                        placeholder={field.placeholder || ''}
-                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all disabled:opacity-60"
-                                                                    />
-                                                                ) : field.type === 'number' ? (
-                                                                    <input
-                                                                        type="number"
-                                                                        disabled={isLocked}
-                                                                        value={String(submissionData[`${stage.id}-${field.id}`] || '')}
-                                                                        onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.value }))}
-                                                                        placeholder={field.placeholder || ''}
-                                                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200 transition-all disabled:opacity-60"
-                                                                    />
-                                                                ) : field.type === 'checkbox' ? (
-                                                                    <label className="flex items-center gap-2 cursor-pointer">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            disabled={isLocked}
-                                                                            checked={!!submissionData[`${stage.id}-${field.id}`]}
-                                                                            onChange={(e) => setSubmissionData(prev => ({ ...prev, [`${stage.id}-${field.id}`]: e.target.checked }))}
-                                                                            className="w-5 h-5 accent-purple-600"
-                                                                        />
-                                                                        <span className="text-sm text-slate-700">{field.placeholder || 'I agree'}</span>
-                                                                    </label>
-                                                                ) : null}
-                                                            </div>
-                                                        ))}
-                                                        <button
-                                                            onClick={() => handleSubmission(stage.id)}
-                                                            disabled={isLocked || submitting === stage.id}
-                                                            className="w-full px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-purple-700 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
-                                                        >
-                                                            {submitting === stage.id ? 'Submitting…' : hasSubmitted ? 'Re-submit' : 'Submit'}
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
+                                {/* General Guidelines */}
+                                <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] space-y-3">
+                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Submission Guidelines</p>
+                                    <ul className="space-y-2 text-sm text-slate-600 font-medium">
+                                        <li className="flex items-start gap-2"><span className="text-[#6C3BFF] font-black mt-0.5">→</span> Problem statement: 50 words max. Be specific and concise.</li>
+                                        <li className="flex items-start gap-2"><span className="text-[#6C3BFF] font-black mt-0.5">→</span> Solution: 80 words max. Focus on innovation and impact.</li>
+                                        <li className="flex items-start gap-2"><span className="text-[#6C3BFF] font-black mt-0.5">→</span> PPT link: Use a public Google Drive link — no file size limits.</li>
+                                        <li className="flex items-start gap-2"><span className="text-[#6C3BFF] font-black mt-0.5">→</span> You can re-submit before the deadline to update your project.</li>
+                                        <li className="flex items-start gap-2"><span className="text-[#6C3BFF] font-black mt-0.5">→</span> Scores and rubrics are confidential — managed by institution judges.</li>
+                                    </ul>
                                 </div>
                             </div>
-                        )}
-
-                        {activeTab === 'leaderboard' && (
-                            <Leaderboard eventId={eventId!} />
                         )}
 
                         {activeTab === 'team' && (

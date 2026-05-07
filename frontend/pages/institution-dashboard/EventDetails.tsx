@@ -52,6 +52,7 @@ import {
     CheckSquare, 
     UserPlus,
     FileCheck,
+    Trash2,
     Zap
 } from 'lucide-react';
 import { motion, AnimatePresence as FramerAnimatePresence } from 'framer-motion';
@@ -60,6 +61,7 @@ import { useNavigate } from 'react-router-dom';
 import StageBuilder from './components/StageBuilder';
 import QuizDesignerModal from './components/QuizDesignerModal';
 import JudgeInviteModal from './components/JudgeInviteModal';
+import EvaluationMatrixView from './components/EvaluationMatrixView';
 import { IEvent, IParticipant, ITeam, IStage, ISubmission } from '../../types/event';
 import { useAuth } from '../../AuthContext';
 
@@ -67,6 +69,7 @@ interface EventDetailsProps {
     eventId: string | null;
     onBack: () => void;
     institutionId?: string;
+    initialSection?: string;
 }
 
 const BUNDLE_TABS = ['shortlisted', 'approved', 'pending', 'rejected'] as const;
@@ -77,10 +80,10 @@ const BUNDLE_TAB_LABEL: Record<string, string> = {
     rejected: 'Rejected',
 };
 
-const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutionId: institutionIdProp }) => {
+const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutionId: institutionIdProp, initialSection }) => {
     const navigate = useNavigate();
     const { user, role } = useAuth();
-    const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeTab, setActiveTab] = useState(initialSection || 'dashboard');
     const [event, setEvent] = useState<IEvent | null>(null);
     const [institution, setInstitution] = useState<any>(null);
     const [participants, setParticipants] = useState<IParticipant[]>([]);
@@ -95,6 +98,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [teams, setTeams] = useState<ITeam[]>([]);
     const [submissions, setSubmissions] = useState<ISubmission[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
+
+    useEffect(() => {
+        if (initialSection) setActiveTab(initialSection);
+    }, [initialSection, eventId]);
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     const [quizzes, setQuizzes] = useState<any[]>([]);
     const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
@@ -114,7 +121,47 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([]);
     const [isBulkMode, setIsBulkMode] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
+    const [isHackathon, setIsHackathon] = useState(false);
+    const [hackathonSubmissions, setHackathonSubmissions] = useState<any[]>([]);
+    const [domainFilter, setDomainFilter] = useState('All Domains');
+    const [judgeFilter, setJudgeFilter] = useState('All Judges');
+    const [institutionJudges, setInstitutionJudges] = useState<any[]>([]);
+
+    /** Fetch judges for this institution from the judges collection */
+    const fetchJudges = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/judges/`, { headers: authHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                // Filter by institution_id matching current institution
+                const instId = institutionIdProp || user?.institution_id;
+                const filtered = instId ? data.filter((j: any) => j.institution_id === instId) : data;
+                setInstitutionJudges(filtered);
+            }
+        } catch (e) {
+            console.error('Failed to fetch judges:', e);
+        }
+    };
+
+    useEffect(() => {
+        if (event) {
+            const cat = String(event.category || event.type || '').toLowerCase();
+            const name = String(event.name || event.title || '').toLowerCase();
+            if (cat.includes('hackathon') || name.includes('hackathon')) {
+                setIsHackathon(true);
+            }
+        }
+    }, [event]);
+
+    // Fetch judges whenever refreshCounter changes or on mount
+    useEffect(() => {
+        fetchJudges();
+    }, [refreshCounter, institutionIdProp, user?.institution_id]);
+
     const [notifying, setNotifying] = useState(false);
+    const [evaluatingSubmission, setEvaluatingSubmission] = useState<any>(null);
+    const [evaluationScores, setEvaluationScores] = useState<Record<string, number>>({});
+    const [evaluationComment, setEvaluationComment] = useState('');
     
     // Track unsaved changes to lifecycle or criteria
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -126,9 +173,34 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         setHasUnsavedChanges(stagesChanged || criteriaChanged);
     }, [stages, criteria, event]);
     
+    // Auto-save logic
+    useEffect(() => {
+        if (!hasUnsavedChanges || saving) return;
         
-    
-    
+        const autoSaveTimer = setTimeout(() => {
+            console.log('AUTO-SAVE: Triggering synchronization...');
+            handleSaveEvent();
+        }, 3000); // 3 seconds debounce for auto-save
+
+        return () => clearTimeout(autoSaveTimer);
+    }, [hasUnsavedChanges, stages, criteria]);
+
+    useEffect(() => {
+        if (isHackathon && eventId) {
+            const fetchHackathonSubs = async () => {
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/hackathons/events/${eventId}/submissions`, {
+                        headers: { ...authHeaders() }
+                    });
+                    const data = await res.json();
+                    setHackathonSubmissions(Array.isArray(data) ? data : []);
+                } catch (err) {
+                    console.error("Failed to fetch hackathon submissions");
+                }
+            };
+            fetchHackathonSubs();
+        }
+    }, [isHackathon, eventId, refreshCounter]);
     const portalRegistrationStatusLabel = (raw: string | undefined) => {
         const s = (raw || 'pending').toLowerCase();
         if (s === 'accepted' || s === 'shortlisted') return 'SHORTLISTED';
@@ -174,6 +246,20 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 const quizRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes`, { headers: { ...authHeaders() } });
                 const quizData = await quizRes.json();
                 setQuizzes(quizData || []);
+
+                // Fetch teams for overview
+                try {
+                    const teamsRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams`, { headers: { ...authHeaders() } });
+                    const teamsData = await teamsRes.json();
+                    setTeams(Array.isArray(teamsData) ? teamsData : []);
+                } catch { setTeams([]); }
+
+                // Fetch submissions for overview
+                try {
+                    const subRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/submissions`, { headers: { ...authHeaders() } });
+                    const subData = await subRes.json();
+                    setSubmissions(Array.isArray(subData) ? subData : []);
+                } catch { setSubmissions([]); }
                 
                 // Only use judging criteria from DB — no static fallback
                 setCriteria(eventData.judging_criteria || []);
@@ -316,20 +402,13 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     if (syncRes.ok) {
                         const syncData = await syncRes.json();
                         console.log('DIRECT SYNC: Force update successful:', syncData);
-                        alert(`Direct sync successful: ${syncData.message}`);
-                        
-                        // Also refresh the page to show changes immediately
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 1000);
+                        // Removed alert and reload to prevent logout/flicker
                     } else {
                         const errorData = await syncRes.json().catch(() => ({}));
                         console.error('DIRECT SYNC: Force update failed:', errorData);
-                        alert(`Direct sync failed: ${errorData.message || 'Unknown error'}`);
                     }
                 } catch (syncErr) {
                     console.error('DIRECT SYNC: Network error:', syncErr);
-                    alert('Network error during direct sync');
                 }
             } else {
                 const errorData = await res.json().catch(() => ({}));
@@ -674,18 +753,27 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         const isBulk = selectedSubmissions.length > 0 && judgeAssignmentModal.submissionId === 'bulk';
         
         try {
-            const body: any = { judge_id: judgeId };
-            if (isBulk) {
-                body.submission_ids = selectedSubmissions;
-            } else {
-                body.submission_id = judgeAssignmentModal.submissionId;
-            }
+            const targetIds = isBulk ? selectedSubmissions : [String(judgeAssignmentModal.submissionId || '')].filter(Boolean);
+            const hackathonIdSet = new Set((hackathonSubmissions || []).map((s: any) => String(s?._id || s?.id || s?.submissionId)));
+            const isHackathonTarget = targetIds.length > 0 && targetIds.every((id) => hackathonIdSet.has(String(id)));
 
-            const res = await fetch(`${API_BASE_URL}/api/judges/assign`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify(body)
-            });
+            // Hackathon submissions live in hackathon_submissions -> use hackathon assignment endpoint
+            // Legacy submissions use /api/judges/assign (submission_data_col pipeline)
+            const res = isHackathonTarget
+                ? await fetch(`${API_BASE_URL}/api/hackathons/submissions/assign-judge`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                      body: JSON.stringify({ submission_ids: targetIds, judge_id: judgeId }),
+                  })
+                : await fetch(`${API_BASE_URL}/api/judges/assign`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                      body: JSON.stringify(
+                          isBulk
+                              ? { judge_id: judgeId, submission_ids: selectedSubmissions }
+                              : { judge_id: judgeId, submission_id: judgeAssignmentModal.submissionId }
+                      ),
+                  });
 
             if (res.ok) {
                 const result = await res.json();
@@ -693,7 +781,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 let msg = isBulk ? `Successfully assigned judge to ${selectedSubmissions.length} projects!` : 'Judge assigned successfully!';
                 
                 // NEW: Handle email delivery feedback
-                if (result.email_sent === false) {
+                if (result?.email_sent === false) {
                     msg += "\n\n⚠️ NOTE: Invitation email could not be sent. Please share the evaluation link manually.";
                 }
                 
@@ -715,53 +803,541 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
+    const handleDeleteJudge = async (judgeId: string) => {
+        if (!window.confirm('Remove this judge?')) return;
+        try {
+            await fetch(`${API_BASE_URL}/api/judges/${judgeId}`, {
+                method: 'DELETE',
+                headers: authHeaders()
+            });
+            setRefreshCounter(prev => prev + 1);
+        } catch (e) {
+            console.error('Delete judge error:', e);
+        }
+    };
+
     const handleInviteJudge = async (judgeData: any) => {
         setIsInvitingJudge(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/judges`, {
+            const res = await fetch(`${API_BASE_URL}/api/judges/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({
-                    ...judgeData,
+                    name: judgeData.name,
+                    domain: judgeData.expertise,
+                    institution_id: institutionIdProp || user?.institution_id,
                     is_test: false
                 })
             });
-
             if (res.ok) {
-                alert('Judge invited successfully!');
                 setIsJudgeInviteOpen(false);
-                // Refresh judges list
-                if (judgeAssignmentModal.submissionId) {
-                    handleOpenJudgeAssignment(judgeAssignmentModal.submissionId);
-                }
+                setRefreshCounter(prev => prev + 1); // triggers fetchJudges
             } else {
                 const error = await res.json();
-                alert(error.detail || 'Failed to invite judge');
+                alert(error.detail || 'Failed to add judge');
             }
         } catch (error) {
-            console.error('Error inviting judge:', error);
-            alert('Network error while inviting judge');
+            console.error('Error adding judge:', error);
+            alert('Network error while adding judge');
         } finally {
             setIsInvitingJudge(false);
         }
     };
 
-    
+    const handleEvaluateSubmission = async () => {
+        if (!evaluatingSubmission || !user) return;
+        try {
+            const payload = {
+                judgeId: user.user_id,
+                rubricScores: evaluationScores,
+                feedback: evaluationComment
+            };
+            const res = await fetch(`${API_BASE_URL}/api/hackathons/submissions/${evaluatingSubmission._id}/evaluate`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                setEvaluatingSubmission(null);
+                setRefreshCounter(prev => prev + 1);
+                alert("Evaluation submitted!");
+            } else {
+                const err = await res.json();
+                alert(err.detail || "Failed to submit evaluation");
+            }
+        } catch (err) {
+            console.error("Evaluation error:", err);
+            alert("Network error while submitting evaluation");
+        }
+    };
+
+    const handleBulkAssign = async (judgeId: string, specificIds?: string[]) => {
+        const targetIds = specificIds || selectedSubmissions;
+        if (targetIds.length === 0) {
+            alert("Please select at least one submission");
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/hackathons/submissions/assign-judge`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({
+                    submission_ids: targetIds,
+                    judge_id: judgeId
+                })
+            });
+            if (res.ok) {
+                setSelectedSubmissions([]);
+                setRefreshCounter(prev => prev + 1);
+                alert(`Judge assigned to ${targetIds.length} submission(s)`);
+                setIsBulkMode(false);
+            } else {
+                const err = await res.json();
+                alert(err.detail || "Failed to assign judge");
+            }
+        } catch (err) {
+            console.error("Bulk assign error:", err);
+            alert("Network error while assigning judge");
+        }
+    };
+
+
     const tabs = [
         { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
         { id: 'basic', label: 'Basic Info', icon: Info },
         { id: 'stages', label: 'Stages & Timeline', icon: Clock },
-        { id: 'participants', label: 'Participants', icon: Users },
         { id: 'teams', label: 'Teams', icon: Layers },
         { id: 'submissions', label: 'Submissions', icon: FileText },
-                                { id: 'criteria', label: 'Scoring Rubrics', icon: ShieldCheck },
+        { id: 'criteria', label: 'Scoring Rubrics', icon: ShieldCheck },
+        { id: 'evaluation-matrix', label: 'Evaluation Matrix', icon: TrendingUp },
         { id: 'leaderboard', label: 'Leaderboard', icon: BarChart3 },
-        { id: 'assessments', label: 'Assessments', icon: HelpCircle },
-        { id: 'certificates', label: 'Certificates', icon: FileCheck },
-        { id: 'prizes', label: 'Prizes & Rewards', icon: Trophy },
+        { id: 'judges', label: 'Judges', icon: Gavel },
     ];
 
     
+    const renderTabContent_SubmissionManagement = () => {
+        const domains = ['All Domains', 'AI', 'FINTECH', 'EDTECH', 'MEDTECH', 'AGRITECH', 'BLOCK CHAIN', 'OTHERS'];
+        const filtered = hackathonSubmissions.filter(s => {
+            const matchesSearch = s.teamName.toLowerCase().includes(searchQuery.toLowerCase()) || (s.teamLead && s.teamLead.toLowerCase().includes(searchQuery.toLowerCase()));
+            const matchesDomain = domainFilter === 'All Domains' || s.domain === domainFilter;
+            const matchesJudge = judgeFilter === 'All Judges' || s.assignedJudgeId === judgeFilter;
+            return matchesSearch && matchesDomain && matchesJudge;
+        });
+
+        return (
+            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="p-12 bg-slate-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
+                    <div className="relative z-10">
+                        <h3 className="text-4xl font-black tracking-tight mb-4">Submission Management</h3>
+                        <p className="text-slate-400 font-bold max-w-xl leading-relaxed">Review hackathon ideas, assign judges, and evaluate submissions in real-time.</p>
+                    </div>
+                    <div className="absolute -right-20 -top-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px]"></div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-6 px-4">
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="relative">
+                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input 
+                                type="text" 
+                                placeholder="Search teams or leads..." 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-14 pr-8 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all w-80"
+                            />
+                        </div>
+                        <select 
+                            value={domainFilter}
+                            onChange={(e) => setDomainFilter(e.target.value)}
+                            className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 transition-all"
+                        >
+                            {domains.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                        <select 
+                            value={judgeFilter}
+                            onChange={(e) => setJudgeFilter(e.target.value)}
+                            className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 transition-all max-w-[200px] truncate"
+                        >
+                            <option value="All Judges">All Judges</option>
+                            <option value="">Unassigned</option>
+                            {institutionJudges.map(j => <option key={j._id} value={j._id}>{j.name}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <button 
+                            onClick={() => setIsBulkMode(!isBulkMode)}
+                            className={`px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${isBulkMode ? 'bg-purple-600 text-white shadow-xl shadow-purple-600/20' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                            Bulk Assignment
+                        </button>
+                        {isBulkMode && selectedSubmissions.length > 0 && (
+                            <select 
+                                onChange={(e) => handleBulkAssign(e.target.value)}
+                                className="px-6 py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest outline-none shadow-xl cursor-pointer"
+                            >
+                                <option value="">Assign Judge to ({selectedSubmissions.length})</option>
+                                {(institutionJudges || []).map((j: any) => (
+                                    <option key={j._id} value={j._id}>{j.name}</option>
+                                ))}
+                            </select>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="bg-slate-50/50">
+                                {isBulkMode && <th className="px-10 py-6 w-10"></th>}
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Team Detail</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Idea & Solution</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Assigned Judge</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {filtered.length > 0 ? (
+                                filtered.map((sub, idx) => (
+                                    <tr key={sub._id} className="hover:bg-slate-50/30 transition-colors group">
+                                        {isBulkMode && (
+                                            <td className="px-10 py-8">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedSubmissions.includes(sub._id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setSelectedSubmissions([...selectedSubmissions, sub._id]);
+                                                        else setSelectedSubmissions(selectedSubmissions.filter(id => id !== sub._id));
+                                                    }}
+                                                    className="w-5 h-5 rounded border-2 border-slate-200 text-purple-600 focus:ring-purple-500"
+                                                />
+                                            </td>
+                                        )}
+                                        <td className="px-10 py-8">
+                                            <div className="flex flex-col">
+                                                <span className="font-black text-slate-900 text-lg tracking-tight">{sub.teamName}</span>
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || "N/A"}</span>
+                                                <span className="text-[9px] font-black text-purple-600 uppercase tracking-[0.2em] mt-2">{sub.domain}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-10 py-8 max-w-md">
+                                            <div className="space-y-2">
+                                                <p className="text-sm font-bold text-slate-800 line-clamp-2">{sub.problemStatement}</p>
+                                                <div className="flex items-center gap-3">
+                                                    <a href={sub.pptLink} target="_blank" className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100"><FileText size={12} /> PPT</a>
+                                                    {sub.githubLink && <a href={sub.githubLink} target="_blank" className="flex items-center gap-1.5 px-3 py-1 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-wider"><LinkIcon size={12} /> Git</a>}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-10 py-8">
+                                            <div className="flex items-center gap-4">
+                                                <select 
+                                                    value={sub.assignedJudgeId || ""}
+                                                    onChange={(e) => {
+                                                        handleBulkAssign(e.target.value, [sub._id]);
+                                                    }}
+                                                    className="px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-purple-500"
+                                                >
+                                                    <option value="">No Judge Assigned</option>
+                                                    {(institutionJudges || []).map((j: any) => (
+                                                        <option key={j._id} value={j._id}>{j.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </td>
+                                        <td className="px-10 py-8 text-center">
+                                            <div className="flex flex-col items-center">
+                                                <span className="text-2xl font-black text-purple-600">{(sub.totalScore || 0).toFixed(1)}</span>
+                                                <span className="text-[10px] font-black text-slate-400 uppercase">Avg Pts</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-10 py-8 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button 
+                                                    onClick={() => {
+                                                        setEvaluatingSubmission(sub);
+                                                        const myEval = sub.evaluations?.find((e: any) => e.judgeId === user?.user_id);
+                                                        setEvaluationScores(myEval?.scores || {});
+                                                        setEvaluationComment(myEval?.comment || '');
+                                                    }}
+                                                    className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-purple-600 hover:text-white hover:border-purple-600 transition-all shadow-sm"
+                                                >
+                                                    Evaluate
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={isBulkMode ? 6 : 5} className="px-10 py-32 text-center text-slate-300 font-black text-[10px] uppercase tracking-[0.4em]">No submissions match your filters</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+
+    const renderTabContent_HackathonParticipants = () => {
+        // Build a flat list of all participants derived from hackathon submissions
+        const allParticipants: { name: string; team: string; role: 'Team Lead' | 'Member' | 'Solo' }[] = [];
+        hackathonSubmissions.forEach(sub => {
+            const isTeam = sub.teamType === 'Team' || (sub.teamMembers && String(sub.teamMembers).trim().length > 0);
+            if (sub.teamLead) {
+                allParticipants.push({ name: sub.teamLead, team: sub.teamName, role: isTeam ? 'Team Lead' : 'Solo' });
+            }
+            if (sub.teamMembers) {
+                const members: string[] = typeof sub.teamMembers === 'string'
+                    ? sub.teamMembers.split(',').map((m: string) => m.trim()).filter(Boolean)
+                    : (Array.isArray(sub.teamMembers) ? sub.teamMembers : []);
+                members.forEach(name => {
+                    if (name && name.toLowerCase() !== sub.teamLead?.toLowerCase()) {
+                        allParticipants.push({ name, team: sub.teamName, role: 'Member' });
+                    }
+                });
+            }
+        });
+
+        const filtered = allParticipants.filter(p =>
+            p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            p.team.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+
+        return (
+            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="p-12 bg-blue-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
+                    <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div>
+                            <h3 className="text-4xl font-black tracking-tight mb-4">Event Participants</h3>
+                            <p className="text-blue-200 font-bold max-w-xl leading-relaxed">All individuals from submitted projects — team leads and members.</p>
+                        </div>
+                        <div className="flex items-center gap-8">
+                            <div className="text-center">
+                                <span className="text-5xl font-black">{allParticipants.length}</span>
+                                <p className="text-blue-300 text-xs font-black uppercase tracking-widest mt-1">Total People</p>
+                            </div>
+                            <div className="text-center">
+                                <span className="text-5xl font-black">{hackathonSubmissions.length}</span>
+                                <p className="text-blue-300 text-xs font-black uppercase tracking-widest mt-1">Teams</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="absolute -right-20 -top-20 w-80 h-80 bg-blue-600/20 rounded-full blur-[100px]"></div>
+                </div>
+
+                <div className="px-4">
+                    <div className="relative">
+                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search by name or team..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-14 pr-8 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all w-full md:w-96"
+                        />
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="bg-slate-50/50">
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">#</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Name</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Team</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Role</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {filtered.length > 0 ? (
+                                filtered.map((p, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50/30 transition-colors">
+                                        <td className="px-10 py-6 text-sm font-black text-slate-300">{idx + 1}</td>
+                                        <td className="px-10 py-6">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm border border-blue-100">
+                                                    {p.name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <span className="font-black text-slate-900">{p.name}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-10 py-6 text-sm font-bold text-slate-500">{p.team}</td>
+                                        <td className="px-10 py-6">
+                                            <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                                                p.role === 'Team Lead' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
+                                                p.role === 'Solo' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
+                                                'bg-blue-50 text-blue-600 border border-blue-100'
+                                            }`}>{p.role}</span>
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={4} className="px-10 py-32 text-center text-slate-300 font-black text-[10px] uppercase tracking-[0.4em]">No participants found</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+
+    const renderTabContent_HackathonTeams = () => {
+        // Parse each submission into a team row
+        const teamRows = hackathonSubmissions.map(sub => {
+            const memberNames: string[] = typeof sub.teamMembers === 'string'
+                ? sub.teamMembers.split(',').map((m: string) => m.trim()).filter(Boolean)
+                : (Array.isArray(sub.teamMembers) ? sub.teamMembers : []);
+            // Deduplicate lead from members list
+            const members = memberNames.filter(n => n.toLowerCase() !== (sub.teamLead || '').toLowerCase());
+            const totalCount = (sub.teamLead ? 1 : 0) + members.length;
+            return { ...sub, parsedMembers: members, totalCount };
+        });
+
+        const totalParticipants = teamRows.reduce((acc, t) => acc + t.totalCount, 0);
+
+        return (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="p-12 bg-purple-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
+                    <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div>
+                            <h3 className="text-4xl font-black tracking-tight mb-3">Registered Teams</h3>
+                            <p className="text-purple-200 font-bold">All teams and their members across this hackathon.</p>
+                        </div>
+                        <div className="flex items-center gap-10">
+                            <div className="text-center">
+                                <span className="text-5xl font-black">{teamRows.length}</span>
+                                <p className="text-purple-300 text-xs font-black uppercase tracking-widest mt-1">Teams</p>
+                            </div>
+                            <div className="text-center">
+                                <span className="text-5xl font-black">{totalParticipants}</span>
+                                <p className="text-purple-300 text-xs font-black uppercase tracking-widest mt-1">Participants</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="absolute -right-20 -top-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px]"></div>
+                </div>
+
+                <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="bg-slate-50/60 border-b border-slate-100">
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">#</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Team Name</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Team Lead</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Members</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Domain</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Total</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Submitted</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {teamRows.length > 0 ? teamRows.map((team, idx) => (
+                                <tr key={idx} className="hover:bg-purple-50/20 transition-colors">
+                                    <td className="px-10 py-6 text-sm font-black text-slate-300">{idx + 1}</td>
+                                    <td className="px-10 py-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-black text-sm border border-purple-100">
+                                                {(team.teamName || '?').charAt(0).toUpperCase()}
+                                            </div>
+                                            <span className="font-black text-slate-900">{team.teamName}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-10 py-6">
+                                        <span className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-xl text-xs font-black border border-purple-100">
+                                            {team.teamLead || '—'}
+                                        </span>
+                                    </td>
+                                    <td className="px-10 py-6 text-sm font-bold text-slate-600 max-w-[220px]">
+                                        {team.parsedMembers.length > 0
+                                            ? team.parsedMembers.join(', ')
+                                            : <span className="text-slate-300 italic">Solo</span>
+                                        }
+                                    </td>
+                                    <td className="px-10 py-6">
+                                        <span className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest">
+                                            {team.domain || '—'}
+                                        </span>
+                                    </td>
+                                    <td className="px-10 py-6 text-center">
+                                        <span className="w-8 h-8 bg-[#6C3BFF]/10 text-[#6C3BFF] rounded-xl flex items-center justify-center font-black text-sm mx-auto">
+                                            {team.totalCount}
+                                        </span>
+                                    </td>
+                                    <td className="px-10 py-6 text-right text-xs font-bold text-slate-400">
+                                        {team.submittedAt ? new Date(team.submittedAt).toLocaleDateString() : '—'}
+                                    </td>
+                                </tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan={7} className="px-10 py-32 text-center text-slate-300 font-black text-[10px] uppercase tracking-[0.4em]">
+                                        No teams yet — they'll appear as submissions arrive
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+
+    const renderTabContent_Judges = () => (
+        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="p-12 bg-amber-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-10">
+                    <div className="space-y-4">
+                        <h3 className="text-4xl font-black tracking-tight">Event Judges</h3>
+                        <p className="text-amber-200 font-bold max-w-xl leading-relaxed">{institutionJudges.length} judge{institutionJudges.length !== 1 ? 's' : ''} registered for this institution.</p>
+                    </div>
+                    <button
+                        onClick={() => setIsJudgeInviteOpen(true)}
+                        className="px-10 py-5 bg-white text-amber-900 rounded-[2rem] text-sm font-black uppercase tracking-widest shadow-xl hover:scale-105 transition-all flex items-center gap-3"
+                    >
+                        <UserPlus size={20} /> Add Judge
+                    </button>
+                </div>
+                <div className="absolute -right-20 -top-20 w-80 h-80 bg-amber-600/20 rounded-full blur-[100px]"></div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 px-4">
+                {institutionJudges.map((j: any, i: number) => (
+                    <div key={j._id || i} className="p-10 bg-white border border-slate-100 rounded-[3.5rem] shadow-sm hover:shadow-2xl transition-all group relative overflow-hidden flex flex-col">
+                        <div className="flex justify-between items-start mb-8">
+                            <div className="w-20 h-20 bg-amber-50 text-amber-600 rounded-3xl flex items-center justify-center font-black text-2xl group-hover:bg-amber-600 group-hover:text-white transition-all shadow-inner border border-amber-100">
+                                {(j.name || '?').charAt(0).toUpperCase()}
+                            </div>
+                        </div>
+                        <h4 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">{j.name}</h4>
+                        <p className="text-sm font-bold text-purple-600 uppercase tracking-widest mb-8">{j.domain}</p>
+
+                        <div className="pt-8 border-t border-slate-50 flex items-center justify-between mt-auto">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                Added {j.created_at ? new Date(j.created_at).toLocaleDateString() : '—'}
+                            </span>
+                            <button
+                                onClick={() => handleDeleteJudge(j._id)}
+                                className="text-[10px] font-black text-red-400 uppercase tracking-widest hover:text-red-600 transition-colors"
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    </div>
+                ))}
+                {institutionJudges.length === 0 && (
+                    <div className="col-span-full py-32 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[3.5rem] flex flex-col items-center justify-center text-center">
+                        <Gavel size={64} className="text-slate-200 mb-6" />
+                        <h4 className="text-xl font-black text-slate-400 uppercase tracking-widest">No Judges Added Yet</h4>
+                        <p className="text-sm font-bold text-slate-300 mt-2">Click "Add Judge" to add your first evaluator.</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
     const renderTabContent = () => {
         switch (activeTab) {
             case 'dashboard':
@@ -789,10 +1365,15 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         {/* Metrics Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             {[
-                                { label: 'Registered Teams', val: teams?.length || 0, icon: Layers, color: 'text-[#6C3BFF]', bg: 'bg-purple-50', tab: 'teams' },
-                                { label: 'Total Participants', val: participants?.length || 0, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', tab: 'participants' },
-                                { label: 'Submissions', val: submissions?.length || 0, icon: FileText, color: 'text-emerald-600', bg: 'bg-emerald-50', tab: 'submissions' },
-                                { label: 'Judges Active', val: event.judges?.length || 0, icon: Gavel, color: 'text-amber-600', bg: 'bg-amber-50', tab: 'judges' }
+                                { label: 'Registered Teams', val: isHackathon ? hackathonSubmissions.length : (teams?.length || 0), icon: Layers, color: 'text-[#6C3BFF]', bg: 'bg-purple-50', tab: 'teams' },
+                                { label: 'Total Participants', val: isHackathon ? hackathonSubmissions.reduce((acc: number, sub: any) => {
+                                    const members = typeof sub.teamMembers === 'string'
+                                        ? sub.teamMembers.split(',').map((m: string) => m.trim()).filter(Boolean)
+                                        : (Array.isArray(sub.teamMembers) ? sub.teamMembers : []);
+                                    return acc + (sub.teamLead ? 1 : 0) + members.filter((m: string) => m.toLowerCase() !== (sub.teamLead || '').toLowerCase()).length;
+                                }, 0) : (participants?.length || 0), icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', tab: 'teams' },
+                                { label: 'Submissions', val: isHackathon ? hackathonSubmissions.length : (submissions?.length || 0), icon: FileText, color: 'text-emerald-600', bg: 'bg-emerald-50', tab: 'submissions' },
+                                { label: 'Judges Active', val: institutionJudges.length, icon: Gavel, color: 'text-amber-600', bg: 'bg-amber-50', tab: 'judges' }
                             ].map((m, i) => (
                                 <button 
                                     key={i} 
@@ -879,174 +1460,33 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         </div>
                     </div>
                 );
-            case 'assessments':
-                return (
-                    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between bg-slate-900 p-12 rounded-[3.5rem] text-white relative overflow-hidden gap-10 shadow-2xl">
-                            <div className="relative z-10">
-                                <h3 className="text-3xl font-black tracking-tight">Qualification Rounds</h3>
-                                <p className="text-slate-400 max-w-md mt-3 text-lg opacity-80 font-medium">Orchestrate mandatory assessments to filter top-tier talent automatically.</p>
-                            </div>
-                            <HelpCircle size={180} className="absolute -right-10 -bottom-10 text-white/5 rotate-12" />
-                            <button 
-                                onClick={() => setIsQuizModalOpen(true)}
-                                className="relative z-10 px-10 py-5 bg-[#6C3BFF] text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:scale-[1.05] transition-all shadow-2xl shadow-purple-900/40 flex items-center justify-center gap-3"
-                            >
-                                <Plus size={22} /> Design Assessment Round
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                            {/* Dynamic Assessment Cards */}
-                            {quizzes.map((quiz, i) => (
-                                <div key={quiz._id || i} className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-sm hover:shadow-2xl transition-all group cursor-pointer relative overflow-hidden border-b-4 border-b-[#6C3BFF]">
-                                    <div className="w-16 h-16 bg-purple-50 text-[#6C3BFF] rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-all shadow-inner">
-                                        <FileText size={32} />
-                                    </div>
-                                    <h4 className="text-2xl font-black text-slate-900 mb-2">{quiz.title}</h4>
-                                    <p className="text-slate-500 text-sm font-medium mb-10 leading-relaxed">Qualification phase with {quiz.questions?.length || 0} technical questions.</p>
-                                    <div className="flex items-center justify-between pt-6 border-t border-slate-50">
-                                        <span className="px-4 py-1.5 bg-slate-50 text-slate-400 rounded-lg text-[9px] font-black uppercase tracking-widest">{quiz.duration || 0} Minutes</span>
-                                        <span className="text-[10px] font-black text-[#6C3BFF] uppercase tracking-widest flex items-center gap-2">EDIT FLOW <ChevronRight size={14} /></span>
-                                    </div>
-                                </div>
-                            ))}
-
-                            <div 
-                                onClick={() => setIsQuizModalOpen(true)}
-                                className="p-10 border-4 border-dashed border-slate-100 rounded-[3rem] flex flex-col items-center justify-center text-center group hover:border-slate-200 transition-all cursor-pointer"
-                            >
-                                <div className="w-20 h-20 bg-slate-50 text-slate-200 rounded-[2.5rem] flex items-center justify-center mb-6 group-hover:rotate-90 transition-all duration-500">
-                                    <Plus size={40} />
-                                </div>
-                                <p className="font-black text-xs uppercase tracking-widest text-slate-300">Initialize New Round</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <h4 className="text-lg font-black text-slate-900">Manual coding evaluations</h4>
-                            {quizzes.map((quiz) => {
-                                const qid = String(quiz?._id || '');
-                                const rows = codingAttempts[qid] || [];
-                                if (!qid) return null;
-                                return (
-                                    <div key={`coding-${qid}`} className="bg-white border border-slate-100 rounded-2xl p-5">
-                                        <div className="flex items-center justify-between gap-3 mb-3">
-                                            <p className="font-bold text-slate-900">{quiz.title || 'Assessment'}</p>
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                                Pending: {rows.length}
-                                            </span>
-                                        </div>
-                                        {rows.length === 0 ? (
-                                            <p className="text-sm text-slate-500 font-medium">No pending coding attempts.</p>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                {rows.map((row: any) => (
-                                                    <div key={String(row.user_id)} className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
-                                                        <div>
-                                                            <p className="text-sm font-bold text-slate-800">User: {String(row.user_id)}</p>
-                                                            <p className="text-xs text-slate-500">Submitted: {row.submitted_at ? new Date(row.submitted_at).toLocaleString() : '-'}</p>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => evaluateCodingAttempt(qid, String(row.user_id))}
-                                                            disabled={reviewingParticipantId === String(row.user_id)}
-                                                            className="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-black uppercase tracking-widest disabled:opacity-60"
-                                                        >
-                                                            {reviewingParticipantId === String(row.user_id) ? 'Saving...' : 'Evaluate'}
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        <div className="p-10 bg-blue-50/40 rounded-[3rem] border border-blue-100 flex items-center gap-10">
-                            <div className="w-16 h-16 bg-white rounded-2xl shadow-sm border border-blue-100 flex items-center justify-center text-blue-500">
-                                <Timer size={28} />
-                            </div>
-                            <div className="flex-1">
-                                <h5 className="font-black text-slate-900 text-lg">Automated Proctoring</h5>
-                                <p className="text-sm text-slate-500 font-medium mt-1">Enable AI-based monitoring and tab-switch detection for all assessments.</p>
-                            </div>
-                            <div className="w-14 h-8 bg-blue-500 rounded-full relative shadow-inner cursor-pointer">
-                                <div className="absolute right-1 top-1 w-6 h-6 bg-white rounded-full shadow-md"></div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            case 'certificates':
-                return (
-                    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="p-12 bg-gradient-to-br from-[#6C3BFF] to-[#8B5CF6] rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl">
-                            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
-                                <div className="max-w-xl">
-                                    <div className="px-4 py-1.5 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest mb-6 w-fit border border-white/10">Credentialing Protocol</div>
-                                    <h3 className="text-5xl font-black tracking-tighter leading-tight">Digital Verification<br />& Rewards</h3>
-                                    <p className="text-purple-100 mt-6 text-lg opacity-90 leading-relaxed">
-                                        Issue blockchain-verifiable certificates to winners and participants automatically 
-                                        upon event finalization. Total security, zero fraud.
-                                    </p>
-                                </div>
-                                <div className="flex flex-col gap-4">
-                                    <button className="px-10 py-5 bg-white text-[#6C3BFF] rounded-[1.5rem] font-black text-sm uppercase tracking-widest shadow-2xl shadow-black/20 hover:scale-[1.05] transition-all flex items-center justify-center gap-3">
-                                        <Award size={20} /> Configure Templates
-                                    </button>
-                                    <button className="px-10 py-5 bg-white/10 border border-white/20 backdrop-blur-md text-white rounded-[1.5rem] font-black text-sm uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-3">
-                                        <Share2 size={20} /> Bulk Release Protocol
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="absolute -right-20 -top-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-                            <div className="absolute left-1/4 bottom-0 w-64 h-64 bg-white/5 rounded-full blur-2xl"></div>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                            {[
-                                { rank: 'Excellence Distinction', category: 'Winners (Top 3)', color: 'text-amber-500', bg: 'bg-amber-50', icon: Trophy, count: 3 },
-                                { rank: 'Merit Achievement', category: 'Qualified Finalists', color: 'text-[#6C3BFF]', bg: 'bg-purple-50', icon: Award, count: 12 },
-                                { rank: 'Participation Proof', category: 'All Authenticated Users', color: 'text-blue-500', bg: 'bg-blue-50', icon: Users, count: participants.length }
-                            ].map((c, i) => (
-                                <div key={i} className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-sm hover:shadow-2xl transition-all group relative overflow-hidden">
-                                    <div className={`w-16 h-16 ${c.bg} ${c.color} rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-all shadow-inner`}>
-                                        <c.icon size={32} />
-                                    </div>
-                                    <h4 className="text-xl font-black text-slate-900 mb-1">{c.rank}</h4>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-8">{c.category}</p>
-                                    
-                                    <div className="flex items-center gap-3 mb-8">
-                                        <div className="flex -space-x-3">
-                                            {[1,2,3].map(j => <div key={j} className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white"></div>)}
-                                        </div>
-                                        <span className="text-xs font-bold text-slate-500">+{c.count} Recipients</span>
-                                    </div>
-
-                                    <button className="w-full py-4 bg-slate-50 text-slate-400 group-hover:text-white group-hover:bg-[#6C3BFF] rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Setup Issuance Rules</button>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="p-12 bg-slate-50 border border-slate-100 rounded-[3.5rem] flex flex-col md:flex-row items-center justify-between gap-10 shadow-inner">
-                            <div className="flex items-center gap-8">
-                                <div className="w-20 h-20 bg-white rounded-3xl shadow-sm border border-slate-100 flex items-center justify-center text-emerald-500">
-                                    <FileCheck size={40} />
-                                </div>
-                                <div>
-                                    <h5 className="text-2xl font-black text-slate-900 tracking-tight">One-Click Finalization</h5>
-                                    <p className="text-slate-500 text-sm font-medium mt-1">Locks all scores, generates the final leaderboard, and triggers certificate emails.</p>
-                                </div>
-                            </div>
-                            <button className="px-10 py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-500 transition-all shadow-xl shadow-black/10 flex items-center gap-3">
-                                <Zap size={18} /> Finalize & Dispatch
-                            </button>
-                        </div>
-                    </div>
-                );
             case 'stages':
-                return <StageBuilder stages={stages} onUpdate={setStages} onConfigureQuiz={openQuizForStage} />;
+                return (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {hasUnsavedChanges && (
+                            <div className="p-6 bg-amber-50 border border-amber-200 rounded-[2rem] flex items-center justify-between gap-6">
+                                <div className="flex items-center gap-4 text-amber-900">
+                                    <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 shadow-inner">
+                                        <Clock size={20} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold leading-tight">Unsaved Lifecycle Changes Detected</p>
+                                        <p className="text-[10px] font-medium opacity-70 mt-0.5">Automated synchronization will trigger in 3 seconds, or click Sync Now.</p>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={handleSaveEvent}
+                                    className="px-6 py-3 bg-amber-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 transition-colors shadow-lg shadow-amber-900/10"
+                                >
+                                    Sync Now
+                                </button>
+                            </div>
+                        )}
+                        <StageBuilder stages={stages} onUpdate={setStages} onConfigureQuiz={openQuizForStage} />
+                    </div>
+                );
             case 'teams':
+                if (isHackathon) return renderTabContent_HackathonTeams();
                 return (
                     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -1123,7 +1563,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         </div>
                     </div>
                 );
+            case 'participants':
             case 'registrations':
+                if (isHackathon) return renderTabContent_HackathonParticipants();
                 return (
                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
@@ -1234,7 +1676,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         </div>
                     </div>
                 );
+            case 'judges':
+                return renderTabContent_Judges();
             case 'submissions':
+                return renderTabContent_SubmissionManagement();
+            case '_submissions_legacy':
                 return (
                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {/* Selection Command Center Banner */}
@@ -1624,7 +2070,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         )}
                     </div>
                 );
-
+            case 'submission-management':
+                return renderTabContent_SubmissionManagement();
 
 
 
@@ -1652,75 +2099,91 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
 
             case 'criteria':
                 return (
-                    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="p-12 bg-slate-50 border border-slate-100 rounded-[3.5rem] relative overflow-hidden shadow-inner">
-                            <h3 className="text-3xl font-black text-slate-900 tracking-tight relative z-10">Evaluation Matrix</h3>
-                            <ShieldCheck size={160} className="absolute -right-8 -bottom-8 text-[#6C3BFF]/5 -rotate-12" />
-                        </div>
-                        <div className="space-y-6">
-                            {(event.judging_criteria || []).map((criterion: any, idx: number) => (
-                                <div key={idx} className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm flex items-center gap-10 group hover:border-[#6C3BFF] transition-all">
-                                    <div className="w-16 h-16 bg-purple-50 text-[#6C3BFF] rounded-[1.2rem] flex items-center justify-center font-black text-xl shadow-inner group-hover:bg-[#6C3BFF] group-hover:text-white transition-all">{idx + 1}</div>
-                                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        <div className="space-y-2">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dimension</label>
-                                            <input value={criterion.name} onChange={(e) => {
-                                                const newCriteria = [...criteria];
-                                                newCriteria[idx].name = e.target.value;
-                                                setCriteria(newCriteria);
-                                            }} className="w-full px-6 py-4 bg-slate-50 border border-slate-50 rounded-2xl font-black text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-[#6C3BFF]/5 transition-all" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Max Load (%)</label>
-                                            <input type="number" value={criterion.max_points} onChange={(e) => {
-                                                const newCriteria = [...criteria];
-                                                newCriteria[idx].max_points = parseInt(e.target.value);
-                                                setCriteria(newCriteria);
-                                            }} className="w-full px-6 py-4 bg-slate-50 border border-slate-50 rounded-2xl font-black text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-[#6C3BFF]/5 transition-all" />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                );
-            case 'leaderboard':
-                return <LeaderboardPage />;
-            case 'prizes':
-                return (
-                    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="p-12 bg-slate-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl">
-                            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
-                                <div>
-                                    <div className="px-4 py-1.5 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest mb-4 w-fit">Reward Protocol</div>
-                                    <h3 className="text-4xl font-black tracking-tighter">Prizes & Incentives</h3>
-                                    <p className="text-slate-400 mt-4 max-w-sm text-lg opacity-80 font-medium">Configure and dispatch rewards for winners and top performers.</p>
-                                </div>
-                                <button className="px-10 py-5 bg-[#6C3BFF] text-white rounded-[1.5rem] font-black text-sm uppercase tracking-widest hover:scale-[1.05] transition-all shadow-2xl shadow-purple-900/40">Add Reward Category</button>
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="p-12 bg-slate-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-4xl font-black tracking-tight mb-3">Scoring Rubrics</h3>
+                                <p className="text-slate-400 font-bold">Define evaluation dimensions. Judges will score each team against these criteria.</p>
                             </div>
-                            <Trophy size={180} className="absolute -right-10 -bottom-10 text-white/5 rotate-12" />
+                            <button
+                                onClick={() => {
+                                    const newCriteria = [...criteria, { name: '', max_points: 10 }];
+                                    setCriteria(newCriteria);
+                                }}
+                                className="px-8 py-4 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-purple-900/30 flex items-center gap-3 shrink-0"
+                            >
+                                <Plus size={18} /> Add Rubric
+                            </button>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            {[
-                                { rank: 'First Place', reward: '$5,000 + Gold Medal', color: 'text-amber-500', bg: 'bg-amber-50', icon: Trophy },
-                                { rank: 'Runner Up', reward: '$2,500 + Silver Medal', color: 'text-slate-400', bg: 'bg-slate-50', icon: Award },
-                                { rank: 'Third Place', reward: '$1,000 + Bronze Medal', color: 'text-orange-600', bg: 'bg-orange-50', icon: ShieldCheck }
-                            ].map((p, i) => (
-                                <div key={i} className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-sm hover:shadow-2xl transition-all group relative overflow-hidden border-b-4 border-transparent hover:border-b-[#6C3BFF]">
-                                    <div className={`w-16 h-16 ${p.bg} ${p.color} rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-all shadow-inner`}>
-                                        <p.icon size={32} />
+
+                        {criteria.length === 0 && (
+                            <div className="py-24 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[3rem] flex flex-col items-center justify-center text-center">
+                                <ShieldCheck size={56} className="text-slate-200 mb-4" />
+                                <h4 className="text-lg font-black text-slate-400 uppercase tracking-widest">No Rubrics Yet</h4>
+                                <p className="text-sm font-bold text-slate-300 mt-1">Click "Add Rubric" to define your first evaluation dimension.</p>
+                            </div>
+                        )}
+
+                        <div className="space-y-4">
+                            {criteria.map((criterion: any, idx: number) => (
+                                <div key={idx} className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm flex items-center gap-8 group hover:border-[#6C3BFF]/30 transition-all">
+                                    <div className="w-14 h-14 bg-purple-50 text-[#6C3BFF] rounded-[1.2rem] flex items-center justify-center font-black text-lg shadow-inner shrink-0">{idx + 1}</div>
+                                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dimension Name</label>
+                                            <input
+                                                value={criterion.name}
+                                                onChange={(e) => {
+                                                    const nc = [...criteria];
+                                                    nc[idx] = { ...nc[idx], name: e.target.value };
+                                                    setCriteria(nc);
+                                                }}
+                                                placeholder="e.g. Innovation, Technical Depth"
+                                                className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Max Points</label>
+                                            <input
+                                                type="number"
+                                                min={1} max={100}
+                                                value={criterion.max_points}
+                                                onChange={(e) => {
+                                                    const nc = [...criteria];
+                                                    nc[idx] = { ...nc[idx], max_points: parseInt(e.target.value) || 0 };
+                                                    setCriteria(nc);
+                                                }}
+                                                className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all"
+                                            />
+                                        </div>
                                     </div>
-                                    <h4 className="text-2xl font-black text-slate-900 mb-2">{p.rank}</h4>
-                                    <p className="text-slate-500 font-bold text-sm leading-relaxed">{p.reward}</p>
-                                    <div className="mt-8 pt-8 border-t border-slate-50 flex items-center justify-between">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Locked Stage</span>
-                                        <button className="text-[10px] font-black text-[#6C3BFF] uppercase tracking-widest">Edit Rules</button>
-                                    </div>
+                                    <button
+                                        onClick={() => setCriteria(criteria.filter((_: any, i: number) => i !== idx))}
+                                        className="w-12 h-12 flex items-center justify-center rounded-2xl bg-red-50 text-red-400 hover:bg-red-600 hover:text-white transition-all shrink-0"
+                                        title="Remove"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
                                 </div>
                             ))}
                         </div>
+
+                        {criteria.length > 0 && (
+                            <div className="flex justify-end">
+                                <button
+                                    onClick={handleSaveEvent}
+                                    className="px-10 py-5 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-purple-600/20"
+                                >
+                                    Save Rubrics
+                                </button>
+                            </div>
+                        )}
                     </div>
                 );
+            case 'evaluation-matrix':
+                return eventId ? <EvaluationMatrixView eventId={eventId} criteria={criteria} refreshCounter={refreshCounter} /> : null;
+            case 'leaderboard':
+                return <LeaderboardPage eventId={eventId} refreshCounter={refreshCounter} />;
             default:
                 return <div className="py-32 text-center text-slate-300 font-black text-xs uppercase tracking-[0.3em] opacity-40">Section Initializing...</div>;
         }
@@ -2067,6 +2530,95 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 onInvite={handleInviteJudge}
                 loading={isInvitingJudge}
             />
+        {/* Hackathon Evaluation Modal */}
+        <FramerAnimatePresence>
+            {evaluatingSubmission && (
+                <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
+                >
+                    <motion.div 
+                        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                        className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col"
+                    >
+                        <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900">Evaluate: {evaluatingSubmission.teamName}</h3>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Submission Analysis Protocol</p>
+                            </div>
+                            <button 
+                                onClick={() => setEvaluatingSubmission(null)}
+                                className="p-4 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        <div className="flex-1 p-8 space-y-8 overflow-y-auto max-h-[70vh]">
+                            <div className="space-y-4">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Solution Summary</h4>
+                                <p className="text-sm font-medium text-slate-600 bg-slate-50 p-6 rounded-2xl border border-slate-100">{evaluatingSubmission.solution}</p>
+                            </div>
+
+                            <div className="space-y-6">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Scoring Rubric</h4>
+                                {criteria.length > 0 ? (
+                                    criteria.map((c: any) => (
+                                        <div key={c._id || c.name} className="space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-black text-slate-800">{c.name}</span>
+                                                <span className="text-sm font-black text-purple-600">{evaluationScores[c.name] || 0} / {c.max_points}</span>
+                                            </div>
+                                            <input 
+                                                type="range" 
+                                                min="0" 
+                                                max={c.max_points}
+                                                value={evaluationScores[c.name] || 0}
+                                                onChange={(e) => setEvaluationScores({...evaluationScores, [c.name]: parseInt(e.target.value)})}
+                                                className="w-full h-2 bg-slate-100 rounded-full appearance-none cursor-pointer accent-purple-600"
+                                            />
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100">
+                                        <p className="text-xs font-bold text-amber-700">No scoring rubrics defined. Please add criteria in the "Scoring Rubrics" tab first.</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Feedback & Comments</label>
+                                <textarea 
+                                    value={evaluationComment}
+                                    onChange={(e) => setEvaluationComment(e.target.value)}
+                                    placeholder="Share detailed feedback with the team..."
+                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all h-32 resize-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="p-8 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-4">
+                            <button 
+                                onClick={() => setEvaluatingSubmission(null)}
+                                className="px-8 py-4 text-sm font-black text-slate-400 hover:text-slate-600"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleEvaluateSubmission}
+                                className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-purple-600 transition-all shadow-xl shadow-black/10"
+                            >
+                                Submit Evaluation
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </FramerAnimatePresence>
         </div>
     );
 };

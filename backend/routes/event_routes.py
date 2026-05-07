@@ -113,17 +113,45 @@ async def get_event_hub_data(event_id: str, user: dict = Depends(get_auth_user))
                     m["is_leader"] = str(m.get("role", "MEMBER")) == "LEADER" or user_id == str(team.get("leader_id", ""))
                     
     # Check for existing evaluations (to lock submissions)
-    from db import scores_col
+    from db import scores_col, submissions_col
     is_evaluated = False
+    evaluation_data = {}
     if p:
-        score_query = {"event_id": str(event_id)}
+        # Check submissions_col first for the new judging system results
+        sub_query = {"event_id": str(event_id)}
         if p.get("team_id"):
-            score_query["team_id"] = str(p["team_id"])
+            sub_query["team_id"] = str(p["team_id"])
         else:
-            score_query["user_id"] = uid
-        
-        eval_count = await scores_col.count_documents(score_query)
-        is_evaluated = eval_count > 0
+            sub_query["user_id"] = uid
+            
+        latest_sub = await submissions_col.find_one(sub_query, sort=[("submitted_at", -1)])
+        if latest_sub and latest_sub.get("status") == "Evaluated":
+            is_evaluated = True
+            evaluation_data = {
+                "score": latest_sub.get("total_score"),
+                "feedback": latest_sub.get("evaluator_feedback"),
+                "evaluated_at": latest_sub.get("evaluated_at")
+            }
+        else:
+            # Fallback to legacy scores_col
+            score_query = {"event_id": str(event_id)}
+            if p.get("team_id"):
+                score_query["team_id"] = str(p["team_id"])
+            else:
+                score_query["user_id"] = uid
+            
+            legacy_score = await scores_col.find_one(score_query)
+            if legacy_score:
+                is_evaluated = True
+                evaluation_data = {
+                    "score": legacy_score.get("total_score"),
+                    "feedback": legacy_score.get("comments"),
+                    "evaluated_at": legacy_score.get("evaluated_at")
+                }
 
-    print(f"DEBUG: Hub Response - Evaluated: {is_evaluated}")
-    return {"participant": p, "team": team, "is_evaluated": is_evaluated}
+    return {
+        "participant": p, 
+        "team": team, 
+        "is_evaluated": is_evaluated,
+        "evaluation": evaluation_data
+    }

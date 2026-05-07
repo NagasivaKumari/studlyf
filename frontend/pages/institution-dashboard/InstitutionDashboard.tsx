@@ -177,7 +177,18 @@ const InstitutionDashboard: React.FC = () => {
             case 'judges':
                 return <JudgeManagement />;
             case 'leaderboard':
-                return <LeaderboardPage institutionId={institutionId} />;
+                return selectedEventId ? (
+                    <EventDetails
+                        institutionId={institutionId}
+                        eventId={selectedEventId}
+                        onBack={() => handleTabChange('events')}
+                        initialSection="leaderboard"
+                    />
+                ) : (
+                    <div className="py-24 text-center text-slate-400 font-bold">
+                        Select an event to view its live leaderboard.
+                    </div>
+                );
             case 'analytics':
                 return <ReportsPage institutionId={institutionId} />;
             case 'downloads':

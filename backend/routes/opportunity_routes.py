@@ -310,7 +310,44 @@ async def list_event_stage_submissions(event_id: str, user: dict = Depends(get_a
             
             items.append(doc)
         
-        print(f"DEBUG: Returning {len(items)} stage submissions for event {event_id}")
+        # 2. Merge Hackathon Submissions (Submission-Only)
+        from db import hackathon_submissions_col, opportunities_col
+        ev_id_variants = [event_id, str(event_id)]
+        linked_opp = await opportunities_col.find_one({"event_link_id": {"$in": ev_id_variants}})
+        opp_id_ctx = str(linked_opp["_id"]) if linked_opp else None
+        
+        hackathon_id_variants = [str(v) for v in ev_id_variants]
+        if opp_id_ctx:
+            hackathon_id_variants.append(opp_id_ctx)
+
+        h_cursor = hackathon_submissions_col.find({"hackathonId": {"$in": hackathon_id_variants}})
+        async for h_sub in h_cursor:
+            # Check for duplicates by checking the submittedBy/teamName combo or just ID
+            if any(str(i.get("_id")) == str(h_sub["_id"]) for i in items):
+                continue
+                
+            h_doc = {
+                "_id": str(h_sub["_id"]),
+                "event_id": event_id,
+                "user_id": h_sub.get("submittedBy") or h_sub.get("user_id"),
+                "team_id": None, # Hackathon subs might not have a formal team_id yet
+                "team_name": h_sub.get("teamName") or h_sub.get("teamLead") or "Hackathon Team",
+                "teamLead": h_sub.get("teamLead"),
+                "domain": h_sub.get("domain"),
+                "problemStatement": h_sub.get("problemStatement"),
+                "solution": h_sub.get("solution"),
+                "pptLink": h_sub.get("pptLink"),
+                "githubLink": h_sub.get("githubLink"),
+                "deployedLink": h_sub.get("deployedLink"),
+                "status": h_sub.get("status", "Submitted"),
+                "totalScore": h_sub.get("totalScore", 0.0),
+                "evaluations": h_sub.get("evaluations", []),
+                "submitted_at": h_sub.get("createdAt"),
+                "source": "hackathon_submission"
+            }
+            items.append(h_doc)
+            
+        print(f"DEBUG: Returning {len(items)} total submissions (including hackathon) for event {event_id}")
         return items
         
     except HTTPException as he:
@@ -740,3 +777,83 @@ async def learner_submit_stage_data(
     )
     
     return {"status": "success", "message": "Stage data submitted successfully"}
+
+
+@router.post("/events/{event_id}/hackathon-submit")
+async def hackathon_project_submit(
+    event_id: str,
+    payload: dict = Body(...),
+    user: dict = Depends(get_auth_user)
+):
+    """
+    Submit a hackathon project. Stores lightweight structured data only
+    (links, short text) — optimized for MongoDB free tier (512 MB).
+    Automatically appears in institution submissions panel.
+    """
+    uid = str(user.get("user_id") or "")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    def count_words(text: str) -> int:
+        """Count words in a text string."""
+        return len(text.strip().split()) if text and text.strip() else 0
+
+    # Validate word counts
+    problem = payload.get("problem_statement", "").strip()
+    solution = payload.get("solution", "").strip()
+    domain = payload.get("domain", "").strip()
+
+    if count_words(problem) > 50:
+        raise HTTPException(status_code=400, detail="Problem statement must be 50 words or fewer")
+    if count_words(solution) > 80:
+        raise HTTPException(status_code=400, detail="Solution must be 80 words or fewer")
+    if count_words(domain) > 3:
+        raise HTTPException(status_code=400, detail="Domain must be 2-3 words")
+
+    ppt_link = payload.get("ppt_link", "").strip()
+    if ppt_link and not (ppt_link.startswith("http://") or ppt_link.startswith("https://")):
+        raise HTTPException(status_code=400, detail="PPT link must be a valid URL")
+
+    # Check participant
+    p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
+    if not p:
+        raise HTTPException(status_code=403, detail="You must be registered for this event")
+
+    # Build submission doc — lightweight, links only
+    from db import submissions_col
+    submission_doc = {
+        "event_id": str(event_id),
+        "opportunity_id": payload.get("opportunity_id"),
+        "user_id": uid,
+        "team_id": str(p.get("team_id")) if p.get("team_id") else None,
+        "team_name": payload.get("team_name", ""),
+        "team_members": payload.get("team_members", ""),
+        "problem_statement": problem,
+        "solution": solution,
+        "domain": domain,
+        "ppt_link": ppt_link,
+        "deployed_link": payload.get("deployed_link", "").strip(),
+        "submitted_at": datetime.utcnow(),
+        "evaluation_status": "Pending Evaluation",
+        "assigned_judge_id": None,
+        "total_score": None,
+    }
+
+    # Upsert — one submission per user/team per event
+    query = {"event_id": str(event_id)}
+    if p.get("team_id"):
+        query["team_id"] = str(p["team_id"])
+    else:
+        query["user_id"] = uid
+
+    result = await submissions_col.update_one(query, {"$set": submission_doc}, upsert=True)
+    submission_doc["_id"] = str(result.upserted_id) if result.upserted_id else "updated"
+
+    # Also update participant progress
+    await participants_col.update_one(
+        {"_id": p["_id"]},
+        {"$set": {"submission_status": "Submitted", "updated_at": datetime.utcnow()}}
+    )
+
+    return {"status": "success", "message": "Project submitted successfully", "data": submission_doc}
+

@@ -17,6 +17,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
     const location = useLocation();
     const queryParams = new URLSearchParams(location.search);
     const selectedRole = queryParams.get('role') || 'student';
+    const next = queryParams.get('next');
     const { login } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -49,17 +50,18 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
 
             if (response.ok) {
                 login(data.access_token, data.user);
-                
-                // Redirect based on role
-                if (data.user.role === 'super_admin' || data.user.role === 'admin') {
-                    navigate('/admin');
-                } else if (data.user.role === 'institution') {
-                    navigate('/institution-dashboard');
-                } else if (data.user.role === 'judge') {
-                    navigate('/judge-portal');
-                } else {
-                    navigate('/opportunities');
+
+                // If we were deep-linked into a page, return there after auth.
+                if (next && next.startsWith('/')) {
+                    navigate(next);
+                    return;
                 }
+
+                // Default redirect based on role
+                if (data.user.role === 'super_admin' || data.user.role === 'admin') navigate('/admin');
+                else if (data.user.role === 'institution') navigate('/institution-dashboard');
+                else if (data.user.role === 'judge') navigate('/judge-portal');
+                else navigate('/dashboard/learner');
             } else {
                 setError(data.detail || 'Login failed. Please check your credentials.');
             }

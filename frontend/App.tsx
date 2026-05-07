@@ -1,5 +1,5 @@
 // Studlyf Engineering Protocol - Core Routing Engine
-import React, { Suspense, useEffect, lazy } from 'react';
+import React, { Suspense, useEffect, lazy, useMemo, useRef, useState } from 'react';
 import { HashRouter as Router, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 
 import Navigation from './components/Navigation';
@@ -61,6 +61,7 @@ import EventHub from './pages/events/EventHub';
 import EventQuizPage from './pages/events/EventQuizPage';
 import JudgePortalLayout from './pages/judge/JudgePortalLayout';
 import EvaluationPage from './pages/EvaluationPage';
+import HackathonWelcomePopup from './components/HackathonWelcomePopup';
 
 
 // Unique Components
@@ -100,6 +101,39 @@ const App: React.FC = () => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { user, role, loading } = useAuth();
+  const prevUserRef = useRef<any>(null);
+  const [showHackPopup, setShowHackPopup] = useState(false);
+
+  const HYD_HACK_OPP_ID = '69fb6bda6070fc83c566c5b1';
+  const isHydHackOpportunity = useMemo(
+    () => pathname === `/opportunities/${HYD_HACK_OPP_ID}`,
+    [pathname]
+  );
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user || role !== 'student') {
+      if (!user) {
+        sessionStorage.removeItem('studlyf_ai_popup_dismissed');
+      }
+      prevUserRef.current = user;
+      return;
+    }
+
+    const dismissed = sessionStorage.getItem('studlyf_ai_popup_dismissed') === '1';
+    if (dismissed) {
+      prevUserRef.current = user;
+      return;
+    }
+
+    // Show when a student session becomes authenticated (login) or when they open the shared hackathon link.
+    const becameAuthed = !prevUserRef.current && user;
+    if (becameAuthed || isHydHackOpportunity) {
+      setShowHackPopup(true);
+    }
+
+    prevUserRef.current = user;
+  }, [loading, user, role, isHydHackOpportunity]);
 
   const isLoginPage = pathname === '/login' || pathname === '/signup';
   const isDashboard = pathname.startsWith('/dashboard');
@@ -153,22 +187,22 @@ const App: React.FC = () => {
 
       if (role === 'student') {
         console.log('[StudentCheck] Student user detected, current path:', pathname);
-        // Always redirect students to opportunities if they're on the landing page
+        // Students land on learner dashboard by default
         if (pathname === '/') {
-          console.log('[StudentRedirect] Redirecting student from landing page to opportunities');
-          navigate('/opportunities', { replace: true });
+          console.log('[StudentRedirect] Redirecting student from landing page to learner dashboard');
+          navigate('/dashboard/learner', { replace: true });
           return;
         }
         // Also redirect if they try to access institution or judge pages
         if (pathname.startsWith('/institution-dashboard') || pathname.startsWith('/judge-portal')) {
-          console.log('[StudentRedirect] Redirecting student from restricted pages to opportunities');
-          navigate('/opportunities', { replace: true });
+          console.log('[StudentRedirect] Redirecting student from restricted pages to learner dashboard');
+          navigate('/dashboard/learner', { replace: true });
           return;
         }
         // Only redirect from base /dashboard, not /dashboard/learner
         if (pathname === '/dashboard') {
-          console.log('[StudentRedirect] Redirecting student from /dashboard to opportunities');
-          navigate('/opportunities', { replace: true });
+          console.log('[StudentRedirect] Redirecting student from /dashboard to learner dashboard');
+          navigate('/dashboard/learner', { replace: true });
           return;
         }
       }
@@ -189,6 +223,20 @@ const App: React.FC = () => {
 
   return (
     <div className={`relative min-h-screen flex flex-col selection:bg-[#7C3AED] selection:text-white ${isDashboard || isAdmin ? 'bg-transparent' : 'bg-white'}`}>
+
+      <HackathonWelcomePopup
+        open={showHackPopup}
+        onClose={() => {
+          sessionStorage.setItem('studlyf_ai_popup_dismissed', '1');
+          setShowHackPopup(false);
+        }}
+        onProblemStatements={() => {
+          // Keep user on the hackathon listing; if they are elsewhere, take them to it.
+          if (!isHydHackOpportunity) navigate(`/opportunities/${HYD_HACK_OPP_ID}`);
+          sessionStorage.setItem('studlyf_ai_popup_dismissed', '1');
+          setShowHackPopup(false);
+        }}
+      />
 
       {(() => {
         const showNav = !isLoginPage && !isPlayer && !isCheckout && !isAdmin && !isHome && !isResume && !isVisualizer && !isCareerOnboarding && !pathname.startsWith('/evaluate/') && !pathname.startsWith('/institution-dashboard');

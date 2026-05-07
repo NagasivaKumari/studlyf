@@ -19,6 +19,13 @@ import {
     Paperclip,
     Mail,
     Phone,
+    XCircle,
+    Video,
+    Search,
+    Star,
+    CheckSquare,
+    DollarSign,
+    CalendarX,
 } from 'lucide-react';
 import { getStatusById, getStatusColor, getStatusLabel } from '../../utils/calendarStatuses';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -106,6 +113,67 @@ const OpportunityDetails: React.FC = () => {
     const prizesRef = useRef<HTMLDivElement>(null);
     const reviewsRef = useRef<HTMLDivElement>(null);
     const faqRef = useRef<HTMLDivElement>(null);
+    const submissionsRef = useRef<HTMLDivElement>(null);
+    const leaderboardRef = useRef<HTMLDivElement>(null);
+
+    // Hackathon Special Mode States
+    const [isHackathon, setIsHackathon] = useState(false);
+    const [showSubmissionModal, setShowSubmissionModal] = useState(false);
+    const [hackathonStats, setHackathonStats] = useState({ participants: 0, teams: 0, submissions: 0 });
+    const [hackathonLeaderboard, setHackathonLeaderboard] = useState<any[]>([]);
+    const [isSubmittingHackathon, setIsSubmittingHackathon] = useState(false);
+    const [hackathonSubmission, setHackathonSubmission] = useState({
+        teamName: '',
+        teamType: 'Solo',
+        teamLead: user?.full_name || user?.name || '',
+        teamMembers: '',
+        problemStatement: '',
+        solution: '',
+        pptLink: '',
+        domain: 'Artificial Intelligence',
+        githubLink: '',
+        deployedLink: ''
+    });
+
+    useEffect(() => {
+        if (opportunity) {
+            const cat = String(opportunity.category || opportunity.type || '').toLowerCase();
+            if (cat.includes('hackathon')) {
+                setIsHackathon(true);
+            }
+        }
+    }, [opportunity]);
+
+    useEffect(() => {
+        if (isHackathon && id) {
+            // Fetch live stats
+            fetch(`${API_BASE_URL}/api/hackathons/events/${id}/stats`)
+                .then(res => res.json())
+                .then(data => setHackathonStats(data))
+                .catch(err => console.error("Stats fetch error:", err));
+
+            // Fetch leaderboard
+            const title = String(
+                opportunity?.title ||
+                opportunity?.name ||
+                opportunity?.opportunity_title ||
+                opportunity?.opportunityName ||
+                ''
+            );
+            const loc = String(opportunity?.location || opportunity?.venue || '');
+            const hideLeaderboardForThisHackathon =
+                /hyderabad/i.test(title) || /hyderabad/i.test(loc);
+
+            if (!hideLeaderboardForThisHackathon) {
+                fetch(`${API_BASE_URL}/api/hackathons/events/${id}/leaderboard`)
+                    .then(res => res.json())
+                    .then(data => setHackathonLeaderboard(data))
+                    .catch(err => console.error("Leaderboard fetch error:", err));
+            } else {
+                setHackathonLeaderboard([]);
+            }
+        }
+    }, [isHackathon, id, opportunity?.title, opportunity?.name, opportunity?.location, opportunity?.venue, opportunity?.opportunity_title, opportunity?.opportunityName]);
 
     const FAV_KEY = 'studlyf_opp_favorites';
 
@@ -138,13 +206,18 @@ const OpportunityDetails: React.FC = () => {
                 const oppUrl = user?.user_id
                     ? `${API_BASE_URL}/api/opportunities/${id}?applicant_user_id=${encodeURIComponent(user.user_id)}`
                     : `${API_BASE_URL}/api/opportunities/${id}`;
-                const [oppRes, appRes] = await Promise.all([
+                const [oppRes, appRes, subRes] = await Promise.all([
                     fetch(oppUrl),
                     user
                         ? fetch(`${API_BASE_URL}/api/opportunities/me/applications`, {
                               headers: { ...authHeaders() },
                           })
                         : Promise.resolve({ ok: false, json: async () => [] } as Response),
+                    user
+                        ? fetch(`${API_BASE_URL}/api/hackathons/my-submission/${id}`, {
+                              headers: { ...authHeaders() },
+                          })
+                        : Promise.resolve({ ok: false, json: async () => ({ hasSubmitted: false }) } as Response),
                 ]);
 
                 const opp = await oppRes.json();
@@ -168,6 +241,17 @@ const OpportunityDetails: React.FC = () => {
                     Array.isArray(list) &&
                     list.find((app: any) => String(app.opportunity_id) === String(id));
                 setMyApplication(mine);
+                if (user && subRes && subRes.ok) {
+                    try {
+                        const subData = await subRes.json();
+                        if (subData.hasSubmitted) {
+                            setSubmitted(true);
+                        }
+                    } catch (err) {
+                        console.error("Failed to parse submission status", err);
+                    }
+                }
+
                 setIsApplied(Boolean(mine));
             } catch (error) {
                 console.error('Failed to fetch opportunity details', error);
@@ -306,24 +390,83 @@ const OpportunityDetails: React.FC = () => {
                 if (data) setMyApplication(data);
                 setSubmitted(true);
                 setIsApplied(true);
-                
-                // If there's a join code in the URL, redirect back to the hub to complete joining
-                const params = new URLSearchParams(window.location.search);
-                const joinCode = params.get('join');
-                if (joinCode) {
-                    const eid = opportunity.event_link_id || id;
-                    setTimeout(() => {
-                        navigate(`/events/${eid}?join=${joinCode}`);
-                    }, 1500);
-                }
-            } else {
-                const errData = await response.json().catch(() => ({}));
-                alert(errData.detail || "Failed to submit application. Please check your details and try again.");
             }
         } catch (err) {
             console.error("Apply error:", err);
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleHackathonSubmit = async () => {
+        if (!user) {
+            navigate('/login');
+            return;
+        }
+
+        if (!hackathonSubmission.teamName || !hackathonSubmission.teamLead || !hackathonSubmission.problemStatement || !hackathonSubmission.solution || !hackathonSubmission.pptLink) {
+            alert("Please fill all required fields");
+            return;
+        }
+
+        // Simple word count validation
+        const problemWords = hackathonSubmission.problemStatement.trim().split(/\s+/).length;
+        const solutionWords = hackathonSubmission.solution.trim().split(/\s+/).length;
+
+        if (problemWords > 50) {
+            alert("Problem Statement exceeds 50 words");
+            return;
+        }
+        if (solutionWords > 100) {
+            alert("Solution exceeds 100 words");
+            return;
+        }
+
+        if (!hackathonSubmission.pptLink.includes("drive.google.com")) {
+            alert("PPT Link must be a Google Drive link");
+            return;
+        }
+
+        setIsSubmittingHackathon(true);
+        try {
+            const payload = {
+                ...hackathonSubmission,
+                hackathonId: id,
+                institutionId: opportunity.createdBy || opportunity.institution_id,
+                submittedBy: user.user_id,
+                teamMembers: hackathonSubmission.teamMembers ? hackathonSubmission.teamMembers.split(",").map(m => m.trim()) : []
+            };
+
+            const response = await fetch(`${API_BASE_URL}/api/hackathons/submissions`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...authHeaders()
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                setShowSubmissionModal(false);
+                setSubmitted(true);
+                setIsApplied(true);
+                alert("Submission successful!");
+                // Refresh stats
+                const statsRes = await fetch(`${API_BASE_URL}/api/hackathons/events/${id}/stats`);
+                const statsData = await statsRes.json();
+                setHackathonStats(statsData);
+            } else {
+                const err = await response.json();
+                const msg = Array.isArray(err.detail) 
+                    ? err.detail.map((e: any) => `${e.loc.join('.')}: ${e.msg}`).join('\n')
+                    : err.detail || "Submission failed";
+                alert(msg);
+            }
+        } catch (err) {
+            console.error("Hackathon submit error:", err);
+            alert("An error occurred during submission");
+        } finally {
+            setIsSubmittingHackathon(false);
         }
     };
 
@@ -439,8 +582,8 @@ const OpportunityDetails: React.FC = () => {
         window.open(u.toString(), '_blank');
     };
 
-    const scrollToSection = (key: 'details' | 'dates' | 'prizes' | 'reviews' | 'faq') => {
-        setActiveSection(key);
+    const scrollToSection = (key: 'details' | 'dates' | 'prizes' | 'reviews' | 'faq' | 'submissions' | 'leaderboard') => {
+        setActiveSection(key as any);
         const ref =
             key === 'details'
                 ? detailsRef
@@ -450,7 +593,11 @@ const OpportunityDetails: React.FC = () => {
                     ? prizesRef
                     : key === 'reviews'
                       ? reviewsRef
-                      : faqRef;
+                      : key === 'submissions'
+                        ? submissionsRef
+                        : key === 'leaderboard'
+                          ? leaderboardRef
+                          : faqRef;
         ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
@@ -509,6 +656,20 @@ const OpportunityDetails: React.FC = () => {
         (Array.isArray(opportunity.stages) &&
             opportunity.stages.some((s: any) => s?.startDate || s?.start_date || s?.endDate || s?.end_date || s?.deadline));
     const hasPrizesSection = Boolean(prizePoolLabel) || (Array.isArray(prizesList) && prizesList.length > 0);
+    const hideHackathonLeaderboard =
+        isHackathon &&
+        (() => {
+            const title = String(
+                opportunity?.title ||
+                opportunity?.name ||
+                opportunity?.opportunity_title ||
+                opportunity?.opportunityName ||
+                ''
+            );
+            const loc = String(opportunity?.location || opportunity?.venue || '');
+            return /hyderabad/i.test(title) || /hyderabad/i.test(loc);
+        })();
+    const hideHackathonExtras = hideHackathonLeaderboard;
 
     const richTextClass =
         'opportunity-rich-text text-slate-600 font-medium leading-relaxed [&_p]:mb-3 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_strong]:font-bold [&_em]:italic [&_a]:text-purple-600 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-purple-600 [&_blockquote]:pl-4 [&_blockquote]:my-4 [&_blockquote]:text-slate-700 [&_h1]:text-xl [&_h1]:font-black [&_h1]:mb-2 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-bold';
@@ -535,19 +696,46 @@ const OpportunityDetails: React.FC = () => {
                             <Home size={16} className="hidden sm:inline" />
                             Details
                         </button>
-                        {hasDatesSection ? (
-                            <button
-                                type="button"
-                                onClick={() => scrollToSection('dates')}
-                                className={`pb-0.5 border-b-2 transition-colors ${
-                                    activeSection === 'dates'
-                                        ? 'text-purple-600 border-purple-600'
-                                        : 'border-transparent hover:text-slate-800'
-                                }`}
-                            >
-                                Dates &amp; Deadlines
-                            </button>
-                        ) : null}
+                        {isHackathon ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => scrollToSection('submissions')}
+                                    className={`pb-0.5 border-b-2 transition-colors ${
+                                        activeSection === 'submissions' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
+                                    }`}
+                                >
+                                    Submissions
+                                </button>
+                                {!hideHackathonLeaderboard ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => scrollToSection('leaderboard')}
+                                        className={`pb-0.5 border-b-2 transition-colors ${
+                                            activeSection === 'leaderboard' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
+                                        }`}
+                                    >
+                                        Leaderboard
+                                    </button>
+                                ) : null}
+                            </>
+                        ) : (
+                            <>
+                                {hasDatesSection ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => scrollToSection('dates')}
+                                        className={`pb-0.5 border-b-2 transition-colors ${
+                                            activeSection === 'dates'
+                                                ? 'text-purple-600 border-purple-600'
+                                                : 'border-transparent hover:text-slate-800'
+                                        }`}
+                                    >
+                                        Dates &amp; Deadlines
+                                    </button>
+                                ) : null}
+                            </>
+                        )}
                         {hasPrizesSection ? (
                             <button
                                 type="button"
@@ -561,24 +749,38 @@ const OpportunityDetails: React.FC = () => {
                                 Prizes
                             </button>
                         ) : null}
-                        <button
-                            type="button"
-                            onClick={() => scrollToSection('reviews')}
-                            className={`pb-0.5 border-b-2 transition-colors ${
-                                activeSection === 'reviews' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
-                            }`}
-                        >
-                            Reviews
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => scrollToSection('faq')}
-                            className={`pb-0.5 border-b-2 transition-colors ${
-                                activeSection === 'faq' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
-                            }`}
-                        >
-                            FAQs &amp; Discussions
-                        </button>
+                        {!isHackathon && (
+                            <button
+                                type="button"
+                                onClick={() => scrollToSection('reviews')}
+                                className={`pb-0.5 border-b-2 transition-colors ${
+                                    activeSection === 'reviews' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
+                                }`}
+                            >
+                                Reviews
+                            </button>
+                        )}
+                        {!isHackathon ? (
+                            <button
+                                type="button"
+                                onClick={() => scrollToSection('faq')}
+                                className={`pb-0.5 border-b-2 transition-colors ${
+                                    activeSection === 'faq' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
+                                }`}
+                            >
+                                FAQs &amp; Discussions
+                            </button>
+                        ) : !hideHackathonExtras ? (
+                            <button
+                                type="button"
+                                onClick={() => scrollToSection('faq')}
+                                className={`pb-0.5 border-b-2 transition-colors ${
+                                    activeSection === 'faq' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
+                                }`}
+                            >
+                                FAQs
+                            </button>
+                        ) : null}
                     </nav>
                     <div className="flex items-center gap-2">
                         <button
@@ -719,23 +921,34 @@ const OpportunityDetails: React.FC = () => {
                                 {(() => {
                                     const status = getStatusById(myApplication?.status || 'pending');
                                     const statusColor = getStatusColor(myApplication?.status || 'pending');
-                                    const statusIcon = getStatusById(myApplication?.status || 'pending');
+                                    const dec = applicationDecisionCopy(myApplication?.status);
+
+                                    const IconComponent = (() => {
+                                        const iconName = status.icon;
+                                        if (iconName === 'calendar-plus') return CalendarPlus;
+                                        if (iconName === 'calendar-x') return CalendarX;
+                                        if (iconName === 'clock') return Clock;
+                                        if (iconName === 'check-circle') return CheckCircle2;
+                                        if (iconName === 'x-circle') return XCircle;
+                                        if (iconName === 'video') return Video;
+                                        if (iconName === 'users') return Users;
+                                        if (iconName === 'upload') return Upload;
+                                        if (iconName === 'search') return Search;
+                                        if (iconName === 'star') return Star;
+                                        if (iconName === 'check-circle-2') return CheckCircle2;
+                                        if (iconName === 'dollar-sign') return DollarSign;
+                                        if (iconName === 'check-square') return CheckSquare;
+                                        return CheckCircle2;
+                                    })();
                                     
                                     return (
                                         <>
-                                            <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white" style={{ backgroundColor: statusColor }}>
-                                                {React.createElement('div', { 
-                                                    dangerouslySetInnerHTML: { 
-                                                        __html: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                            <circle cx="12" cy="12" r="10" stroke="white" stroke-width="2"/>
-                                                            <path d="${statusIcon}" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                        </svg>`
-                                                    }
-                                                })}
+                                            <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-lg" style={{ backgroundColor: statusColor }}>
+                                                <IconComponent size={22} strokeWidth={2.5} />
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">
-                                                    {getStatusLabel(myApplication?.status || 'pending')}
+                                                    {status.label}
                                                 </p>
                                                 <p className="font-black text-emerald-900">{dec.title}</p>
                                                 <p className="text-sm text-emerald-800/90 mt-0.5">{dec.sub || ''}</p>
@@ -1280,47 +1493,137 @@ const OpportunityDetails: React.FC = () => {
                     ) : null}
                         </div>
 
-                        <div ref={reviewsRef}>
-                            <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
-                                <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-4">
-                                    <span className="w-1 h-7 bg-purple-600 rounded-full" />
-                                    Feedback &amp; rating
-                                </h2>
-                                <h3 className="text-sm font-black text-slate-800 mb-2">Write a review</h3>
-                                {isApplied ? (
-                                    <p className="text-slate-600 text-sm font-medium">
-                                        Thanks for applying — you can share feedback with the host from your applications
-                                        dashboard when messaging is enabled.
-                                    </p>
-                                ) : (
-                                    <p className="text-slate-600 text-sm font-medium">
-                                        Register for this opportunity to give your feedback and review.
-                                    </p>
-                                )}
-                            </section>
-                        </div>
+                        {isHackathon ? (
+                            <>
+                                {!hideHackathonExtras ? (
+                                    <div ref={submissionsRef}>
+                                        <section className="bg-white rounded-3xl border border-slate-200 p-6 md:p-8 shadow-sm">
+                                            <div className="flex items-center justify-between gap-4 mb-5">
+                                                <h2 className="text-lg font-black text-slate-900 flex items-center gap-3">
+                                                    <span className="w-1 h-7 bg-purple-600 rounded-full" />
+                                                    Live Submissions
+                                                </h2>
+                                                <span className="text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-600 px-3 py-1 rounded-full">
+                                                    Auto refresh 30s
+                                                </span>
+                                            </div>
 
-                        <div ref={faqRef}>
-                            <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
-                                <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-4">
-                                    <span className="w-1 h-7 bg-purple-600 rounded-full" />
-                                    Frequently asked questions / discussions
-                                </h2>
-                                <p className="text-slate-600 text-sm font-medium mb-4">
-                                    No posts yet. Start a new discussion.
-                                </p>
-                                {user ? (
-                                    <p className="text-xs text-slate-400 font-bold">Discussion threads are coming soon.</p>
+                                            <div className="grid sm:grid-cols-2 gap-4">
+                                                <div className="p-4 rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white flex items-center gap-4">
+                                                    <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-purple-700 font-black">AI</div>
+                                                    <div className="min-w-0">
+                                                        <p className="font-black text-slate-900 truncate">Cyber Sentinel</p>
+                                                        <p className="text-xs text-slate-500 font-bold">5 minutes ago</p>
+                                                    </div>
+                                                </div>
+                                                <div className="p-4 rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white flex items-center gap-4 opacity-60">
+                                                    <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-black">WS</div>
+                                                    <div className="min-w-0">
+                                                        <p className="font-black text-slate-900 truncate">Web Wizards</p>
+                                                        <p className="text-xs text-slate-500 font-bold">12 minutes ago</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </section>
+                                    </div>
                                 ) : (
-                                    <Link
-                                        to={`/login?next=${encodeURIComponent(window.location.pathname)}`}
-                                        className="text-sm font-black text-purple-600 hover:underline"
-                                    >
-                                        Please log in to start a comment.
-                                    </Link>
+                                    <div ref={submissionsRef} />
                                 )}
-                            </section>
-                        </div>
+
+                                {!hideHackathonLeaderboard ? (
+                                    <div ref={leaderboardRef} className="mt-8">
+                                        <section className="bg-white rounded-3xl border border-slate-200 p-6 md:p-8 shadow-sm">
+                                            <div className="flex items-center justify-between mb-6">
+                                                <h2 className="text-lg font-black text-slate-900 flex items-center gap-3">
+                                                    <span className="w-1 h-7 bg-amber-400 rounded-full" />
+                                                    Leaderboard
+                                                </h2>
+                                                <span className="text-[10px] font-black uppercase tracking-widest bg-amber-100 text-amber-700 px-3 py-1 rounded-full">Top Teams</span>
+                                            </div>
+                                            
+                                            <div className="space-y-2">
+                                                {hackathonLeaderboard.length > 0 ? (
+                                                    hackathonLeaderboard.map((entry, idx) => (
+                                                        <div key={entry._id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-purple-200 transition-colors">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black ${
+                                                                    idx === 0 ? 'bg-amber-100 text-amber-700' : 
+                                                                    idx === 1 ? 'bg-slate-200 text-slate-600' :
+                                                                    idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-400'
+                                                                }`}>
+                                                                    {idx + 1}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="font-black text-slate-900 truncate">{entry.teamName}</p>
+                                                                    <p className="text-[10px] font-bold text-slate-500 uppercase">{entry.domain}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <p className="text-lg font-black text-purple-600">{Number(entry.totalScore || 0).toFixed(1)}</p>
+                                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Points</p>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="py-12 text-center">
+                                                        <div className="inline-flex p-4 rounded-full bg-slate-50 mb-4">
+                                                            <Users size={32} className="text-slate-200" />
+                                                        </div>
+                                                        <p className="text-slate-400 font-bold">The competition has just begun. Leaderboard will update soon.</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </section>
+                                    </div>
+                                ) : null}
+                            </>
+                        ) : (
+                            <div ref={reviewsRef}>
+                                <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
+                                    <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-4">
+                                        <span className="w-1 h-7 bg-purple-600 rounded-full" />
+                                        Feedback &amp; rating
+                                    </h2>
+                                    <h3 className="text-sm font-black text-slate-800 mb-2">Write a review</h3>
+                                    {isApplied ? (
+                                        <p className="text-slate-600 text-sm font-medium">
+                                            Thanks for applying — you can share feedback with the host from your applications
+                                            dashboard when messaging is enabled.
+                                        </p>
+                                    ) : (
+                                        <p className="text-slate-600 text-sm font-medium">
+                                            Register for this opportunity to give your feedback and review.
+                                        </p>
+                                    )}
+                                </section>
+                            </div>
+                        )}
+
+                        {!hideHackathonExtras ? (
+                            <div ref={faqRef}>
+                                <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
+                                    <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-4">
+                                        <span className="w-1 h-7 bg-purple-600 rounded-full" />
+                                        Frequently asked questions / discussions
+                                    </h2>
+                                    <p className="text-slate-600 text-sm font-medium mb-4">
+                                        No posts yet. Start a new discussion.
+                                    </p>
+                                    {user ? (
+                                        <p className="text-xs text-slate-400 font-bold">Discussion threads are coming soon.</p>
+                                    ) : (
+                                        <Link
+                                            to={`/login?next=${encodeURIComponent(window.location.pathname)}`}
+                                            className="text-sm font-black text-purple-600 hover:underline"
+                                        >
+                                            Please log in to start a comment.
+                                        </Link>
+                                    )}
+                                </section>
+                            </div>
+                        ) : (
+                            <div ref={faqRef} />
+                        )}
 
                         {related.length > 0 ? (
                             <section className="space-y-4">
@@ -1371,36 +1674,38 @@ const OpportunityDetails: React.FC = () => {
                     {/* Right Column: Application Form */}
                     <div className="lg:col-span-1">
                         <div className="sticky top-32">
-                        <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1">
-                                        <Clock size={12} /> Days left
-                                    </p>
-                                    <p className="mt-1 text-xl font-black text-slate-900">
-                                        {daysLeft != null ? daysLeft : '—'}
-                                    </p>
-                                </div>
-                                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1">
-                                        <Users size={12} /> Registered
-                                    </p>
-                                    <p className="mt-1 text-xl font-black text-slate-900">{registeredCount}</p>
-                                </div>
-                            </div>
-                            {processStats ? (
+                        {!isHackathon && (
+                            <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Shortlisted</p>
-                                        <p className="mt-1 text-xl font-black text-slate-900">{shortlistedCount}</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1">
+                                            <Clock size={12} /> Days left
+                                        </p>
+                                        <p className="mt-1 text-xl font-black text-slate-900">
+                                            {daysLeft != null ? daysLeft : '—'}
+                                        </p>
                                     </div>
                                     <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Eliminated</p>
-                                        <p className="mt-1 text-xl font-black text-slate-900">{rejectedCount}</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1">
+                                            <Users size={12} /> Registered
+                                        </p>
+                                        <p className="mt-1 text-xl font-black text-slate-900">{registeredCount}</p>
                                     </div>
                                 </div>
-                            ) : null}
-                        </div>
+                                {processStats ? (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Shortlisted</p>
+                                            <p className="mt-1 text-xl font-black text-slate-900">{shortlistedCount}</p>
+                                        </div>
+                                        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Eliminated</p>
+                                            <p className="mt-1 text-xl font-black text-slate-900">{rejectedCount}</p>
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
+                        )}
                         <AnimatePresence mode="wait">
                             {submitted ? (
                                 <motion.div 
@@ -1469,11 +1774,28 @@ const OpportunityDetails: React.FC = () => {
                                     className="bg-white rounded-[40px] p-10 border border-slate-100 shadow-2xl shadow-purple-900/5 space-y-8"
                                 >
                                     <div className="space-y-2">
-                                        <h2 className="text-2xl font-black text-slate-900">Apply Now</h2>
-                                        <p className="text-slate-400 font-bold text-sm">Join {opportunity.organization} to start your journey</p>
+                                        <h2 className="text-2xl font-black text-slate-900">{isHackathon ? 'Submit Your Idea' : 'Apply Now'}</h2>
+                                        <p className="text-slate-400 font-bold text-sm">
+                                            {isHackathon 
+                                                ? 'Share your solution and compete for prizes' 
+                                                : `Join ${opportunity.organization} to start your journey`}
+                                        </p>
                                     </div>
 
-                                    <form onSubmit={handleSubmit} className="space-y-6">
+                                    {isHackathon ? (
+                                        <div className="space-y-4">
+                                            <button 
+                                                onClick={() => setShowSubmissionModal(true)}
+                                                className="w-full py-5 rounded-2xl text-sm font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3 shadow-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 shadow-purple-600/30 active:scale-95"
+                                            >
+                                                Submit Your Idea <Send size={18} />
+                                            </button>
+                                            <p className="text-[11px] text-slate-400 font-bold text-center">
+                                                By submitting, you agree to the hackathon rules and guidelines.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <form onSubmit={handleSubmit} className="space-y-6">
                                         <div className="space-y-4">
                                             {useInstitutionForm ? (
                                                 registrationFields.map((f) => {
@@ -1753,6 +2075,7 @@ const OpportunityDetails: React.FC = () => {
                                             )}
                                         </button>
                                     </form>
+                                )}
                                 </motion.div>
                             )}
                         </AnimatePresence>
@@ -1770,8 +2093,196 @@ const OpportunityDetails: React.FC = () => {
                         </div>
                     </div>
                 </div>
-            </div>
         </div>
+
+        {/* Hackathon Submission Modal */}
+        <AnimatePresence>
+            {showSubmissionModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4">
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setShowSubmissionModal(false)}
+                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+                    />
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                        className="relative w-full max-w-3xl bg-white rounded-3xl sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+                    >
+                        <div className="p-5 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-purple-50 to-white">
+                            <div>
+                                <h2 className="text-xl sm:text-2xl font-black text-slate-900">Submit Your Idea</h2>
+                                <p className="text-slate-500 font-bold text-xs sm:text-sm">Tell us about your project</p>
+                            </div>
+                            <button 
+                                onClick={() => setShowSubmissionModal(false)}
+                                className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors"
+                            >
+                                <ChevronLeft className="rotate-180" size={24} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-8 space-y-5 sm:space-y-6">
+                            <div className="grid sm:grid-cols-2 gap-6">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Name</label>
+                                    <input 
+                                        type="text" 
+                                        maxLength={40}
+                                        value={hackathonSubmission.teamName}
+                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, teamName: e.target.value})}
+                                        placeholder="Enter team name"
+                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Type</label>
+                                    <div className="flex p-1 bg-slate-100 rounded-2xl">
+                                        {['Solo', 'Team'].map((type) => (
+                                            <button
+                                                key={type}
+                                                onClick={() => setHackathonSubmission({...hackathonSubmission, teamType: type})}
+                                                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                                                    hackathonSubmission.teamType === type ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                                                }`}
+                                            >
+                                                {type}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid sm:grid-cols-2 gap-6">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Lead Name</label>
+                                    <input 
+                                        type="text" 
+                                        value={hackathonSubmission.teamLead}
+                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, teamLead: e.target.value})}
+                                        placeholder="Lead name"
+                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Domain</label>
+                                    <select 
+                                        value={hackathonSubmission.domain}
+                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, domain: e.target.value})}
+                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all appearance-none"
+                                    >
+                                        <option value="AI">AI</option>
+                                        <option value="FINTECH">FINTECH</option>
+                                        <option value="EDTECH">EDTECH</option>
+                                        <option value="MEDTECH">MEDTECH</option>
+                                        <option value="AGRITECH">AGRITECH</option>
+                                        <option value="BLOCK CHAIN">BLOCK CHAIN</option>
+                                        <option value="OTHERS">OTHERS</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {hackathonSubmission.teamType === 'Team' && (
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Members (Comma separated names)</label>
+                                    <input 
+                                        type="text" 
+                                        value={hackathonSubmission.teamMembers}
+                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, teamMembers: e.target.value})}
+                                        placeholder="Member 1, Member 2, ..."
+                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
+                                    />
+                                </div>
+                            )}
+
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between ml-4">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Problem Statement</label>
+                                    <span className={`text-[10px] font-black ${hackathonSubmission.problemStatement.trim().split(/\s+/).filter(Boolean).length > 50 ? 'text-red-500' : 'text-purple-600'}`}>
+                                        {hackathonSubmission.problemStatement.trim().split(/\s+/).filter(Boolean).length} / 50 words
+                                    </span>
+                                </div>
+                                <textarea 
+                                    value={hackathonSubmission.problemStatement}
+                                    onChange={(e) => setHackathonSubmission({...hackathonSubmission, problemStatement: e.target.value})}
+                                    placeholder="What problem are you solving?"
+                                    className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all h-28 sm:h-32 resize-none"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between ml-4">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Your Solution</label>
+                                    <span className={`text-[10px] font-black ${hackathonSubmission.solution.trim().split(/\s+/).filter(Boolean).length > 100 ? 'text-red-500' : 'text-purple-600'}`}>
+                                        {hackathonSubmission.solution.trim().split(/\s+/).filter(Boolean).length} / 100 words
+                                    </span>
+                                </div>
+                                <textarea 
+                                    value={hackathonSubmission.solution}
+                                    onChange={(e) => setHackathonSubmission({...hackathonSubmission, solution: e.target.value})}
+                                    placeholder="Describe your solution..."
+                                    className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all h-36 sm:h-40 resize-none"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">PPT Link (Google Drive)</label>
+                                <input 
+                                    type="url" 
+                                    value={hackathonSubmission.pptLink}
+                                    onChange={(e) => setHackathonSubmission({...hackathonSubmission, pptLink: e.target.value})}
+                                    placeholder="https://drive.google.com/..."
+                                    className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
+                                />
+                            </div>
+
+                            <div className="grid sm:grid-cols-2 gap-6">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">GitHub Link (Optional)</label>
+                                    <input 
+                                        type="url" 
+                                        value={hackathonSubmission.githubLink}
+                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, githubLink: e.target.value})}
+                                        placeholder="https://github.com/..."
+                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Deployed Link (Optional)</label>
+                                    <input 
+                                        type="url" 
+                                        value={hackathonSubmission.deployedLink}
+                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, deployedLink: e.target.value})}
+                                        placeholder="https://..."
+                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-5 sm:p-8 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3 sm:gap-4">
+                            <button 
+                                onClick={() => setShowSubmissionModal(false)}
+                                className="px-6 sm:px-8 py-3.5 sm:py-4 rounded-2xl text-sm font-black text-slate-500 hover:bg-slate-100 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleHackathonSubmit}
+                                disabled={isSubmittingHackathon}
+                                className="px-7 sm:px-10 py-3.5 sm:py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-black uppercase tracking-widest hover:from-purple-700 hover:to-indigo-700 shadow-xl shadow-purple-600/20 transition-all active:scale-95 disabled:opacity-50"
+                            >
+                                {isSubmittingHackathon ? 'Submitting...' : 'Submit Idea'}
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+        </AnimatePresence>
+    </div>
     );
 };
 

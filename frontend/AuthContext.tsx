@@ -51,14 +51,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const userData = await response.json();
                 setUser(userData);
                 setRole(userData.role);
-            } else {
-                // Token invalid or expired
+            } else if (response.status === 401 || response.status === 403) {
+                // Explicitly unauthorized - clear session
                 localStorage.removeItem('auth_token');
                 setUser(null);
                 setRole(null);
             }
+            // For other errors (500, network), we keep the token and state as is
+            // to avoid aggressive logging out on transient errors
         } catch (error) {
             console.error("[AuthContext] Auth check failed:", error);
+            // Don't clear state on network failure
         } finally {
             setLoading(false);
         }

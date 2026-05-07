@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Medal, Star, TrendingUp, QrCode, Search, Download } from 'lucide-react';
+import { Trophy, Medal, Star, TrendingUp, QrCode, Search, Download, Award } from 'lucide-react';
+import { API_BASE_URL, authHeaders } from '../../apiConfig';
 
 
 
@@ -13,26 +14,60 @@ interface LeaderboardEntry {
     prize?: string;
 }
 
-const LeaderboardPage: React.FC = () => {
+interface LeaderboardPageProps {
+    eventId?: string;
+    refreshCounter?: number;
+}
+
+const LeaderboardPage: React.FC<LeaderboardPageProps> = ({ eventId, refreshCounter }) => {
     const [rankings, setRankings] = useState<LeaderboardEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchRankings = async () => {
+            if (!eventId) return;
             try {
-                // Akshay's Dynamic Integration: Fetch real scores from DB
-                const response = await fetch('/api/v1/institution/leaderboard/active_event');
-                const data = await response.json();
-                setRankings(data);
+                // Primary: hackathon submissions leaderboard (scores live in hackathon_submissions)
+                let res = await fetch(`${API_BASE_URL}/api/hackathons/events/${eventId}/leaderboard?include_all=true`, {
+                    headers: { ...authHeaders() }
+                });
+
+                // Fallback: legacy judging leaderboard (submissions_col)
+                if (!res.ok) {
+                    res = await fetch(`${API_BASE_URL}/api/judging/leaderboard/${eventId}`, {
+                        headers: { ...authHeaders() }
+                    });
+                }
+
+                if (res.ok) {
+                    const data = await res.json();
+                    const mapped = (Array.isArray(data) ? data : []).map((d: any) => ({
+                        rank: d.rank,
+                        team_name: d.teamName || d.team_name || d.team_name || d.student_name || 'Anonymous',
+                        project_title:
+                            d.projectTitle ||
+                            d.project_title ||
+                            d.teamLead ||
+                            d.student_name ||
+                            (d.teamType ? String(d.teamType) : 'Individual'),
+                        total_score: Number(d.totalScore ?? d.total_score ?? 0),
+                        college: d.college || d.institution || d.institution_name,
+                        criteria_scores: d.rubricScores || d.rubric_scores || {}
+                    }));
+                    setRankings(mapped);
+                } else {
+                    setRankings([]);
+                }
             } catch (error) {
                 console.error("Integration Error:", error);
+                setRankings([]);
             } finally {
                 setLoading(false);
             }
         };
         fetchRankings();
-    }, []);
+    }, [eventId, refreshCounter]);
 
     if (loading) {
         return <div className="h-screen flex items-center justify-center bg-[#fafafa] text-gray-400 italic">Synchronizing Live Standings...</div>;
@@ -56,7 +91,26 @@ const LeaderboardPage: React.FC = () => {
                         </div>
                         <div className="flex gap-2">
                             <button 
-                                onClick={() => window.open('/api/v1/institution/leaderboard/active_event/export-pdf', '_blank')}
+                                onClick={async () => {
+                                    if (window.confirm("Issue certificates to the Top 3 winners?")) {
+                                        const res = await fetch(`${API_BASE_URL}/api/judging/issue-certificates`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                                            body: JSON.stringify({
+                                                event_id: eventId,
+                                                winners: rankings.slice(0, 3)
+                                            })
+                                        });
+                                        if (res.ok) alert("Certificates issued successfully!");
+                                    }
+                                }}
+                                className="flex items-center gap-2 px-6 py-3 bg-[#6C3BFF] text-white rounded-xl font-bold shadow-xl shadow-purple-900/20 hover:scale-[1.02] transition-all"
+                            >
+                                <Award size={18} />
+                                Issue Winner Certificates
+                            </button>
+                            <button 
+                                onClick={() => window.open(`${API_BASE_URL}/api/v1/institution/leaderboard/${eventId}/export-pdf`, '_blank')}
                                 className="flex items-center gap-2 px-6 py-3 bg-[#0f172a] text-white rounded-xl font-bold shadow-sm hover:scale-[1.02] transition-all"
                             >
                                 <Download size={18} />

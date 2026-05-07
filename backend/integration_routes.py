@@ -12,7 +12,7 @@ from services.email_service import send_notification_email
 from services.institutional_analytics_service import analytics_service
 from services.institutional_certificate_service import certificate_service
 from services.leaderboard_service import leaderboard_service
-from db import leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col
+from db import leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col
 from bson import ObjectId
 from services.audit_service import log_admin_action
 from notification_helpers import notify_institution
@@ -493,7 +493,136 @@ async def get_event_participants(event_id: str, user: dict = Depends(get_auth_us
     except Exception as e:
         logger.error(f"[PARTICIPANTS] Failed to fetch opportunity applicants: {e}")
 
+    # 3. Merge hackathon submissions (Submission-Only Mode)
+    try:
+        hackathon_id_variants = [str(v) for v in ev_id_variants]
+        if opp_id_ctx:
+            hackathon_id_variants.append(opp_id_ctx)
+            
+        h_cursor = hackathon_submissions_col.find({"hackathonId": {"$in": hackathon_id_variants}})
+        async for sub in h_cursor:
+            uid = sub.get("submittedBy") or sub.get("user_id")
+            if uid and str(uid) in seen_user_ids:
+                continue
+            
+            sid = str(sub["_id"])
+            if sid in seen_row_ids:
+                continue
+            
+            seen_row_ids.add(sid)
+            if uid:
+                seen_user_ids.add(str(uid))
+            
+            # Detailed hydration from users collection
+            u_name = sub.get("teamLead") or "Hackathon Participant"
+            u_email = sub.get("email") or "Subscribed via Hackathon"
+            u_college = sub.get("college_name") or sub.get("institutionId")
+            
+            if uid:
+                from db import users_col
+                u_profile = await users_col.find_one({"user_id": uid})
+                if u_profile:
+                    u_name = u_profile.get("full_name") or u_profile.get("name") or u_name
+                    u_email = u_profile.get("email") or u_email
+                    u_college = u_profile.get("college_name") or u_profile.get("institution_name") or u_college
+
+            students.append({
+                "_id": sid,
+                "user_id": uid,
+                "full_name": u_name,
+                "email": u_email,
+                "event_id": event_id,
+                "registration_status": "Registered",
+                "registered_at": sub.get("createdAt"),
+                "source": "hackathon_submission",
+                "college_name": u_college
+            })
+    except Exception as e:
+        logger.error(f"[PARTICIPANTS] Failed to fetch hackathon submissions: {e}")
+
     return students
+
+
+@router.get("/events/{event_id}/teams")
+async def get_event_teams(event_id: str, user: dict = Depends(get_auth_user)):
+    """Retrieves all teams registered for a specific event."""
+    await assert_institution_owns_event(event_id, user)
+    
+    # Robust event_id variants
+    ev_id_variants = [event_id, str(event_id)]
+    try:
+        if len(str(event_id)) == 24:
+            ev_id_variants.append(ObjectId(event_id))
+    except:
+        pass
+
+    from db import teams_col
+    cursor = teams_col.find({"event_id": {"$in": ev_id_variants}})
+    teams = []
+    seen_team_names = set()
+    async for team in cursor:
+        team["_id"] = str(team["_id"])
+        
+        # Enrich with member details
+        if "members" in team:
+            member_user_ids = [str(m.get("user_id")) for m in team["members"] if m.get("user_id")]
+            if member_user_ids:
+                from db import users_col
+                users_cursor = users_col.find({"user_id": {"$in": member_user_ids}})
+                user_map = {}
+                async for u in users_cursor:
+                    user_map[str(u["user_id"])] = {
+                        "name": u.get("full_name") or u.get("name") or "Student",
+                        "email": u.get("email")
+                    }
+                
+                for m in team["members"]:
+                    uid = str(m.get("user_id"))
+                    if uid in user_map:
+                        m["name"] = user_map[uid]["name"]
+                        m["email"] = user_map[uid]["email"]
+                        m["is_leader"] = (str(team.get("team_leader_id") or team.get("leader_id")) == uid)
+                        
+        teams.append(team)
+        seen_team_names.add(team.get("team_name") or team.get("name"))
+
+    # 2. Merge Hackathon Submission Teams
+    try:
+        # Resolve linked opportunity ID for cross-referencing hackathon submissions
+        from db import opportunities_col
+        linked_opp = await opportunities_col.find_one({"event_link_id": {"$in": ev_id_variants}})
+        opp_id_ctx = str(linked_opp["_id"]) if linked_opp else None
+        
+        hackathon_id_variants = [str(v) for v in ev_id_variants]
+        if opp_id_ctx:
+            hackathon_id_variants.append(opp_id_ctx)
+
+        h_cursor = hackathon_submissions_col.find({"hackathonId": {"$in": hackathon_id_variants}})
+        async for sub in h_cursor:
+            t_name = sub.get("teamName")
+            if not t_name: continue
+            if t_name in seen_team_names: continue
+            
+            seen_team_names.add(t_name)
+            
+            members = [{"user_id": sub.get("submittedBy"), "name": sub.get("teamLead"), "role": "Lead"}]
+            for m_name in (sub.get("teamMembers") or []):
+                members.append({"name": m_name, "role": "Member"})
+                
+            teams.append({
+                "_id": str(sub["_id"]),
+                "team_name": t_name,
+                "event_id": event_id,
+                "team_leader_id": sub.get("submittedBy"),
+                "members": members,
+                "status": "Approved",
+                "formed_at": sub.get("createdAt"),
+                "source": "hackathon_submission"
+            })
+    except Exception as e:
+        logger.error(f"[TEAMS] Failed to fetch hackathon submission teams: {e}")
+
+    return teams
 
 
 @router.post("/tools/backfill-portal-participants/{institution_id}")
@@ -904,6 +1033,45 @@ async def list_event_submissions_enriched(event_id: str, user: dict = Depends(ge
         if "assigned_judge_emails" not in s or s["assigned_judge_emails"] is None:
             s["assigned_judge_emails"] = []
         out.append(s)
+
+    # 2. Merge Hackathon Submissions
+    try:
+        from db import hackathon_submissions_col, opportunities_col
+        # Robust event_id variants
+        ev_id_variants = [event_id, str(event_id)]
+        try:
+            if len(str(event_id)) == 24:
+                ev_id_variants.append(ObjectId(event_id))
+        except: pass
+
+        linked_opp = await opportunities_col.find_one({"event_link_id": {"$in": ev_id_variants}})
+        opp_id_ctx = str(linked_opp["_id"]) if linked_opp else None
+        
+        hackathon_id_variants = [str(v) for v in ev_id_variants]
+        if opp_id_ctx:
+            hackathon_id_variants.append(opp_id_ctx)
+
+        h_cursor = hackathon_submissions_col.find({"hackathonId": {"$in": hackathon_id_variants}})
+        async for sub in h_cursor:
+            sid = str(sub["_id"])
+            # Avoid duplicate counting if somehow already there
+            if any(str(o.get("_id")) == sid for o in out):
+                continue
+                
+            out.append({
+                "_id": sid,
+                "event_id": event_id,
+                "user_id": sub.get("submittedBy") or sub.get("user_id"),
+                "team_name": sub.get("teamName") or sub.get("teamLead") or "Hackathon Team",
+                "status": sub.get("status", "Submitted"),
+                "submitted_at": sub.get("createdAt").isoformat() if hasattr(sub.get("createdAt"), "isoformat") else sub.get("createdAt"),
+                "total_score": sub.get("totalScore", 0.0),
+                "source": "hackathon_submission",
+                "assigned_judge_emails": [] # Hackathon submissions handle judges differently in their own routes
+            })
+    except Exception as e:
+        logger.error(f"[SUBMISSIONS] Failed to merge hackathon data: {e}")
+
     return out
 
 

@@ -325,21 +325,68 @@ class Team(BaseModel):
 
 class Submission(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
+    opportunity_id: Optional[str] = None # Link to Opportunity
     event_id: str
     team_id: Optional[str] = None
     participant_id: Optional[str] = None
+    user_id: Optional[str] = None # For individual submissions
     project_title: str
     project_description: str
     github_url: Optional[str] = None
     demo_video_url: Optional[str] = None
+    demo_link: Optional[str] = None # Added for demoLink
+    document_link: Optional[str] = None # Added for documentLink
     attachments: List[str] = []
     submitted_at: datetime = Field(default_factory=datetime.utcnow)
-    status: str = "Submitted"
+    status: str = "Submitted" # Submitted, Evaluated
     average_score: float = 0.0
+    total_score: float = 0.0 # Added total score
     plagiarism_score: float = 0.0
     plagiarism_report: str = ""
+    additional_notes: Optional[str] = None # Added for student notes
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class HackathonSubmission(BaseModel):
+    id: Optional[str] = Field(None, alias="_id")
+    submissionId: Optional[str] = None # Will use _id
+    hackathonId: str
+    institutionId: str
+    teamName: str
+    teamType: str # Solo, Team
+    teamLead: str # Lead Name
+    teamMembers: List[str] = []
+    problemStatement: str
+    solution: str
+    pptLink: str
+    githubLink: Optional[str] = None
+    deployedLink: Optional[str] = None
+    domain: str
+    submittedBy: str # user_id
+    assignedJudgeId: Optional[str] = None
+    status: str = "Pending" # Pending, Assigned, Evaluated
+    totalScore: float = 0.0
+    rubricScores: Optional[dict] = {} # {Innovation: 8, ...}
+    feedback: Optional[str] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+class Rubric(BaseModel):
+    id: Optional[str] = Field(None, alias="_id")
+    opportunity_id: Optional[str] = None
+    event_id: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    max_score: int = 10
+
+class SubmissionScore(BaseModel):
+    id: Optional[str] = Field(None, alias="_id")
+    submission_id: str
+    rubric_id: str
+    evaluator_id: str
+    score: float
+    feedback: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Judge(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
@@ -353,8 +400,9 @@ class Score(BaseModel):
     submission_id: str
     judge_id: str
     event_id: str
-    criteria_scores: dict
+    criteria_scores: dict # {rubric_id: score}
     total_score: float
+    feedback: Optional[str] = None # Consistent with user request
     comments: Optional[str] = None
     evaluated_at: datetime = Field(default_factory=datetime.utcnow)
     created_at: datetime = Field(default_factory=datetime.utcnow)
