@@ -40,12 +40,11 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
 
     const getPasswordStrength = (pass: string) => {
         if (!pass) return 0;
-        let score = 0;
-        if (pass.length >= 8) score++;
-        if (/[A-Z]/.test(pass)) score++;
-        if (/[0-9]/.test(pass)) score++;
-        if (/[^A-Za-z0-9]/.test(pass)) score++;
-        return score;
+        if (pass.length >= 12) return 4;
+        if (pass.length >= 10) return 3;
+        if (pass.length >= 8) return 2;
+        if (pass.length >= 6) return 1;
+        return 0;
     };
 
     // Role detection from URL or email context
@@ -90,10 +89,9 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
         setLoading(true);
         setError('');
         try {
-            // 0. Client-side Strength Check
-            const strength = getPasswordStrength(password);
-            if (strength < 4) {
-                setError("Password is not strong enough. Please include at least 8 characters, an uppercase letter, a number, and a special character.");
+            // 0. Client-side check: minimum 6 characters only
+            if (password.trim().length < 6) {
+                setError("Password must be at least 6 characters long.");
                 setLoading(false);
                 return;
             }

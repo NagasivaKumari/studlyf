@@ -73,7 +73,13 @@ const HackathonWelcomePopup: React.FC<Props> = ({ open, onClose, onProblemStatem
                                     </div>
                                 </div>
                                 <button
-                                    onClick={onProblemStatements}
+                                    onClick={() => {
+                                        window.open(
+                                            'https://ai-hackathon-2026.holistichealervedika.com/',
+                                            '_blank',
+                                            'noopener,noreferrer'
+                                        );
+                                    }}
                                     className="w-full sm:w-auto px-7 py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] text-white bg-gradient-to-r from-[#22c55e] via-[#6C3BFF] to-[#22c55e] shadow-xl shadow-purple-500/20 hover:shadow-2xl hover:-translate-y-0.5 transition-all"
                                 >
                                     Click here for Problem Statements
