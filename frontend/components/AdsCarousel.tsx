@@ -250,7 +250,8 @@ function ImageCard({ ad }: { ad: AdItem }) {
         }}>
             <div style={{ position: 'relative', overflow: 'hidden', height: '120px', flexShrink: 0, background: '#f8fafc' }}>
                 <img src={ad.media_url} alt={ad.title}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                    crossOrigin="anonymous" />
                 {ad.badge && <div style={{
                     position: 'absolute', top: 12, right: 12, background: '#fff',
                     color: '#111', fontSize: '.65rem', fontWeight: 700, letterSpacing: '.1em',
@@ -321,7 +322,7 @@ function VideoImageCard({ ad }: { ad: AdItem }) {
                 {/* Secondary Image Area */}
                 <div style={{ position: 'relative', overflow: 'hidden', background: '#f9fafb' }}>
                     {ad.secondary_media_url ? (
-                        <img src={ad.secondary_media_url} alt="Secondary" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        <img src={ad.secondary_media_url} alt="Secondary" style={{ width: '100%', height: '100%', objectFit: 'contain' }} crossOrigin="anonymous" />
                     ) : (
                         <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>
                              <ImageIcon size={32} />
