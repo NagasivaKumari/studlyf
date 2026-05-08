@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       proxy: {
         '^/api/.*': {
-          target: 'http://localhost:8000',
+          target: env.PROD || 'http://localhost:8000',
           changeOrigin: true,
           secure: false,
         }

@@ -25,23 +25,24 @@ const HackathonWelcomePopup: React.FC<Props> = ({ open, onClose, onProblemStatem
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+                    className="fixed inset-0 z-[200] p-4 overflow-y-auto"
                     role="dialog"
                     aria-modal="true"
                 >
                     <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
+                    <div className="relative min-h-full flex items-start sm:items-center justify-center">
 
                     <motion.div
                         initial={{ opacity: 0, y: 18, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 18, scale: 0.98 }}
                         transition={{ type: 'spring', stiffness: 180, damping: 18 }}
-                        className="relative w-full max-w-3xl"
+                        className="relative w-full max-w-3xl my-6"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Glow frame */}
                         <div className="absolute -inset-2 rounded-[2.75rem] blur-2xl opacity-70 bg-gradient-to-r from-[#22c55e]/35 via-[#6C3BFF]/35 to-[#22c55e]/35" />
-                        <div className="relative bg-white rounded-[2.75rem] overflow-hidden shadow-2xl border border-white/60">
+                        <div className="relative bg-white rounded-[2.75rem] overflow-hidden shadow-2xl border border-white/60 max-h-[calc(100vh-3rem)] flex flex-col">
                             {/* Close */}
                             <button
                                 onClick={onClose}
@@ -53,7 +54,7 @@ const HackathonWelcomePopup: React.FC<Props> = ({ open, onClose, onProblemStatem
                             </button>
 
                             {/* Image */}
-                            <div className="bg-slate-50">
+                            <div className="bg-slate-50 overflow-y-auto">
                                 <img
                                     src="/popup.png"
                                     alt="AI Hackathon"
@@ -63,7 +64,7 @@ const HackathonWelcomePopup: React.FC<Props> = ({ open, onClose, onProblemStatem
                             </div>
 
                             {/* Footer CTA */}
-                            <div className="p-5 sm:p-7 bg-white flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="p-5 sm:p-7 bg-white border-t border-slate-100 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-4">
                                 <div className="text-center sm:text-left">
                                     <div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
                                         Hyderabad Biggest - AI Hackathon
@@ -87,6 +88,7 @@ const HackathonWelcomePopup: React.FC<Props> = ({ open, onClose, onProblemStatem
                             </div>
                         </div>
                     </motion.div>
+                    </div>
                 </motion.div>
             )}
         </AnimatePresence>
