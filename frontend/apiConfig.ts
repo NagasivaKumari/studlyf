@@ -2,10 +2,10 @@
 
 // Detect environment using Vite's built-in variables
 export const API_BASE_URL = import.meta.env.PROD
-    ? 'https://studlyff.onrender.com'
+    ? 'https://launchpad-api.holistichealervedika.com'
     : 'http://localhost:8000';
 
-export const FRONTEND_URL = 'https://studlyff.vercel.app'; // Hardcoded as per user request for "Real" links
+export const FRONTEND_URL = 'https://launchpad.holistichealervedika.com'; // Hardcoded as per user request for "Real" links
 
 /** Merge with fetch headers so institution / learner JWT routes work after server hardening. */
 export function authHeaders(): Record<string, string> {
