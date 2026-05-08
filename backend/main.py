@@ -43,6 +43,7 @@ additional_origins = os.getenv("ADDITIONAL_CORS_ORIGINS", "").split(",") if os.g
 origins = list(set([
     frontend_url, 
     "https://studlyff.vercel.app",
+    "https://studlyf-thub.vercel.app"
     "https://studlyff.onrender.com"
 ] + [origin.strip() for origin in additional_origins if origin.strip()]))
 
