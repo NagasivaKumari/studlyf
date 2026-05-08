@@ -37,33 +37,92 @@ logger = logging.getLogger("main_service")
 
 # Configure CORS - Restricted to specific domains for security
 # Load allowed origins from environment or use defaults
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-additional_origins = os.getenv("ADDITIONAL_CORS_ORIGINS", "").split(",") if os.getenv("ADDITIONAL_CORS_ORIGINS") else []
+# Support multiple FRONTEND_URL values separated by spaces or commas
+raw_frontend = os.getenv("FRONTEND_URL", "http://localhost:3000") or ""
+raw_additional = os.getenv("ADDITIONAL_CORS_ORIGINS", "") or ""
 
-origins = list(set([
-    frontend_url, 
+# Split on commas or any whitespace and strip empty items
+frontend_urls = [u.strip().rstrip('/') for u in re.split(r"[\s,]+", raw_frontend) if u.strip()]
+additional_origins = [u.strip().rstrip('/') for u in re.split(r"[\s,]+", raw_additional) if u.strip()]
+
+# Default explicit origins (keep existing known deployments)
+explicit_defaults = [
     "https://studlyff.vercel.app",
-    "https://studlyff.onrender.com"
-] + [origin.strip() for origin in additional_origins if origin.strip()]))
+    "https://studlyff.onrender.com",
+]
 
-# Add localhost origins for development
-if os.getenv("ENVIRONMENT", "development").lower() == "development":
-    origins.extend([
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8000"
-    ])
+# Combine user-provided explicit origins and defaults
+all_candidates = frontend_urls + additional_origins + explicit_defaults
 
-# Remove duplicates
-origins = list(set(origins))
+# We'll separate exact origins (full scheme+host[:port]) from wildcard patterns
+exact_origins = []
+regex_patterns = []
+
+def to_regex_from_pattern(pattern: str) -> str:
+    # Remove trailing slash
+    p = pattern.rstrip('/')
+    # If pattern contains a '*' treat as wildcard domain
+    if '*' in p or p.startswith('.') or p.startswith('*.'):
+        # Remove any leading *.
+        p = p.lstrip('*.')
+        # Escape dots
+        p_escaped = re.escape(p)
+        # Allow optional subdomain prefix
+        return rf"^https?://([^.]+\.)*{p_escaped}(:\d+)?$"
+    # If pattern looks like a bare domain (no scheme), allow http/https and optional subdomain
+    if not p.startswith('http://') and not p.startswith('https://'):
+        p_escaped = re.escape(p)
+        return rf"^https?://([^.]+\.)*{p_escaped}(:\d+)?$"
+    # If pattern includes scheme, convert to regex allowing optional port
+    try:
+        # remove scheme
+        no_scheme = re.sub(r'^https?://', '', p)
+        no_scheme_escaped = re.escape(no_scheme)
+        scheme = 'https?' if p.startswith('http://') or p.startswith('https://') else 'https?'
+        return rf"^{scheme}://{no_scheme_escaped}(:\d+)?$"
+    except Exception:
+        return None
+
+for cand in all_candidates:
+    if not cand:
+        continue
+    # If contains explicit wildcard or looks like domain-only, convert to regex
+    if '*' in cand or cand.startswith('.') or not cand.startswith('http'):
+        r = to_regex_from_pattern(cand)
+        if r:
+            regex_patterns.append(r)
+    else:
+        # exact origin (ensure no trailing slash)
+        exact_origins.append(cand.rstrip('/'))
+
+# Always include common localhost dev origins and ports requested
+dev_local_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:80",
+    "http://127.0.0.1:80",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",
+]
+
+for d in dev_local_origins:
+    if d not in exact_origins:
+        exact_origins.append(d)
+
+# Final exact origins list (deduplicated)
+origins = list(dict.fromkeys(exact_origins))
+
+# Build combined regex if we have wildcard/domain patterns
+allow_origin_regex = None
+if regex_patterns:
+    # join alternatives into one big regex
+    allow_origin_regex = '(' + ')|('.join(regex_patterns) + ')'
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
