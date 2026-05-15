@@ -381,6 +381,21 @@ async def learner_upload_stage_file(
     p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
     if not p:
         raise HTTPException(status_code=403, detail="Not registered for this event")
+        
+    # If in a team, ONLY team leader can submit
+    if p.get("team_id"):
+        from db import teams_col
+        from bson import ObjectId
+        team = await teams_col.find_one({"_id": ObjectId(p["team_id"])})
+        if team:
+            leader_id = team.get("team_leader_id") or team.get("leader_id")
+            if not leader_id:
+                for m in team.get("members", []):
+                    if str(m.get("role", "")).upper() == "LEADER":
+                        leader_id = m.get("user_id")
+                        break
+            if str(leader_id) != uid:
+                raise HTTPException(status_code=403, detail="Only the team leader can submit files for the team")
 
     # 2. Basic file validation
     if not file or not file.filename:
@@ -705,6 +720,21 @@ async def learner_submit_stage_data(
     p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
     if not p:
         raise HTTPException(status_code=403, detail="You must register/apply for this event first")
+
+    # If in a team, ONLY team leader can submit
+    if p.get("team_id"):
+        from db import teams_col
+        from bson import ObjectId
+        team = await teams_col.find_one({"_id": ObjectId(p["team_id"])})
+        if team:
+            leader_id = team.get("team_leader_id") or team.get("leader_id")
+            if not leader_id:
+                for m in team.get("members", []):
+                    if str(m.get("role", "")).upper() == "LEADER":
+                        leader_id = m.get("user_id")
+                        break
+            if str(leader_id) != uid:
+                raise HTTPException(status_code=403, detail="Only the team leader can submit data for the team")
 
     # 2. Verify stage exists
     stages = ev.get("stages") if isinstance(ev.get("stages"), list) else []

@@ -264,12 +264,38 @@ async def join_by_invite(
     if len(team.get("members") or []) >= max_s:
         raise HTTPException(status_code=400, detail="Team is already full")
 
-    # must be registered for event
+    # Check if registered for event, if not, auto-register them
     p = await participants_col.find_one({"event_id": event_id, "user_id": uid})
-    if not p:
-        raise HTTPException(status_code=400, detail="You must register/apply before joining a team")
-    if p.get("team_id"):
+    if p and p.get("team_id"):
         raise HTTPException(status_code=400, detail="You are already in a team")
+
+    if not p:
+        # Auto-register since they are joining via invite
+        from db import users_col
+        u = await users_col.find_one({"user_id": uid}) or {}
+        first_stage = None
+        try:
+            st = ev.get("stages")
+            if isinstance(st, list) and st:
+                first_stage = st[0].get("name") or st[0].get("id")
+        except Exception:
+            pass
+        
+        p = {
+            "event_id": event_id,
+            "institution_id": ev.get("institution_id"),
+            "user_id": uid,
+            "full_name": u.get("full_name") or u.get("name") or user.get("email") or uid,
+            "email": u.get("email") or user.get("email") or "",
+            "event_title": ev.get("title"),
+            "registered_at": datetime.utcnow(),
+            "status": "pending",
+            "current_stage": first_stage or "Registration",
+            "source": "team_invite",
+            "team_id": None
+        }
+        res = await participants_col.insert_one(p)
+        p["_id"] = res.inserted_id
     
     # Check if user is already a member of this team
     existing_members = team.get("members", [])
