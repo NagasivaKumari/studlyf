@@ -310,7 +310,7 @@ export const Template6: React.FC<{ data: CertData }> = ({ data }) => (
         <div style={{ fontSize: 32, fontWeight: 900, color: '#F8FAFC', letterSpacing: 6, textTransform: 'uppercase' }}>{data.certType.toUpperCase()}</div>
         <div style={{ fontSize: 14, color: '#14B8A6', letterSpacing: 3, marginTop: 4 }}>{data.eventName.toUpperCase() || 'HACKATHON EVENT'}</div>
       </div>
-      <div style={{ textAlign: 'center', color: '#94A3B8', fontSize: 12, marginBottom: 12, letterSpacing: 1 }}>> VERIFIED PARTICIPANT:</div>
+      <div style={{ textAlign: 'center', color: '#94A3B8', fontSize: 12, marginBottom: 12, letterSpacing: 1 }}>&gt; VERIFIED PARTICIPANT:</div>
       <div style={{ textAlign: 'center', fontSize: 28, color: '#10B981', fontWeight: 700, borderBottom: '1px dashed #14B8A6', paddingBottom: 4, margin: '0 auto 16px', width: 'fit-content', padding: '0 32px' }}>
         {'{ Recipient Name }'}
       </div>
