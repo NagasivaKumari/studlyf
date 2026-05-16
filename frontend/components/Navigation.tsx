@@ -3,14 +3,14 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingCart, User } from 'lucide-react';
 
 const StudlyfLogo = ({ className = "h-8 sm:h-10" }: { className?: string }) => (
-  <div className={`flex items-center ${className}`}>
+  <div className={`flex items-center bg-white px-3 py-1.5 rounded-xl shadow-sm ${className}`}>
     <img
       src="/images/studlyf.png"
       alt="STUDLYF Logo"
-      className="h-full w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]"
+      className="h-full w-auto object-contain"
     />
   </div>
 );
@@ -182,7 +182,7 @@ const Navigation: React.FC = () => {
                 {user && role !== 'institution' ? (
                   <Link
                     to="/opportunities/my-applications"
-                    className="flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-white/80 hover:text-white"
+                    className="flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-white/80 hover:text-white ml-2"
                   >
                     MY APPLICATIONS
                   </Link>
@@ -190,9 +190,9 @@ const Navigation: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center lg:w-[250px] justify-end shrink-0 gap-6">
+            <div className="flex items-center lg:w-[250px] justify-end shrink-0 gap-8">
               {user ? (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-5">
                   <Link
                     to="/learn/cart"
                     className="relative p-2 hover:bg-white/10 rounded-lg transition-colors group"
@@ -213,10 +213,9 @@ const Navigation: React.FC = () => {
 
                   <Link
                     to="/dashboard"
-                    className="hidden sm:flex flex-col items-end mr-1 group/profile hover:opacity-80 transition-opacity"
+                    className="hidden sm:flex items-center justify-center w-10 h-10 rounded-full bg-white/20 border border-white/30 hover:bg-white/30 transition-all mr-2 group/profile"
                   >
-                    <span className="text-[8px] text-white font-black uppercase tracking-widest leading-none mb-0.5 group-hover/profile:text-[#A78BFA] transition-colors">{user.full_name || 'MEMBER'}</span>
-                    <span className="text-[7px] text-white/60 font-medium truncate max-w-[100px]">{user.email}</span>
+                    <User className="w-5 h-5 text-white group-hover/profile:text-[#A78BFA] transition-colors" />
                   </Link>
 
                   <motion.button

@@ -528,11 +528,13 @@ const LearnerDashboard: React.FC = () => {
     <div className="min-h-screen bg-[#FFFFFF] flex font-sans text-[#111827] selection:bg-[#7C3AED] selection:text-white pt-20 sm:pt-28 lg:pt-32">
       <aside className="w-72 bg-[#FFFFFF] border-r border-gray-100 flex flex-col p-8 shrink-0 hidden lg:flex">
         <Link to="/" className="flex items-center gap-3 mb-16 px-2 group">
-          <img
-            src="/images/studlyf.png"
-            alt="STUDLYF Logo"
-            className="h-10 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] group-hover:scale-105 transition-transform"
-          />
+          <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100">
+            <img
+              src="/images/studlyf.png"
+              alt="STUDLYF Logo"
+              className="h-8 w-auto object-contain group-hover:scale-105 transition-transform"
+            />
+          </div>
         </Link>
         <nav className="space-y-3 flex-grow">
           {sidebarItems.map((item) => (

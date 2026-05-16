@@ -117,7 +117,9 @@ const WhoWeServe: React.FC = () => {
                             className="text-3xl md:text-5xl font-['Poppins'] font-black uppercase leading-tight whitespace-nowrap lg:pl-6"
                         >
                             <span className="block mb-4">
-                                <img src="/images/studlyf.png" alt="Studlyf" className="h-12 md:h-20 w-auto inline-block drop-shadow-[0_0_15px_rgba(0,0,0,0.15)]" />
+                                <div className="bg-white p-3 rounded-2xl inline-block shadow-sm">
+                                    <img src="/images/studlyf.png" alt="Studlyf" className="h-12 md:h-20 w-auto inline-block" />
+                                </div>
                             </span>
                             <span className="block text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B]">For</span>
                         </motion.h3>

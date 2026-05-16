@@ -5400,3 +5400,24 @@ async def notify_event_participants(event_id: str, message: str, current_user: d
 
 # ─── END INSTITUTION DASHBOARD SYSTEM ─────────────────────────────────────────
 # ─── End AI Tools API ────────────────────────────────────────────────────────
+
+class EnrollRequest(BaseModel):
+    trackId: str
+    courseId: Optional[str] = None
+
+@app.post("/api/enroll")
+async def enroll_course(req: EnrollRequest, current_user: dict = Depends(get_current_user)):
+    user_email = current_user.get("email")
+    if user_email:
+        from services.email_service import send_notification_email
+        import asyncio
+        track_name = req.trackId.upper()
+        # Trigger email in background
+        asyncio.create_task(
+            send_notification_email(
+                to_email=user_email,
+                subject=f"Enrollment Success: {track_name}",
+                body_html=f"<h3>Welcome to Studyleaf!</h3><p>You have successfully enrolled in the <b>{track_name}</b> track. Your journey starts now.</p>"
+            )
+        )
+    return {"status": "success", "message": "Enrolled successfully"}

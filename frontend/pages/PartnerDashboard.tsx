@@ -170,11 +170,13 @@ const PartnerDashboard: React.FC = () => {
       {/* Sidebar - Desktop Only */}
       <aside className="w-72 bg-[#FFFFFF] border-r border-gray-100 flex flex-col p-8 shrink-0 hidden lg:flex">
         <Link to="/" className="flex items-center gap-3 mb-16 px-2 group">
-          <img
-            src="/images/studlyf.png"
-            alt="STUDLYF Logo"
-            className="h-10 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] group-hover:scale-110 transition-transform"
-          />
+          <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100">
+            <img
+              src="/images/studlyf.png"
+              alt="STUDLYF Logo"
+              className="h-8 w-auto object-contain group-hover:scale-110 transition-transform"
+            />
+          </div>
         </Link>
 
         <nav className="space-y-3 flex-grow">
@@ -208,11 +210,13 @@ const PartnerDashboard: React.FC = () => {
         {/* Mobile Header */}
         <div className="lg:hidden sticky top-0 z-[120] bg-white/80 backdrop-blur-md border-b border-gray-100 px-6 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <img
-              src="/images/studlyf.png"
-              alt="STUDLYF Logo"
-              className="h-8 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]"
-            />
+            <div className="bg-white p-1.5 rounded-lg shadow-sm border border-gray-100">
+              <img
+                src="/images/studlyf.png"
+                alt="STUDLYF Logo"
+                className="h-6 w-auto object-contain"
+              />
+            </div>
           </Link>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
