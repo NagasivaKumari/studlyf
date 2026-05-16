@@ -189,20 +189,20 @@ const App: React.FC = () => {
         console.log('[StudentCheck] Student user detected, current path:', pathname);
         // Students land on learner dashboard by default
         if (pathname === '/') {
-          console.log('[StudentRedirect] Redirecting student from landing page to opportunities');
-          navigate('/opportunities', { replace: true });
+          console.log('[StudentRedirect] Redirecting student from landing page to dashboard');
+          navigate('/dashboard/learner', { replace: true });
           return;
         }
         // Also redirect if they try to access institution or judge pages
         if (pathname.startsWith('/institution-dashboard') || pathname.startsWith('/judge-portal')) {
-          console.log('[StudentRedirect] Redirecting student from restricted pages to opportunities');
-          navigate('/opportunities', { replace: true });
+          console.log('[StudentRedirect] Redirecting student from restricted pages to dashboard');
+          navigate('/dashboard/learner', { replace: true });
           return;
         }
-        // Only redirect from base /dashboard, not /dashboard/learner
+        // Redirect from base /dashboard to /dashboard/learner
         if (pathname === '/dashboard') {
-          console.log('[StudentRedirect] Redirecting student from /dashboard to opportunities');
-          navigate('/opportunities', { replace: true });
+          console.log('[StudentRedirect] Redirecting student from /dashboard to learner dashboard');
+          navigate('/dashboard/learner', { replace: true });
           return;
         }
       }

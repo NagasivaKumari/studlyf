@@ -1494,7 +1494,10 @@ const MyProfile: React.FC = () => {
     <div className="max-w-[1400px] mx-auto min-h-screen bg-transparent p-4 sm:p-8 lg:p-12 font-sans selection:bg-[#7C3AED] selection:text-white">
       {/* Header with Back Button */}
       <div className="flex items-center gap-6 mb-12">
-        <button className="w-12 h-12 bg-white flex items-center justify-center rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group">
+        <button 
+          onClick={() => navigate('/dashboard/learner')}
+          className="w-12 h-12 bg-white flex items-center justify-center rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group"
+        >
           <ChevronLeft className="w-6 h-6 text-gray-600 group-hover:text-[#7C3AED] group-hover:-translate-x-1 transition-all" />
         </button>
         <div>

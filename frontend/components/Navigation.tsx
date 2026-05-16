@@ -149,7 +149,7 @@ const Navigation: React.FC = () => {
                 )}
               </button>
 
-              <Link to="/" className="flex items-center group transition-transform hover:scale-105 active:scale-95">
+              <Link to={user ? "/dashboard/learner" : "/"} className="flex items-center group transition-transform hover:scale-105 active:scale-95">
                 <StudlyfLogo />
               </Link>
             </div>

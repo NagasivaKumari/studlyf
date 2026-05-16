@@ -8,6 +8,7 @@ import DashboardFooter from '../components/DashboardFooter';
 import MyProfile from './MyProfile';
 import { downloadCertPDF } from '../utils/downloadCertPDF';
 import { generatePdfHtml } from './ResumeBuilder';
+import { Plus, Sparkles, GraduationCap, Briefcase } from 'lucide-react';
 // @ts-ignore
 import html2pdf from "html2pdf.js";
 
@@ -52,7 +53,7 @@ const CircularProgress = ({ value, size = 180, strokeWidth = 12, color = "#7C3AE
 const LearnerDashboard: React.FC = () => {
   const { user, role, logout } = useAuth();
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<'profile' | 'knowledge' | 'leaderboard' | 'certificates' | 'resume'>('profile');
+  const [activeView, setActiveView] = useState<'overview' | 'profile' | 'knowledge' | 'leaderboard' | 'certificates' | 'resume'>('overview');
   const [activeTab, setActiveTab] = useState<'overall' | 'dev' | 'ai'>('overall');
   const [githubData, setGithubData] = useState<any>(null);
   const [certificates, setCertificates] = useState<any[]>([]);
@@ -134,6 +135,7 @@ const LearnerDashboard: React.FC = () => {
   };
 
   const sidebarItems = [
+    { id: 'overview', label: 'Dashboard', icon: '🏠' },
     { id: 'profile', label: 'My Profile', icon: '👤' },
     { id: 'knowledge', label: 'Tech Stack', icon: '🕸️' },
     { id: 'leaderboard', label: 'Rankings', icon: '🏆' },
@@ -143,6 +145,63 @@ const LearnerDashboard: React.FC = () => {
 
   const renderView = () => {
     switch (activeView) {
+      case 'overview':
+        return (
+          <div className="space-y-12">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+              <div>
+                <h1 className="text-4xl font-black uppercase tracking-tighter text-[#111827] leading-tight">System Overview</h1>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] mt-2">Authenticated Session: {user?.full_name}</p>
+              </div>
+              <button 
+                onClick={() => setActiveView('profile')}
+                className="px-8 py-3 bg-[#7C3AED] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20"
+              >
+                Edit Professional Profile
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Stats Grid */}
+              <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {[
+                  { label: "Profile Strength", value: "88%", color: "#7C3AED", icon: "✨" },
+                  { label: "Course Progress", value: "64%", color: "#0052CC", icon: "📚" },
+                  { label: "Skill Assessments", value: "12", color: "#059669", icon: "🎯" },
+                  { label: "Global Rank", value: "#42", color: "#D97706", icon: "🏆" }
+                ].map((stat, i) => (
+                  <div key={i} className="bg-white border border-gray-100 rounded-[2rem] p-8 hover:border-[#7C3AED]/30 transition-all shadow-sm group">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-lg">{stat.icon}</div>
+                      <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Live Sync</span>
+                    </div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{stat.label}</p>
+                    <h3 className="text-3xl font-black text-[#111827] tracking-tighter" style={{ color: stat.color }}>{stat.value}</h3>
+                  </div>
+                ))}
+              </div>
+
+              {/* Quick Actions */}
+              <div className="bg-[#111827] rounded-[2.5rem] p-10 text-white relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+                   <Sparkles className="w-32 h-32" />
+                </div>
+                <h3 className="text-xl font-black uppercase tracking-tight mb-6 relative z-10">Next Protocols</h3>
+                <div className="space-y-4 relative z-10">
+                  <button onClick={() => navigate('/job-prep/resume-builder')} className="w-full p-4 bg-white/10 hover:bg-white/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-left flex items-center justify-between">
+                    Update Resume <Plus className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setActiveView('certificates')} className="w-full p-4 bg-white/10 hover:bg-white/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-left flex items-center justify-between">
+                    Claim Certificates <GraduationCap className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => navigate('/opportunities')} className="w-full p-4 bg-[#7C3AED] hover:bg-[#6D28D9] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-left flex items-center justify-between shadow-xl shadow-[#7C3AED]/20">
+                    Explore Jobs <Briefcase className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
       case 'knowledge':
         return (
           <div className="space-y-8">
