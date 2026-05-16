@@ -65,7 +65,7 @@ const EnrollmentFlow: React.FC = () => {
     }, [step]);
 
     const handleNext = () => {
-        if (step < 2) setStep(step + 1);
+        if (step < 3) setStep(step + 1);
         else handlePayment();
     };
 
@@ -74,35 +74,21 @@ const EnrollmentFlow: React.FC = () => {
         else navigate(-1);
     };
 
-    const handlePayment = async () => {
+    const handlePayment = () => {
         setIsProcessing(true);
-        try {
-            // Call backend to trigger success email
-            // We use the new /api/enroll endpoint we'll create in main.py
-            await fetch(`${API_BASE_URL}/api/enroll`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-                },
-                body: JSON.stringify({ 
-                    trackId: decodedTrackId,
-                    courseId: courseIdParam 
-                })
-            });
-        } catch (error) {
-            console.error('Failed to send success email:', error);
-        }
-        
-        setIsProcessing(false);
-        setIsSuccess(true);
-        setStep(3);
+        // Simulate payment processing
+        setTimeout(() => {
+            setIsProcessing(false);
+            setIsSuccess(true);
+            setStep(4);
+        }, 2500);
     };
 
     const steps = [
         { id: 1, name: 'Confirm Role', icon: UserCheck },
-        { id: 2, name: 'Payment', icon: Wallet },
-        { id: 3, name: 'Unlock', icon: Unlock },
+        { id: 2, name: 'Select Plan', icon: Package },
+        { id: 3, name: 'Payment', icon: Wallet },
+        { id: 4, name: 'Unlock', icon: Unlock },
     ];
 
     return (
@@ -279,10 +265,101 @@ const EnrollmentFlow: React.FC = () => {
                         </motion.div>
                     )}
 
-                    {/* ── STEP 2: PAYMENT ── */}
+                    {/* ── STEP 2: SELECT PLAN ── */}
                     {step === 2 && (
                         <motion.div
                             key="step2"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            className="space-y-12"
+                        >
+                            <div className="text-center max-w-2xl mx-auto">
+                                <span className="text-[10px] font-black uppercase tracking-[0.5em] mb-4 block" style={{ color: track.accent }}>Step 02 / Membership</span>
+                                <h2 className="text-4xl sm:text-6xl font-black text-gray-900 tracking-tighter uppercase leading-[0.9] mb-6">
+                                    Select Your <br /> <span style={{ color: track.accent }}>Mastery Plan</span>.
+                                </h2>
+                                <p className="text-gray-500 font-medium">Choose how you want to invest in your engineering journey. Yearly plans include verified certification and hiring support.</p>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                                <div
+                                    onClick={() => setSelectedPlan('monthly')}
+                                    className={`bg-white rounded-[2.5rem] p-10 border-2 cursor-pointer transition-all ${selectedPlan === 'monthly' ? 'border-gray-900 shadow-2xl scale-[1.02]' : 'border-gray-100 border-dashed opacity-60'}`}
+                                >
+                                    <div className="flex justify-between items-start mb-10">
+                                        <div>
+                                            <h4 className="text-xl font-black uppercase tracking-tighter">Monthly Sprint</h4>
+                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Pay as you go</p>
+                                        </div>
+                                        {selectedPlan === 'monthly' && <Check className="w-6 h-6 text-gray-900" />}
+                                    </div>
+                                    <div className="flex items-baseline gap-1 mb-8">
+                                        <span className="text-5xl font-black text-gray-900">$29</span>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">/ Month</span>
+                                    </div>
+                                    <ul className="space-y-3 mb-10">
+                                        {['Access to all Courses', 'Project Reviews', 'Community Access'].map(f => (
+                                            <li key={f} className="flex items-center gap-3 text-xs font-bold text-gray-600">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-gray-200" /> {f}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+
+                                <div
+                                    onClick={() => setSelectedPlan('yearly')}
+                                    className={`bg-white rounded-[2.5rem] p-10 border-2 cursor-pointer transition-all relative overflow-hidden ${selectedPlan === 'yearly' ? 'border-gray-900 shadow-2xl scale-[1.02]' : 'border-gray-100 border-dashed opacity-60'}`}
+                                >
+                                    <div className="absolute top-6 right-6 bg-green-500 text-white px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">Best Value</div>
+                                    <div className="flex justify-between items-start mb-10">
+                                        <div>
+                                            <h4 className="text-xl font-black uppercase tracking-tighter">Yearly Mastery</h4>
+                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Full career support</p>
+                                        </div>
+                                        {selectedPlan === 'yearly' && <Check className="w-6 h-6 text-gray-900" />}
+                                    </div>
+                                    <div className="flex items-baseline gap-1 mb-8">
+                                        <span className="text-5xl font-black text-gray-900">$299</span>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">/ Year</span>
+                                    </div>
+                                    <ul className="space-y-3 mb-10">
+                                        {['Full Authority Track', 'Verified Certification', 'Hiring Pipeline Access', 'Resume Verification'].map(f => (
+                                            <li key={f} className="flex items-center gap-3 text-xs font-bold text-gray-600">
+                                                <Check className="w-4 h-4 text-green-500" /> {f}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-center gap-6 pt-4">
+                                <button
+                                    onClick={handleBack}
+                                    className="premium-btn !px-8 !py-5 !rounded-2xl"
+                                >
+                                    <span className="premium-orb premium-orb1" />
+                                    <span className="premium-orb premium-orb2" />
+                                    <span className="premium-orb premium-orb3" />
+                                    <span className="premium-label">Back</span>
+                                </button>
+                                <button
+                                    onClick={handleNext}
+                                    className="premium-btn !px-12 !py-5 !rounded-2xl"
+                                >
+                                    <span className="premium-orb premium-orb1" />
+                                    <span className="premium-orb premium-orb2" />
+                                    <span className="premium-orb premium-orb3" />
+                                    <span className="premium-label">Select Plan & Pay <ChevronRight className="w-4 h-4" /></span>
+                                </button>
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {/* ── STEP 3: PAYMENT ── */}
+                    {step === 3 && (
+                        <motion.div
+                            key="step3"
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 1.05 }}
@@ -292,11 +369,11 @@ const EnrollmentFlow: React.FC = () => {
                                 <div className="p-10 sm:p-14 border-b border-gray-50">
                                     <div className="flex justify-between items-center mb-10">
                                         <span className="text-[10px] font-black uppercase tracking-[0.5em] text-gray-400">Order Summary</span>
-                                        <div className="bg-gray-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500">Free Enrollment</div>
+                                        <div className="bg-gray-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500">{selectedPlan} Plan</div>
                                     </div>
                                     <div className="flex justify-between items-center mb-4">
                                         <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">{track.title} Track</h3>
-                                        <span className="text-xl font-black text-gray-900">$0.00</span>
+                                        <span className="text-xl font-black text-gray-900">${selectedPlan === 'monthly' ? '29.00' : '299.00'}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm text-gray-400 mb-8">
                                         <p>Membership Enrollment Fee</p>
@@ -304,7 +381,7 @@ const EnrollmentFlow: React.FC = () => {
                                     </div>
                                     <div className="flex justify-between items-center pt-6 border-t border-gray-100">
                                         <span className="text-2xl font-black text-gray-900 uppercase">Total</span>
-                                        <span className="text-2xl font-black text-gray-900" style={{ color: track.accent }}>$0.00</span>
+                                        <span className="text-2xl font-black text-gray-900" style={{ color: track.accent }}>${selectedPlan === 'monthly' ? '29.00' : '299.00'}</span>
                                     </div>
                                 </div>
 
@@ -353,10 +430,10 @@ const EnrollmentFlow: React.FC = () => {
                         </motion.div>
                     )}
 
-                    {/* ── STEP 3: SUCCESS / UNLOCK ── */}
-                    {step === 3 && (
+                    {/* ── STEP 4: SUCCESS / UNLOCK ── */}
+                    {step === 4 && (
                         <motion.div
-                            key="step3"
+                            key="step4"
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
                             className="max-w-3xl mx-auto text-center py-10"
