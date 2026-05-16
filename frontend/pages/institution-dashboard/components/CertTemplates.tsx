@@ -292,6 +292,227 @@ export const Template5: React.FC<{ data: CertData }> = ({ data }) => (
   </div>
 );
 
+// ══════════════════════════════════════════════════════════
+// TEMPLATE 6 — Dark Tech (Industrial / Gaming)
+// ══════════════════════════════════════════════════════════
+export const Template6: React.FC<{ data: CertData }> = ({ data }) => (
+  <div style={{ fontFamily: 'monospace, sans-serif', background: '#09090B', border: '2px solid #14B8A6', borderRadius: 0, position: 'relative', overflow: 'hidden' }}>
+    {/* Tech accents */}
+    <div style={{ position: 'absolute', top: 0, left: 0, width: 40, height: 40, borderTop: '4px solid #10B981', borderLeft: '4px solid #10B981' }} />
+    <div style={{ position: 'absolute', bottom: 0, right: 0, width: 40, height: 40, borderBottom: '4px solid #10B981', borderRight: '4px solid #10B981' }} />
+    <div style={{ padding: '40px 48px 32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <LogoBox src={data.institutionLogo} label="INST" size={48} />
+        <div style={{ textAlign: 'center', color: '#10B981', letterSpacing: 4, textTransform: 'uppercase', fontSize: 10 }}>[ SYSTEM NOTIFICATION ]</div>
+        <LogoBox src={data.eventLogo} label="EVENT" size={48} />
+      </div>
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <div style={{ fontSize: 32, fontWeight: 900, color: '#F8FAFC', letterSpacing: 6, textTransform: 'uppercase' }}>{data.certType.toUpperCase()}</div>
+        <div style={{ fontSize: 14, color: '#14B8A6', letterSpacing: 3, marginTop: 4 }}>{data.eventName.toUpperCase() || 'HACKATHON EVENT'}</div>
+      </div>
+      <div style={{ textAlign: 'center', color: '#94A3B8', fontSize: 12, marginBottom: 12, letterSpacing: 1 }}>> VERIFIED PARTICIPANT:</div>
+      <div style={{ textAlign: 'center', fontSize: 28, color: '#10B981', fontWeight: 700, borderBottom: '1px dashed #14B8A6', paddingBottom: 4, margin: '0 auto 16px', width: 'fit-content', padding: '0 32px' }}>
+        {'{ Recipient Name }'}
+      </div>
+      {(data.teamIdLabel || data.themeLabel) && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 32, marginBottom: 16, fontSize: 11, color: '#F8FAFC' }}>
+          {data.teamIdLabel && <span>ID: <span style={{ color: '#14B8A6' }}>{data.teamIdLabel}</span></span>}
+          {data.themeLabel && <span>THEME: <span style={{ color: '#14B8A6' }}>{data.themeLabel}</span></span>}
+        </div>
+      )}
+      <div style={{ textAlign: 'center', fontSize: 12, color: '#CBD5E1', lineHeight: 1.8, maxWidth: 440, margin: '0 auto 24px' }}>
+        {data.bodyText}
+        {data.duration && <div>EXECUTION TIME: {data.duration}</div>}
+        {data.venue && <div>LOCATION: {data.venue}</div>}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-around', paddingTop: 16, borderTop: '1px solid #334155' }}>
+        {data.signatories.map((s, i) => (
+          <div key={i} style={{ textAlign: 'center' }}>
+            <div style={{ height: 24, borderBottom: '2px solid #10B981', marginBottom: 6, width: 100 }} />
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#F8FAFC' }}>{s.name || `Signatory ${i + 1}`}</div>
+            <div style={{ fontSize: 8, color: '#94A3B8' }}>{s.title}</div>
+          </div>
+        ))}
+      </div>
+      {data.showSponsorSection && (
+        <div style={{ marginTop: 20, paddingTop: 12, borderTop: '1px solid #334155' }}>
+          <div style={{ fontSize: 8, color: '#64748B', textAlign: 'center', marginBottom: 8, letterSpacing: 2 }}>SUPPORTED BY</div>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            {data.sponsorLogos.filter(l => l.trim()).map((s, i) => <img key={i} src={s} alt="" style={{ height: 24, filter: 'grayscale(100%) invert(1)' }} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+// ══════════════════════════════════════════════════════════
+// TEMPLATE 7 — Corporate Professional (Classic Elegant)
+// ══════════════════════════════════════════════════════════
+export const Template7: React.FC<{ data: CertData }> = ({ data }) => (
+  <div style={{ fontFamily: '"Times New Roman", Times, serif', background: '#FAFAFA', border: '1px solid #E2E8F0', padding: 12, position: 'relative' }}>
+    <div style={{ border: '2px solid #1E3A8A', padding: '36px 48px', position: 'relative', background: '#fff' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <LogoBox src={data.institutionLogo} label="INST" size={60} />
+        <div style={{ textAlign: 'center', flex: 1, padding: '0 20px' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#1E3A8A', textTransform: 'uppercase', letterSpacing: 1 }}>{data.institutionName || 'Institution Name'}</div>
+          <div style={{ fontSize: 10, color: '#64748B', textTransform: 'uppercase', letterSpacing: 2, marginTop: 4 }}>in association with</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#D97706', marginTop: 2 }}>{data.eventName || 'Event Name'}</div>
+        </div>
+        <LogoBox src={data.eventLogo} label="EVENT" size={60} />
+      </div>
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <div style={{ fontSize: 32, color: '#1E3A8A', letterSpacing: 4, textTransform: 'uppercase' }}>CERTIFICATE</div>
+        <div style={{ fontSize: 14, color: '#64748B', letterSpacing: 2, fontStyle: 'italic', marginTop: 4 }}>{data.certType.replace('Certificate of ', 'of ')}</div>
+      </div>
+      <div style={{ textAlign: 'center', fontSize: 12, color: '#475569', marginBottom: 12 }}>This is to certify that</div>
+      <div style={{ textAlign: 'center', fontSize: 30, color: '#0F172A', fontWeight: 600, borderBottom: '1px solid #1E3A8A', paddingBottom: 4, margin: '0 auto 16px', width: 'fit-content', padding: '0 40px' }}>
+        {'{ Recipient Name }'}
+      </div>
+      {(data.teamIdLabel || data.themeLabel) && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 32, marginBottom: 12, fontSize: 11, color: '#475569' }}>
+          {data.teamIdLabel && <span>Team: {data.teamIdLabel}</span>}
+          {data.themeLabel && <span>Theme: {data.themeLabel}</span>}
+        </div>
+      )}
+      <div style={{ textAlign: 'center', fontSize: 13, color: '#334155', lineHeight: 1.6, maxWidth: 460, margin: '0 auto 24px' }}>
+        {data.bodyText} <strong>{data.eventName}</strong>.
+        {data.duration && <div>Held during {data.duration}</div>}
+        {data.venue && <div>at {data.venue}</div>}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-around', paddingTop: 16 }}>
+        {data.signatories.map((s, i) => (
+          <div key={i} style={{ textAlign: 'center' }}>
+            <div style={{ height: 32, borderBottom: '1px solid #000', marginBottom: 6, width: 120 }} />
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#1E3A8A' }}>{s.name || `Signatory ${i + 1}`}</div>
+            <div style={{ fontSize: 10, color: '#64748B' }}>{s.title}</div>
+          </div>
+        ))}
+      </div>
+      {data.showSponsorSection && (
+        <div style={{ marginTop: 24, textAlign: 'center' }}>
+          <div style={{ fontSize: 9, color: '#94A3B8', letterSpacing: 2, marginBottom: 8 }}>SPONSORED BY</div>
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+            {data.sponsorLogos.filter(l => l.trim()).map((s, i) => <img key={i} src={s} alt="" style={{ height: 28 }} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+// ══════════════════════════════════════════════════════════
+// TEMPLATE 8 — Modern Abstract (Vibrant Gradients)
+// ══════════════════════════════════════════════════════════
+export const Template8: React.FC<{ data: CertData }> = ({ data }) => (
+  <div style={{ fontFamily: 'Inter, sans-serif', background: '#fff', borderRadius: 16, position: 'relative', overflow: 'hidden' }}>
+    <div style={{ position: 'absolute', top: '-20%', right: '-10%', width: 300, height: 300, background: 'radial-gradient(circle, rgba(168,85,247,0.2) 0%, rgba(255,255,255,0) 70%)' }} />
+    <div style={{ position: 'absolute', bottom: '-20%', left: '-10%', width: 300, height: 300, background: 'radial-gradient(circle, rgba(59,130,246,0.2) 0%, rgba(255,255,255,0) 70%)' }} />
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 6, background: 'linear-gradient(90deg, #A855F7, #3B82F6, #EC4899)' }} />
+    
+    <div style={{ padding: '36px 48px', position: 'relative', zIndex: 2 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <LogoBox src={data.institutionLogo} label="INST" size={44} />
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 12, fontWeight: 800, background: 'linear-gradient(90deg, #A855F7, #3B82F6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', textTransform: 'uppercase', letterSpacing: 1 }}>
+            {data.institutionName || 'Institution'}
+          </div>
+        </div>
+        <LogoBox src={data.eventLogo} label="EVENT" size={44} />
+      </div>
+      
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <div style={{ fontSize: 34, fontWeight: 900, color: '#0F172A', letterSpacing: -0.5 }}>{data.certType}</div>
+        <div style={{ fontSize: 14, color: '#64748B', marginTop: 4 }}>Presented to recognize the efforts of</div>
+      </div>
+      
+      <div style={{ textAlign: 'center', fontSize: 32, color: '#A855F7', fontWeight: 800, marginBottom: 16 }}>
+        {'{ Recipient Name }'}
+      </div>
+      
+      {(data.teamIdLabel || data.themeLabel) && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 16 }}>
+          {data.teamIdLabel && <span style={{ background: '#F1F5F9', padding: '4px 12px', borderRadius: 99, fontSize: 10, fontWeight: 700, color: '#475569' }}>Team: {data.teamIdLabel}</span>}
+          {data.themeLabel && <span style={{ background: '#F1F5F9', padding: '4px 12px', borderRadius: 99, fontSize: 10, fontWeight: 700, color: '#475569' }}>Theme: {data.themeLabel}</span>}
+        </div>
+      )}
+      
+      <div style={{ textAlign: 'center', fontSize: 13, color: '#475569', lineHeight: 1.6, maxWidth: 440, margin: '0 auto 24px' }}>
+        {data.bodyText} <strong style={{ color: '#0F172A' }}>{data.eventName}</strong>.
+        {data.duration && <div>Duration: {data.duration}</div>}
+        {data.venue && <div>Location: {data.venue}</div>}
+      </div>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-around', paddingTop: 16, borderTop: '1px solid #F1F5F9' }}>
+        {data.signatories.map((s, i) => (
+          <div key={i} style={{ textAlign: 'center' }}>
+            <div style={{ height: 24, borderBottom: '2px solid #E2E8F0', marginBottom: 8, width: 100 }} />
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#0F172A' }}>{s.name || `Signatory ${i + 1}`}</div>
+            <div style={{ fontSize: 9, color: '#64748B' }}>{s.title}</div>
+          </div>
+        ))}
+      </div>
+      {data.showSponsorSection && <SponsorRow logos={data.sponsorLogos} />}
+    </div>
+  </div>
+);
+
+// ══════════════════════════════════════════════════════════
+// TEMPLATE 9 — Creative Hexagonal
+// ══════════════════════════════════════════════════════════
+export const Template9: React.FC<{ data: CertData }> = ({ data }) => (
+  <div style={{ fontFamily: 'Arial, sans-serif', background: '#F8FAFC', borderRadius: 8, position: 'relative', overflow: 'hidden' }}>
+    {/* Hexagon shapes */}
+    <div style={{ position: 'absolute', top: -30, left: -30, width: 100, height: 115, background: '#F59E0B', clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)', opacity: 0.8 }} />
+    <div style={{ position: 'absolute', top: 20, left: -40, width: 80, height: 92, background: '#3B82F6', clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)', opacity: 0.8 }} />
+    <div style={{ position: 'absolute', bottom: -30, right: -30, width: 120, height: 138, background: '#10B981', clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)', opacity: 0.8 }} />
+    
+    <div style={{ padding: '36px 48px', position: 'relative', zIndex: 2, background: 'rgba(255,255,255,0.85)', minHeight: 480 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div style={{ paddingLeft: 40 }}><LogoBox src={data.institutionLogo} label="INST" size={48} /></div>
+        <div style={{ textAlign: 'center', flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: 2 }}>{data.institutionName || 'Institution'}</div>
+        </div>
+        <LogoBox src={data.eventLogo} label="EVENT" size={48} />
+      </div>
+      
+      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+        <div style={{ fontSize: 32, fontWeight: 900, color: '#0F172A', letterSpacing: 1 }}>{data.certType.toUpperCase()}</div>
+        <div style={{ fontSize: 16, color: '#3B82F6', fontWeight: 700, marginTop: 4 }}>{data.eventName}</div>
+      </div>
+      
+      <div style={{ textAlign: 'center', fontSize: 12, color: '#64748B', marginBottom: 8 }}>Proudly awarded to</div>
+      <div style={{ textAlign: 'center', fontSize: 28, color: '#0F172A', fontWeight: 800, background: '#fff', padding: '8px 32px', borderRadius: 8, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', display: 'inline-block', margin: '0 auto 16px', display: 'block', width: 'fit-content' }}>
+        {'{ Recipient Name }'}
+      </div>
+      
+      {(data.teamIdLabel || data.themeLabel) && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginBottom: 16, fontSize: 11, fontWeight: 600, color: '#475569' }}>
+          {data.teamIdLabel && <span>TEAM: {data.teamIdLabel}</span>}
+          {data.themeLabel && <span>THEME: {data.themeLabel}</span>}
+        </div>
+      )}
+      
+      <div style={{ textAlign: 'center', fontSize: 13, color: '#475569', lineHeight: 1.6, maxWidth: 440, margin: '0 auto 24px' }}>
+        {data.bodyText}
+        {data.duration && <div>{data.duration}</div>}
+        {data.venue && <div>{data.venue}</div>}
+      </div>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-around', paddingTop: 16 }}>
+        {data.signatories.map((s, i) => (
+          <div key={i} style={{ textAlign: 'center', paddingRight: i === data.signatories.length - 1 ? 40 : 0 }}>
+            <div style={{ height: 24, borderBottom: '2px solid #94A3B8', marginBottom: 8, width: 100 }} />
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#334155' }}>{s.name || `Signatory ${i + 1}`}</div>
+            <div style={{ fontSize: 9, color: '#64748B' }}>{s.title}</div>
+          </div>
+        ))}
+      </div>
+      {data.showSponsorSection && <SponsorRow logos={data.sponsorLogos} />}
+    </div>
+  </div>
+);
+
 // ── Template registry ───────────────────────────────────
 export const CERT_TEMPLATES = [
   { id: '1', label: 'Classic Red & Gold',    tag: 'Hackathon',    component: Template1 },
@@ -299,4 +520,8 @@ export const CERT_TEMPLATES = [
   { id: '3', label: 'Colorful Minimal',      tag: 'DSC / Google', component: Template3 },
   { id: '4', label: 'Elite Dark',            tag: 'Premium',      component: Template4 },
   { id: '5', label: 'Professional Clean',    tag: 'Academic',     component: Template5 },
+  { id: '6', label: 'Dark Tech',             tag: 'Industrial',   component: Template6 },
+  { id: '7', label: 'Corporate Professional',tag: 'Classic',      component: Template7 },
+  { id: '8', label: 'Modern Abstract',       tag: 'Vibrant',      component: Template8 },
+  { id: '9', label: 'Creative Hexagonal',    tag: 'Modular',      component: Template9 },
 ];
