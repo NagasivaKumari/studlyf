@@ -363,3 +363,75 @@ def get_announcement_template(user_name: str, event_name: str, message: str, nex
     </body>
     </html>
     """
+
+async def send_course_purchase_email(to_email: str, student_name: str, course_name: str, amount: str, order_id: str):
+    """
+    Sends a high-fidelity confirmation email when a student successfully purchases a course.
+    """
+    subject = f"Payment Successful! Welcome to {course_name} 🚀"
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800&display=swap');
+        </style>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Outfit', sans-serif; background-color: #F8FAFC;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #F8FAFC; padding: 40px 20px;">
+            <tr>
+                <td align="center">
+                    <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #FFFFFF; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);">
+                        <tr>
+                            <td align="center" style="background: linear-gradient(135deg, #7C3AED 0%, #3B82F6 100%); padding: 40px 30px;">
+                                <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">Welcome to the Elite Club</h1>
+                                <p style="color: rgba(255,255,255,0.8); margin: 10px 0 0 0; font-size: 16px;">Your learning journey begins now.</p>
+                            </td>
+                        </tr>
+                        
+                        <tr>
+                            <td style="padding: 40px;">
+                                <p style="font-size: 18px; color: #1E293B; margin: 0 0 20px 0;">Hi <strong>{student_name}</strong>,</p>
+                                <p style="font-size: 16px; color: #475569; line-height: 1.6; margin: 0;">
+                                    Your payment was highly successful! You now have full lifetime access to <strong>{course_name}</strong>.
+                                </p>
+                                
+                                <div style="background-color: #F1F5F9; border-radius: 12px; padding: 24px; margin: 30px 0;">
+                                    <h3 style="margin: 0 0 16px 0; color: #0F172A; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Transaction Details</h3>
+                                    <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                                        <tr>
+                                            <td style="padding: 8px 0; color: #64748B; font-size: 15px;">Order ID</td>
+                                            <td align="right" style="padding: 8px 0; color: #0F172A; font-weight: 700; font-size: 15px;">{order_id}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 8px 0; color: #64748B; font-size: 15px;">Amount Paid</td>
+                                            <td align="right" style="padding: 8px 0; color: #10B981; font-weight: 800; font-size: 15px;">{amount}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                
+                                <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                                    <tr>
+                                        <td align="center">
+                                            <a href="https://studlyf.com/dashboard/learner" style="display: inline-block; background: #7C3AED; color: #FFFFFF; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-weight: 800; font-size: 16px; letter-spacing: 0.5px;">Start Learning Now</a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td style="background-color: #F8FAFC; padding: 24px; text-align: center; border-top: 1px solid #E2E8F0;">
+                                <p style="margin: 0; font-size: 13px; color: #64748B;">Happy Learning! The Studlyf Team</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    
+    await send_notification_email(to_email, subject, html_content)
