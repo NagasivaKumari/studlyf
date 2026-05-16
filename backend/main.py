@@ -16,6 +16,8 @@ from groq import Groq
 import requests
 from services.ai_tools_scraper import fetch_ai_tools
 from jinja2 import Environment, FileSystemLoader, Template
+import asyncio
+from services.email_service import send_notification_email
 from datetime import datetime, timezone
 import secrets
 import time
@@ -69,6 +71,13 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+    return response
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -2041,8 +2050,45 @@ async def checkout(user_id: str):
             "enrolled_at": course["enrolled_at"].isoformat() if isinstance(course["enrolled_at"], datetime) else str(course["enrolled_at"])
         })
     
+    # Send confirmation email
+    try:
+        user_doc = await users_col.find_one({"user_id": user_id})
+        if user_doc and user_doc.get("email"):
+            email_to = user_doc["email"]
+            course_list_html = "<ul>" + "".join([f"<li>{c['course_title']}</li>" for c in formatted_courses]) + "</ul>"
+            
+            email_body = f"""
+            <html>
+            <body style="font-family: sans-serif; color: #333;">
+                <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e1e1e1; border-radius: 10px;">
+                    <h2 style="color: #7C3AED;">Enrollment Successful!</h2>
+                    <p>Hello {user_doc.get('name', 'Learner')},</p>
+                    <p>You have successfully enrolled in the following courses:</p>
+                    {course_list_html}
+                    <p>You can now access these courses from your dashboard and start learning.</p>
+                    <div style="margin-top: 30px; text-align: center;">
+                        <a href="{os.getenv('FRONTEND_URL', 'http://localhost:5173')}/dashboard/my-courses" 
+                           style="background-color: #7C3AED; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                            Go to My Courses
+                        </a>
+                    </div>
+                    <p style="margin-top: 40px; font-size: 12px; color: #777;">Best regards,<br>The Studlyf Team</p>
+                </div>
+            </body>
+            </html>
+            """
+            
+            asyncio.create_task(send_notification_email(
+                to_email=email_to,
+                subject=f"Enrollment Confirmed - {len(formatted_courses)} Course(s)",
+                body_html=email_body
+            ))
+            logger.info(f"Checkout email task created for {email_to}")
+    except Exception as e:
+        logger.error(f"Failed to initiate checkout email: {e}")
+
     await check_user_badges(user_id)
-    
+
     return {
         "status": "checkout_successful",
         "enrolled_courses": formatted_courses,
@@ -4546,7 +4592,7 @@ async def forgot_password(data: dict = Body(...)):
     
     # Send email
     from services.email_service import send_notification_email
-    reset_link = f"http://localhost:3000/reset-password?token={token}"
+    reset_link = f"{frontend_url}/reset-password?token={token}"
     body = f"""
     <html>
         <body style="font-family: sans-serif; padding: 20px;">
@@ -5277,11 +5323,14 @@ async def register_for_event(event_id: str, participant: Participant):
                 if institution:
                     custom_msg = institution.get("email_custom_message", "")
 
+            user_record = await users_col.find_one({"user_id": participant.user_id})
             user_name = participant.college_name or "Participant"
+            if user_record:
+                user_name = user_record.get("full_name") or user_record.get("name") or user_name
+            
             subject = f"Registration Confirmed: {event['title']}"
             body = get_registration_template(user_name, event['title'], custom_msg)
             
-            user_record = await users_col.find_one({"user_id": participant.user_id})
             target_email = user_record["email"] if user_record and "email" in user_record else participant.user_id
 
             asyncio.create_task(send_notification_email(target_email, subject, body))
@@ -5407,7 +5456,9 @@ class EnrollRequest(BaseModel):
 
 @app.post("/api/enroll")
 async def enroll_course(req: EnrollRequest, current_user: dict = Depends(get_current_user)):
-    user_email = current_user.get("email")
+    # The email is stored in the 'sub' field of the token payload
+    user_email = current_user.get("sub") or current_user.get("email")
+    
     if user_email:
         from services.email_service import send_notification_email
         import asyncio

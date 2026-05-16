@@ -197,11 +197,12 @@ function VideoCard({ ad }: { ad: AdItem }) {
                                 loop={true}
                                 muted={true}
                                 playsInline={true}
+                                crossOrigin="anonymous"
                                 style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
                             />
                         )
                     ) : (
-                        <img src={ad.media_url} alt={ad.title} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+                        <img src={ad.media_url} alt={ad.title} crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
                     )}
                 {ad.tag && <div style={{
                     position: 'absolute', top: 20, left: 20, background: '#C84B2F',
@@ -249,7 +250,7 @@ function ImageCard({ ad }: { ad: AdItem }) {
             background: '#fff', border: '1px solid #f3f4f6', boxShadow: '0 20px 40px rgba(0,0,0,0.06)'
         }}>
             <div style={{ position: 'relative', overflow: 'hidden', height: '120px', flexShrink: 0, background: '#f8fafc' }}>
-                <img src={ad.media_url} alt={ad.title}
+                <img src={ad.media_url} alt={ad.title} crossOrigin="anonymous"
                     style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
                 {ad.badge && <div style={{
                     position: 'absolute', top: 12, right: 12, background: '#fff',
@@ -308,11 +309,12 @@ function VideoImageCard({ ad }: { ad: AdItem }) {
                             loop={true}
                             muted={true}
                             playsInline={true}
+                            crossOrigin="anonymous"
                             style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#f8fafc' }}
                         />
                     )
                 ) : (
-                    <img src={ad.media_url} alt="Primary" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#f8fafc' }} />
+                    <img src={ad.media_url} alt="Primary" crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#f8fafc' }} />
                 )}
                 <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(0,0,0,0.5)', color: '#fff', padding: '4px 10px', borderRadius: 4, fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>Main</div>
             </div>
@@ -321,7 +323,7 @@ function VideoImageCard({ ad }: { ad: AdItem }) {
                 {/* Secondary Image Area */}
                 <div style={{ position: 'relative', overflow: 'hidden', background: '#f9fafb' }}>
                     {ad.secondary_media_url ? (
-                        <img src={ad.secondary_media_url} alt="Secondary" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        <img src={ad.secondary_media_url} alt="Secondary" crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     ) : (
                         <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>
                              <ImageIcon size={32} />
