@@ -6,7 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 
 # Load env from root
-root_env = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+root_env = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
 load_dotenv(root_env)
 
 import logging
