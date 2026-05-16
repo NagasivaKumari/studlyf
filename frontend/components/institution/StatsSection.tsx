@@ -124,27 +124,53 @@ const StatsSection: React.FC<StatsSectionProps> = ({ institutionId, onUpgrade, o
                 </div>
             </motion.div>
 
-            {/* Active Assessments */}
+            {/* Cohort Intelligence - Elite High Fidelity Insight Card */}
             <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between min-h-[160px]"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.4 }}
+                className="xl:col-span-4 bg-gradient-to-br from-[#1E293B] to-[#0F172A] p-6 rounded-[2.5rem] border border-white/10 shadow-2xl relative overflow-hidden group"
             >
-                <div className="flex justify-between items-start">
-                    <span className="text-3xl font-black text-slate-300">{stats?.active_assessments || 0}</span>
-                    <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center">
-                        <ClipboardCheck size={20} className="text-orange-500" />
+                {/* Decorative Background Elements */}
+                <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl group-hover:bg-blue-500/20 transition-all duration-700" />
+                <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl group-hover:bg-purple-500/20 transition-all duration-700" />
+
+                <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
+                    <div className="flex-1 space-y-4">
+                        <div className="flex items-center gap-3">
+                            <div className="px-3 py-1 bg-blue-500/20 border border-blue-500/30 rounded-full">
+                                <span className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em]">Elite Insight Protocol</span>
+                            </div>
+                            <div className="h-px w-12 bg-white/10" />
+                        </div>
+                        <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Cohort Intelligence</h3>
+                        <p className="text-slate-400 text-sm max-w-xl leading-relaxed">
+                            Deep-dive into your institution's talent velocity. Monitor skill entropy, placement readiness, and real-time candidate engagement across all active modules.
+                        </p>
                     </div>
-                </div>
-                <div className="space-y-4">
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Active Assessments</p>
-                    <button 
-                        onClick={onContact}
-                        className="w-full py-2.5 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-100 transition-all border border-blue-100"
-                    >
-                        <Lock size={12} /> Upgrade to unlock
-                    </button>
+
+                    <div className="flex flex-wrap items-center gap-6 lg:gap-12">
+                        <div className="text-center">
+                            <span className="block text-4xl font-black text-white tracking-tighter">
+                                {stats?.readiness_score || '92.4%'}
+                            </span>
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 block">Placement Readiness</span>
+                        </div>
+                        <div className="w-px h-12 bg-white/10 hidden sm:block" />
+                        <div className="text-center">
+                            <span className="block text-4xl font-black text-blue-400 tracking-tighter">
+                                {stats?.avg_score || '88.5'}
+                            </span>
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 block">Avg Studlyf Score</span>
+                        </div>
+                        <div className="w-px h-12 bg-white/10 hidden sm:block" />
+                        <button 
+                            onClick={() => onNavigate?.('analytics')}
+                            className="px-8 py-4 bg-white text-[#0F172A] rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-blue-50 transition-all shadow-xl shadow-white/5 active:scale-95"
+                        >
+                            Explore Analytics
+                        </button>
+                    </div>
                 </div>
             </motion.div>
         </div>

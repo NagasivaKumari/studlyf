@@ -556,15 +556,15 @@ const DashboardHome: React.FC = () => {
           <div className="flex w-max animate-slide-right flex-nowrap">
             {/* First half */}
             <div className="flex items-center gap-10 md:gap-20 pr-10 md:pr-20 flex-shrink-0">
-              {[...Array(10)].map((_, i) => (
-                <img key={`first-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain mix-blend-multiply hover:scale-105 transition-transform duration-300" />
-              ))}
-            </div>
-            {/* Second half (Duplicate for seamless loop) */}
-            <div className="flex items-center gap-10 md:gap-20 pr-10 md:pr-20 flex-shrink-0">
-              {[...Array(10)].map((_, i) => (
-                <img key={`second-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain mix-blend-multiply hover:scale-105 transition-transform duration-300" />
-              ))}
+                      {[...Array(10)].map((_, i) => (
+                        <img key={`first-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
+                      ))}
+                    </div>
+                    {/* Second half (Duplicate for seamless loop) */}
+                    <div className="flex items-center gap-10 md:gap-20 pr-10 md:pr-20 flex-shrink-0">
+                      {[...Array(10)].map((_, i) => (
+                        <img key={`second-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
+                      ))}
             </div>
           </div>
         </div>

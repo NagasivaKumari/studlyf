@@ -6,9 +6,9 @@ from bson import ObjectId
 from datetime import datetime
 from typing import List, Optional
 
-    from services.email_service import send_notification_email, get_registration_template, get_shortlist_template
-    
-    opportunities_col = db["opportunities"]
+from services.email_service import send_notification_email, get_registration_template, get_shortlist_template
+
+opportunities_col = db["opportunities"]
 opportunity_applications_col = db["opportunity_applications"]
 participants_col = db["participants"]
 
@@ -530,6 +530,9 @@ async def apply_for_opportunity(application_data: dict) -> dict:
                             "opportunity_application_id": app_id_str,
                         }
                     )
+    except Exception as e:
+        print(f"[WARNING] Could not mirror participant for opportunity application: {e}")
+
     # Send Registration Confirmation Email
     try:
         user_email = application_data.get("email")

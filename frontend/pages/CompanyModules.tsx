@@ -570,7 +570,7 @@ const CompanyModules: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'dsa' | 'tech' | 'hr' | 'ai'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'roadmap' | 'dsa' | 'tech' | 'hr' | 'ai'>('overview');
 
   useEffect(() => {
     const state = location.state as { companyId?: string } | null;
@@ -750,38 +750,37 @@ const CompanyModules: React.FC = () => {
                 .eg-orb3 { width:18px; height:18px; background:radial-gradient(circle,rgba(167,139,250,0.9),transparent 70%); top:4px; right:18px;  animation:eg-orb3 2.6s ease-in-out infinite; }
                 .eg-label { position:relative; z-index:5; display:flex; align-items:center; gap:8px; }
             `}</style>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredCompanies.map((company, i) => (
                 <motion.div
                   key={company.id}
                   layoutId={company.id}
                   whileHover={{ y: -12, scale: 1.02 }}
-                  className="bg-white border border-[#E2E8F0] rounded-[2.5rem] p-8 relative overflow-hidden group cursor-pointer shadow-sm hover:shadow-2xl transition-all"
+                  className="bg-white/80 backdrop-blur-xl border border-white/20 rounded-[2.5rem] p-8 relative overflow-hidden group cursor-pointer shadow-xl hover:shadow-2xl transition-all"
                   onClick={() => setSelectedCompany(company)}
                 >
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-[#7C3AED]/5 blur-3xl rounded-full" />
-
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#7C3AED]/10 to-transparent blur-3xl rounded-full" />
+                  
                   <div className="flex justify-between items-start mb-8">
-                    <div className="w-16 h-16 bg-white p-2 rounded-2xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform border border-gray-50">
+                    <div className="w-16 h-16 bg-white p-2 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform border border-gray-50">
                       <img src={company.logo} alt={company.name} className="max-w-full max-h-full object-contain" />
                     </div>
-                    <div className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter ${company.difficulty === 'Elite' ? 'bg-red-50 text-red-500' :
-                      company.difficulty === 'High' ? 'bg-orange-50 text-orange-500' : 'bg-green-50 text-green-500'
-                      }`}>
+                    <div className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter ${company.difficulty === 'Elite' ? 'bg-red-50 text-red-500' : 
+                      company.difficulty === 'High' ? 'bg-orange-50 text-orange-500' : 'bg-green-50 text-green-500'}`}>
                       {company.difficulty}
                     </div>
                   </div>
 
                   <h3 className="text-2xl font-bold mb-2 text-[#111827] group-hover:text-[#7C3AED] transition-colors">{company.name}</h3>
                   <p className="text-xs text-[#64748B] mb-6 font-medium">{company.industry}</p>
-
+                  
                   <div className="space-y-4 mb-8">
                     <div className="flex justify-between text-[10px] uppercase font-bold tracking-widest text-[#64748B]">
-                      <span>Progress</span>
+                      <span>Preparation Level</span>
                       <span>{company.completion}%</span>
                     </div>
-                    <div className="w-full h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
-                      <motion.div
+                    <div className="w-full h-2 bg-[#F1F5F9] rounded-full overflow-hidden">
+                      <motion.div 
                         initial={{ width: 0 }}
                         animate={{ width: `${company.completion}%` }}
                         className="h-full bg-gradient-to-r from-[#7C3AED] to-[#9D7CFF]"
@@ -789,15 +788,21 @@ const CompanyModules: React.FC = () => {
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-3 mb-8">
+                    <div className="flex -space-x-2">
+                       {[1,2,3].map(j => <div key={j} className="w-6 h-6 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[8px] font-bold">U</div>)}
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{company.stats.placed} Students Placed</span>
+                  </div>
+
                   <button className="eg-btn">
                     <span className="eg-orb eg-orb1" />
                     <span className="eg-orb eg-orb2" />
                     <span className="eg-orb eg-orb3" />
-                    <span className="eg-label">Enter Gate <ChevronRight className="w-4 h-4" /></span>
+                    <span className="eg-label">Open Learning Path <ChevronRight className="w-4 h-4" /></span>
                   </button>
                 </motion.div>
               ))}
-
               <div className="bg-[#F8FAFC] border border-[#E2E8F0] border-dashed rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-center opacity-60">
                 <Unlock className="w-8 h-8 text-gray-300 mb-4" />
                 <h3 className="text-xl font-bold mb-1 text-[#111827]">More Gates</h3>
@@ -890,6 +895,7 @@ const CompanyModules: React.FC = () => {
                 <div className={`p-2 space-y-1 ${sidebarCollapsed ? 'px-1.5' : ''}`}>
                   {[
                     { id: 'overview', label: 'Overview', icon: LayoutGrid },
+                    { id: 'roadmap', label: 'Roadmap', icon: Globe },
                     { id: 'dsa', label: 'DSA', icon: Terminal },
                     { id: 'tech', label: 'Tech', icon: Cpu },
                     { id: 'hr', label: 'HR', icon: Briefcase },
@@ -940,45 +946,70 @@ const CompanyModules: React.FC = () => {
                     exit={{ opacity: 0, y: -10 }}
                     className="bg-white border border-[#E2E8F0] rounded-[3rem] p-10 lg:p-16 min-h-[600px] shadow-sm"
                   >
-                    {activeTab === 'overview' && (
+                    {activeTab === 'roadmap' && (
                       <div className="space-y-12">
-                        <section>
-                          <h3 className="text-2xl sm:text-3xl font-black mb-6 sm:mb-8 flex items-center gap-3 text-[#111827]">
-                            <Info className="w-6 h-6 sm:w-8 sm:h-8 text-[#7C3AED]" /> Overview
-                          </h3>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
-                            <div className="bg-[#F8FAFC] p-6 sm:p-8 rounded-2xl sm:rounded-3xl border border-[#E2E8F0]">
-                              <span className="text-[10px] font-black text-[#7C3AED] uppercase tracking-widest block mb-4">The Culture</span>
-                              <p className="text-base sm:text-lg leading-relaxed text-[#64748B]">{selectedCompany.culture || "Customer-centric innovation and technical excellence."}</p>
-                            </div>
-                            <div className="bg-[#F8FAFC] p-6 sm:p-8 rounded-2xl sm:rounded-3xl border border-[#E2E8F0]">
-                              <span className="text-[10px] font-black text-[#7C3AED] uppercase tracking-widest block mb-4">Salary Scope</span>
-                              <div className="text-3xl sm:text-4xl font-black mb-2 text-[#111827]">{selectedCompany.salaryRange}</div>
-                              <p className="text-[10px] text-[#64748B] uppercase tracking-widest font-bold">Standard package for Entry Level</p>
-                            </div>
-                          </div>
-                        </section>
+                        <header className="mb-12">
+                          <h3 className="text-3xl font-black mb-2 text-[#111827]">Preparation Roadmap</h3>
+                          <p className="text-[#64748B] text-sm font-medium">A sequential protocol to crack {selectedCompany.name}'s engineering gate.</p>
+                        </header>
 
-                        <section>
-                          <h4 className="text-xl font-bold mb-6 text-[#111827]">Hiring Pattern & Structure</h4>
-                          <div className="space-y-4">
-                            {selectedCompany.interviewRounds.map((round, i) => (
-                              <div key={i} className="flex items-center gap-6 p-6 bg-white rounded-2xl border border-[#E2E8F0] group hover:border-[#7C3AED]/30 transition-all shadow-sm">
-                                <div className="w-12 h-12 rounded-xl bg-[#7C3AED]/10 text-[#7C3AED] flex items-center justify-center font-black text-xl">
-                                  {i + 1}
-                                </div>
-                                <div>
-                                  <div className="font-bold text-lg text-[#111827]">{round}</div>
-                                  <div className="text-xs text-[#64748B]">Elimination Round</div>
-                                </div>
-                                <div className="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <span className="text-[10px] uppercase font-black text-[#7C3AED]">Resource Ready</span>
-                                  <Zap className="w-4 h-4 text-[#7C3AED]" />
-                                </div>
+                        <div className="relative space-y-8">
+                          <div className="absolute left-8 top-0 bottom-0 w-1 bg-gradient-to-b from-[#7C3AED] via-[#9D7CFF] to-gray-100 rounded-full opacity-20" />
+                          
+                          {[
+                            { step: 1, title: 'Foundational Logic', desc: 'Master core arrays, strings, and hash maps used in OA.', status: 'completed' },
+                            { step: 2, title: 'Company Patterns', desc: 'Deep dive into the specific recursive and DP patterns preferred by this company.', status: 'active' },
+                            { step: 3, title: 'System Deconstruction', desc: 'Understand the architectural choices of their core products.', status: 'locked' },
+                            { step: 4, title: 'Cultural Calibration', desc: 'Align your behavioral responses with their core values.', status: 'locked' }
+                          ].map((item, i) => (
+                            <div key={i} className={`relative flex items-start gap-12 p-8 rounded-3xl border transition-all ${item.status === 'active' ? 'bg-white border-[#7C3AED] shadow-xl shadow-purple-100 scale-105 z-10' : 'bg-gray-50/50 border-gray-100'}`}>
+                              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center font-black text-xl flex-shrink-0 z-20 ${item.status === 'completed' ? 'bg-green-100 text-green-600' : item.status === 'active' ? 'bg-[#7C3AED] text-white shadow-lg' : 'bg-gray-200 text-gray-400'}`}>
+                                {item.status === 'completed' ? <CheckCircle2 className="w-8 h-8" /> : item.step}
                               </div>
-                            ))}
-                          </div>
-                        </section>
+                              <div>
+                                <h4 className={`text-xl font-bold mb-2 ${item.status === 'locked' ? 'text-gray-400' : 'text-[#111827]'}`}>{item.title}</h4>
+                                <p className="text-sm text-[#64748B] leading-relaxed max-w-xl">{item.desc}</p>
+                                {item.status === 'active' && (
+                                  <button onClick={() => setActiveTab('dsa')} className="mt-6 px-6 py-2 bg-[#7C3AED] text-white rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-[#6D28D9] transition-all">
+                                    Start Training Now
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'ai' && (
+                      <div className="space-y-12">
+                         <div className="flex flex-col items-center text-center max-w-2xl mx-auto">
+                            <div className="w-24 h-24 bg-gradient-to-br from-[#7C3AED] to-[#EC4899] rounded-[2rem] flex items-center justify-center mb-8 shadow-2xl shadow-purple-200">
+                               <Bot className="w-12 h-12 text-white" />
+                            </div>
+                            <h3 className="text-4xl font-black mb-4 text-[#111827]">AI Career Intelligence</h3>
+                            <p className="text-lg text-[#64748B] font-medium leading-relaxed">Our neural network has analyzed thousands of successful interviews at {selectedCompany.name}. Use these tools to calibrate your profile.</p>
+                         </div>
+
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="p-10 bg-white border border-[#E2E8F0] rounded-[3rem] shadow-sm hover:shadow-xl transition-all group">
+                               <div className="w-16 h-16 bg-[#7C3AED]/10 rounded-2xl flex items-center justify-center mb-8 text-[#7C3AED]">
+                                  <FileText className="w-8 h-8" />
+                               </div>
+                               <h4 className="text-2xl font-bold mb-4 text-[#111827]">Resume Calibration</h4>
+                               <p className="text-sm text-[#64748B] mb-8 font-medium">Instantly analyze your resume against {selectedCompany.name}'s specific keywords and JD expectations.</p>
+                               <button onClick={() => navigate('/job-prep/resume-builder')} className="w-full py-4 bg-[#111827] text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-black transition-all">Analyze My Resume</button>
+                            </div>
+
+                            <div className="p-10 bg-white border border-[#E2E8F0] rounded-[3rem] shadow-sm hover:shadow-xl transition-all group">
+                               <div className="w-16 h-16 bg-pink-50 rounded-2xl flex items-center justify-center mb-8 text-pink-500">
+                                  <Zap className="w-8 h-8" />
+                               </div>
+                               <h4 className="text-2xl font-bold mb-4 text-[#111827]">Interview Simulator</h4>
+                               <p className="text-sm text-[#64748B] mb-8 font-medium">Practice with an AI agent trained on real interview transcripts from {selectedCompany.name}.</p>
+                               <button onClick={() => navigate('/job-prep/mock-interview')} className="w-full py-4 border-2 border-[#111827] text-[#111827] rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-gray-50 transition-all">Launch Simulator</button>
+                            </div>
+                         </div>
                       </div>
                     )}
 

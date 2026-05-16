@@ -154,9 +154,8 @@ const Navigation: React.FC = () => {
               </Link>
             </div>
 
-            {/* Navigation Links */}
             <div className="flex-grow flex justify-center items-center">
-              <div className="hidden lg:flex items-center gap-10 h-full">
+              <div className="hidden lg:flex items-center gap-12 h-full">
                 {['learn', 'jobprep'].map((id) => (
                   <button
                     key={id}
@@ -193,7 +192,7 @@ const Navigation: React.FC = () => {
                   <>
                     <Link
                       to="/learn/cart"
-                      className="relative transition-all group py-1"
+                      className="relative transition-all group py-1 mr-4"
                       title="View Cart"
                     >
                       <ShoppingCart className="w-5 h-5 text-[#4B5563] group-hover:text-[#7C3AED] transition-colors" />
@@ -205,7 +204,7 @@ const Navigation: React.FC = () => {
                         className="hidden sm:flex items-center gap-2 group/admin transition-all"
                       >
                         <span className="text-[11px] font-bold text-[#4B5563] group-hover:text-[#7C3AED] uppercase tracking-[0.25em]">Admin</span>
-                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
                       </Link>
                     )}
 
@@ -217,31 +216,38 @@ const Navigation: React.FC = () => {
                       </button>
 
                       {/* Dropdown Menu */}
-                      <div className="absolute right-0 mt-5 w-64 bg-[#1A1A1A]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl opacity-0 invisible group-hover/profile:opacity-100 group-hover/profile:visible transition-all duration-300 z-[110] overflow-hidden">
-                        <div className="p-5 border-b border-white/10 bg-white/5">
-                          <p className="text-[10px] font-black text-[#A78BFA] uppercase tracking-[0.2em] mb-1">Authenticated Member</p>
-                          <p className="text-sm font-bold text-white truncate">{user.full_name || 'Studlyf Member'}</p>
-                          <p className="text-[10px] text-white/50 truncate">{user.email}</p>
+                      <div className="absolute right-0 mt-5 w-64 bg-white/95 backdrop-blur-xl border border-gray-100 rounded-2xl shadow-2xl opacity-0 invisible group-hover/profile:opacity-100 group-hover/profile:visible transition-all duration-300 z-[110] overflow-hidden">
+                        <div className="p-5 border-b border-gray-100 bg-gray-50/50">
+                          <p className="text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.2em] mb-1">Authenticated Member</p>
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-[#7C3AED]/10 flex items-center justify-center text-[#7C3AED]">
+                              <User size={16} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-gray-900 truncate">{user.full_name || 'Studlyf Member'}</p>
+                              <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+                            </div>
+                          </div>
                         </div>
                         
                         <div className="p-2">
                           <Link
                             to="/dashboard/learner"
-                            className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all uppercase tracking-widest"
+                            className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-gray-600 hover:text-[#7C3AED] hover:bg-purple-50 rounded-xl transition-all uppercase tracking-widest"
                           >
-                            <User size={14} className="text-[#A78BFA]" />
+                            <UserCircle size={14} />
                             My Profile
                           </Link>
                           <Link
                             to="/opportunities/my-applications"
-                            className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all uppercase tracking-widest"
+                            className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-gray-600 hover:text-[#7C3AED] hover:bg-purple-50 rounded-xl transition-all uppercase tracking-widest"
                           >
-                            <ShoppingCart size={14} className="text-[#A78BFA]" />
+                            <ShoppingCart size={14} />
                             Applications
                           </Link>
                           <button
                             onClick={() => logout()}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-xl transition-all uppercase tracking-widest border-t border-white/5 mt-1"
+                            className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-red-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all uppercase tracking-widest border-t border-gray-50 mt-1"
                           >
                             <LogOut size={14} />
                             Sign Out

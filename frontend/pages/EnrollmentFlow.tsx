@@ -65,8 +65,8 @@ const EnrollmentFlow: React.FC = () => {
     }, [step]);
 
     const handleNext = () => {
-        if (step < 3) setStep(step + 1);
-        else handlePayment();
+        if (step === 1) setStep(3); // Skip Step 2
+        else if (step === 3) handlePayment();
     };
 
     const handleBack = () => {
@@ -295,7 +295,7 @@ const EnrollmentFlow: React.FC = () => {
                                         {selectedPlan === 'monthly' && <Check className="w-6 h-6 text-gray-900" />}
                                     </div>
                                     <div className="flex items-baseline gap-1 mb-8">
-                                        <span className="text-5xl font-black text-gray-900">$29</span>
+                                        <span className="text-5xl font-black text-gray-900">$0</span>
                                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">/ Month</span>
                                     </div>
                                     <ul className="space-y-3 mb-10">
@@ -320,7 +320,7 @@ const EnrollmentFlow: React.FC = () => {
                                         {selectedPlan === 'yearly' && <Check className="w-6 h-6 text-gray-900" />}
                                     </div>
                                     <div className="flex items-baseline gap-1 mb-8">
-                                        <span className="text-5xl font-black text-gray-900">$299</span>
+                                        <span className="text-5xl font-black text-gray-900">$0</span>
                                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">/ Year</span>
                                     </div>
                                     <ul className="space-y-3 mb-10">
@@ -373,7 +373,7 @@ const EnrollmentFlow: React.FC = () => {
                                     </div>
                                     <div className="flex justify-between items-center mb-4">
                                         <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">{track.title} Track</h3>
-                                        <span className="text-xl font-black text-gray-900">${selectedPlan === 'monthly' ? '29.00' : '299.00'}</span>
+                                        <span className="text-xl font-black text-gray-900">$0.00</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm text-gray-400 mb-8">
                                         <p>Membership Enrollment Fee</p>
@@ -381,7 +381,7 @@ const EnrollmentFlow: React.FC = () => {
                                     </div>
                                     <div className="flex justify-between items-center pt-6 border-t border-gray-100">
                                         <span className="text-2xl font-black text-gray-900 uppercase">Total</span>
-                                        <span className="text-2xl font-black text-gray-900" style={{ color: track.accent }}>${selectedPlan === 'monthly' ? '29.00' : '299.00'}</span>
+                                        <span className="text-2xl font-black text-gray-900" style={{ color: track.accent }}>$0.00</span>
                                     </div>
                                 </div>
 

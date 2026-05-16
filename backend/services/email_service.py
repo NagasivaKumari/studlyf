@@ -18,6 +18,8 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 465))
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Studlyf Notifications")
+SMART_EMAIL_PROVIDER = os.getenv("SMART_EMAIL_PROVIDER", "smtp") # Options: resend, smtp, google
+Verified_Domain_Email = os.getenv("VERIFIED_DOMAIN_EMAIL", "notifications@studlyf.com")
 
 import asyncio
 
@@ -33,51 +35,52 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
     
     email_from = os.getenv("EMAIL_FROM_NAME", "Studlyf Notifications")
 
-    # --- PRIORITY 1: RESEND API ---
-    resend_key = os.getenv("RESEND_API_KEY")
-    if resend_key:
-        try:
-            import resend
-            resend.api_key = resend_key
-            
-            params = {
-                "from": f"{email_from} <notifications@studlyf.com>", # Use verified domain if possible
-                "to": [to_email],
-                "subject": subject,
-                "html": body_html,
-            }
-            
-            # If sending fails with custom domain, fallback to resend's default
-            try:
-                resend.Emails.send(params)
-            except:
-                params["from"] = "Studlyf <onboarding@resend.dev>"
-                resend.Emails.send(params)
-                
-            logger.info(f"[RESEND SUCCESS] Email delivered to {to_email}")
-            return True
-        except Exception as e:
-            logger.error(f"[RESEND ERROR] Failed to send via Resend: {str(e)}")
-            # Fall through to SMTP if Resend fails
+    # --- SMART PROVIDER LOGIC ---
+    provider = os.getenv("SMART_EMAIL_PROVIDER", "smtp").lower()
+    verified_from = os.getenv("VERIFIED_DOMAIN_EMAIL", "notifications@studlyf.com")
+    email_from_name = os.getenv("EMAIL_FROM_NAME", "Studlyf Notifications")
 
+    # Fallback to Resend if configured and requested
+    if provider == "resend":
+        resend_key = os.getenv("RESEND_API_KEY")
+        if resend_key:
+            try:
+                import resend
+                resend.api_key = resend_key
+                
+                params = {
+                    "from": f"{email_from_name} <{verified_from}>",
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": body_html,
+                }
+                
+                try:
+                    resend.Emails.send(params)
+                except:
+                    params["from"] = "Studlyf <onboarding@resend.dev>"
+                    resend.Emails.send(params)
+                    
+                logger.info(f"[RESEND SUCCESS] Email delivered to {to_email}")
+                return True
+            except Exception as e:
+                logger.error(f"[RESEND ERROR] Failed to send via Resend: {str(e)}")
+                # Fall through to SMTP if Resend fails
+    
     # Reload env inside the function to ensure we always have the absolute latest values from the file
     root_env = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
     load_dotenv(root_env, override=True)
 
     smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
     smtp_port = int(os.getenv("SMTP_PORT", 465))
-
-    # Sanitize User and Password: remove any spaces or quotes often found in .env files
     smtp_user = os.getenv("SMTP_USER", "").strip().replace('"', '').replace("'", "")
     smtp_pass = os.getenv("SMTP_PASSWORD", "").strip().replace(" ", "").replace('"', '').replace("'", "")
     
-    # Diagnostic logging for verification
-    logger.info(f"[AUTH VERIFY] Using Email: {smtp_user}")
-    logger.info(f"[AUTH VERIFY] Password Length: {len(smtp_pass)}")
-    logger.info(f"[AUTH VERIFY] Password Starts With: {smtp_pass[:3]}...")
+    # For Google/Custom SMTP, use the verified domain if available
+    final_from_address = verified_from if "studlyf.com" in verified_from else smtp_user
 
     if not smtp_user or not smtp_pass:
-        logger.error("[EMAIL ERROR] No Resend Key and no SMTP credentials found.")
+        logger.error("[EMAIL ERROR] No SMTP credentials found.")
         return False
 
     def categorize_error(e: Exception) -> str:
@@ -119,7 +122,7 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
                 logger.info(f"[SMTP] Logged in successfully as {smtp_user}")
                 
                 msg = MIMEMultipart()
-                msg['From'] = f"{email_from} <{smtp_user}>"
+                msg['From'] = f"{email_from_name} <{final_from_address}>"
                 msg['To'] = to_email
                 msg['Subject'] = subject
                 msg.attach(MIMEText(body_html, 'html'))
@@ -227,6 +230,79 @@ def get_shortlist_template(team_name: str, event_name: str, stage_name: str = "N
                 </div>
             </div>
         </body>
+    </html>
+    """
+
+def get_certificate_template(user_name: str, event_name: str, rank: str = None, category: str = "Participant"):
+    """Email template sent to participants when their certificate is issued after event finalization."""
+    rank_html = f"""
+        <div style="margin: 20px 0; text-align: center;">
+            <span style="background: linear-gradient(135deg, #7C3AED, #9D7CFF); color: white; padding: 8px 24px; border-radius: 999px; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em;">
+                🏆 Rank #{rank}
+            </span>
+        </div>
+    """ if rank else ""
+
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;800&display=swap');
+        </style>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Outfit', sans-serif; background-color: #F8FAFC;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #F8FAFC; padding: 40px 20px;">
+            <tr>
+                <td align="center">
+                    <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #FFFFFF; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+                        <!-- Header -->
+                        <tr>
+                            <td align="center" style="background: linear-gradient(135deg, #7C3AED 0%, #1E293B 100%); padding: 40px 30px;">
+                                <div style="font-size: 40px; margin-bottom: 10px;">🎓</div>
+                                <h1 style="color: #FFFFFF; margin: 0; font-size: 26px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase;">Certificate Issued!</h1>
+                                <p style="color: rgba(255,255,255,0.7); margin: 8px 0 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.15em;">{category}</p>
+                            </td>
+                        </tr>
+
+                        <!-- Body -->
+                        <tr>
+                            <td style="padding: 40px;">
+                                <p style="font-size: 17px; color: #1E293B; margin: 0 0 10px 0;">Hello <strong>{user_name}</strong>,</p>
+                                <p style="font-size: 15px; color: #475569; line-height: 1.8; margin: 0 0 20px 0;">
+                                    Congratulations! Your official certificate for <strong>{event_name}</strong> has been issued and is now available in your Studlyf dashboard.
+                                </p>
+
+                                {rank_html}
+
+                                <div style="background: #F5F3FF; border: 1px solid #DDD6FE; border-radius: 16px; padding: 20px; margin: 25px 0; text-align: center;">
+                                    <p style="margin: 0; font-size: 13px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700;">Event</p>
+                                    <p style="margin: 6px 0 0 0; font-size: 18px; color: #111827; font-weight: 800;">{event_name}</p>
+                                </div>
+
+                                <div style="text-align: center; margin-top: 30px;">
+                                    <a href="https://studlyf.com/dashboard/learner" style="background-color: #7C3AED; color: white; padding: 16px 36px; border-radius: 14px; text-decoration: none; font-weight: 800; font-size: 13px; display: inline-block; text-transform: uppercase; letter-spacing: 0.12em; box-shadow: 0 4px 15px rgba(124,58,237,0.4);">
+                                        View My Certificate
+                                    </a>
+                                </div>
+
+                                <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #F1F5F9; font-size: 13px; color: #94A3B8; text-align: center;">
+                                    This certificate was issued by the organizing institution via the Studlyf platform.
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Footer -->
+                        <tr>
+                            <td style="background-color: #F8FAFC; padding: 20px; text-align: center;">
+                                <p style="margin: 0; font-size: 12px; color: #94A3B8;">Studlyf Communication Portal • 2026</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
     </html>
     """
 

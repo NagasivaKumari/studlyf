@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from bson import ObjectId
 
 from auth_institution import get_auth_user
-from db import teams_col, participants_col, events_col, users_col
+from db import teams_col, participants_col, events_col, users_col, notifications_col
 from services.email_service import send_notification_email, get_team_invite_template, get_team_join_template
 import asyncio
 
@@ -195,6 +195,18 @@ async def create_team_secure(
         {"_id": p["_id"]},
         {"$set": {"team_id": team_id, "updated_at": datetime.utcnow()}},
     )
+    
+    # Notify Institution
+    inst_id = ev.get("institution_id")
+    if inst_id:
+        from notification_helpers import notify_institution
+        asyncio.create_task(notify_institution(
+            institution_id=inst_id,
+            title="Team Formed",
+            message=f"A new team has been formed for {ev.get('title')}.",
+            ntype="info"
+        ))
+
     return {"status": "success", "team_id": team_id}
 
 
@@ -361,8 +373,32 @@ async def join_by_invite(
             body = get_team_join_template(new_member_name, team_name, event_name)
             for m_email in member_emails:
                 asyncio.create_task(send_notification_email(m_email, subj, body))
+            
+            # Also create dynamic in-app notifications for existing members
+            for m in team.get("members", []):
+                m_uid = m.get("user_id")
+                if m_uid:
+                    asyncio.create_task(notifications_col.insert_one({
+                        "user_id": str(m_uid),
+                        "title": "New Team Member",
+                        "message": f"{new_member_name} has joined your team '{team_name}' for {event_name}!",
+                        "type": "team_update",
+                        "is_read": False,
+                        "created_at": datetime.utcnow()
+                    }))
     except Exception as e:
         print(f"Error sending team join notification: {e}")
+
+    # Notify Institution
+    inst_id = ev.get("institution_id")
+    if inst_id:
+        from notification_helpers import notify_institution
+        asyncio.create_task(notify_institution(
+            institution_id=inst_id,
+            title="Team Update",
+            message=f"A student has joined a team for {ev.get('title')}.",
+            ntype="info"
+        ))
 
     return {"status": "success", "team_id": str(team["_id"]), "event_id": event_id}
 

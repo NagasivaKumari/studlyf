@@ -33,6 +33,7 @@ def _super_admin_email_set() -> set:
     return {x.strip().lower() for x in raw.split(",") if x.strip()}
 
 # Setup logging
+from notification_helpers import notify_institution
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main_service")
@@ -5432,6 +5433,16 @@ async def register_for_event(event_id: str, participant: Participant):
             target_email = user_record["email"] if user_record and "email" in user_record else participant.user_id
 
             asyncio.create_task(send_notification_email(target_email, subject, body))
+            
+            # Create In-App Notification
+            asyncio.create_task(notifications_col.insert_one({
+                "user_id": participant.user_id,
+                "title": "Registration Successful",
+                "message": f"You have successfully registered for {event['title']}.",
+                "type": "event_alert",
+                "is_read": False,
+                "created_at": datetime.utcnow()
+            }))
 
         # 7. DASHBOARD UPDATE (Implicit via real-time fetch)
         # Note: We removed admin email notifications for registrations as per 'Dashboard-First' policy.
@@ -5439,9 +5450,16 @@ async def register_for_event(event_id: str, participant: Participant):
         # Audit Log
         await log_admin_action(target_email, "EVENT_REGISTRATION", f"Registered for event: {event_id}")
 
-        # Update Institution Stats in Background
+        # Recalculate stats in background
         if inst_id:
             asyncio.create_task(recalculate_institution_stats(inst_id))
+            # Notify Institution
+            asyncio.create_task(notify_institution(
+                institution_id=inst_id,
+                title="New Registration",
+                message=f"A new participant has registered for {event['title']}.",
+                ntype="success"
+            ))
 
         return {"status": "success", "registration_id": str(result.inserted_id)}
     except Exception as e:
@@ -5468,6 +5486,18 @@ async def update_participant_status(p_id: str, status: str = Body(embed=True), c
             {"$set": {"registration_status": status, "updated_at": datetime.utcnow()}}
         )
         await log_admin_action(current_user["email"], "PARTICIPANT_STATUS_UPDATE", f"Updated participant {p_id} to {status}")
+        
+        # Create In-App Notification for student
+        p_doc = await participants_col.find_one({"_id": ObjectId(p_id)})
+        if p_doc:
+            asyncio.create_task(notifications_col.insert_one({
+                "user_id": p_doc["user_id"],
+                "title": "Application Update",
+                "message": f"Your application for {p_doc.get('event_title', 'the event')} has been updated to: {status}.",
+                "type": "status_update",
+                "is_read": False,
+                "created_at": datetime.utcnow()
+            }))
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -5484,6 +5514,22 @@ async def update_team_status(team_id: str, status: str = Body(embed=True), curre
             {"$set": {"status": status, "updated_at": datetime.utcnow()}}
         )
         await log_admin_action(current_user["email"], "TEAM_STATUS_UPDATE", f"Updated team {team_id} to {status}")
+        
+        # Create In-App Notification for all team members
+        team_doc = await teams_col.find_one({"_id": ObjectId(team_id)})
+        if team_doc:
+            members = team_doc.get("members", [])
+            for m in members:
+                m_uid = m.get("user_id")
+                if m_uid:
+                    asyncio.create_task(notifications_col.insert_one({
+                        "user_id": str(m_uid),
+                        "title": "Team Status Update",
+                        "message": f"Your team '{team_doc.get('name') or team_doc.get('team_name')}' status has been updated to: {status}.",
+                        "type": "status_update",
+                        "is_read": False,
+                        "created_at": datetime.utcnow()
+                    }))
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -5569,4 +5615,19 @@ async def enroll_course(req: EnrollRequest, current_user: dict = Depends(get_cur
                 body_html=f"<h3>Welcome to Studyleaf!</h3><p>You have successfully enrolled in the <b>{track_name}</b> track. Your journey starts now.</p>"
             )
         )
-    return {"status": "success", "message": "Enrolled successfully"}
+        # Create In-App Notification
+        user_doc = await users_col.find_one({"email": user_email})
+        if user_doc:
+            asyncio.create_task(notifications_col.insert_one({
+                "user_id": user_doc["user_id"],
+                "title": "Enrollment Confirmed",
+                "message": f"You've successfully enrolled in the {track_name} track. Start learning now!",
+                "type": "enrollment",
+                "is_read": False,
+                "created_at": datetime.utcnow()
+            }))
+            
+            # Notify Institution (if any institution is associated with the course - fallback to general for now)
+            # Find which institution owns this course/track if possible
+            # For now, we'll notify the 'Studlyf' main admin or just skip if no specific inst_id
+        return {"status": "success", "message": "Enrolled successfully"}

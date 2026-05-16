@@ -951,7 +951,8 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
     next_stage = data.get("next_stage", "Next Round")
     
     event = await events_col.find_one({"_id": ObjectId(event_id)})
-    from db import teams_col, users_col
+    from db import teams_col, users_col, notifications_col
+    from datetime import datetime
     
     success_count = 0
     for tid in team_ids:
@@ -966,6 +967,17 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
                     subject = f"Selection Alert: Your project is moving to {next_stage}!"
                     body = get_shortlist_template(name, event.get("title", "the event"), next_stage)
                     asyncio.create_task(send_notification_email(recipient_email, subject, body))
+                    
+                    # Also create a dynamic in-app notification record
+                    user_id_to_notif = sub.get("user_id") or str(sub.get("_id"))
+                    asyncio.create_task(notifications_col.insert_one({
+                        "user_id": str(user_id_to_notif),
+                        "title": subject,
+                        "message": f"Congratulations! You've been selected for {next_stage} in {event.get('title')}.",
+                        "type": "selection_alert",
+                        "is_read": False,
+                        "created_at": datetime.utcnow()
+                    }))
                     success_count += 1
             continue
 
@@ -998,6 +1010,22 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
                     body = get_shortlist_template(team_name, event.get("title", "the event"), next_stage)
                 
                 asyncio.create_task(send_notification_email(member_email, subject, body))
+                
+                # Also create a dynamic in-app notification record for each team member
+                # Find member user_id if we have email
+                try:
+                    m_user = await users_col.find_one({"email": member_email})
+                    if m_user:
+                        asyncio.create_task(notifications_col.insert_one({
+                            "user_id": str(m_user["user_id"]),
+                            "title": subject,
+                            "message": f"Your team '{team_name}' has been moved to {next_stage} in {event.get('title')}.",
+                            "type": "selection_alert" if not custom_msg else "announcement",
+                            "is_read": False,
+                            "created_at": datetime.utcnow()
+                        }))
+                except Exception as e:
+                    logger.error(f"Failed to create DB notification for {member_email}: {e}")
             
             # Update team status in participants_col if needed
             await participants_col.update_many(
@@ -1754,10 +1782,22 @@ async def create_submission(submission_data: dict):
     submission_data["submitted_at"] = datetime.utcnow()
     result = await submissions_col.insert_one(submission_data)
     
+    # Notify Institution
+    try:
+        inst_id = str(user.get("institution_id") or "").strip()
+        if inst_id:
+            asyncio.create_task(notify_institution(
+                institution_id=inst_id,
+                title="New Submission",
+                message=f"A new project submission has been received for {submission_data.get('event_title', 'an event')}.",
+                ntype="success"
+            ))
+    except Exception as ne:
+        pass
+    
     # [REAL-TIME NOTIFICATION] Notify Institution
     inst_id = submission_data.get("institution_id")
     if inst_id:
-        from db import institutions_col, events_col
         institution = await institutions_col.find_one({"institution_id": inst_id})
         if institution:
             notif_settings = institution.get("notifications", {})
@@ -2091,6 +2131,28 @@ async def update_team_status(event_id: str, team_id: str, status_update: dict, u
     except Exception:
         pass  # Team might not exist or update might fail
     
+    # Also notify team members dynamically
+    try:
+        from db import notifications_col
+        from datetime import datetime
+        team_doc = await teams_col.find_one({"_id": ObjectId(team_id)})
+        event_doc = await events_col.find_one({"_id": ObjectId(event_id)})
+        if team_doc and event_doc:
+            members = team_doc.get("members", [])
+            for m in members:
+                m_uid = m.get("user_id")
+                if m_uid:
+                    asyncio.create_task(notifications_col.insert_one({
+                        "user_id": str(m_uid),
+                        "title": f"Status Update: {event_doc.get('title')}",
+                        "message": f"Your team '{team_doc.get('name')}' status has been updated to '{status_update['status']}'.",
+                        "type": "selection_alert",
+                        "is_read": False,
+                        "created_at": datetime.utcnow()
+                    }))
+    except Exception as e:
+        logger.error(f"Failed to create manual team notification: {e}")
+
     return {"status": "success", "updated_count": result.modified_count}
 
 @router.post("/events/{event_id}/send-status-email")

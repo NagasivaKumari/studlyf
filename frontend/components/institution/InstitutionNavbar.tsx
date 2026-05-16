@@ -436,15 +436,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
                                 displayName.charAt(0).toUpperCase()
                              )}
                         </div>
-                        <div className="hidden sm:block max-w-[120px] overflow-hidden text-left">
-                            <p className="text-xs font-bold text-white leading-tight truncate font-sans">
-                                {profile?.name || displayName || 'Loading...'}
-                            </p>
-                            <p className="text-[9px] font-black text-purple-200/50 uppercase tracking-widest font-sans">
-                                {role === 'judge' ? 'Judge' : 'Admin'}
-                            </p>
-                        </div>
-                        
+                        {/* Removed text name for cleaner UI as requested */}
                         <div className="h-6 w-px bg-white/10 mx-1 hidden sm:block" />
                         
                         <button 

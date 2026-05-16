@@ -147,9 +147,10 @@ const styles = `
     background: white;
     width: 210mm;
     min-height: 297mm;
-    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
     padding: 40px 50px;
     margin: 40px 0;
+    border: 1px solid rgba(0,0,0,0.05);
   }
 
   /* Forms and Inputs */
@@ -916,7 +917,7 @@ export default function ResumeBuilder() {
 
                             <div className="flex items-center justify-center gap-6">
                                 <button
-                                    onClick={() => setStep('template_selection')}
+                                onClick={() => setStep('template_selection')}
                                     className="flex items-center gap-4 bg-[#7c3aed] text-white px-12 py-5 rounded-2xl font-bold text-2xl hover:bg-[#6d28d9] transition-all shadow-2xl shadow-purple-200 hover:-translate-y-1"
                                 >
                                     <Plus size={28} />

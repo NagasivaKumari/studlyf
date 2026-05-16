@@ -290,8 +290,9 @@ const PortfolioBuilder: React.FC = () => {
                                     <button
                                         key={t.id}
                                         onClick={() => setSelectedTemplate(t.id)}
-                                        className={`p-8 rounded-[2rem] border-2 text-left transition-all relative overflow-hidden group h-full flex flex-col justify-between ${selectedTemplate === t.id ? 'ring-4 ring-purple-400 scale-105' : 'border-gray-200 hover:border-purple-300'} ${t.color}`}
+                                        className={`p-8 rounded-[2.5rem] border-2 text-left transition-all relative overflow-hidden group h-full flex flex-col justify-between backdrop-blur-xl ${selectedTemplate === t.id ? 'ring-4 ring-purple-400 scale-105 border-transparent' : 'border-gray-200/50 hover:border-purple-300'} ${t.color}`}
                                     >
+                                        <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                                         <div className="relative z-10">
                                             <t.icon className={`w-8 h-8 mb-4`} />
                                             <h3 className="text-xl font-bold mb-2">{t.name}</h3>
