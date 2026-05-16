@@ -60,6 +60,16 @@ const LearnerDashboard: React.FC = () => {
   const [downloadingCertId, setDownloadingCertId] = useState<string | null>(null);
   const [resumeData, setResumeData] = useState<any>(null);
   const [badges, setBadges] = useState<any[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
+  const [globalRankings, setGlobalRankings] = useState<any[]>([]);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({ 
+    full_name: user?.full_name || '', 
+    email: user?.email || '',
+    college_name: user?.college_name || '',
+    graduation_year: user?.graduation_year || ''
+  });
+  const [updatingProfile, setUpdatingProfile] = useState(false);
 
   useEffect(() => {
     if (user?.user_id) {
@@ -84,6 +94,18 @@ const LearnerDashboard: React.FC = () => {
       fetch(`${API_BASE_URL}/api/user/${user.user_id}/badges`)
         .then(res => res.json())
         .then(data => setBadges(data.badges || []))
+        .catch(console.error);
+
+      // Fetch dashboard stats
+      fetch(`${API_BASE_URL}/api/user/${user.user_id}/dashboard-stats`)
+        .then(res => res.json())
+        .then(data => setDashboardStats(data))
+        .catch(console.error);
+
+      // Fetch global leaderboard
+      fetch(`${API_BASE_URL}/api/leaderboard/global`)
+        .then(res => res.json())
+        .then(data => setGlobalRankings(data.rankings || []))
         .catch(console.error);
     }
   }, [user]);
@@ -169,13 +191,13 @@ const LearnerDashboard: React.FC = () => {
           <div className="space-y-8">
             <h2 className="text-4xl font-black uppercase tracking-tighter text-[#111827]">Global Rankings</h2>
             <div className="bg-white border border-gray-100 rounded-[2rem] overflow-hidden shadow-sm">
-              {[
+              {(globalRankings.length > 0 ? globalRankings : [
                 { rank: 1, name: "Sarah Q.", score: 98.2, status: "Verified", movement: "▲" },
                 { rank: 2, name: "James L.", score: 96.5, status: "Verified", movement: "-" },
                 { rank: 3, name: "Alex P.", score: 75.4, status: "Active", highlighted: true, movement: "▲" },
                 { rank: 4, name: "Mira K.", score: 74.1, status: "Active", movement: "▼" },
                 { rank: 5, name: "Chen W.", score: 72.8, status: "Active", movement: "▲" }
-              ].map((u, i) => (
+              ]).map((u, i) => (
                 <div key={i} className={`flex items-center justify-between p-6 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors ${u.highlighted ? 'bg-[#F5F3FF] hover:bg-[#F5F3FF]' : ''}`}>
                   <div className="flex items-center gap-6">
                     <div className={`w-8 h-8 flex items-center justify-center font-black ${i < 3 ? 'text-[#7C3AED]' : 'text-gray-400'}`}>
@@ -399,6 +421,20 @@ const LearnerDashboard: React.FC = () => {
                 <div className="flex-grow text-center lg:text-left">
                   <div className="flex flex-col sm:flex-row items-center gap-4 mb-8">
                     <h2 className="text-3xl sm:text-5xl font-black tracking-tighter uppercase text-[#111827]">{user?.full_name || 'Elite Protocol'}</h2>
+                    <button 
+                      onClick={() => {
+                        setEditFormData({ 
+                          full_name: user?.full_name || '', 
+                          email: user?.email || '',
+                          college_name: user?.college_name || '',
+                          graduation_year: user?.graduation_year || ''
+                        });
+                        setIsEditModalOpen(true);
+                      }}
+                      className="px-4 py-2 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-xl text-[10px] font-black text-[#7C3AED] uppercase tracking-widest transition-all"
+                    >
+                      Edit Profile
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 text-[#475569]">
@@ -408,11 +444,15 @@ const LearnerDashboard: React.FC = () => {
                     </div>
                     <div>
                       <label className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] block mb-1">Status</label>
-                      <p className="text-xs sm:text-sm font-bold uppercase text-[#7C3AED]">Verified Student</p>
+                      <p className="text-xs sm:text-sm font-bold uppercase text-[#7C3AED]">{user?.status || 'Verified Student'}</p>
                     </div>
                     <div>
                       <label className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] block mb-1">Graduation Horizon</label>
-                      <p className="text-xs sm:text-sm font-bold italic">Class of 2026</p>
+                      <p className="text-xs sm:text-sm font-bold italic">{user?.graduation_year ? `Class of ${user.graduation_year}` : 'Class of 2026'}</p>
+                    </div>
+                    <div>
+                      <label className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] block mb-1">Institution</label>
+                      <p className="text-xs sm:text-sm font-bold truncate">{user?.college_name || 'Studlyf Academy'}</p>
                     </div>
                   </div>
                 </div>
@@ -486,7 +526,7 @@ const LearnerDashboard: React.FC = () => {
               <div className="grid lg:grid-cols-3 gap-8 sm:gap-12 items-center">
                 <div className="flex flex-col items-center">
                   <CircularProgress
-                    value={githubData ? Math.round(githubData.readiness_score) : (analyzing ? 20 : 0)}
+                    value={dashboardStats?.readiness_score || (githubData ? Math.round(githubData.readiness_score) : (analyzing ? 20 : 25))}
                     size={window.innerWidth < 640 ? 180 : 240}
                     strokeWidth={window.innerWidth < 640 ? 12 : 16}
                     color="#7C3AED"
@@ -505,10 +545,10 @@ const LearnerDashboard: React.FC = () => {
 
                 <div className="lg:col-span-2 grid md:grid-cols-2 gap-6 sm:gap-8">
                   {[
-                    { label: 'Backend', val: githubData?.skills?.Backend || 0 },
-                    { label: 'Frontend', val: githubData?.skills?.Frontend || 0 },
-                    { label: 'GenAI', val: githubData?.skills?.GenAI || 0 },
-                    { label: 'DevOps', val: githubData?.skills?.DevOps || 0 }
+                    { label: 'Backend', val: dashboardStats?.skills?.Backend || githubData?.skills?.Backend || 40 },
+                    { label: 'Frontend', val: dashboardStats?.skills?.Frontend || githubData?.skills?.Frontend || 35 },
+                    { label: 'GenAI', val: dashboardStats?.skills?.GenAI || githubData?.skills?.GenAI || 20 },
+                    { label: 'DevOps', val: dashboardStats?.skills?.DevOps || githubData?.skills?.DevOps || 15 }
                   ].map((s) => (
                     <div key={s.label} className="bg-white border border-gray-100 rounded-[2rem] p-6 sm:p-10 flex flex-col items-center group hover:border-[#7C3AED]/30 transition-all shadow-sm">
                       <CircularProgress value={s.val} size={140} strokeWidth={10} color="#7C3AED" label={s.label} />
@@ -519,6 +559,118 @@ const LearnerDashboard: React.FC = () => {
                 </div>
               </div>
             </section>
+            {/* Edit Profile Modal */}
+            <AnimatePresence>
+              {isEditModalOpen && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setIsEditModalOpen(false)}
+                    className="absolute inset-0 bg-[#111827]/60 backdrop-blur-md"
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                    className="relative w-full max-w-md bg-white rounded-[2.5rem] p-10 shadow-2xl border border-gray-100"
+                  >
+                    <div className="text-center mb-8">
+                      <div className="w-16 h-16 bg-[#F5F3FF] rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">
+                        👤
+                      </div>
+                      <h3 className="text-2xl font-black uppercase tracking-tight text-[#111827]">Edit Profile</h3>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-2">Update your account identity</p>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Full Name</label>
+                        <input
+                          type="text"
+                          value={editFormData.full_name}
+                          onChange={(e) => setEditFormData({ ...editFormData, full_name: e.target.value })}
+                          className="w-full px-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold focus:outline-none focus:border-[#7C3AED] transition-all"
+                          placeholder="Your full name"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Email Address</label>
+                        <input
+                          type="email"
+                          value={editFormData.email}
+                          onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                          className="w-full px-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold focus:outline-none focus:border-[#7C3AED] transition-all"
+                          placeholder="Your email address"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">College</label>
+                          <input
+                            type="text"
+                            value={editFormData.college_name}
+                            onChange={(e) => setEditFormData({ ...editFormData, college_name: e.target.value })}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold focus:outline-none focus:border-[#7C3AED] transition-all"
+                            placeholder="University name"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Grad Year</label>
+                          <select
+                            value={editFormData.graduation_year}
+                            onChange={(e) => setEditFormData({ ...editFormData, graduation_year: e.target.value })}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold focus:outline-none focus:border-[#7C3AED] transition-all appearance-none"
+                          >
+                            <option value="">Select</option>
+                            {[2024, 2025, 2026, 2027, 2028].map(year => (
+                              <option key={year} value={String(year)}>{year}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4 mt-10">
+                      <button
+                        onClick={() => setIsEditModalOpen(false)}
+                        className="flex-1 py-4 bg-gray-50 text-gray-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-gray-100 transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            setUpdatingProfile(true);
+                            const res = await fetch(`${API_BASE_URL}/api/user/${user?.user_id}/update-profile`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(editFormData)
+                            });
+                            const data = await res.json();
+                            if (data.success) {
+                              // Update local auth context if possible, or just refresh
+                              window.location.reload();
+                            } else {
+                              alert(data.detail || "Profile update failed.");
+                            }
+                          } catch (err) {
+                            alert("Uplink error. Profile not updated.");
+                          } finally {
+                            setUpdatingProfile(false);
+                          }
+                        }}
+                        disabled={updatingProfile}
+                        className="flex-1 py-4 bg-[#7C3AED] text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 disabled:opacity-60"
+                      >
+                        {updatingProfile ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
           </>
         );
     }

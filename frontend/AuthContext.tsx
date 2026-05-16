@@ -10,6 +10,9 @@ interface User {
     user_id: string;
     institution_id?: string;
     institution_name?: string;
+    college_name?: string;
+    graduation_year?: string;
+    status?: string;
 }
 
 interface AuthContextType {

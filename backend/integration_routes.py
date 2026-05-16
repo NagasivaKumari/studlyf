@@ -8,7 +8,7 @@ import json
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile, Body, Depends, Query
 from auth_institution import get_auth_user, assert_institution_scope, assert_institution_owns_event
-from services.email_service import send_notification_email
+from services.email_service import send_notification_email, get_certificate_template, get_shortlist_template, get_announcement_template
 from services.institutional_analytics_service import analytics_service
 from services.institutional_certificate_service import certificate_service
 from services.leaderboard_service import leaderboard_service
@@ -138,51 +138,67 @@ async def _dispatch_status_email(target_id: str, status: str, doc: dict):
 
     # Get event title
     event_title = "your event"
+    next_round_name = "Next Round"
     if event_id:
         event = await events_col.find_one(_event_id_query(str(event_id)))
         if event:
             event_title = event.get("title", "your event")
+            # Smart Round Detection: Try to find what they qualified for
+            stages = event.get("stages") or []
+            current_stage_name = doc.get("current_stage")
+            
+            if current_stage_name:
+                for i, s in enumerate(stages):
+                    if s.get("name") == current_stage_name and i + 1 < len(stages):
+                        next_round_name = stages[i+1].get("name")
+                        break
+            elif stages:
+                next_round_name = stages[0].get("name")
 
-    subject = f"Update on your submission for {event_title}"
+    from services.email_service import get_shortlist_template
     
-    status_colors = {
-        "Shortlisted": "#6C3BFF",
-        "Approved": "#10B981",
-        "Rejected": "#EF4444"
-    }
-    color = status_colors.get(status, "#6C3BFF")
-
-    body_html = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-            <div style="max-width: 600px; margin: auto; padding: 40px; border: 1px solid #edf2f7; border-radius: 24px; background: white;">
-                <div style="text-align: center; margin-bottom: 30px;">
-                    <div style="display: inline-block; padding: 12px; background: {color}10; border-radius: 16px; margin-bottom: 15px;">
-                        <span style="font-size: 32px;">📢</span>
+    if status == "Shortlisted":
+        subject = f"CONGRATULATIONS: {user_name} is moving to {next_round_name}!"
+        body_html = get_shortlist_template(user_name, event_title, next_round_name)
+    else:
+        subject = f"Update on your submission for {event_title}"
+        status_colors = {
+            "Shortlisted": "#6C3BFF",
+            "Approved": "#10B981",
+            "Rejected": "#EF4444"
+        }
+        color = status_colors.get(status, "#6C3BFF")
+        body_html = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+                <div style="max-width: 600px; margin: auto; padding: 40px; border: 1px solid #edf2f7; border-radius: 24px; background: white;">
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <div style="display: inline-block; padding: 12px; background: {color}10; border-radius: 16px; margin-bottom: 15px;">
+                            <span style="font-size: 32px;">📢</span>
+                        </div>
+                        <h2 style="color: #1a202c; margin: 0; font-size: 24px; font-weight: 800;">Status Update</h2>
                     </div>
-                    <h2 style="color: #1a202c; margin: 0; font-size: 24px; font-weight: 800;">Status Update</h2>
-                </div>
 
-                <p>Hello <strong>{user_name}</strong>,</p>
-                <p>We have an update regarding your project for <strong>{event_title}</strong>.</p>
-                
-                <div style="margin: 30px 0; padding: 25px; background: {color}08; border: 2px dashed {color}20; border-radius: 20px; text-align: center;">
-                    <p style="margin: 0; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; color: #64748b;">Current Status</p>
-                    <p style="margin: 10px 0 0 0; font-size: 32px; font-weight: 900; color: {color}; text-transform: uppercase;">{status}</p>
-                </div>
+                    <p>Hello <strong>{user_name}</strong>,</p>
+                    <p>We have an update regarding your project for <strong>{event_title}</strong>.</p>
+                    
+                    <div style="margin: 30px 0; padding: 25px; background: {color}08; border: 2px dashed {color}20; border-radius: 20px; text-align: center;">
+                        <p style="margin: 0; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; color: #64748b;">Current Status</p>
+                        <p style="margin: 10px 0 0 0; font-size: 32px; font-weight: 900; color: {color}; text-transform: uppercase;">{status}</p>
+                    </div>
 
-                <p style="color: #4a5568;">
-                    {f"Congratulations! You have been <strong>{status.lower()}</strong>. Next steps will be shared soon." if status != "Rejected" else "Thank you for your participation. Unfortunately, your project was not selected for the next phase."}
-                </p>
+                    <p style="color: #4a5568;">
+                        {f"Congratulations! You have been <strong>{status.lower()}</strong>. Next steps will be shared soon." if status != "Rejected" else "Thank you for your participation. Unfortunately, your project was not selected for the next phase."}
+                    </p>
 
-                <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #edf2f7; text-align: center; color: #a0aec0; font-size: 12px;">
-                    This is an automated notification from the Studlyf Institutional Portal.<br>
-                    Please do not reply directly to this email.
+                    <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #edf2f7; text-align: center; color: #a0aec0; font-size: 12px;">
+                        This is an automated notification from the Studlyf Institutional Portal.<br>
+                        Please do not reply directly to this email.
+                    </div>
                 </div>
-            </div>
-        </body>
-    </html>
-    """
+            </body>
+        </html>
+        """
 
     try:
         # Send to all team members
@@ -948,49 +964,39 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
                 if recipient_email:
                     name = sub.get("user_name") or sub.get("team_name") or "Participant"
                     subject = f"Selection Alert: Your project is moving to {next_stage}!"
-                    body = f"""
-                    <html>
-                        <body style="font-family: Arial, sans-serif; color: #333;">
-                            <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 20px;">
-                                <h2 style="color: #6C3BFF;">Congratulations {name}!</h2>
-                                <p>Your submission has successfully qualified for the <strong>{next_stage}</strong> of <strong>{event['title']}</strong>.</p>
-                                <p>Our judges were impressed with your work!</p>
-                                <br>
-                                <p><strong>What's Next?</strong><br>Keep an eye on your dashboard for the next steps.</p>
-                                <br>
-                                <p>Best Regards,<br>{event['title']} Organizing Team</p>
-                            </div>
-                        </body>
-                    </html>
-                    """
+                    body = get_shortlist_template(name, event.get("title", "the event"), next_stage)
                     asyncio.create_task(send_notification_email(recipient_email, subject, body))
                     success_count += 1
             continue
 
-        team = await teams_col.find_one({"_id": ObjectId(tid)})
         if team:
             # Send to all members of the team
             members = team.get("members", [])
+            team_name = team.get("name") or team.get("team_name") or "Your team"
+            
+            # Check for custom message from admin
+            custom_msg = data.get("custom_message") or data.get("message")
+            
+            # Robust member hydration
+            member_emails = []
             for m in members:
-                member_email = m.get("email") if isinstance(m, dict) else m
-                if not member_email: continue
+                email = m.get("email") if isinstance(m, dict) else m
+                if email and "@" in str(email):
+                    member_emails.append(email)
+                elif isinstance(m, dict) and m.get("user_id"):
+                    # Look up user to get email
+                    user_rec = await users_col.find_one({"user_id": str(m["user_id"])})
+                    if user_rec and user_rec.get("email"):
+                        member_emails.append(user_rec["email"])
+            
+            for member_email in set(member_emails):
+                if custom_msg:
+                    subject = data.get("subject") or f"Important Update: {event.get('title')}"
+                    body = get_announcement_template(team_name, event.get("title", "the event"), custom_msg, next_stage)
+                else:
+                    subject = f"Selection Alert: {team_name} is moving to {next_stage}!"
+                    body = get_shortlist_template(team_name, event.get("title", "the event"), next_stage)
                 
-                subject = f"Selection Alert: {team.get('name', 'Your team')} is moving to {next_stage}!"
-                body = f"""
-                <html>
-                    <body style="font-family: Arial, sans-serif; color: #333;">
-                        <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 20px;">
-                            <h2 style="color: #6C3BFF;">Congratulations Team {team.get('name', 'Success')}!</h2>
-                            <p>You have successfully qualified for the <strong>{next_stage}</strong> of <strong>{event['title']}</strong>.</p>
-                            <p>Our judges were impressed with your performance!</p>
-                            <br>
-                            <p><strong>What's Next?</strong><br>Check your dashboard for new submission requirements and deadlines.</p>
-                            <br>
-                            <p>Best Regards,<br>{event['title']} Organizing Team</p>
-                        </div>
-                    </body>
-                </html>
-                """
                 asyncio.create_task(send_notification_email(member_email, subject, body))
             
             # Update team status in participants_col if needed
@@ -1380,26 +1386,12 @@ async def generate_event_certificates(event_id: str, rankings: list):
             
             if recipient_email:
                 subject = f"Congratulations! Your Certificate for {cert['event_title']} is ready"
-                rank_text = f"Rank: {cert['rank']}" if cert['rank'] else ""
-                body = f"""
-                <html>
-                    <body style="font-family: Arial, sans-serif; color: #333;">
-                        <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee;">
-                            <h2 style="color: #D4AF37;">Congratulations, {cert['recipient_name']}!</h2>
-                            <p>You have been awarded a certificate for your achievement in <strong>{cert['event_title']}</strong>.</p>
-                            <p><strong>Category:</strong> {cert['category']}</p>
-                            {f"<p><strong>Rank:</strong> {cert['rank']}</p>" if cert['rank'] else ""}
-                            <br>
-                            <p>Your official certificate has been issued and is available in your Studlyf profile.</p>
-                            <p>Verification Code: <strong>{cert['verification_code']}</strong></p>
-                            <br>
-                            <p>Great job on your hard work!</p>
-                            <br>
-                            <p>Best Regards,<br>Studlyf Team</p>
-                        </div>
-                    </body>
-                </html>
-                """
+                body = get_certificate_template(
+                    user_name=cert['recipient_name'],
+                    event_name=cert['event_title'],
+                    rank=str(cert.get('rank')) if cert.get('rank') else None,
+                    category=cert.get('category', 'Participant')
+                )
                 asyncio.create_task(send_notification_email(recipient_email, subject, body))
     
     return {"status": "Event finalized and leaderboard generated successfully"}

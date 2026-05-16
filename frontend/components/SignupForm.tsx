@@ -238,6 +238,8 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
                             )}
                         </div>
 
+
+
                         <button
                             type="submit"
                             disabled={loading}

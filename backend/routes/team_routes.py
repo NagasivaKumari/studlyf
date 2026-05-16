@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from bson import ObjectId
 
 from auth_institution import get_auth_user
-from db import teams_col, participants_col, events_col
-
+from db import teams_col, participants_col, events_col, users_col
+from services.email_service import send_notification_email, get_team_invite_template, get_team_join_template
+import asyncio
 
 router = APIRouter(prefix="/api/teams", tags=["Teams"])
 
@@ -91,8 +92,18 @@ async def send_team_invite(
             }}}
         )
         
-        # Send email (placeholder for now)
-        print(f"Team invite sent to {invite_email} with code {invite_code}")
+        # Send email
+        try:
+            leader_name = user.get("full_name") or user.get("name") or "Team Leader"
+            event_name = event.get("title") or event.get("name") or "Event"
+            team_name = team.get("team_name", "Our Team")
+            
+            subj = f"Invitation: Join {leader_name}'s team for {event_name}"
+            body = get_team_invite_template(leader_name, team_name, event_name, invite_code)
+            
+            asyncio.create_task(send_notification_email(invite_email, subj, body))
+        except Exception as e:
+            print(f"Error sending team invite email: {e}")
         
         return {
             "success": True,
@@ -331,5 +342,27 @@ async def join_by_invite(
         {"_id": p["_id"]},
         {"$set": {"team_id": str(team["_id"]), "updated_at": datetime.utcnow()}},
     )
+    # Notify existing members
+    try:
+        new_member_name = user.get("full_name") or user.get("name") or "A student"
+        team_name = team.get("team_name", "Our Team")
+        event_name = ev.get("title") or ev.get("name") or "the event"
+        
+        member_emails = []
+        for m in team.get("members", []):
+            m_uid = m.get("user_id")
+            if m_uid:
+                m_user = await users_col.find_one({"user_id": str(m_uid)})
+                if m_user and m_user.get("email"):
+                    member_emails.append(m_user["email"])
+        
+        if member_emails:
+            subj = f"New member joined: {new_member_name} is now in your team!"
+            body = get_team_join_template(new_member_name, team_name, event_name)
+            for m_email in member_emails:
+                asyncio.create_task(send_notification_email(m_email, subj, body))
+    except Exception as e:
+        print(f"Error sending team join notification: {e}")
+
     return {"status": "success", "team_id": str(team["_id"]), "event_id": event_id}
 

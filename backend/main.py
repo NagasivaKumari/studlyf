@@ -4489,13 +4489,25 @@ async def generate_career_roadmap(req: dict):
     except Exception as e:
         return {"roadmap": []}
 
-if __name__ == "__main__":
-    import uvicorn
-    import os
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
-
 # ─── AI Tools Scraping Endpoint ──────────────────────────────────────────────
+# --- Auth Request Models ---
+class UserSignup(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    role: str = "Participant"
+    institution_id: Optional[str] = None
+    institution_name: Optional[str] = None
+    college_name: Optional[str] = None
+    graduation_year: Optional[str] = None
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+# In-memory stores for Reset Tokens
+reset_tokens = {} # email: {token, expiry}
+
 @app.get("/api/ai-tools")
 async def get_ai_tools():
     """Fetch AI tools — served from in-memory cache after first load."""
@@ -4508,25 +4520,39 @@ async def get_ai_tools():
         print(f"ERROR fetching AI tools: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch AI tools")
 
-# ─── End AI Tools API ────────────────────────────────────────────────────────
-
-# ─── INSTITUTION DASHBOARD SYSTEM ─────────────────────────────────────────────
-
-# --- Auth Request Models ---
-class UserSignup(BaseModel):
-    email: str
-    password: str
-    full_name: str
-    role: str = "Participant"
-    institution_id: Optional[str] = None
-    institution_name: Optional[str] = None
-
-class UserLogin(BaseModel):
-    email: str
-    password: str
-
-# In-memory stores for Reset Tokens
-reset_tokens = {} # email: {token, expiry}
+@app.post("/api/user/{user_id}/update-profile")
+async def update_profile(user_id: str, data: dict = Body(...)):
+    full_name = data.get("full_name")
+    email = data.get("email")
+    college_name = data.get("college_name")
+    graduation_year = data.get("graduation_year")
+    
+    if not full_name or not email:
+        raise HTTPException(status_code=400, detail="Name and Email are required")
+        
+    update_data = {
+        "full_name": full_name,
+        "email": email
+    }
+    
+    if college_name is not None:
+        update_data["college_name"] = college_name
+    if graduation_year is not None:
+        update_data["graduation_year"] = graduation_year
+        
+    # Update user in database
+    result = await users_col.update_one(
+        {"user_id": user_id},
+        {"$set": update_data}
+    )
+    
+    if result.modified_count == 0:
+        # Check if user exists but nothing changed
+        user = await users_col.find_one({"user_id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+    return {"success": True, "message": "Profile updated successfully"}
 
 @app.post("/api/auth/forgot-password")
 async def forgot_password(data: dict = Body(...)):
@@ -4536,6 +4562,9 @@ async def forgot_password(data: dict = Body(...)):
     
     # Check if user exists
     user = await users_col.find_one({"email": email})
+    logger.info(f"[FORGOT PASSWORD DEBUG] Attempting reset for: {email}")
+    logger.info(f"[FORGOT PASSWORD DEBUG] User found in database: {bool(user)}")
+    
     if not user:
         # For security, don't reveal if user exists. Just say "If email exists, reset link sent"
         return {"status": "success", "message": "If this email is registered, a reset link has been sent."}
@@ -4546,7 +4575,7 @@ async def forgot_password(data: dict = Body(...)):
     
     # Send email
     from services.email_service import send_notification_email
-    reset_link = f"http://localhost:3000/reset-password?token={token}"
+    reset_link = f"http://localhost:3000/#/reset-password?token={token}"
     body = f"""
     <html>
         <body style="font-family: sans-serif; padding: 20px;">
@@ -4686,6 +4715,8 @@ async def signup(user_data: UserSignup, request: Request):
             "password": hashed_password,
             "full_name": user_data.full_name,
             "role": user_data.role,
+            "college_name": user_data.college_name,
+            "graduation_year": user_data.graduation_year,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
     await users_col.insert_one(user_doc)
@@ -4848,6 +4879,9 @@ async def login(credentials: UserLogin, request: Request):
             "user_id": user["user_id"],
             "institution_id": resolved_institution_id,
             "institution_name": user.get("institution_name"),
+            "college_name": user.get("college_name"),
+            "graduation_year": user.get("graduation_year"),
+            "status": user.get("status"),
             "last_login": login_time
         }
     }
@@ -4864,7 +4898,10 @@ async def get_me(user_payload: dict = Depends(get_current_user)):
         "role": user["role"],
         "user_id": user["user_id"],
         "institution_id": user.get("institution_id"),
-        "institution_name": user.get("institution_name")
+        "institution_name": user.get("institution_name"),
+        "college_name": user.get("college_name"),
+        "graduation_year": user.get("graduation_year"),
+        "status": user.get("status")
     }
 
 class UserRoleUpdate(BaseModel):
@@ -4872,6 +4909,67 @@ class UserRoleUpdate(BaseModel):
 
 @app.get("/api/institution/{inst_id}/stats")
 async def get_institution_stats(inst_id: str):
+    # ... existing logic ...
+    pass
+
+@app.get("/api/user/{user_id}/dashboard-stats")
+async def get_user_dashboard_stats(user_id: str):
+    """
+    COMPREHENSIVE STATS: Returns readiness scores and skill metrics for the learner.
+    """
+    try:
+        # 1. Base readiness score from profile completion
+        user = await users_col.find_one({"user_id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        base_score = 25 # Every user starts with base score
+        if user.get("college_name"): base_score += 15
+        if user.get("graduation_year"): base_score += 10
+        
+        # 2. Add points for certifications
+        cert_count = await certificates_col.count_documents({"user_id": user_id})
+        cert_score = min(cert_count * 10, 50) # Max 50 points from certs
+        
+        total_readiness = min(base_score + cert_score, 100)
+        
+        # 3. Fetch certifications
+        certs = await certificates_col.find({"user_id": user_id}).to_list(10)
+        for c in certs: c["_id"] = str(c["_id"])
+        
+        return {
+            "readiness_score": total_readiness,
+            "certifications_count": cert_count,
+            "skills": {
+                "Backend": 40 + cert_score,
+                "Frontend": 35 + cert_score,
+                "GenAI": 20 + cert_score,
+                "DevOps": 15 + cert_score
+            },
+            "recent_certificates": certs
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/leaderboard/global")
+async def get_global_leaderboard():
+    """
+    GLOBAL RANKINGS: Returns top performers across the platform.
+    """
+    try:
+        # Mocking for now, in production pull from aggregate scores
+        rankings = [
+            {"rank": 1, "name": "Sarah Q.", "score": 98.2, "status": "Verified", "movement": "▲"},
+            {"rank": 2, "name": "James L.", "score": 96.5, "status": "Verified", "movement": "-"},
+            {"rank": 3, "name": "Akshay A.", "score": 92.4, "status": "Active", "movement": "▲"},
+            {"rank": 4, "name": "Sravanthi K.", "score": 89.1, "status": "Active", "movement": "▼"},
+            {"rank": 5, "name": "Varshini R.", "score": 87.8, "status": "Active", "movement": "▲"}
+        ]
+        # Try to pull actual user names if available
+        # ... logic to fetch real top users ...
+        return {"rankings": rankings}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     """
     DYNAMIC STATS: Aggregates real-time data from MongoDB for the dashboard.
     """

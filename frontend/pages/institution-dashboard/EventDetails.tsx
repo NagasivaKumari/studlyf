@@ -126,6 +126,19 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [domainFilter, setDomainFilter] = useState('All Domains');
     const [judgeFilter, setJudgeFilter] = useState('All Judges');
     const [institutionJudges, setInstitutionJudges] = useState<any[]>([]);
+    const [isBulkNotifyModalOpen, setIsBulkNotifyModalOpen] = useState(false);
+    const [bulkNotifyMessage, setBulkNotifyMessage] = useState('');
+    const [bulkNotifySubject, setBulkNotifySubject] = useState('');
+    const [bulkNotifyNextStage, setBulkNotifyNextStage] = useState('Next Round');
+
+    const DEFAULT_SHORTLIST_MESSAGE = `Congratulations {team_name}!
+
+Your project has officially qualified for the {next_stage} of {event_name}. 
+
+We were impressed with your submission and are excited to see your progress in the next round. Please check your dashboard for new requirements and updated deadlines.
+
+Best regards,
+{event_name} Organizing Team`;
 
     /** Fetch judges for this institution from the judges collection */
     const fetchJudges = async () => {
@@ -474,22 +487,36 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         const currentBundle = bundleData?.[bundleTab] || [];
         if (currentBundle.length === 0) return;
 
-        const teamIds = currentBundle.map((item: any) => item.team_id);
-        const nextStage = prompt("Enter the name of the next stage (e.g. Semi-Finals, Finale):", "Next Round");
+        const stageInfo = getCurrentStageInfo();
+        const nextStageName = stageInfo.next_stage_name || "Next Round";
         
-        if (!nextStage) return;
+        setBulkNotifyNextStage(nextStageName);
+        setBulkNotifySubject(`Congratulations! You've been shortlisted for ${event?.title || 'the event'}`);
+        setBulkNotifyMessage(DEFAULT_SHORTLIST_MESSAGE.replace(/{next_stage}/g, nextStageName));
+        setIsBulkNotifyModalOpen(true);
+    };
 
+    const confirmBulkDispatch = async () => {
+        const currentBundle = bundleData?.[bundleTab] || [];
+        const teamIds = currentBundle.map((item: any) => item.team_id);
+        
         setNotifying(true);
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/bulk-notify`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ team_ids: teamIds, next_stage: nextStage })
+                body: JSON.stringify({ 
+                    team_ids: teamIds, 
+                    next_stage: bulkNotifyNextStage,
+                    custom_message: bulkNotifyMessage,
+                    subject: bulkNotifySubject
+                })
             });
 
             if (res.ok) {
                 const result = await res.json();
-                alert(`Successfully dispatched approval protocols to ${result.sent_to} candidates/teams!`);
+                alert(`Successfully dispatched notifications to ${result.sent_to} candidates/teams!`);
+                setIsBulkNotifyModalOpen(false);
             } else {
                 alert('Failed to dispatch notifications');
             }
@@ -2530,6 +2557,110 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 onInvite={handleInviteJudge}
                 loading={isInvitingJudge}
             />
+
+            {/* Bulk Notification Modal */}
+            <FramerAnimatePresence>
+                {isBulkNotifyModalOpen && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                            className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col"
+                        >
+                            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">Bulk Communication Hub</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Targeted: Shortlisted Members • Elite Protocol</p>
+                                </div>
+                                <button 
+                                    onClick={() => setIsBulkNotifyModalOpen(false)}
+                                    className="p-4 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            
+                            <div className="flex-1 p-8 space-y-6 overflow-y-auto max-h-[70vh]">
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Email Subject</label>
+                                    <input 
+                                        value={bulkNotifySubject}
+                                        onChange={(e) => setBulkNotifySubject(e.target.value)}
+                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all outline-none"
+                                        placeholder="Enter email subject..."
+                                    />
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 flex justify-between">
+                                        <span>Message Content</span>
+                                        <span className="text-[#6C3BFF]">Personalization Active</span>
+                                    </label>
+                                    <textarea 
+                                        value={bulkNotifyMessage}
+                                        onChange={(e) => setBulkNotifyMessage(e.target.value)}
+                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all h-64 resize-none outline-none"
+                                        placeholder="Compose your custom message..."
+                                    />
+                                    <div className="flex flex-wrap gap-2 px-2">
+                                        {['{team_name}', '{event_name}'].map(tag => (
+                                            <button 
+                                                key={tag}
+                                                onClick={() => setBulkNotifyMessage(prev => prev + ' ' + tag)}
+                                                className="px-3 py-1.5 bg-purple-50 text-[#6C3BFF] rounded-lg text-[10px] font-black tracking-wider border border-purple-100 hover:bg-purple-600 hover:text-white transition-all"
+                                            >
+                                                + {tag}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                                    <div className="flex gap-4">
+                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm shrink-0">
+                                            <Zap size={20} className="text-amber-500" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[11px] font-black text-slate-900 uppercase tracking-tight">Professional Dispatch Protocol</p>
+                                            <p className="text-[10px] font-bold text-slate-400 leading-relaxed mt-1">
+                                                This message will be wrapped in the premium Studlyf Achievement Template automatically. 
+                                                The round will be set to: <strong className="text-[#6C3BFF]">{bulkNotifyNextStage}</strong>.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-8 border-t border-slate-100 bg-white flex items-center justify-between">
+                                <button 
+                                    onClick={() => setIsBulkNotifyModalOpen(false)}
+                                    className="px-8 py-4 text-sm font-black text-slate-400 hover:text-slate-600 transition-all"
+                                >
+                                    Discard Draft
+                                </button>
+                                <button 
+                                    onClick={confirmBulkDispatch}
+                                    disabled={notifying}
+                                    className="px-10 py-4 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 hover:shadow-2xl hover:shadow-purple-200 transition-all shadow-xl shadow-purple-600/10 flex items-center gap-3"
+                                >
+                                    {notifying ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                    ) : (
+                                        <Send size={18} />
+                                    )}
+                                    {notifying ? 'Dispatching...' : 'Dispatch Notifications'}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </FramerAnimatePresence>
         {/* Hackathon Evaluation Modal */}
         <FramerAnimatePresence>
             {evaluatingSubmission && (
