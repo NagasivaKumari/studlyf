@@ -205,9 +205,9 @@ const DashboardFooter: React.FC = () => {
                             {/* Animated Outer Glow Background */}
                             <div className="absolute inset-0 bg-[#7C3AED]/20 blur-2xl rounded-3xl opacity-50 group-hover/logo:opacity-100 transition-opacity duration-500" />
 
-                            <div className="relative bg-white/[0.03] backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/20 shadow-2xl transition-all duration-500 hover:scale-[1.03] hover:border-white/40 w-fit overflow-hidden">
+                            <div className="relative bg-white px-6 py-3 rounded-2xl border border-white/20 shadow-2xl transition-all duration-500 hover:scale-[1.03] hover:border-white/40 w-fit overflow-hidden">
                                 {/* Subtle Internal Radial Light */}
-                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.12)_0%,_transparent_75%)]" />
+                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(0,0,0,0.05)_0%,_transparent_75%)]" />
 
                                 <img
                                     src="/images/studlyf.png"

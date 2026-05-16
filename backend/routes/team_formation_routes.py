@@ -2,7 +2,11 @@
 Team Formation Routes - Handle team formation emails and notifications
 """
 from fastapi import APIRouter, HTTPException, Body
+import logging
+from db import users_col
 from services.email_service import send_notification_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/team-formation", tags=["Team Formation"])
 
@@ -13,6 +17,25 @@ async def send_team_formation_email(data: dict = Body(...)):
         team_name = data.get("teamName", "")
         leader_name = data.get("leader", "")
         event = data.get("event", "")
+        
+        # Look up the leader's email in the users collection
+        leader_user = await users_col.find_one({"full_name": leader_name})
+        if not leader_user:
+            # Fallback check by name (case-insensitive)
+            leader_user = await users_col.find_one({"full_name": {"$regex": f"^{leader_name}$", "$options": "i"}})
+        
+        leader_email = leader_user.get("email") if leader_user else None
+        
+        if not leader_email:
+            # If still not found, we can't send the email reliably
+            logger.warning(f"Could not find email for leader: {leader_name}")
+            # For backward compatibility with the frontend mock, if they provided an email use it
+            leader_email = data.get("leaderEmail")
+            
+        if not leader_email:
+             # Last resort placeholder for debugging (to be removed in production)
+             leader_email = f"{leader_name.lower().replace(' ', '.')}@example.com"
+             logger.error(f"Using fallback placeholder email for {leader_name}")
         
         # Create HTML email content
         email_html = f"""
@@ -54,9 +77,7 @@ async def send_team_formation_email(data: dict = Body(...)):
         </html>
         """
         
-        # Send email (you'll need to provide the leader's email)
-        # For now, we'll use a placeholder email
-        leader_email = f"{leader_name.lower().replace(' ', '.')}@example.com"
+        # Send email
         
         await send_notification_email(
             to_email=leader_email,

@@ -9,7 +9,7 @@ const LandingNavbar: React.FC = () => {
     return (
         <div className="absolute top-0 left-0 right-0 z-[100] px-4 py-4 sm:px-8 sm:py-5 flex items-center justify-between pointer-events-none">
             <div
-                className="cursor-pointer tracking-tight pointer-events-auto bg-white/80 backdrop-blur-sm px-4 py-1.5 sm:px-6 sm:py-2 rounded-2xl border border-gray-200 shadow-sm transition-all hover:shadow-md hover:scale-[1.02]"
+                className="cursor-pointer tracking-tight pointer-events-auto bg-white px-4 py-1.5 sm:px-6 sm:py-2 rounded-2xl border border-gray-200 shadow-sm transition-all hover:shadow-md hover:scale-[1.02]"
                 onClick={() => navigate('/')}
             >
                 <img src="/images/studlyf.png" alt="STUDLYF" className="h-10 sm:h-16" />

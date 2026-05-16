@@ -44,7 +44,7 @@ export const TypewriterEffectSmooth = ({
     };
 
     return (
-        <div className={`flex space-x-1 ${className || ""}`}>
+        <div className={`${className || ""}`}>
             <motion.div
                 initial={{
                     width: "0%",
@@ -68,20 +68,6 @@ export const TypewriterEffectSmooth = ({
                     {renderWords()}{" "}
                 </div>{" "}
             </motion.div>
-            <motion.span
-                initial={{
-                    opacity: 0,
-                }}
-                animate={{
-                    opacity: 1,
-                }}
-                transition={{
-                    duration: 0.8,
-                    repeat: Infinity,
-                    repeatType: "reverse",
-                }}
-                className={`block rounded-sm w-[4px] h-10 sm:h-14 lg:h-20 bg-[#7C3AED] ${cursorClassName || ""}`}
-            ></motion.span>
         </div>
     );
 };

@@ -6,7 +6,7 @@ import { useAuth } from '../AuthContext';
 import { ShoppingCart, User, LogOut, Menu, X, ChevronDown } from 'lucide-react';
 
 const StudlyfLogo = ({ className = "h-8 sm:h-10" }: { className?: string }) => (
-  <div className={`flex items-center ${className}`}>
+  <div className={`flex items-center bg-white px-3 py-1.5 rounded-xl shadow-sm ${className}`}>
     <img
       src="/images/studlyf.png"
       alt="STUDLYF Logo"

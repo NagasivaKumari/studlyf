@@ -447,9 +447,9 @@ const CourseDetail: React.FC = () => {
                   {/* Price */}
                     <div className="mb-6">
                       <div className="text-4xl font-black text-[#111827] mb-1">
-                        ₹{Number(price).toLocaleString('en-IN')}
+                        ₹0
                       </div>
-                      <div className="text-sm text-gray-600 line-through">₹{(Number(price) * 1.5).toLocaleString('en-IN')}</div>
+                      <div className="text-sm text-gray-600">Free Enrollment</div>
                     </div>
 
                   {/* Action Buttons */}

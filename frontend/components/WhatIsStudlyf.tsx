@@ -93,7 +93,9 @@ const WhatIsStudlyf: React.FC = () => {
                             }}
                             className="inline-block align-middle"
                         >
-                            <img src="/images/studlyf.png" alt="STUDLYF" className="h-[60px] md:h-[100px] lg:h-[120px] w-auto inline-block drop-shadow-[0_0_20px_rgba(108,77,255,0.4)] mb-4" />
+                            <div className="bg-white p-5 rounded-[2.5rem] inline-block shadow-2xl border border-gray-100">
+                                <img src="/images/studlyf.png" alt="STUDLYF" className="h-[60px] md:h-[100px] lg:h-[120px] w-auto inline-block" />
+                            </div>
                         </motion.span>
                     </motion.h3>
                 </div>

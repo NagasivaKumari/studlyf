@@ -40,10 +40,11 @@ interface DSAQuestion {
   code: { [key: string]: string };
   time: string;
   space: string;
+  visualizerType?: 'stack' | 'queue' | 'linked-list' | 'bst' | 'hash-table';
 }
 
 interface TechQuestion {
-  category: 'Core CS' | 'Language' | 'System Design' | 'Cloud';
+  category: string;
   question: string;
   answer: string;
   keyPoints: string[];
@@ -95,33 +96,55 @@ const MOCK_COMPANIES: Company[] = [
     stats: { placed: '120+', avgpackage: '32 LPA' },
     dsa: [
       {
-        id: '1',
+        id: 'g1',
         title: 'Longest Palindromic Substring',
         difficulty: 'Medium',
-        frequency: 85,
+        frequency: 92,
         tags: ['String', 'DP'],
         input: '"babad"',
         output: '"bab"',
-        approach: 'Expand around center or Use DP table.',
+        approach: 'Expand around center or use a 2D DP table to track palindromes.',
         time: 'O(n^2)',
         space: 'O(1)',
+        visualizerType: 'hash-table',
         code: { python: 'def longest(s): ...', java: 'public String longest(String s) { ... }' }
+      },
+      {
+        id: 'g2',
+        title: 'Median of Two Sorted Arrays',
+        difficulty: 'Hard',
+        frequency: 88,
+        tags: ['Binary Search', 'Array'],
+        input: '[1,3], [2]',
+        output: '2.0',
+        approach: 'Use binary search on the smaller array to find the partition point.',
+        time: 'O(log(min(m,n)))',
+        space: 'O(1)',
+        visualizerType: 'bst',
+        code: { python: 'def findMedian(nums1, nums2): ...' }
       }
     ],
     technical: [
       {
         category: 'System Design',
         question: 'Design a Global Rate Limiter',
-        answer: 'Use Token Bucket or Leaky Bucket algorithm with Redis for distributed state.',
-        keyPoints: ['Latency', 'Consistency', 'Fallbacks'],
-        followUps: ['How to handle sudden traffic spikes?']
+        answer: 'Use Token Bucket or Leaky Bucket algorithm with Redis for distributed state across clusters.',
+        keyPoints: ['Latency', 'Consistency', 'Redis Cluster', 'Sliding Window'],
+        followUps: ['How to handle race conditions in high-traffic spikes?']
+      },
+      {
+        category: 'Core CS',
+        question: 'How does the Linux kernel handle process scheduling?',
+        answer: 'Google uses a modified CFS (Completely Fair Scheduler) with priorities for production services.',
+        keyPoints: ['CFS', 'Context Switching', 'Interrupts'],
+        followUps: ['What are the trade-offs of using real-time scheduling?']
       }
     ],
     hr: [
       {
-        question: 'Tell me about a time you had a conflict with a teammate.',
-        modelAnswer: 'Focused on objective outcomes rather than personal friction...',
-        aiTips: 'Emphasize Googliness and psychological safety.'
+        question: 'Tell me about a time you showed leadership without being in a formal position.',
+        modelAnswer: 'Identify a gap in the project, propose a solution, and rally the team to implement it.',
+        aiTips: 'Emphasize Googliness: Ownership, Humility, and bias for action.'
       }
     ]
   },
@@ -130,7 +153,7 @@ const MOCK_COMPANIES: Company[] = [
     name: 'Amazon',
     logo: 'https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg',
     industry: 'Ecommerce & AWS',
-    hiringRoles: ['SDE', 'Data Engineer', 'Solutions Architect'],
+    hiringRoles: ['SDE I', 'Data Engineer', 'Solutions Architect'],
     interviewRounds: ['Online Assessment', 'Technical Phone Screen', 'Bar Raiser (Onsite)'],
     salaryRange: '₹25L - ₹50L',
     brandColor: '#FF9900',
@@ -138,16 +161,59 @@ const MOCK_COMPANIES: Company[] = [
     difficulty: 'Elite',
     completion: 0,
     stats: { placed: '200+', avgpackage: '28 LPA' },
-    dsa: [],
-    technical: [],
-    hr: []
+    dsa: [
+      {
+        id: 'a1',
+        title: 'Merge k Sorted Lists',
+        difficulty: 'Hard',
+        frequency: 95,
+        tags: ['Linked List', 'Heap'],
+        input: '[[1,4,5],[1,3,4],[2,6]]',
+        output: '[1,1,2,3,4,4,5,6]',
+        approach: 'Use a Priority Queue to keep track of the smallest current element across k lists.',
+        time: 'O(N log k)',
+        space: 'O(k)',
+        visualizerType: 'linked-list',
+        code: { python: 'def mergeKLists(lists): ...' }
+      },
+      {
+        id: 'a2',
+        title: 'LRU Cache Design',
+        difficulty: 'Medium',
+        frequency: 98,
+        tags: ['Hash Map', 'Linked List'],
+        input: 'LRUCache(2), put(1,1), put(2,2), get(1)...',
+        output: '1',
+        approach: 'Combine a Doubly Linked List with a Hash Map for O(1) access and updates.',
+        time: 'O(1)',
+        space: 'O(capacity)',
+        visualizerType: 'linked-list',
+        code: { java: 'class LRUCache { ... }' }
+      }
+    ],
+    technical: [
+      {
+        category: 'System Design',
+        question: 'How does Amazon S3 achieve 99.999999999% durability?',
+        answer: 'Data is replicated across at least three physical Availability Zones (AZs) within a region.',
+        keyPoints: ['Erasure Coding', 'Replication', 'Checksums'],
+        followUps: ['How do you handle eventual consistency in S3?']
+      }
+    ],
+    hr: [
+      {
+        question: 'Tell me about a time you had to deliver a project on a tight deadline.',
+        modelAnswer: 'Focus on prioritization, simplifying the MVP, and clear communication with stakeholders.',
+        aiTips: 'Align this with the "Deliver Results" Leadership Principle.'
+      }
+    ]
   },
   {
     id: 'microsoft',
     name: 'Microsoft',
     logo: 'https://upload.wikimedia.org/wikipedia/commons/9/96/Microsoft_logo_%282012%29.svg',
     industry: 'Enterprise Software',
-    hiringRoles: ['SDE', 'Security Engineer'],
+    hiringRoles: ['SDE I', 'Security Engineer'],
     interviewRounds: ['Codility OA', '3 Technical Rounds', 'AA Round'],
     salaryRange: '₹22L - ₹45L',
     brandColor: '#00A4EF',
@@ -155,26 +221,38 @@ const MOCK_COMPANIES: Company[] = [
     difficulty: 'High',
     completion: 0,
     stats: { placed: '150+', avgpackage: '24 LPA' },
-    dsa: [],
-    technical: [],
-    hr: []
-  },
-  {
-    id: 'netflix',
-    name: 'Netflix',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg',
-    industry: 'Entertainment & Streaming',
-    hiringRoles: ['UI Engineer', 'Content SRE'],
-    interviewRounds: ['Tech Screen', 'Panel Interview', 'Culture Fit'],
-    salaryRange: '₹40L - ₹80L',
-    brandColor: '#E50914',
-    culture: 'Freedom & Responsibility',
-    difficulty: 'Elite',
-    completion: 0,
-    stats: { placed: '45+', avgpackage: '42 LPA' },
-    dsa: [],
-    technical: [],
-    hr: []
+    dsa: [
+      {
+        id: 'm1',
+        title: 'Validate Binary Search Tree',
+        difficulty: 'Medium',
+        frequency: 82,
+        tags: ['Tree', 'DFS'],
+        input: '[2,1,3]',
+        output: 'true',
+        approach: 'Perform an in-order traversal and verify if it yields a strictly increasing sequence.',
+        time: 'O(n)',
+        space: 'O(h)',
+        visualizerType: 'bst',
+        code: { python: 'def isValidBST(root): ...' }
+      }
+    ],
+    technical: [
+      {
+        category: 'System Design',
+        question: 'Design a real-time collaborative document editor (like Office 365).',
+        answer: 'Use Operational Transformation (OT) or Conflict-free Replicated Data Types (CRDTs).',
+        keyPoints: ['WebSockets', 'Concurrency', 'Snapshotting'],
+        followUps: ['How to handle offline synchronization?']
+      }
+    ],
+    hr: [
+      {
+        question: 'Describe a situation where you had to adapt to a major change in a project.',
+        modelAnswer: 'Emphasize flexibility, learning the new requirement quickly, and adjusting the plan.',
+        aiTips: 'Emphasize Growth Mindset and learning from the change.'
+      }
+    ]
   },
   {
     id: 'meta',
@@ -189,16 +267,45 @@ const MOCK_COMPANIES: Company[] = [
     difficulty: 'Elite',
     completion: 0,
     stats: { placed: '90+', avgpackage: '35 LPA' },
-    dsa: [],
-    technical: [],
-    hr: []
+    dsa: [
+      {
+        id: 'fb1',
+        title: 'Product of Array Except Self',
+        difficulty: 'Medium',
+        frequency: 94,
+        tags: ['Array', 'Prefix/Suffix'],
+        input: '[1,2,3,4]',
+        output: '[24,12,8,6]',
+        approach: 'Calculate prefix products and suffix products in two passes to avoid division.',
+        time: 'O(n)',
+        space: 'O(1)',
+        visualizerType: 'hash-table',
+        code: { python: 'def productExceptSelf(nums): ...' }
+      }
+    ],
+    technical: [
+      {
+        category: 'System Design',
+        question: 'Design the Facebook News Feed.',
+        answer: 'Use a pull-based or push-based approach depending on the celebrity status of the user.',
+        keyPoints: ['Fan-out', 'Caching', 'Ranking Algorithm'],
+        followUps: ['How to ensure eventual consistency in a global system?']
+      }
+    ],
+    hr: [
+      {
+        question: 'What is the most difficult feedback you have ever received?',
+        modelAnswer: 'Be honest about the feedback, explain the steps you took to improve, and show the result.',
+        aiTips: 'Show openness and a desire for continuous improvement.'
+      }
+    ],
   },
   {
     id: 'apple',
     name: 'Apple',
     logo: 'https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg',
     industry: 'Consumer Electronics',
-    hiringRoles: ['Hardeare Engineer', 'iOS Developer'],
+    hiringRoles: ['Hardware Engineer', 'iOS Developer'],
     interviewRounds: ['Initial Chat', 'Technical Deep Dive', 'Team Interaction'],
     salaryRange: '₹30L - ₹65L',
     brandColor: '#000000',
@@ -206,9 +313,84 @@ const MOCK_COMPANIES: Company[] = [
     difficulty: 'Elite',
     completion: 0,
     stats: { placed: '35+', avgpackage: '38 LPA' },
-    dsa: [],
-    technical: [],
-    hr: []
+    dsa: [
+      {
+        id: 'apple1',
+        title: 'Reverse Linked List',
+        difficulty: 'Easy',
+        frequency: 85,
+        tags: ['Linked List'],
+        input: '1->2->3->4->5',
+        output: '5->4->3->2->1',
+        approach: 'Use three pointers (prev, curr, next) to reverse the nodes in-place.',
+        time: 'O(n)',
+        space: 'O(1)',
+        visualizerType: 'linked-list',
+        code: { python: 'def reverseList(head): ...' }
+      }
+    ],
+    technical: [
+      {
+        category: 'iOS / Systems',
+        question: 'Explain the difference between ARC and manual memory management.',
+        answer: 'Automatic Reference Counting (ARC) handles retain/release at compile-time based on object ownership.',
+        keyPoints: ['Reference Counting', 'Retain Cycles', 'Weak/Strong Pointers'],
+        followUps: ['How do you debug memory leaks in Xcode?']
+      }
+    ],
+    hr: [
+      {
+        question: 'Why Apple?',
+        modelAnswer: 'Focus on the intersection of technology and liberal arts, and the commitment to privacy and quality.',
+        aiTips: 'Emphasize attention to detail and user-centric design.'
+      }
+    ]
+  },
+  {
+    id: 'netflix',
+    name: 'Netflix',
+    logo: 'https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg',
+    industry: 'Entertainment & Streaming',
+    hiringRoles: ['UI Engineer', 'Content SRE'],
+    interviewRounds: ['Tech Screen', 'Panel Interview', 'Culture Fit'],
+    salaryRange: '₹40L - ₹80L',
+    brandColor: '#E50914',
+    culture: 'Freedom & Responsibility',
+    difficulty: 'Elite',
+    completion: 0,
+    stats: { placed: '45+', avgpackage: '42 LPA' },
+    dsa: [
+      {
+        id: 'nflx1',
+        title: 'Valid Parentheses',
+        difficulty: 'Easy',
+        frequency: 91,
+        tags: ['Stack', 'String'],
+        input: '"()[]{}"',
+        output: 'true',
+        approach: 'Use a stack to push opening brackets and pop/check on closing brackets.',
+        time: 'O(n)',
+        space: 'O(n)',
+        visualizerType: 'stack',
+        code: { python: 'def isValid(s): ...' }
+      }
+    ],
+    technical: [
+      {
+        category: 'Distributed Systems',
+        question: 'How does Netflix optimize video encoding for low bandwidth?',
+        answer: 'Per-shot encoding allows different bitrates for different scenes based on complexity.',
+        keyPoints: ['VMAF', 'Encoding', 'CDN (Open Connect)'],
+        followUps: ['How does the Open Connect appliance work?']
+      }
+    ],
+    hr: [
+      {
+        question: 'How do you handle the Freedom & Responsibility culture at Netflix?',
+        modelAnswer: 'Show that you are self-motivated, take ownership, and can make decisions without heavy supervision.',
+        aiTips: 'Read the Netflix Culture Memo before the interview.'
+      }
+    ]
   },
   {
     id: 'nvidia',
@@ -222,10 +404,39 @@ const MOCK_COMPANIES: Company[] = [
     culture: 'Accelerating Tomorrow',
     difficulty: 'Elite',
     completion: 0,
-    stats: { placed: '20+', avgpackage: '45 LPA' },
-    dsa: [],
-    technical: [],
-    hr: []
+    stats: { placed: '200+', avgpackage: '28 LPA' },
+    dsa: [
+      {
+        id: 'nv1',
+        title: 'Top K Frequent Elements',
+        difficulty: 'Medium',
+        frequency: 88,
+        tags: ['Heap', 'Hash Table'],
+        input: 'nums = [1,1,1,2,2,3], k = 2',
+        output: '[1,2]',
+        approach: 'Use a hash map to count frequencies and a min-heap to keep track of the top k elements.',
+        time: 'O(n log k)',
+        space: 'O(n)',
+        visualizerType: 'hash-table',
+        code: { python: 'def topKFrequent(nums, k): ...' }
+      }
+    ],
+    technical: [
+      {
+        category: 'Architecture',
+        question: 'What is the difference between a CPU and a GPU architecture?',
+        answer: 'CPUs are designed for low-latency serial processing; GPUs are designed for high-throughput parallel processing.',
+        keyPoints: ['Parallelism', 'SIMD', 'Memory Bandwidth'],
+        followUps: ['How does CUDA simplify GPU programming?']
+      }
+    ],
+    hr: [
+      {
+        question: 'Tell me about a time you solved a complex technical problem.',
+        modelAnswer: 'Explain the problem, the various solutions you considered, and why you chose the final one.',
+        aiTips: 'Focus on your analytical process and final impact.'
+      }
+    ]
   },
   {
     id: 'uber',
@@ -240,9 +451,38 @@ const MOCK_COMPANIES: Company[] = [
     difficulty: 'High',
     completion: 0,
     stats: { placed: '70+', avgpackage: '29 LPA' },
-    dsa: [],
-    technical: [],
-    hr: []
+    dsa: [
+      {
+        id: 'u1',
+        title: 'Word Search',
+        difficulty: 'Medium',
+        frequency: 82,
+        tags: ['Backtracking', 'Matrix'],
+        input: 'board = [["A","B","C","E"],...], word = "SEE"',
+        output: 'true',
+        approach: 'Use DFS with backtracking to explore all possible paths in the grid.',
+        time: 'O(N * 3^L)',
+        space: 'O(L)',
+        visualizerType: 'hash-table',
+        code: { python: 'def exist(board, word): ...' }
+      }
+    ],
+    technical: [
+      {
+        category: 'System Design',
+        question: 'How would you design Ubers Surge Pricing system?',
+        answer: 'Use a geospatial index (like H3) to calculate supply/demand in real-time hexagonal cells.',
+        keyPoints: ['Geospatial Indexing', 'H3', 'Dynamic Pricing'],
+        followUps: ['How to handle sudden demand spikes for events?']
+      }
+    ],
+    hr: [
+      {
+        question: 'What does "Go Get It" mean to you?',
+        modelAnswer: 'It means taking initiative, not waiting for instructions, and being obsessed with solving the user\'s problem.',
+        aiTips: 'Uber values builders who take extreme ownership.'
+      }
+    ]
   },
   {
     id: 'tcs',
@@ -763,6 +1003,14 @@ const CompanyModules: React.FC = () => {
                                   <div className={`w-3 h-3 rounded-full ${q.difficulty === 'Hard' ? 'bg-red-500' : q.difficulty === 'Medium' ? 'bg-orange-500' : 'bg-green-500'}`} />
                                   <h4 className="text-2xl font-bold text-[#111827]">{q.title}</h4>
                                 </div>
+                                {q.visualizerType && (
+                                  <button 
+                                    onClick={() => navigate(`/learn/visualizer/${q.visualizerType}`, { state: { companyId: selectedCompany.id, questionTitle: q.title } })}
+                                    className="px-6 py-2 bg-white border border-[#7C3AED]/20 text-[#7C3AED] rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] hover:text-white transition-all flex items-center gap-2"
+                                  >
+                                    <Play className="w-3 h-3" /> Visualize Protocol
+                                  </button>
+                                )}
                               </div>
 
                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -771,8 +1019,14 @@ const CompanyModules: React.FC = () => {
                                     <span className="text-[8px] font-black text-[#64748B] uppercase block mb-1">Complexity</span>
                                     <span className="font-bold text-[#111827]">{q.time} | {q.space}</span>
                                   </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {q.tags.map(t => <span key={t} className="px-3 py-1 bg-gray-100 rounded-lg text-[9px] font-bold text-gray-500 uppercase tracking-widest">{t}</span>)}
+                                  </div>
                                 </div>
-                                <div className="p-6 bg-white rounded-2xl border border-[#E2E8F0]">
+                                <div className="p-6 bg-white rounded-2xl border border-[#E2E8F0] relative overflow-hidden">
+                                  <div className="absolute top-0 right-0 p-2 opacity-5">
+                                    <Bot className="w-12 h-12" />
+                                  </div>
                                   <span className="text-[10px] font-black text-[#7C3AED] uppercase block mb-2">Solution Insight</span>
                                   <p className="text-sm text-[#64748B] leading-relaxed">{q.approach}</p>
                                 </div>
