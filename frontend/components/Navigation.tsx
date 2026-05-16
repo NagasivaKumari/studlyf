@@ -3,7 +3,7 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
-import { ShoppingCart, User, LogOut, Menu, X, ChevronDown } from 'lucide-react';
+import { ShoppingCart, User, LogOut, Menu, X, ChevronDown, UserCircle } from 'lucide-react';
 
 const StudlyfLogo = ({ className = "h-8 sm:h-10" }: { className?: string }) => (
   <div className={`flex items-center bg-white px-3 py-1.5 rounded-xl shadow-sm ${className}`}>

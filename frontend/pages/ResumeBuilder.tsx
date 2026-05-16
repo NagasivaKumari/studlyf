@@ -1329,7 +1329,7 @@ export default function ResumeBuilder() {
         <div className="flex flex-col h-screen overflow-hidden bg-white">
             <style>{styles}</style>
 
-            <nav className="h-16 bg-[#0e141e] border-b border-white/5 flex items-center justify-between px-8 shrink-0">
+            <nav className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 shrink-0">
                 <div className="flex items-center gap-6">
                     <div
                         className="flex items-center cursor-pointer hover:opacity-80 transition-opacity"
@@ -1338,15 +1338,15 @@ export default function ResumeBuilder() {
                         <img 
                             src="/images/studlyf.png" 
                             alt="STUDLYF Logo" 
-                            className="h-7 sm:h-8 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]"
+                            className="h-7 sm:h-8 w-auto object-contain"
                         />
                     </div>
 
-                    <div className="h-4 border-l border-white/10 mx-2"></div>
+                    <div className="h-4 border-l border-slate-200 mx-2"></div>
 
                     <button
                         onClick={() => setStep(hasExistingData ? 'dashboard' : 'create_new')}
-                        className="text-slate-400 font-bold text-sm hover:text-white transition-colors"
+                        className="text-slate-500 font-bold text-sm hover:text-slate-900 transition-colors"
                     >
                         Home
                     </button>
@@ -1355,12 +1355,12 @@ export default function ResumeBuilder() {
                 <div className="flex items-center gap-4">
                     <button 
                         onClick={() => setIsShareModalOpen(true)}
-                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2"
+                        className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm"
                     >
                         <Share2 size={16} />
                         Share
                     </button>
-                    <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-slate-300">
+                    <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 border border-slate-200">
                         <User size={18} />
                     </div>
                 </div>
