@@ -363,7 +363,7 @@ def fix_progress(prog, default_status="locked"):
     return {**defaults, **fix_id(prog)}
 
 from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes
-from routes import auth, payment_routes
+from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from rate_limiter import rate_limit, check_rate_limit
 
@@ -401,7 +401,6 @@ app.include_router(test_sync_routes.router)
 app.include_router(direct_sync_routes.router)
 app.include_router(hackathon_judging_routes.router)
 app.include_router(hackathon_submission_routes.router)
-app.include_router(payment_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
