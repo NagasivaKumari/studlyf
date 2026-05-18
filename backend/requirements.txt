@@ -42,7 +42,7 @@ cssselect2==0.9.0
 
 # Async & Concurrency
 anyio==4.13.0
-asyncio-contextmanager==1.0.0
+asyncio-contextmanager==1.0.1
 
 # HTTP & Networking
 httpx==0.28.1
