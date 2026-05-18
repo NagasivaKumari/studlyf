@@ -70,6 +70,7 @@ interface EventDetailsProps {
     onBack: () => void;
     institutionId?: string;
     initialSection?: string;
+    onEditEvent?: (eventId: string) => void;
 }
 
 const BUNDLE_TABS = ['shortlisted', 'approved', 'pending', 'rejected'] as const;
@@ -80,7 +81,7 @@ const BUNDLE_TAB_LABEL: Record<string, string> = {
     rejected: 'Rejected',
 };
 
-const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutionId: institutionIdProp, initialSection }) => {
+const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutionId: institutionIdProp, initialSection, onEditEvent }) => {
     const navigate = useNavigate();
     const { user, role } = useAuth();
     const [activeTab, setActiveTab] = useState(initialSection || 'dashboard');
@@ -227,6 +228,18 @@ Best regards,
             try {
                 const eventRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/details`, { headers: { ...authHeaders() } });
                 const eventData = await eventRes.json();
+                
+                // Proactively strip ProseMirror attributes (like data-start, data-end, data-section-id) to make the text clean and readable
+                if (eventData && typeof eventData.description === 'string') {
+                    eventData.description = eventData.description
+                        .replace(/data-start="[^"]*"/g, '')
+                        .replace(/data-end="[^"]*"/g, '')
+                        .replace(/data-section-id="[^"]*"/g, '')
+                        .replace(/&amp;/g, '&')
+                        .replace(/\s\s+/g, ' ')
+                        .trim();
+                }
+                
                 setEvent(eventData);
                 setStages(
                     (Array.isArray(eventData.stages) ? eventData.stages : []).map((s: any, idx: number) => ({
@@ -434,6 +447,30 @@ Best regards,
         }
     };
 
+    // Logo / banner upload handler (used in Basic Info tab)
+    const handleMediaUpload = async (file: File, field: 'logo_url' | 'banner_url') => {
+        if (!eventId) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('field', field);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/upload-media`, {
+                method: 'POST',
+                headers: { ...authHeaders() },
+                body: formData,
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setEvent((prev: any) => prev ? { ...prev, [field]: data.url } : prev);
+                setShowSaveSuccess(true);
+            } else {
+                alert('Upload failed. Please try again.');
+            }
+        } catch {
+            alert('Network error during upload.');
+        }
+    };
+
     const handleBack = () => {
         // Try the provided onBack function first
         if (onBack && typeof onBack === 'function') {
@@ -540,6 +577,15 @@ Best regards,
             if (res.ok) {
                 const eventRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/details`, { headers: { ...authHeaders() } });
                 const eventData = await eventRes.json();
+                if (eventData && typeof eventData.description === 'string') {
+                    eventData.description = eventData.description
+                        .replace(/data-start="[^"]*"/g, '')
+                        .replace(/data-end="[^"]*"/g, '')
+                        .replace(/data-section-id="[^"]*"/g, '')
+                        .replace(/&amp;/g, '&')
+                        .replace(/\s\s+/g, ' ')
+                        .trim();
+                }
                 setEvent(eventData);
                 setShowSaveSuccess(true);
                 setTimeout(() => setShowSaveSuccess(false), 3000);
@@ -1509,7 +1555,7 @@ Best regards,
                                 </button>
                             </div>
                         )}
-                        <StageBuilder stages={stages} onUpdate={setStages} onConfigureQuiz={openQuizForStage} />
+                        <StageBuilder stages={stages} onUpdate={setStages} onConfigureQuiz={openQuizForStage} availableJudges={institutionJudges} />
                     </div>
                 );
             case 'teams':
@@ -1568,24 +1614,91 @@ Best regards,
 
             case 'basic':
                 return (
-                    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                            <div className="space-y-4">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Opportunity Identity</label>
-                                <input type="text" value={event.title} onChange={(e) => setEvent({...event, title: e.target.value})} className="w-full px-6 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] outline-none font-bold text-slate-900 focus:ring-4 focus:ring-[#6C3BFF]/5 transition-all" />
+                    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 font-sans">
+                        {/* Header Action Card */}
+                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600">
+                                    <Info size={28} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-800">Opportunity Information</h3>
+                                    <p className="text-xs font-bold text-slate-400 mt-1">This opportunity's details are fully managed through the creation wizard.</p>
+                                </div>
                             </div>
-                            <div className="space-y-4">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Classification</label>
-                                <select value={event.category || 'Hackathon'} onChange={(e) => setEvent({...event, category: e.target.value})} className="w-full px-6 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] outline-none font-bold text-slate-900 appearance-none">
-                                    <option>Hackathon</option>
-                                    <option>Coding Competition</option>
-                                    <option>Design Challenge</option>
-                                    <option>Case Study</option>
-                                </select>
+                            <button
+                                onClick={() => onEditEvent?.(event._id)}
+                                className="flex items-center gap-2.5 px-6 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-xl shadow-purple-200"
+                            >
+                                <Edit3 size={14} /> Edit Opportunity
+                            </button>
+                        </div>
+
+                        {/* Detailed Grid Card */}
+                        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden p-10 space-y-10">
+                            {/* Images Row */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                <div className="space-y-3">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Event Logo</span>
+                                    <div className="w-full h-40 bg-slate-50 border border-slate-100 rounded-3xl flex items-center justify-center overflow-hidden p-4">
+                                        {event.logo_url ? (
+                                            <img src={event.logo_url} alt="Logo" className="max-w-full max-h-full object-contain" />
+                                        ) : (
+                                            <div className="text-slate-300 font-bold text-xs uppercase tracking-wider">No Logo Uploaded</div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="md:col-span-2 space-y-3">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Event Banner</span>
+                                    <div className="w-full h-40 bg-slate-50 border border-slate-100 rounded-3xl flex items-center justify-center overflow-hidden">
+                                        {event.banner_url ? (
+                                            <img src={event.banner_url} alt="Banner" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="text-slate-300 font-bold text-xs uppercase tracking-wider">No Banner Uploaded</div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                            <div className="md:col-span-2 space-y-4">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Strategic Overview</label>
-                                <textarea rows={8} value={event.description} onChange={(e) => setEvent({...event, description: e.target.value})} className="w-full px-6 py-6 bg-slate-50 border border-slate-100 rounded-[2rem] outline-none font-medium text-slate-600 resize-none leading-relaxed" />
+
+                            {/* Details Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-slate-50">
+                                <div className="space-y-2">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Opportunity Title</span>
+                                    <p className="text-[15px] font-black text-slate-800 leading-tight">{event.title || '—'}</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Classification</span>
+                                    <p className="text-[15px] font-black text-slate-800 leading-tight">{event.category || '—'}</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Opportunity Mode</span>
+                                    <p className="text-[15px] font-black text-slate-800 leading-tight capitalize">{event.opportunityMode || '—'}</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Assessed Skills</span>
+                                    <p className="text-[15px] font-black text-slate-800 leading-tight">{event.skills || 'None specified'}</p>
+                                </div>
+
+                                {event.prize_pool && (
+                                    <div className="space-y-2">
+                                        <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Prize Pool</span>
+                                        <p className="text-[15px] font-black text-slate-800 leading-tight">{event.prize_pool}</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Description / Strategic Overview */}
+                            <div className="space-y-4 pt-8 border-t border-slate-50">
+                                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Strategic Overview</span>
+                                <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2rem]">
+                                    <div 
+                                        className="opportunity-rich-text text-slate-600 font-medium leading-relaxed [&_p]:mb-4 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-2 [&_strong]:font-bold [&_em]:italic [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_a]:text-purple-600 [&_a]:underline outline-none"
+                                        dangerouslySetInnerHTML={{ __html: event.description || '<p>No description provided.</p>' }}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>

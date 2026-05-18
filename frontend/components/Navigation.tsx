@@ -3,7 +3,7 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
-import { ShoppingCart, User, LogOut, Menu, X, ChevronDown, UserCircle } from 'lucide-react';
+import { ShoppingCart, User, LogOut, Menu, X, ChevronDown, UserCircle, BookOpen } from 'lucide-react';
 
 const StudlyfLogo = ({ className = "h-8 sm:h-10" }: { className?: string }) => (
   <div className={`flex items-center bg-white px-3 py-1.5 rounded-xl shadow-sm ${className}`}>
@@ -149,7 +149,7 @@ const Navigation: React.FC = () => {
                 )}
               </button>
 
-              <Link to={user ? "/dashboard/learner" : "/"} className="flex items-center group transition-transform hover:scale-105 active:scale-95">
+              <Link to={user ? "/dashboard/learner?view=overview" : "/"} className="flex items-center group transition-transform hover:scale-105 active:scale-95">
                 <StudlyfLogo />
               </Link>
             </div>
@@ -179,6 +179,14 @@ const Navigation: React.FC = () => {
                 >
                   OPPORTUNITIES
                 </Link>
+                {user && (
+                  <Link
+                    to="/dashboard/my-courses"
+                    className="flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-[#4B5563] hover:text-[#7C3AED]"
+                  >
+                    MY COURSES
+                  </Link>
+                )}
                 {user && role !== 'institution' && (
                   <Link
                     to="/opportunities/my-applications"
@@ -232,11 +240,18 @@ const Navigation: React.FC = () => {
                         
                         <div className="p-2">
                           <Link
-                            to="/dashboard/learner"
+                            to="/dashboard/learner?view=profile"
                             className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-gray-600 hover:text-[#7C3AED] hover:bg-purple-50 rounded-xl transition-all uppercase tracking-widest"
                           >
                             <UserCircle size={14} />
                             My Profile
+                          </Link>
+                          <Link
+                            to="/dashboard/my-courses"
+                            className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-gray-600 hover:text-[#7C3AED] hover:bg-purple-50 rounded-xl transition-all uppercase tracking-widest"
+                          >
+                            <BookOpen size={14} />
+                            My Courses
                           </Link>
                           <Link
                             to="/opportunities/my-applications"
@@ -458,6 +473,13 @@ const Navigation: React.FC = () => {
                               className="block w-full text-left px-5 py-4 bg-gray-50 rounded-xl text-xs font-bold text-[#111827] uppercase tracking-widest hover:bg-gray-100"
                             >
                               My Profile
+                            </Link>
+                            <Link
+                              to="/dashboard/my-courses"
+                              onClick={() => setMobileMenuOpen(false)}
+                              className="block w-full text-left px-5 py-4 bg-gray-50 rounded-xl text-xs font-bold text-[#111827] uppercase tracking-widest hover:bg-gray-100 mt-2"
+                            >
+                              My Courses
                             </Link>
                             <button
                               onClick={() => { logout(); setMobileMenuOpen(false); }}

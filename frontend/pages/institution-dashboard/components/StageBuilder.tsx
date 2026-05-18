@@ -24,6 +24,7 @@ interface StageBuilderProps {
     stages: IStage[];
     onUpdate: (stages: IStage[]) => void;
     onConfigureQuiz?: (stageId: string) => void;
+    availableJudges?: any[];
 }
 
 const STAGE_TYPES = [
@@ -36,7 +37,7 @@ const STAGE_TYPES = [
     { id: 'Custom', icon: Settings2, color: 'text-slate-500', bg: 'bg-slate-50' },
 ];
 
-const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigureQuiz }) => {
+const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigureQuiz, availableJudges = [] }) => {
     const [expandedStage, setExpandedStage] = useState<string | null>(null);
 
     const calculateStatus = (startDate: string, endDate: string): IStage['status'] => {
@@ -315,6 +316,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                         onUpdate={(newJudgeIds) => updateStage(stage.id, {
                                                             config: { ...(stage.config || {}), judgeIds: newJudgeIds }
                                                         })}
+                                                        availableJudges={availableJudges}
                                                     />
                                                 </div>
                                             )}

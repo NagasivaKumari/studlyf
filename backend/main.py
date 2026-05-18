@@ -363,7 +363,7 @@ def fix_progress(prog, default_status="locked"):
     return {**defaults, **fix_id(prog)}
 
 from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes
-from routes import auth
+from routes import auth, payment_routes
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from rate_limiter import rate_limit, check_rate_limit
 
@@ -401,6 +401,7 @@ app.include_router(test_sync_routes.router)
 app.include_router(direct_sync_routes.router)
 app.include_router(hackathon_judging_routes.router)
 app.include_router(hackathon_submission_routes.router)
+app.include_router(payment_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -1702,7 +1703,7 @@ latex_env = Environment(
     line_statement_prefix='%%',
     line_comment_prefix='%#',
     trim_blocks=True,
-    autoescape=False,
+    autoescape=True,
 )
 latex_env.filters['e'] = latex_escape
 latex_env.filters['latex_escape'] = latex_escape
@@ -2096,6 +2097,256 @@ async def checkout(user_id: str):
         "total_courses": len(formatted_courses),
         "enrolled_at": datetime.now(timezone.utc).isoformat()
     }
+
+@app.post("/api/enrollment-flow/confirm/{user_id}")
+async def confirm_track_enrollment(user_id: str, data: dict = Body(...)):
+    import random
+    from datetime import datetime
+    
+    track_title = data.get("track_title", "Engineering Track")
+    selected_plan = data.get("selected_plan", "Yearly")
+    amount = data.get("amount")
+    
+    # Secure fallback pricing logic if not explicitly passed
+    if amount is None:
+        selected_plan_lower = selected_plan.lower()
+        if "yearly" in selected_plan_lower:
+            amount = 14999.0
+        elif "monthly" in selected_plan_lower:
+            amount = 1999.0
+        elif "course" in selected_plan_lower:
+            amount = 4999.0
+        else:
+            amount = 0.0
+            
+    # Format amount for display
+    formatted_amount = f"₹{amount:,.2f}"
+    
+    user_doc = await users_col.find_one({"user_id": user_id})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Enrolling user in MongoDB collections
+    course_id = data.get("course_id")
+    track_id = data.get("track_id")
+    
+    enrolled_course_titles = []
+    
+    if course_id:
+        # Single course enrollment
+        course = await courses_col.find_one({"_id": course_id})
+        if course:
+            enrolled_course_titles.append(course.get("title", ""))
+            enrollment = {
+                "user_id": user_id,
+                "course_id": course_id,
+                "course_title": course.get("title", ""),
+                "enrolled_at": datetime.utcnow().isoformat(),
+                "progress": 0.0,
+                "last_accessed": None,
+                "last_accessed_module": None
+            }
+            # Deduplicate
+            existing = await enrollments_col.find_one({"user_id": user_id, "course_id": course_id})
+            if not existing:
+                await enrollments_col.insert_one(enrollment)
+                # Initialize first module progress
+                first_module = await modules_col.find_one({"course_id": course_id}, sort=[("order_index", 1)])
+                if first_module:
+                    await progress_col.update_one(
+                        {"user_id": user_id, "module_id": first_module["_id"]},
+                        {"$set": {
+                            "course_id": course_id,
+                            "lessons_completed": [],
+                            "total_lessons": len(first_module.get("lessons", [])),
+                            "status": "in_progress",
+                            "updated_at": datetime.utcnow().isoformat()
+                        }},
+                        upsert=True
+                    )
+    elif track_id:
+        # Track-based enrollment (enroll in all courses of that track)
+        track_map = {
+            "ai": ["AI"],
+            "swe": ["Software Engineering", "Backend", "Frontend"],
+            "data": ["Data", "Data & Analytics"],
+            "pm": ["Product Management"],
+            "cyber": ["Cyber", "Cyber Security"]
+        }
+        target_categories = track_map.get(str(track_id).lower(), [track_title])
+        
+        async for course in courses_col.find({"role_tag": {"$in": target_categories}}):
+            c_id = course["_id"]
+            enrolled_course_titles.append(course.get("title", ""))
+            enrollment = {
+                "user_id": user_id,
+                "course_id": c_id,
+                "course_title": course.get("title", ""),
+                "enrolled_at": datetime.utcnow().isoformat(),
+                "progress": 0.0,
+                "last_accessed": None,
+                "last_accessed_module": None
+            }
+            existing = await enrollments_col.find_one({"user_id": user_id, "course_id": c_id})
+            if not existing:
+                await enrollments_col.insert_one(enrollment)
+                first_module = await modules_col.find_one({"course_id": c_id}, sort=[("order_index", 1)])
+                if first_module:
+                    await progress_col.update_one(
+                        {"user_id": user_id, "module_id": first_module["_id"]},
+                        {"$set": {
+                            "course_id": c_id,
+                            "lessons_completed": [],
+                            "total_lessons": len(first_module.get("lessons", [])),
+                            "status": "in_progress",
+                            "updated_at": datetime.utcnow().isoformat()
+                        }},
+                        upsert=True
+                    )
+    else:
+        # Fallback to matching courses where role_tag fits track_title
+        async for course in courses_col.find({"role_tag": track_title}):
+            c_id = course["_id"]
+            enrolled_course_titles.append(course.get("title", ""))
+            enrollment = {
+                "user_id": user_id,
+                "course_id": c_id,
+                "course_title": course.get("title", ""),
+                "enrolled_at": datetime.utcnow().isoformat(),
+                "progress": 0.0,
+                "last_accessed": None,
+                "last_accessed_module": None
+            }
+            existing = await enrollments_col.find_one({"user_id": user_id, "course_id": c_id})
+            if not existing:
+                await enrollments_col.insert_one(enrollment)
+                first_module = await modules_col.find_one({"course_id": c_id}, sort=[("order_index", 1)])
+                if first_module:
+                    await progress_col.update_one(
+                        {"user_id": user_id, "module_id": first_module["_id"]},
+                        {"$set": {
+                            "course_id": c_id,
+                            "lessons_completed": [],
+                            "total_lessons": len(first_module.get("lessons", [])),
+                            "status": "in_progress",
+                            "updated_at": datetime.utcnow().isoformat()
+                        }},
+                        upsert=True
+                    )
+
+    courses_list_str = ", ".join(enrolled_course_titles) if enrolled_course_titles else track_title
+        
+    email_to = user_doc.get("email")
+    if email_to:
+        payment_id = data.get("payment_id")
+        if not payment_id:
+            raise HTTPException(status_code=400, detail="Razorpay payment_id is required")
+            
+        receipt_number = f"SL-{payment_id}"
+        payment_date = datetime.now().strftime("%B %d, %Y")
+        user_name = user_doc.get('full_name') or user_doc.get('name', 'Learner')
+        
+        email_body = f"""
+        <html>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #F9FAFB; margin: 0; padding: 0; color: #1F2937;">
+            <div style="max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04); border: 1px solid #E5E7EB;">
+                <!-- Header Gradient Banner -->
+                <div style="background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%); padding: 40px; text-align: center; color: #ffffff;">
+                    <div style="background-color: #ffffff; display: inline-block; padding: 10px 24px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                        <strong style="color: #7C3AED; font-family: monospace; font-size: 20px; letter-spacing: 0.1em; display: inline-block;">STUDLYF</strong>
+                    </div>
+                    <h1 style="font-size: 24px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.05em; font-family: inherit;">Enrollment & Payment Confirmed</h1>
+                    <p style="font-size: 14px; opacity: 0.85; margin: 10px 0 0 0; font-weight: 500;">Premium Career Track Unlocked</p>
+                </div>
+
+                <!-- Main Body -->
+                <div style="padding: 40px;">
+                    <p style="font-size: 16px; line-height: 1.6; margin: 0 0 24px 0; font-weight: 500;">Hello <strong>{user_name}</strong>,</p>
+                    <p style="font-size: 14px; line-height: 1.6; color: #4B5563; margin: 0 0 24px 0;">Thank you for investing in your engineering future with Studlyf. We are thrilled to confirm your enrollment in the <strong>{track_title} Track</strong>. Your clinical credentials and advanced pipeline access have been successfully verified and unlocked.</p>
+                    <p style="font-size: 13px; line-height: 1.5; color: #1F2937; margin: 0 0 24px 0; background-color: #F5F3FF; padding: 16px 20px; border-left: 4px solid #7C3AED; border-radius: 12px;"><strong>Unlocked Course(s):</strong> {courses_list_str}</p>
+
+                    <!-- Receipt Details Card -->
+                    <div style="background-color: #F3F4F6; border-radius: 16px; padding: 24px; margin-bottom: 30px;">
+                        <h3 style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #9CA3AF; margin: 0 0 16px 0;">Receipt Information</h3>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <tr>
+                                <td style="padding: 6px 0; color: #6B7280; font-weight: 500;">Receipt Number:</td>
+                                <td style="padding: 6px 0; text-align: right; color: #1F2937; font-weight: 700; font-family: monospace;">{receipt_number}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 6px 0; color: #6B7280; font-weight: 500;">Payment Date:</td>
+                                <td style="padding: 6px 0; text-align: right; color: #1F2937; font-weight: 700;">{payment_date}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 6px 0; color: #6B7280; font-weight: 500;">Payment Mode:</td>
+                                <td style="padding: 6px 0; text-align: right; color: #1F2937; font-weight: 700;">UPI / NetBanking (Simulation Mode)</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 6px 0; color: #6B7280; font-weight: 500;">Payment Status:</td>
+                                <td style="padding: 6px 0; text-align: right; color: #059669; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">PAID (SUCCESS)</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Itemized Statement -->
+                    <h3 style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #4B5563; margin: 0 0 12px 6px;">Itemized Statement</h3>
+                    <div style="border: 1px solid #E5E7EB; border-radius: 16px; overflow: hidden; margin-bottom: 30px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <tr style="background-color: #F9FAFB; border-bottom: 1px solid #E5E7EB;">
+                                <th style="padding: 14px 20px; text-align: left; color: #4B5563; font-weight: 700; text-transform: uppercase; font-size: 11px;">Item Description</th>
+                                <th style="padding: 14px 20px; text-align: right; color: #4B5563; font-weight: 700; text-transform: uppercase; font-size: 11px;">Amount</th>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #F3F4F6;">
+                                <td style="padding: 18px 20px; color: #1F2937; font-weight: 600;">
+                                    {track_title} Track Enrollment
+                                    <span style="display: block; font-size: 11px; color: #9CA3AF; font-weight: 500; margin-top: 4px;">Access Tier: {selected_plan} Plan</span>
+                                </td>
+                                <td style="padding: 18px 20px; text-align: right; color: #1F2937; font-weight: 700; font-size: 14px;">{formatted_amount}</td>
+                            </tr>
+                            <tr style="background-color: #F9FAFB; border-top: 1px solid #E5E7EB;">
+                                <td style="padding: 14px 20px; color: #4B5563; font-weight: 600;">Subtotal</td>
+                                <td style="padding: 14px 20px; text-align: right; color: #1F2937; font-weight: 700;">{formatted_amount}</td>
+                            </tr>
+                            <tr style="background-color: #F9FAFB;">
+                                <td style="padding: 10px 20px; color: #4B5563; font-weight: 600;">CGST (0%) + SGST (0%)</td>
+                                <td style="padding: 10px 20px; text-align: right; color: #1F2937; font-weight: 700;">₹0.00</td>
+                            </tr>
+                            <tr style="background-color: #F5F3FF; border-top: 1px solid #E5E7EB;">
+                                <td style="padding: 18px 20px; color: #7C3AED; font-weight: 800; font-size: 14px; text-transform: uppercase;">Total Charged</td>
+                                <td style="padding: 18px 20px; text-align: right; color: #7C3AED; font-weight: 900; font-size: 18px;">{formatted_amount}</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Direct Access Button -->
+                    <div style="text-align: center; margin: 40px 0 20px 0;">
+                        <a href="{os.getenv('FRONTEND_URL', 'http://localhost:5173')}/#/dashboard/learner?view=overview" 
+                           style="background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%); color: #ffffff; padding: 16px 36px; text-decoration: none; border-radius: 14px; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; display: inline-block; box-shadow: 0 10px 20px rgba(124, 58, 237, 0.25);">
+                            Go to My Dashboard →
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="background-color: #F9FAFB; padding: 30px; border-top: 1px solid #E5E7EB; text-align: center; font-size: 11px; color: #9CA3AF; font-weight: 500;">
+                    <p style="margin: 0 0 10px 0;">Have queries? Reach our team at <a href="mailto:support@studlyf.com" style="color: #7C3AED; text-decoration: none; font-weight: bold;">support@studlyf.com</a></p>
+                    <p style="margin: 0;">Studlyf Engineering Systems &copy; 2026. All Rights Reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        try:
+            asyncio.create_task(send_notification_email(
+                to_email=email_to,
+                subject=f"Enrollment Confirmed: {track_title} Track (Receipt #{receipt_number})",
+                body_html=email_body
+            ))
+            logger.info(f"Track enrollment email task created for {email_to}")
+        except Exception as e:
+            logger.error(f"Failed to send track enrollment email: {e}")
+            
+    return {"status": "success", "message": "Enrollment confirmed and email sent"}
 
 @app.delete("/api/enrollment/{user_id}/{course_id}")
 async def unenroll_from_course(user_id: str, course_id: str):
@@ -4567,39 +4818,281 @@ async def get_ai_tools():
         print(f"ERROR fetching AI tools: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch AI tools")
 
-@app.post("/api/user/{user_id}/update-profile")
-async def update_profile(user_id: str, data: dict = Body(...)):
-    full_name = data.get("full_name")
-    email = data.get("email")
-    college_name = data.get("college_name")
-    graduation_year = data.get("graduation_year")
-    
-    if not full_name or not email:
-        raise HTTPException(status_code=400, detail="Name and Email are required")
-        
-    update_data = {
-        "full_name": full_name,
-        "email": email
-    }
-    
-    if college_name is not None:
-        update_data["college_name"] = college_name
-    if graduation_year is not None:
-        update_data["graduation_year"] = graduation_year
-        
-    # Update user in database
-    result = await users_col.update_one(
-        {"user_id": user_id},
-        {"$set": update_data}
-    )
-    
-    if result.modified_count == 0:
-        # Check if user exists but nothing changed
+@app.get("/api/user/{user_id}/profile")
+async def get_user_profile(user_id: str):
+    """Load the complete learner profile from users_col and learner_profiles_col."""
+    try:
         user = await users_col.find_one({"user_id": user_id})
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-            
-    return {"success": True, "message": "Profile updated successfully"}
+
+        # Load extended profile from dedicated collection
+        profile = await db["learner_profiles"].find_one({"user_id": user_id}) or {}
+
+        # Merge base user data with extended profile
+        result = {
+            # Base identity (from users_col)
+            "user_id": user_id,
+            "email": user.get("email", ""),
+            "full_name": user.get("full_name", ""),
+            "college_name": user.get("college_name", ""),
+            "graduation_year": user.get("graduation_year", ""),
+            "role": user.get("role", "student"),
+            # Extended profile fields (from learner_profiles)
+            "firstName": profile.get("firstName", user.get("full_name", "").split(" ")[0] if user.get("full_name") else ""),
+            "lastName": profile.get("lastName", " ".join(user.get("full_name", "").split(" ")[1:]) if user.get("full_name") else ""),
+            "username": profile.get("username", ""),
+            "phone": profile.get("phone", ""),
+            "gender": profile.get("gender", ""),
+            "dob": profile.get("dob", ""),
+            "userType": profile.get("userType", ""),
+            "domain": profile.get("domain", ""),
+            "location": profile.get("location", ""),
+            "preferredWork": profile.get("preferredWork", ""),
+            "bio": profile.get("bio", ""),
+            "careerGoal": profile.get("careerGoal", ""),
+            "interests": profile.get("interests", []),
+            "profilePhoto": profile.get("profilePhoto", None),
+            "skills": profile.get("skills", []),
+            "education": profile.get("education", {
+                "institution": "", "degree": "", "specialization": "",
+                "startYear": "2022", "endYear": "2026", "cgpa": ""
+            }),
+            "educationList": profile.get("educationList", []),
+            "experience": profile.get("experience", {
+                "company": "", "role": "", "type": "Full-time", "responsibilities": ""
+            }),
+            "experienceList": profile.get("experienceList", []),
+            "projects": profile.get("projects", []),
+            "certifications": profile.get("certifications", []),
+            "achievements": profile.get("achievements", []),
+            "resume": profile.get("resume", {
+                "fileName": "No resume uploaded", "uploadDate": "", "atsScore": 0, "version": "1.0"
+            }),
+            "linkedin": profile.get("linkedin", ""),
+            "github": profile.get("github", ""),
+            "twitter": profile.get("twitter", ""),
+            "portfolio": profile.get("portfolio", ""),
+            "leetcode": profile.get("leetcode", ""),
+            "hackerrank": profile.get("hackerrank", ""),
+            "searchStatus": profile.get("searchStatus", "active"),
+            "profileVisible": profile.get("profileVisible", True),
+            "newsletter": profile.get("newsletter", False),
+            "isCurrentStudent": profile.get("isCurrentStudent", True),
+            "isCurrentEmployee": profile.get("isCurrentEmployee", False),
+        }
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Profile GET error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/user/{user_id}/update-profile")
+async def update_profile(user_id: str, data: dict = Body(...)):
+    """
+    Comprehensive profile update. Saves all sections:
+    basic info, photo, bio, skills, education, experience, projects,
+    certifications, achievements, social links, preferences.
+    """
+    try:
+        # 1. Verify user exists
+        user = await users_col.find_one({"user_id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # 2. Fields that go to users_col (core identity)
+        core_update = {}
+        first = data.get("firstName", "")
+        last = data.get("lastName", "")
+        if first or last:
+            full_name = f"{first} {last}".strip()
+            if full_name:
+                core_update["full_name"] = full_name
+        if data.get("college_name") is not None:
+            core_update["college_name"] = data["college_name"]
+        elif data.get("education", {}).get("institution"):
+            core_update["college_name"] = data["education"]["institution"]
+        if data.get("graduation_year") is not None:
+            core_update["graduation_year"] = data["graduation_year"]
+        elif data.get("education", {}).get("endYear"):
+            core_update["graduation_year"] = data["education"]["endYear"]
+
+        if core_update:
+            await users_col.update_one(
+                {"user_id": user_id},
+                {"$set": core_update}
+            )
+
+        # 3. All extended profile data → learner_profiles collection
+        profile_update = {
+            "user_id": user_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Copy all allowed fields from payload
+        allowed_fields = [
+            "firstName", "lastName", "username", "phone", "gender", "dob",
+            "userType", "domain", "location", "preferredWork",
+            "bio", "careerGoal", "interests", "profilePhoto",
+            "skills", "education", "educationList",
+            "experience", "experienceList",
+            "projects", "certifications", "achievements",
+            "resume",
+            "linkedin", "github", "twitter", "portfolio", "leetcode", "hackerrank",
+            "searchStatus", "profileVisible", "newsletter",
+            "isCurrentStudent", "isCurrentEmployee",
+        ]
+        for field in allowed_fields:
+            if field in data:
+                profile_update[field] = data[field]
+
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": profile_update},
+            upsert=True
+        )
+
+        return {
+            "success": True,
+            "message": "Profile saved successfully",
+            "updated_fields": list(profile_update.keys())
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Profile update error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─── Individual section DELETE endpoints ───
+
+@app.delete("/api/user/{user_id}/profile/skill/{skill_index}")
+async def delete_skill(user_id: str, skill_index: int):
+    """Remove a skill by index from the profile."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        skills = profile.get("skills", [])
+        if skill_index < 0 or skill_index >= len(skills):
+            raise HTTPException(status_code=400, detail="Invalid skill index")
+        skills.pop(skill_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"skills": skills, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "skills": skills}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/user/{user_id}/profile/project/{project_index}")
+async def delete_project(user_id: str, project_index: int):
+    """Remove a project by index."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        projects = profile.get("projects", [])
+        if project_index < 0 or project_index >= len(projects):
+            raise HTTPException(status_code=400, detail="Invalid project index")
+        projects.pop(project_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"projects": projects, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "projects": projects}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/user/{user_id}/profile/certification/{cert_index}")
+async def delete_certification(user_id: str, cert_index: int):
+    """Remove a certification by index."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        certs = profile.get("certifications", [])
+        if cert_index < 0 or cert_index >= len(certs):
+            raise HTTPException(status_code=400, detail="Invalid certification index")
+        certs.pop(cert_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"certifications": certs, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "certifications": certs}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/user/{user_id}/profile/achievement/{ach_index}")
+async def delete_achievement(user_id: str, ach_index: int):
+    """Remove an achievement by index."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        achievements = profile.get("achievements", [])
+        if ach_index < 0 or ach_index >= len(achievements):
+            raise HTTPException(status_code=400, detail="Invalid achievement index")
+        achievements.pop(ach_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"achievements": achievements, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "achievements": achievements}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/user/{user_id}/profile/education/{edu_index}")
+async def delete_education(user_id: str, edu_index: int):
+    """Remove an education entry by index."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        edu_list = profile.get("educationList", [])
+        if edu_index < 0 or edu_index >= len(edu_list):
+            raise HTTPException(status_code=400, detail="Invalid education index")
+        edu_list.pop(edu_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"educationList": edu_list, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "educationList": edu_list}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/user/{user_id}/profile/experience/{exp_index}")
+async def delete_experience(user_id: str, exp_index: int):
+    """Remove an experience entry by index."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        exp_list = profile.get("experienceList", [])
+        if exp_index < 0 or exp_index >= len(exp_list):
+            raise HTTPException(status_code=400, detail="Invalid experience index")
+        exp_list.pop(exp_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"experienceList": exp_list, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "experienceList": exp_list}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @app.post("/api/auth/forgot-password")
 async def forgot_password(data: dict = Body(...)):
@@ -4790,49 +5283,10 @@ async def login(credentials: UserLogin, request: Request):
     if not password_clean:
         raise HTTPException(status_code=400, detail="Password is required")
     
-    # Find user by exact email first, then case/whitespace tolerant fallback for legacy rows.
-    logger.info(f"Attempting to find user with email: {email_clean}")
-
-    async def _safe_find_candidates_by_email(email_value: str) -> list:
-        """
-        Supports both real Motor cursor behavior and mocked collections
-        where find(...) may return an awaitable/list-like object.
-        """
-        email_pattern = f"^\\s*{re.escape(email_value)}\\s*$"
-        find_result = users_col.find({"email": {"$regex": email_pattern, "$options": "i"}})
-        if inspect.isawaitable(find_result):
-            find_result = await find_result
-        if hasattr(find_result, "to_list"):
-            return await find_result.to_list(length=50)
-        if isinstance(find_result, list):
-            return find_result[:50]
-        return []
-
+    # Use an optimized, indexable case-insensitive search
     try:
-        user = await users_col.find_one({"email": email_clean})
-        if not user:
-            candidates = await _safe_find_candidates_by_email(email_clean)
-
-            # Try matching against all candidate rows (supports duplicate legacy rows).
-            for c in candidates:
-                cpass = str(c.get("password") or "")
-                if not cpass:
-                    continue
-                cand_valid = verify_password(password_clean, cpass) or cpass == password_clean
-                if cand_valid:
-                    user = c
-                    # Normalize legacy email formatting on successful auth.
-                    cemail = str(c.get("email") or "")
-                    if cemail != email_clean:
-                        try:
-                            await users_col.update_one(
-                                {"_id": c["_id"]},
-                                {"$set": {"email": email_clean}},
-                            )
-                        except Exception:
-                            pass
-                    break
-
+        user = await users_col.find_one({"email": {"$regex": f"^{re.escape(email_clean)}$", "$options": "i"}})
+        
         if not user:
             logger.warning(f"Login attempt with non-existent email: {email_clean}")
             raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -4847,8 +5301,9 @@ async def login(credentials: UserLogin, request: Request):
         logger.error(f"User {email_clean} missing password field")
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    # Verify password with enhanced error handling
+    # Verify password
     password_valid = verify_password(password_clean, user["password"])
+    
     # Backward-compatible fallback for legacy plaintext records; auto-migrate on success.
     if not password_valid and str(user.get("password") or "") == password_clean:
         password_valid = True
@@ -4859,29 +5314,7 @@ async def login(credentials: UserLogin, request: Request):
             )
         except Exception:
             pass
-    if not password_valid:
-        # Duplicate/legacy rows fallback: try any matching email variant record.
-        candidates = await _safe_find_candidates_by_email(email_clean)
-        for c in candidates:
-            if str(c.get("_id")) == str(user.get("_id")):
-                continue
-            cpass = str(c.get("password") or "")
-            if not cpass:
-                continue
-            cand_valid = verify_password(password_clean, cpass) or cpass == password_clean
-            if cand_valid:
-                user = c
-                password_valid = True
-                # Normalize canonical email
-                if str(c.get("email") or "") != email_clean:
-                    try:
-                        await users_col.update_one(
-                            {"_id": c["_id"]},
-                            {"$set": {"email": email_clean}},
-                        )
-                    except Exception:
-                        pass
-                break
+            
     if not password_valid:
         logger.warning(f"Invalid password attempt for user: {email_clean}")
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -5213,21 +5646,94 @@ async def get_activity_heatmap(inst_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/utils/parse-resume")
-async def parse_resume(file: UploadFile = File(...)):
+@app.post("/api/user/{user_id}/upload-resume")
+async def upload_user_resume(user_id: str, file: UploadFile = File(...)):
     """
-    AI RESUME PARSER: Uses Groq to extract details from a resume (Placeholder for actual PDF parsing).
+    AI RESUME PARSER: Saves the resume locally, uses Groq to extract details,
+    calculates an ATS score, and stores the path in the database.
     """
     try:
-        # For now, we simulate extraction. In a real scenario, use pdfplumber + Groq.
-        # This is a backbone structure for Sravanthi to use.
-        return {
-            "full_name": "Extracted Name",
-            "email": "extracted@email.com",
-            "skills": ["Python", "React", "MongoDB"],
-            "message": "Resume parsed successfully via Nagasiva AI Logic"
+        import os
+        import io
+        import base64
+        import docx
+        
+        # Ensure uploads directory exists
+        upload_dir = os.path.join(os.getcwd(), "uploads", "resumes")
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Secure filename and save
+        safe_filename = f"{user_id}_{file.filename}"
+        file_path = os.path.join(upload_dir, safe_filename)
+        
+        file_bytes = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+            
+        # Extract text based on file type
+        text = ""
+        if file.filename.lower().endswith(".pdf"):
+            try:
+                with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                    for page in pdf.pages:
+                        text += page.extract_text() or ""
+            except Exception as e:
+                print(f"PDF extraction error: {e}")
+        elif file.filename.lower().endswith(".docx"):
+            try:
+                doc = docx.Document(io.BytesIO(file_bytes))
+                text = "\n".join([p.text for p in doc.paragraphs])
+            except Exception as e:
+                print(f"DOCX extraction error: {e}")
+                
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="Could not extract text from the file.")
+            
+        # Call Groq to parse
+        parsed_data_raw = parse_with_groq(text)
+        try:
+            parsed_data = json.loads(parsed_data_raw)
+        except:
+            parsed_data = {}
+            
+        # Compute dynamic ATS Score (simple heuristic for now)
+        word_count = len(text.split())
+        skills_extracted = parsed_data.get("skills", [])
+        experience = parsed_data.get("experience", [])
+        
+        ats_score = min(100, (word_count // 10) + (len(skills_extracted) * 2) + (len(experience) * 10))
+        if ats_score < 10:
+            ats_score = 45 # baseline for parsable file
+            
+        # Prepare response and DB update
+        resume_metadata = {
+            "fileName": file.filename,
+            "uploadDate": datetime.now(timezone.utc).strftime("%d/%m/%Y"),
+            "atsScore": ats_score,
+            "version": "1.0",
+            "filePath": f"/uploads/resumes/{safe_filename}"
         }
+        
+        # Update user profile
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"resume": resume_metadata, "updated_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        
+        return {
+            "success": True,
+            "full_name": parsed_data.get("name", "Extracted Name"),
+            "email": parsed_data.get("email", ""),
+            "skills": skills_extracted,
+            "ats_score": ats_score,
+            "word_count": word_count,
+            "message": "Resume uploaded, saved, and parsed successfully."
+        }
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"Resume Upload Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/events/{event_id}/matchmaking")

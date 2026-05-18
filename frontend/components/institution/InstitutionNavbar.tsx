@@ -244,7 +244,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
             <motion.div 
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="w-full bg-[#6C3BFF] h-16 rounded-[1.5rem] shadow-2xl shadow-purple-200 flex items-center px-6 relative overflow-hidden group"
+                className="w-full bg-[#6C3BFF] h-16 rounded-[1.5rem] shadow-2xl shadow-purple-200 flex items-center px-6 relative group"
             >
                 {/* 1. Left (Empty to match old layout) */}
                 <div className="w-12 shrink-0 hidden lg:block" />

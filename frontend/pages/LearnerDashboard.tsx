@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE_URL } from '../apiConfig';
 import { useAuth } from '../AuthContext';
 import DashboardFooter from '../components/DashboardFooter';
@@ -53,7 +53,16 @@ const CircularProgress = ({ value, size = 180, strokeWidth = 12, color = "#7C3AE
 const LearnerDashboard: React.FC = () => {
   const { user, role, logout } = useAuth();
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<'overview' | 'profile' | 'knowledge' | 'leaderboard' | 'certificates' | 'resume'>('overview');
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const viewParam = searchParams.get('view') as any;
+  const [activeView, setActiveView] = useState<'overview' | 'profile' | 'applications' | 'knowledge' | 'leaderboard' | 'certificates' | 'resume'>(viewParam || 'profile');
+
+  useEffect(() => {
+    if (viewParam) {
+      setActiveView(viewParam);
+    }
+  }, [viewParam]);
   const [activeTab, setActiveTab] = useState<'overall' | 'dev' | 'ai'>('overall');
   const [githubData, setGithubData] = useState<any>(null);
   const [certificates, setCertificates] = useState<any[]>([]);
@@ -135,12 +144,7 @@ const LearnerDashboard: React.FC = () => {
   };
 
   const sidebarItems = [
-    { id: 'overview', label: 'Dashboard', icon: '🏠' },
-    { id: 'profile', label: 'My Profile', icon: '👤' },
-    { id: 'knowledge', label: 'Tech Stack', icon: '🕸️' },
-    { id: 'leaderboard', label: 'Rankings', icon: '🏆' },
-    { id: 'certificates', label: 'Certificates', icon: '📜' },
-    { id: 'resume', label: 'My Resume', icon: '📄' }
+    { id: 'profile', label: 'My Profile', icon: '👤' }
   ];
 
   const renderView = () => {

@@ -6,9 +6,10 @@ interface PostOpportunityModalProps {
     isOpen: boolean;
     onClose: () => void;
     institutionId?: string;
+    eventId?: string;
 }
 
-const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onClose, institutionId }) => {
+const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onClose, institutionId, eventId }) => {
     const editorRef = React.useRef<HTMLDivElement>(null);
     const [step, setStep] = useState(1);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -46,6 +47,9 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         eligibleOrganizations: ['Allow All'],
         sameOrgTeam: false,
         registrationLevel: 'both', // 'festival', 'both', 'competition'
+        // Dates
+        registrationStartDate: '2026-04-30T00:00',
+        registrationDeadline: '2026-05-14T00:00',
         // Festival Creation Fields
         festivalData: {
             name: '',
@@ -147,28 +151,190 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         }
     };
 
-    // FETCH REAL DATA ON MOUNT
+    // SYNC OR RESET STATE BASED ON OPENING MODE
     useEffect(() => {
-        const fetchProfile = async () => {
-            if (!isOpen || !institutionId) return;
+        if (isOpen) {
+            if (!eventId) {
+                // CREATE MODE -> Reset to pristine default state
+                setFormData({
+                    title: '',
+                    organisation: 'Loading...', 
+                    opportunityType: 'Hackathons & Coding Challenges',
+                    opportunitySubType: 'Online Coding Challenge',
+                    festivalName: '',
+                    websiteUrl: '',
+                    description: '',
+                    skills: '',
+                    participationType: 'both', 
+                    minTeamSize: 1,
+                    maxTeamSize: 5,
+                    opportunityMode: 'online', 
+                    venueAddress: '',
+                    city: '',
+                    stipend: '',
+                    salaryRange: '',
+                    perks: [],
+                    prizePool: '',
+                    prizes: [],
+                    benefits: '',
+                    compensation: '',
+                    candidateTypes: ['Everyone can apply'], 
+                    collegeRestriction: 'Everyone can apply',
+                    genderRestriction: 'Everyone can apply',
+                    eligibleGenders: ['Allow All'],
+                    eligibleOrganizations: ['Allow All'],
+                    sameOrgTeam: false,
+                    registrationLevel: 'both',
+                    registrationStartDate: '2026-04-30T00:00',
+                    registrationDeadline: '2026-05-14T00:00',
+                    festivalData: {
+                        name: '',
+                        mode: 'online',
+                        url: '',
+                        startDate: '',
+                        endDate: '',
+                        themeColor: '#6C3BFF',
+                        details: '',
+                        logo: null,
+                        mobileBanner: null,
+                        desktopBanner: null,
+                        seoImage: null,
+                        gallery: []
+                    },
+                    registrationFields: [
+                        { id: '1', label: 'Full Name', type: 'text', required: true, isFixed: true },
+                        { id: '2', label: 'Email ID', type: 'email', required: true, isFixed: true },
+                        { id: '3', label: 'College Name', type: 'text', required: true, isFixed: false },
+                        { id: '4', label: 'Mobile Number', type: 'tel', required: true, isFixed: false }
+                    ]
+                });
+                setLogoPreview(null);
+                setOpportunityBannerPreview(null);
+                setFestivalLogoPreview(null);
+                setFestivalBannerPreview(null);
+                setIsCreatingFestival(false);
+                setStep(1);
+                
+                const fetchProfile = async () => {
+                    if (!institutionId) return;
+                    try {
+                        const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
+                        const res = await fetch(`${API_BASE_URL}/api/v1/institution/profile/${institutionId}`, {
+                            headers: { ...authHeaders() },
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            setFormData(prev => ({
+                                ...prev,
+                                organisation: data.name || 'Your Institution'
+                            }));
+                        }
+                    } catch (err) {
+                        console.error("Failed to fetch institution profile", err);
+                    }
+                };
+                fetchProfile();
+            } else {
+                // EDIT MODE -> Start at step 1, data will be prefilled by fetchEventDetails effect
+                setStep(1);
+            }
+        } else {
+            // CLOSED -> Clean previews to avoid memory leak or stale state
+            setLogoPreview(null);
+            setOpportunityBannerPreview(null);
+            setFestivalLogoPreview(null);
+            setFestivalBannerPreview(null);
+            setStep(1);
+        }
+    }, [isOpen, eventId, institutionId]);
+
+    // PREFILL EVENT FOR EDITING
+    useEffect(() => {
+        const fetchEventDetails = async () => {
+            if (!isOpen || !eventId) return;
             try {
                 const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
-                const res = await fetch(`${API_BASE_URL}/api/v1/institution/profile/${institutionId}`, {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/details`, {
                     headers: { ...authHeaders() },
                 });
                 if (res.ok) {
                     const data = await res.json();
+                    
+                    if (data.logo_url) setLogoPreview(data.logo_url);
+                    if (data.banner_url) setOpportunityBannerPreview(data.banner_url);
+                    
+                    if (data.festivalData) {
+                        if (data.festivalData.logo_url) setFestivalLogoPreview(data.festivalData.logo_url);
+                        if (data.festivalData.banner_url) setFestivalBannerPreview(data.festivalData.banner_url);
+                        setIsCreatingFestival(true);
+                    }
+
+                    // Format dates to ISO format accepted by datetime-local (YYYY-MM-DDTHH:mm)
+                    const formatToDatetimeLocal = (dStr?: string) => {
+                        if (!dStr) return '';
+                        try {
+                            const d = new Date(dStr);
+                            const pad = (num: number) => String(num).padStart(2, '0');
+                            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                        } catch {
+                            return '';
+                        }
+                    };
+
                     setFormData(prev => ({
                         ...prev,
-                        organisation: data.name || 'Your Institution'
+                        title: data.title || '',
+                        organisation: data.organisation || data.organization || prev.organisation,
+                        opportunityType: data.opportunityType || prev.opportunityType,
+                        opportunitySubType: data.opportunitySubType || prev.opportunitySubType,
+                        festivalName: data.festivalName || '',
+                        websiteUrl: data.websiteUrl || '',
+                        description: data.description || '',
+                        skills: data.skills || '',
+                        participationType: data.participationType || 'both',
+                        minTeamSize: data.minTeamSize || 1,
+                        maxTeamSize: data.maxTeamSize || 5,
+                        opportunityMode: data.opportunityMode || 'online',
+                        venueAddress: data.venueAddress || '',
+                        city: data.city || '',
+                        stipend: data.stipend || '',
+                        salaryRange: data.salaryRange || '',
+                        perks: data.perks || [],
+                        prizePool: data.prizePool || data.prize_pool || '',
+                        prizes: data.prizes || [],
+                        benefits: data.benefits || '',
+                        compensation: data.compensation || '',
+                        candidateTypes: data.candidateTypes || ['Everyone can apply'],
+                        collegeRestriction: data.collegeRestriction || 'Everyone can apply',
+                        genderRestriction: data.genderRestriction || 'Everyone can apply',
+                        eligibleGenders: data.eligibleGenders || ['Allow All'],
+                        eligibleOrganizations: data.eligibleOrganizations || ['Allow All'],
+                        sameOrgTeam: data.sameOrgTeam || false,
+                        registrationLevel: data.registrationLevel || 'both',
+                        registrationStartDate: formatToDatetimeLocal(data.start_date || data.startDate) || '2026-04-30T00:00',
+                        registrationDeadline: formatToDatetimeLocal(data.registrationDeadline || data.deadline) || '2026-05-14T00:00',
+                        festivalData: data.festivalData ? {
+                            name: data.festivalData.name || '',
+                            mode: data.festivalData.mode || 'online',
+                            url: data.festivalData.url || '',
+                            startDate: data.festivalData.startDate || '',
+                            endDate: data.festivalData.endDate || '',
+                            themeColor: data.festivalData.themeColor || '#6C3BFF',
+                            details: data.festivalData.details || '',
+                            logo: null,
+                            mobileBanner: null,
+                            desktopBanner: null,
+                            seoImage: null,
+                            gallery: data.festivalData.gallery || []
+                        } : prev.festivalData
                     }));
                 }
             } catch (err) {
-                console.error("Failed to fetch institution profile", err);
+                console.error("Failed to fetch event details", err);
             }
         };
-        fetchProfile();
-    }, [isOpen, institutionId]);
+        fetchEventDetails();
+    }, [isOpen, eventId]);
     
     // Sync editor content with formData.description without resetting cursor during typing
     useEffect(() => {
@@ -181,14 +347,6 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         { id: 1, label: 'Opportunity details' },
         { id: 2, label: 'Registration Form' },
     ];
-
-    // Reset state when modal closes
-    useEffect(() => {
-        if (!isOpen) {
-            setLogoPreview(null);
-            setStep(1);
-        }
-    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -270,18 +428,23 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                     }
                 }
 
-                const response = await fetch(`${API_BASE_URL}/api/v1/institution/events/create-professional`, {
-                    method: 'POST',
+                const url = eventId 
+                    ? `${API_BASE_URL}/api/v1/institution/events/${eventId}/professional`
+                    : `${API_BASE_URL}/api/v1/institution/events/create-professional`;
+                const method = eventId ? 'PATCH' : 'POST';
+
+                const response = await fetch(url, {
+                    method: method,
                     headers: { ...authHeaders() },
-                    body: submitData // browser sets correct multipart boundary
+                    body: submitData
                 });
 
                 if (response.ok) {
-                    alert("Opportunity Created Successfully!");
+                    alert(eventId ? "Opportunity Updated Successfully!" : "Opportunity Created Successfully!");
                     onClose();
                 } else {
                     const errorData = await response.json();
-                    alert(`Failed to create opportunity: ${errorData.detail || response.statusText || 'Unknown Error'}`);
+                    alert(`Failed to save opportunity: ${errorData.detail || response.statusText || 'Unknown Error'}`);
                 }
             } catch (err) {
                 console.error("Submission failed", err);
@@ -312,8 +475,77 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         });
     };
 
-    const handleSaveDraft = () => {
-        alert("Draft saved successfully!");
+    const handleSaveDraft = async () => {
+        if (!formData.title.trim()) {
+            alert("Please enter at least an Opportunity Title to save a draft.");
+            return;
+        }
+        setLoading(true);
+        try {
+            const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
+            
+            // Use FormData for multipart/form-data support
+            const submitData = new FormData();
+            
+            // Append all regular fields
+            Object.entries(formData).forEach(([key, value]) => {
+                if (key !== 'festivalData' && key !== 'registrationFields') {
+                    submitData.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+                }
+            });
+
+            submitData.append('registrationLevel', formData.registrationLevel);
+            submitData.append('registrationFields', JSON.stringify(formData.registrationFields));
+            submitData.append('institution_id', institutionId || '');
+
+            // Append Opportunity Assets if exists
+            if (formData.festivalData.logo instanceof File) {
+                submitData.append('logo_file', formData.festivalData.logo);
+            }
+            if (formData.festivalData.mobileBanner instanceof File) {
+                submitData.append('banner_file', formData.festivalData.mobileBanner);
+            }
+
+            // Append Festival Data if active
+            if (isCreatingFestival) {
+                const festClean = { ...formData.festivalData };
+                delete festClean.logo;
+                delete festClean.mobileBanner;
+                submitData.append('festivalData', JSON.stringify(festClean));
+                
+                if (formData.festivalData.logo instanceof File) {
+                    submitData.append('festival_logo_file', formData.festivalData.logo);
+                }
+                if (formData.festivalData.mobileBanner instanceof File) {
+                    submitData.append('festival_banner_file', formData.festivalData.mobileBanner);
+                }
+            }
+
+            const url = eventId 
+                ? `${API_BASE_URL}/api/v1/institution/events/${eventId}/professional`
+                : `${API_BASE_URL}/api/v1/institution/events/create-professional`;
+            const method = eventId ? 'PATCH' : 'POST';
+
+            const response = await fetch(url, {
+                method: method,
+                headers: { ...authHeaders() },
+                body: submitData
+            });
+
+            if (response.ok) {
+                alert("Draft Saved Successfully!");
+                onClose();
+                window.location.reload();
+            } else {
+                const errorData = await response.json();
+                alert(`Failed to save draft: ${errorData.detail || response.statusText || 'Unknown Error'}`);
+            }
+        } catch (err) {
+            console.error("Save draft failed", err);
+            alert("Network error: Failed to connect to the server.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const applyFormat = (command: string, value: string = '') => {
@@ -1226,9 +1458,13 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                             <div className="w-8 h-8 rounded-full bg-[#6C3BFF] border-4 border-white shadow-sm z-10" />
                                                             <div className="flex items-center gap-4 flex-1">
                                                                 <span className="text-sm font-black text-slate-700 w-12">Live</span>
-                                                                <div className="flex-1 bg-white border border-slate-100 rounded-xl px-6 py-4 flex items-center justify-between">
-                                                                    <span className="text-sm font-bold text-slate-800">04/30/2026 12:00 AM</span>
-                                                                    <Calendar size={16} className="text-slate-300" />
+                                                                <div className="flex-1 bg-white border border-slate-100 rounded-xl px-6 py-4 flex items-center justify-between focus-within:ring-2 focus-within:ring-[#6C3BFF]/20 transition-all">
+                                                                    <input 
+                                                                        type="datetime-local" 
+                                                                        value={formData.registrationStartDate}
+                                                                        onChange={(e) => setFormData({...formData, registrationStartDate: e.target.value})}
+                                                                        className="w-full text-sm font-bold text-slate-800 outline-none border-none bg-transparent cursor-pointer font-sans"
+                                                                    />
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1237,9 +1473,13 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                             <div className="w-8 h-8 rounded-full bg-white border-2 border-[#6C3BFF] z-10" />
                                                             <div className="flex items-center gap-4 flex-1">
                                                                 <span className="text-sm font-black text-slate-700 w-12">Close</span>
-                                                                <div className="flex-1 bg-white border border-slate-100 rounded-xl px-6 py-4 flex items-center justify-between">
-                                                                    <span className="text-sm font-bold text-slate-800">05/14/2026 12:00 AM</span>
-                                                                    <Calendar size={16} className="text-slate-300" />
+                                                                <div className="flex-1 bg-white border border-slate-100 rounded-xl px-6 py-4 flex items-center justify-between focus-within:ring-2 focus-within:ring-[#6C3BFF]/20 transition-all">
+                                                                    <input 
+                                                                        type="datetime-local" 
+                                                                        value={formData.registrationDeadline}
+                                                                        onChange={(e) => setFormData({...formData, registrationDeadline: e.target.value})}
+                                                                        className="w-full text-sm font-bold text-slate-800 outline-none border-none bg-transparent cursor-pointer font-sans"
+                                                                    />
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1249,7 +1489,34 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                 <div className="flex items-start gap-3 px-2">
                                                     <div className="mt-0.5 text-slate-300"><Calendar size={16} /></div>
                                                     <p className="text-[13px] text-slate-500 font-medium leading-relaxed">
-                                                        Candidates will be able to apply for this Opportunity from <span className="font-black text-slate-900">30 Apr 26, 12:00 AM</span> to <span className="font-black text-slate-900">14 May 26, 12:00 AM</span> for a period of <span className="font-black text-[#6C3BFF]">14 Days</span>.
+                                                        Candidates will be able to apply for this Opportunity from <span className="font-black text-slate-900">{(() => {
+                                                            try {
+                                                                const d = new Date(formData.registrationStartDate);
+                                                                if (isNaN(d.getTime())) return '30 Apr 26, 12:00 AM';
+                                                                return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: '2-digit' }) + ', ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                                                            } catch {
+                                                                return '30 Apr 26, 12:00 AM';
+                                                            }
+                                                        })()}</span> to <span className="font-black text-slate-900">{(() => {
+                                                            try {
+                                                                const d = new Date(formData.registrationDeadline);
+                                                                if (isNaN(d.getTime())) return '14 May 26, 12:00 AM';
+                                                                return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: '2-digit' }) + ', ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                                                            } catch {
+                                                                return '14 May 26, 12:00 AM';
+                                                            }
+                                                        })()}</span> for a period of <span className="font-black text-[#6C3BFF]">{(() => {
+                                                            try {
+                                                                const d1 = new Date(formData.registrationStartDate);
+                                                                const d2 = new Date(formData.registrationDeadline);
+                                                                if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return '14 Days';
+                                                                const diff = d2.getTime() - d1.getTime();
+                                                                const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+                                                                return `${days >= 0 ? days : 0} Days`;
+                                                            } catch {
+                                                                return '14 Days';
+                                                            }
+                                                        })()}</span>.
                                                     </p>
                                                 </div>
                                             </div>

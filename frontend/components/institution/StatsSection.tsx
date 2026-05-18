@@ -49,7 +49,7 @@ const StatsSection: React.FC<StatsSectionProps> = ({ institutionId, onUpgrade, o
 
     if (loading) return (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-            {[1,2,3,4].map(i => <div key={i} className="h-40 bg-slate-50 rounded-2xl animate-pulse" />)}
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-40 bg-slate-50 rounded-2xl animate-pulse" />)}
         </div>
     );
 
@@ -149,28 +149,42 @@ const StatsSection: React.FC<StatsSectionProps> = ({ institutionId, onUpgrade, o
                         </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-6 lg:gap-12">
-                        <div className="text-center">
-                            <span className="block text-4xl font-black text-white tracking-tighter">
-                                {stats?.readiness_score || '92.4%'}
-                            </span>
-                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 block">Placement Readiness</span>
+                    {!stats?.readiness_score && !stats?.avg_score ? (
+                        <div className="flex flex-col sm:flex-row items-center gap-6">
+                            <p className="text-slate-400 text-xs font-semibold italic border-l-2 border-[#6C3BFF] pl-4 py-1.5 max-w-sm leading-relaxed">
+                                Cohort insights will automatically aggregate here as soon as your students begin enrolling in courses and taking assessments.
+                            </p>
+                            <button
+                                onClick={() => onNavigate?.('analytics')}
+                                className="px-6 py-3.5 bg-white/10 border border-white/10 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-white/20 transition-all shadow-xl active:scale-95 whitespace-nowrap"
+                            >
+                                Explore Analytics
+                            </button>
                         </div>
-                        <div className="w-px h-12 bg-white/10 hidden sm:block" />
-                        <div className="text-center">
-                            <span className="block text-4xl font-black text-blue-400 tracking-tighter">
-                                {stats?.avg_score || '88.5'}
-                            </span>
-                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 block">Avg Studlyf Score</span>
+                    ) : (
+                        <div className="flex flex-wrap items-center gap-6 lg:gap-12">
+                            <div className="text-center">
+                                <span className="block text-4xl font-black text-white tracking-tighter">
+                                    {stats.readiness_score}
+                                </span>
+                                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 block">Placement Readiness</span>
+                            </div>
+                            <div className="w-px h-12 bg-white/10 hidden sm:block" />
+                            <div className="text-center">
+                                <span className="block text-4xl font-black text-blue-400 tracking-tighter">
+                                    {stats.avg_score}
+                                </span>
+                                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 block">Avg Studlyf Score</span>
+                            </div>
+                            <div className="w-px h-12 bg-white/10 hidden sm:block" />
+                            <button
+                                onClick={() => onNavigate?.('analytics')}
+                                className="px-8 py-4 bg-white text-[#0F172A] rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-blue-50 transition-all shadow-xl shadow-white/5 active:scale-95"
+                            >
+                                Explore Analytics
+                            </button>
                         </div>
-                        <div className="w-px h-12 bg-white/10 hidden sm:block" />
-                        <button 
-                            onClick={() => onNavigate?.('analytics')}
-                            className="px-8 py-4 bg-white text-[#0F172A] rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-blue-50 transition-all shadow-xl shadow-white/5 active:scale-95"
-                        >
-                            Explore Analytics
-                        </button>
-                    </div>
+                    )}
                 </div>
             </motion.div>
         </div>

@@ -20,7 +20,7 @@ from quiz_visibility_service import quiz_visibility_service, _check_quiz_visibil
 import logging
 
 # Ensure upload directory exists
-EVENTS_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "events")
+EVENTS_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads", "events")
 os.makedirs(EVENTS_UPLOAD_DIR, exist_ok=True)
 
 BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
@@ -436,6 +436,32 @@ async def get_all_events(institution_id: str, user: dict = Depends(get_auth_user
     events_list.sort(key=_sort_key, reverse=True)
 
     return events_list
+
+@router.delete("/events/{event_id}")
+async def delete_institution_listing(event_id: str, user: dict = Depends(get_auth_user)):
+    """Deletes an event or a standalone opportunity listing owned by the institution."""
+    from db import events_col, opportunities_col
+    from bson import ObjectId
+    
+    # Try deleting from events first
+    try:
+        event_result = await events_col.delete_one({"_id": ObjectId(event_id)})
+        if event_result.deleted_count > 0:
+            # Also clean up any associated opportunities mirrored from this event
+            await opportunities_col.delete_many({"event_link_id": event_id})
+            return {"status": "success", "message": "Event deleted successfully"}
+    except Exception:
+        pass
+        
+    # Try deleting from standalone opportunities
+    try:
+        opp_result = await opportunities_col.delete_one({"_id": ObjectId(event_id)})
+        if opp_result.deleted_count > 0:
+            return {"status": "success", "message": "Opportunity deleted successfully"}
+    except Exception:
+        pass
+        
+    raise HTTPException(status_code=404, detail="Listing not found")
 
 @router.get("/events/{event_id}/participants")
 async def get_event_participants(event_id: str, user: dict = Depends(get_auth_user)):
@@ -2331,6 +2357,51 @@ async def update_event_details(event_id: str, update_data: dict, user: dict = De
 
     return {"status": "success"}
 
+@router.post("/events/{event_id}/upload-media")
+async def upload_event_media(
+    event_id: str,
+    file: UploadFile = File(...),
+    field: str = Form(...),
+    user: dict = Depends(get_auth_user)
+):
+    """Uploads a logo or banner image for an existing event and updates its record."""
+    await assert_institution_owns_event(event_id, user)
+    from db import events_col, opportunities_col
+
+    if field not in ("logo_url", "banner_url"):
+        raise HTTPException(status_code=400, detail="field must be 'logo_url' or 'banner_url'")
+
+    ext = os.path.splitext(file.filename or "image.jpg")[1].lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+
+    EVENTS_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads", "events")
+    os.makedirs(EVENTS_UPLOAD_DIR, exist_ok=True)
+
+    prefix = "logo" if field == "logo_url" else "banner"
+    fname = f"{prefix}_{uuid.uuid4()}{ext}"
+    fpath = os.path.join(EVENTS_UPLOAD_DIR, fname)
+    content = await file.read()
+    with open(fpath, "wb") as f:
+        f.write(content)
+
+    BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
+    url = f"{BASE_URL}/uploads/events/{fname}"
+
+    await events_col.update_one(_event_id_query(event_id), {"$set": {field: url}})
+
+    # Sync to linked opportunity
+    try:
+        await opportunities_col.update_many(
+            {"event_link_id": str(event_id)},
+            {"$set": {field: url}}
+        )
+    except Exception as e:
+        logger.warning(f"[SYNC] Failed to update opportunity media: {e}")
+
+    return {"url": url, "field": field}
+
+
 @router.post("/events/{event_id}/stages")
 async def add_event_stage(event_id: str, stage: dict, user: dict = Depends(get_auth_user)):
     """Adds a new stage to an event's workflow."""
@@ -2878,28 +2949,40 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
     fest_logo_file = form.get('festival_logo_file')
     fest_banner_file = form.get('festival_banner_file')
     
-    if isinstance(logo_file, UploadFile):
+    print("=== DEBUG CREATE PRO EVENT ===")
+    print("Form keys:", list(form.keys()))
+    print("logo_file:", logo_file, "type:", type(logo_file))
+    print("banner_file:", banner_file, "type:", type(banner_file))
+    
+    if logo_file and hasattr(logo_file, "filename") and logo_file.filename:
         url = await save_image(logo_file, "logo")
+        print("Saved logo URL:", url)
         if url: event_data["logo_url"] = url
         
-    if isinstance(banner_file, UploadFile):
+    if banner_file and hasattr(banner_file, "filename") and banner_file.filename:
         url = await save_image(banner_file, "banner")
         if url: event_data["banner_url"] = url
 
     # Handle festival images if present
     if "festivalData" in event_data:
         fest_data = event_data["festivalData"]
-        if isinstance(fest_logo_file, UploadFile):
+        if fest_logo_file and hasattr(fest_logo_file, "filename") and fest_logo_file.filename:
             url = await save_image(fest_logo_file, "fest_logo")
             if url: fest_data["logo_url"] = url
-        if isinstance(fest_banner_file, UploadFile):
+        if fest_banner_file and hasattr(fest_banner_file, "filename") and fest_banner_file.filename:
             url = await save_image(fest_banner_file, "fest_banner")
             if url: fest_data["banner_url"] = url
         event_data["festivalData"] = fest_data
 
     # 3. Finalize Event Data
+    if "opportunityType" in event_data:
+        event_data["category"] = event_data["opportunityType"]
     event_data["created_at"] = datetime.utcnow()
-    event_data["status"] = "DRAFT"
+    status_val = form.get("status")
+    if status_val:
+        event_data["status"] = str(status_val).upper()
+    else:
+        event_data["status"] = "DRAFT"
 
     _rd = event_data.get("registrationDeadline")
     fd = event_data.get("festivalData") if isinstance(event_data.get("festivalData"), dict) else {}
@@ -2971,9 +3054,11 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
             "createdAt": datetime.utcnow(),
             "createdBy": str(iid),
             "institution_id": str(iid),
-            "status": "active",
+            "status": "active" if event_data["status"] in ["ACTIVE", "LIVE", "PUBLISHED"] else "draft",
             "event_link_id": str(result.inserted_id),  # link back to full event
             "registrationFields": reg_fields,
+            "logo_url": event_data.get("logo_url", ""),
+            "banner_url": event_data.get("banner_url", ""),
         }
         
         # Ensure deadline is datetime
@@ -2989,6 +3074,175 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
         logger.error(f"[SYNC ERROR] Failed to mirror event to opportunities: {str(e)}")
 
     return {"event_id": str(result.inserted_id), "status": "success"}
+
+
+@router.patch("/events/{event_id}/professional")
+async def update_pro_event(event_id: str, request: Request, user: dict = Depends(get_auth_user)):
+    """Updates a high-end event with stages, fees, and prizes, supporting multipart images."""
+    await assert_institution_owns_event(event_id, user)
+    from db import events_col, opportunities_col
+    
+    # 1. Parse Form Data
+    form = await request.form()
+    event_data = {}
+    
+    # Extract all string/json fields
+    for key, value in form.items():
+        if key in ['logo_file', 'banner_file', 'festival_logo_file', 'festival_banner_file']:
+            continue
+            
+        try:
+            # Try to parse as JSON if it looks like an object/array
+            if isinstance(value, str) and (value.startswith('{') or value.startswith('[')):
+                event_data[key] = json.loads(value)
+            else:
+                # Handle numeric strings
+                if isinstance(value, str) and value.isdigit():
+                    event_data[key] = int(value)
+                elif value.lower() == 'true':
+                    event_data[key] = True
+                elif value.lower() == 'false':
+                    event_data[key] = False
+                else:
+                    event_data[key] = value
+        except:
+            event_data[key] = value
+
+    # 2. Handle Image Uploads
+    async def save_image(upload_file: UploadFile, prefix: str):
+        if not upload_file or not upload_file.filename:
+            return None
+        ext = os.path.splitext(upload_file.filename)[1].lower()
+        if ext not in ['.jpg', '.jpeg', '.png', '.webp']:
+            return None
+            
+        fname = f"{prefix}_{uuid.uuid4()}{ext}"
+        fpath = os.path.join(EVENTS_UPLOAD_DIR, fname)
+        
+        # Ensure we read the file correctly
+        content = await upload_file.read()
+        with open(fpath, "wb") as f:
+            f.write(content)
+            
+        return f"{BASE_URL}/uploads/events/{fname}"
+
+    # Process files
+    logo_file = form.get('logo_file')
+    banner_file = form.get('banner_file')
+    fest_logo_file = form.get('festival_logo_file')
+    fest_banner_file = form.get('festival_banner_file')
+    
+    print("=== DEBUG UPDATE PRO EVENT ===")
+    print("Form keys:", list(form.keys()))
+    print("logo_file:", logo_file, "type:", type(logo_file))
+    print("banner_file:", banner_file, "type:", type(banner_file))
+    
+    if logo_file and hasattr(logo_file, "filename") and logo_file.filename:
+        url = await save_image(logo_file, "logo")
+        print("Saved logo URL:", url)
+        if url: event_data["logo_url"] = url
+        
+    if banner_file and hasattr(banner_file, "filename") and banner_file.filename:
+        url = await save_image(banner_file, "banner")
+        if url: event_data["banner_url"] = url
+
+    # Handle festival images if present
+    if "festivalData" in event_data:
+        fest_data = event_data["festivalData"]
+        if fest_logo_file and hasattr(fest_logo_file, "filename") and fest_logo_file.filename:
+            url = await save_image(fest_logo_file, "fest_logo")
+            if url: fest_data["logo_url"] = url
+        if fest_banner_file and hasattr(fest_banner_file, "filename") and fest_banner_file.filename:
+            url = await save_image(fest_banner_file, "fest_banner")
+            if url: fest_data["banner_url"] = url
+        event_data["festivalData"] = fest_data
+
+    # Remove fields we shouldn't overwrite in update unless desired
+    if "_id" in event_data: del event_data["_id"]
+    if "opportunityType" in event_data:
+        event_data["category"] = event_data["opportunityType"]
+    event_data["updated_at"] = datetime.utcnow()
+
+    # Read status from form field (sent by frontend as 'status'), default to existing status
+    status_val = form.get('status')
+    if status_val:
+        event_data["status"] = str(status_val).upper()
+
+    _rd = event_data.get("registrationDeadline")
+    fd = event_data.get("festivalData") if isinstance(event_data.get("festivalData"), dict) else {}
+    if _rd:
+        if not event_data.get("start_date") and not event_data.get("startDate"):
+            event_data["start_date"] = fd.get("startDate") or _rd
+        if not event_data.get("end_date") and not event_data.get("endDate"):
+            event_data["end_date"] = fd.get("endDate") or fd.get("startDate") or _rd
+
+    # Synchronize registration Deadline from stages if provided
+    if isinstance(event_data.get("stages"), list):
+        for s in event_data["stages"]:
+            if isinstance(s, dict) and not s.get("id"):
+                s["id"] = str(uuid.uuid4())
+            if isinstance(s, dict) and str(s.get("type", "")).upper() == "REGISTRATION":
+                reg_end = s.get("end_date") or s.get("endDate") or s.get("deadline")
+                if reg_end:
+                    event_data["registrationDeadline"] = reg_end
+
+    # Perform update in events collection
+    await events_col.update_one({"_id": ObjectId(event_id)}, {"$set": event_data})
+    
+    # Retrieve updated event to sync with opportunities
+    updated_event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if updated_event:
+        # [SYNC] Centralized Opportunity Pipeline
+        try:
+            opp_type = updated_event.get("opportunityType", "Competition")
+            if "Hackathon" in opp_type: opp_type = "Hackathon"
+            elif "Job" in opp_type: opp_type = "Job"
+            elif "Internship" in opp_type: opp_type = "Internship"
+            else: opp_type = "Competition"
+
+            reg_fields = updated_event.get("registrationFields") or []
+            if isinstance(reg_fields, str):
+                try:
+                    reg_fields = json.loads(reg_fields)
+                except:
+                    reg_fields = []
+
+            _city = (updated_event.get("city") or updated_event.get("venueAddress") or "").strip()
+            _mode = (updated_event.get("opportunityMode") or "online").strip()
+            if _city:
+                _location = f"{_city}, {_mode}"
+            else:
+                _location = _mode or "online"
+
+            opp_data = {
+                "title": updated_event.get("title", "New Opportunity"),
+                "organization": updated_event.get("organisation", "Partner Institution"),
+                "type": opp_type,
+                "description": updated_event.get("description", ""),
+                "skills": updated_event.get("skills", ""),
+                "location": _location,
+                "deadline": updated_event.get("registrationDeadline", datetime.now(timezone.utc)),
+                "registrationFields": reg_fields,
+                "logo_url": updated_event.get("logo_url", ""),
+                "banner_url": updated_event.get("banner_url", ""),
+            }
+
+            if updated_event.get("status"):
+                opp_data["status"] = "active" if updated_event.get("status") in ["ACTIVE", "LIVE", "PUBLISHED"] else "draft"
+            
+            # Ensure deadline is datetime
+            if isinstance(opp_data["deadline"], str):
+                try:
+                    opp_data["deadline"] = datetime.fromisoformat(opp_data["deadline"].replace("Z", "+00:00"))
+                except:
+                    opp_data["deadline"] = datetime.now(timezone.utc)
+
+            await opportunities_col.update_many({"event_link_id": str(event_id)}, {"$set": opp_data})
+            logger.info(f"[SYNC] Event {event_id} updates mirrored to opportunities collection.")
+        except Exception as e:
+            logger.error(f"[SYNC ERROR] Failed to mirror event update to opportunities: {str(e)}")
+
+    return {"status": "success"}
 
 # ============================================================
 # EXPORT & DISTRIBUTION ENDPOINTS (Blueprint Requirements)
