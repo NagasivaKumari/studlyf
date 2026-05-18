@@ -447,9 +447,11 @@ const CourseDetail: React.FC = () => {
                   {/* Price */}
                     <div className="mb-6">
                       <div className="text-4xl font-black text-[#111827] mb-1">
-                        ₹0
+                        {course.price && Number(course.price) > 0 ? `₹${Number(course.price).toLocaleString('en-IN')}` : 'FREE'}
                       </div>
-                      <div className="text-sm text-gray-600">Free Enrollment</div>
+                      <div className="text-sm text-gray-600">
+                        {course.price && Number(course.price) > 0 ? 'One-time Payment' : 'Free Enrollment'}
+                      </div>
                     </div>
 
                   {/* Action Buttons */}

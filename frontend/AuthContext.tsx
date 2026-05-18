@@ -8,6 +8,7 @@ interface User {
     full_name: string;
     role: UserRole;
     user_id: string;
+    uid?: string; // Backwards compatibility for Firebase UID format
     institution_id?: string;
     institution_name?: string;
     college_name?: string;
@@ -52,6 +53,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             if (response.ok) {
                 const userData = await response.json();
+                if (userData && userData.user_id) {
+                    userData.uid = userData.user_id;
+                }
                 setUser(userData);
                 setRole(userData.role);
             } else if (response.status === 401 || response.status === 403) {
@@ -76,6 +80,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const login = (token: string, userData: User) => {
         localStorage.setItem('auth_token', token);
+        if (userData && userData.user_id) {
+            userData.uid = userData.user_id;
+        }
         setUser(userData);
         setRole(userData.role);
     };

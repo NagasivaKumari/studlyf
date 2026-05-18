@@ -134,15 +134,78 @@ const PostInternshipModal: React.FC<PostInternshipModalProps> = ({ isOpen, onClo
         if (step > 1) setStep(step - 1);
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (isDraft = false) => {
+        if (!formData.title.trim()) {
+            alert("Internship Title is required.");
+            return;
+        }
         setLoading(true);
-        // Simulate API call
-        setTimeout(() => {
+        try {
+            const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
+            
+            // Map the modal's fields to the opportunity schema expected by MongoDB
+            const payload = {
+                title: formData.title,
+                organization: formData.organizationName,
+                type: "Internship",
+                description: JSON.stringify({
+                    category: formData.category,
+                    duration: formData.duration,
+                    startDate: formData.startDate,
+                    aboutOrganization: formData.aboutOrganization,
+                    websiteLink: formData.websiteLink,
+                    description: formData.description,
+                    responsibilities: formData.responsibilities,
+                    learningOutcomes: formData.learningOutcomes,
+                    preferredSkills: formData.preferredSkills,
+                    eligibleCourses: formData.eligibleCourses,
+                    branches: formData.branches,
+                    minCGPA: formData.minCGPA,
+                    yearOfStudy: formData.yearOfStudy,
+                    stipendType: formData.stipendType,
+                    stipendAmount: formData.stipendAmount,
+                    perks: formData.perks,
+                    openings: formData.openings,
+                    selectionProcess: formData.selectionProcess,
+                    contactPerson: formData.contactPerson,
+                    email: formData.email,
+                    phone: formData.phone,
+                    visibility: formData.visibility,
+                    applicationMethod: formData.applicationMethod,
+                    externalLink: formData.externalLink
+                }),
+                skills: formData.requiredSkills.join(', '),
+                location: formData.location || 'Remote',
+                deadline: formData.deadline ? new Date(formData.deadline).toISOString() : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                institution_id: institutionId || '',
+                createdBy: institutionId || '',
+                status: isDraft ? 'draft' : 'active'
+            };
+
+            const response = await fetch(`${API_BASE_URL}/api/opportunities`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...authHeaders() 
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                alert(isDraft ? "Internship Draft Saved Successfully!" : "Internship Posted Successfully!");
+                if (onSuccess) onSuccess();
+                onClose();
+                window.location.reload();
+            } else {
+                const errorData = await response.json();
+                alert(`Failed to save internship: ${errorData.detail || response.statusText || 'Unknown Error'}`);
+            }
+        } catch (err) {
+            console.error("Internship submit failed", err);
+            alert("Network error: Failed to connect to the server.");
+        } finally {
             setLoading(false);
-            alert("Internship posted successfully");
-            if (onSuccess) onSuccess();
-            onClose();
-        }, 1500);
+        }
     };
 
     if (!isOpen) return null;
@@ -639,7 +702,7 @@ const PostInternshipModal: React.FC<PostInternshipModalProps> = ({ isOpen, onClo
                             </div>
                             
                             <div className="flex gap-4">
-                                <button className="px-6 py-3.5 border border-slate-100 text-slate-500 font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-slate-50 transition-all flex items-center gap-2">
+                                <button onClick={() => handleSubmit(true)} className="px-6 py-3.5 border border-slate-100 text-slate-500 font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-slate-50 transition-all flex items-center gap-2">
                                     <Save size={16} /> Save Draft
                                 </button>
                                 {step < steps.length ? (
@@ -647,7 +710,7 @@ const PostInternshipModal: React.FC<PostInternshipModalProps> = ({ isOpen, onClo
                                         Next Step
                                     </button>
                                 ) : (
-                                    <button onClick={handleSubmit} disabled={loading} className="px-10 py-3.5 bg-emerald-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-200 flex items-center gap-2">
+                                    <button onClick={() => handleSubmit(false)} disabled={loading} className="px-10 py-3.5 bg-emerald-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-200 flex items-center gap-2">
                                         {loading ? 'Publishing...' : <><CheckCircle size={18} /> Publish Internship</>}
                                     </button>
                                 )}

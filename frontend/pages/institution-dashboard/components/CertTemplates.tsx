@@ -77,7 +77,7 @@ export const Template1: React.FC<{ data: CertData }> = ({ data }) => (
       </div>
       <div style={{ textAlign: 'center', fontSize: 13, color: '#64748B', fontFamily: 'sans-serif', marginBottom: 8 }}>This certificate is proudly presented to</div>
       {/* Name */}
-      <div style={{ textAlign: 'center', fontSize: 30, fontWeight: 800, color: '#0F172A', borderBottom: '2px solid #B91C1C', display: 'inline-block', padding: '0 32px', margin: '0 auto 12px', display: 'block', width: 'fit-content' }}>
+      <div style={{ textAlign: 'center', fontSize: 30, fontWeight: 800, color: '#0F172A', borderBottom: '2px solid #B91C1C', padding: '0 32px', margin: '0 auto 12px', display: 'block', width: 'fit-content' }}>
         {'{ Recipient Name }'}
       </div>
       {/* Meta */}
@@ -120,7 +120,7 @@ export const Template2: React.FC<{ data: CertData }> = ({ data }) => (
         <div style={{ fontSize: 13, color: '#64748B', textTransform: 'uppercase', letterSpacing: 3, marginBottom: 4 }}>THIS IS TO CERTIFY THAT</div>
         <div style={{ fontSize: 28, fontWeight: 900, color: '#1E40AF', textTransform: 'uppercase', letterSpacing: 2 }}>{data.certType.toUpperCase()}</div>
       </div>
-      <div style={{ textAlign: 'center', fontSize: 30, fontStyle: 'italic', color: '#0F172A', borderBottom: '2px solid #3B82F6', display: 'inline-block', padding: '0 32px', margin: '0 auto 16px', display: 'block', width: 'fit-content' }}>
+      <div style={{ textAlign: 'center', fontSize: 30, fontStyle: 'italic', color: '#0F172A', borderBottom: '2px solid #3B82F6', padding: '0 32px', margin: '0 auto 16px', display: 'block', width: 'fit-content' }}>
         {'{ Recipient Name }'}
       </div>
       {(data.teamIdLabel || data.themeLabel) && (
@@ -166,7 +166,7 @@ export const Template3: React.FC<{ data: CertData }> = ({ data }) => (
         <div style={{ fontSize: 14, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 3 }}>{data.certType.toUpperCase()}</div>
         <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>This certificate is awarded to</div>
       </div>
-      <div style={{ textAlign: 'center', margin: '0 auto 16px', borderBottom: '2px solid #0F172A', display: 'inline-block', padding: '0 40px', display: 'block', width: 'fit-content', fontSize: 28, fontWeight: 700, color: '#0F172A' }}>
+      <div style={{ textAlign: 'center', margin: '0 auto 16px', borderBottom: '2px solid #0F172A', padding: '0 40px', display: 'block', width: 'fit-content', fontSize: 28, fontWeight: 700, color: '#0F172A' }}>
         {'{ Recipient Name }'}
       </div>
       {(data.teamIdLabel || data.themeLabel) && (
@@ -213,7 +213,7 @@ export const Template4: React.FC<{ data: CertData }> = ({ data }) => (
         <div style={{ height: 2, background: 'linear-gradient(90deg,transparent,#D97706,transparent)', margin: '12px auto 0', width: '50%' }} />
       </div>
       {/* Name */}
-      <div style={{ textAlign: 'center', fontSize: 30, color: '#fff', fontWeight: 700, fontStyle: 'italic', borderBottom: '1.5px solid #D97706', display: 'inline-block', padding: '0 40px', margin: '0 auto 16px', display: 'block', width: 'fit-content' }}>
+      <div style={{ textAlign: 'center', fontSize: 30, color: '#fff', fontWeight: 700, fontStyle: 'italic', borderBottom: '1.5px solid #D97706', padding: '0 40px', margin: '0 auto 16px', display: 'block', width: 'fit-content' }}>
         {'{ Recipient Name }'}
       </div>
       {(data.teamIdLabel || data.themeLabel) && (
@@ -482,7 +482,7 @@ export const Template9: React.FC<{ data: CertData }> = ({ data }) => (
       </div>
       
       <div style={{ textAlign: 'center', fontSize: 12, color: '#64748B', marginBottom: 8 }}>Proudly awarded to</div>
-      <div style={{ textAlign: 'center', fontSize: 28, color: '#0F172A', fontWeight: 800, background: '#fff', padding: '8px 32px', borderRadius: 8, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', display: 'inline-block', margin: '0 auto 16px', display: 'block', width: 'fit-content' }}>
+      <div style={{ textAlign: 'center', fontSize: 28, color: '#0F172A', fontWeight: 800, background: '#fff', padding: '8px 32px', borderRadius: 8, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', margin: '0 auto 16px', display: 'block', width: 'fit-content' }}>
         {'{ Recipient Name }'}
       </div>
       

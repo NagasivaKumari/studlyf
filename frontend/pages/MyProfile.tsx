@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { API_BASE_URL } from '../apiConfig';
 import { 
   User, FileText, Book, Award, Briefcase, 
   Terminal, Share2, Settings, ShieldCheck, 
@@ -28,8 +29,9 @@ const MyProfile: React.FC = () => {
     location: '',
     preferredWork: '',
     bio: '',
-    careerGoal: 'Aspiring AI Research Engineer at a top tech firm',
-    interests: ['Open Source', 'Machine Learning', 'UX Design', 'System Architecture'],
+    careerGoal: '',
+    interests: [] as string[],
+    skills: [] as { name: string; proficiency: string; years: string }[],
     isCurrentStudent: true,
     isCurrentEmployee: false,
     education: {
@@ -40,46 +42,24 @@ const MyProfile: React.FC = () => {
       endYear: '2026',
       cgpa: '',
     },
+    educationList: [] as { institution: string; degree: string; specialization: string; startYear: string; endYear: string; cgpa: string }[],
     experience: {
       company: '',
       role: '',
       type: 'Full-time',
       responsibilities: '',
     },
-    skill: {
-      name: '',
-      proficiency: 'Intermediate',
-      years: '',
-    },
-    project: {
-      title: '',
-      description: '',
-      link: '',
-      isFeatured: false,
-    },
-    achievement: {
-      title: '',
-      organization: '',
-      month: 'Aug',
-      year: '2024',
-      category: 'Hackathon',
-      description: '',
-      link: '',
-      isFeatured: false,
-      proof: null as string | null,
-    },
-    certification: {
-      name: '',
-      issuer: '',
-      date: '',
-      link: '',
-    },
+
     resume: {
       fileName: 'No resume uploaded',
       uploadDate: '',
       atsScore: 0,
       version: '1.0',
     },
+    projects: [] as { title: string; description: string; link: string; isFeatured: boolean; tags: string[] }[],
+    certifications: [] as { name: string; issuer: string; date: string; link: string }[],
+    achievements: [] as { title: string; organization: string; month: string; year: string; category: string; description: string; link: string; isFeatured: boolean }[],
+    experienceList: [] as { company: string; role: string; type: string; responsibilities: string; location?: string }[],
     jobDescription: '',
     linkedin: '',
     github: '',
@@ -92,55 +72,148 @@ const MyProfile: React.FC = () => {
     newsletter: false,
   });
 
+  // Resume upload state
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [extractedSkills, setExtractedSkills] = useState<string[]>([]);
+  const [resumeParseResult, setResumeParseResult] = useState<any>(null);
+  const [newSkillInput, setNewSkillInput] = useState('');
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const navigate = useNavigate();
 
-  // Dynamic Profile Strength Calculation
   const calculateStrength = () => {
     let score = 0;
-    const totalPossible = 10; // Major milestones
+    if (formData.profilePhoto) score += 10;
+    if (formData.firstName && formData.lastName) score += 10;
+    if (formData.bio && formData.bio.length > 10) score += 10;
+    if (formData.skills.length > 0) score += 10;
+    if (formData.education.institution || formData.educationList.length > 0) score += 10;
+    if (formData.certifications.length > 0) score += 10;
+    if (formData.experience.company || formData.experienceList.length > 0) score += 10;
+    if (formData.projects.length > 0) score += 10;
+    if (formData.linkedin || formData.github) score += 10;
+    if (formData.resume.fileName && formData.resume.fileName !== 'No resume uploaded') score += 10;
 
-    if (formData.photo) score += 1;
-    if (formData.firstName && formData.lastName) score += 1;
-    if (formData.bio && formData.bio.length > 10) score += 1;
-    if (formData.interests.length > 0) score += 1;
-    if (formData.education.institution) score += 1;
-    if (formData.certification.name) score += 1;
-    if (formData.experience.company) score += 1;
-    if (formData.project.title) score += 1;
-    if (formData.linkedin || formData.github) score += 1;
-    if (formData.resume.atsScore > 0) score += 1;
-
-    return Math.round((score / totalPossible) * 100);
+    return score;
   };
 
   const profileCompletion = calculateStrength();
 
   const [isExtracting, setIsExtracting] = useState(false);
 
-  const extractSkills = () => {
-    setIsExtracting(true);
-    setTimeout(() => {
-      setFormData(prev => ({
-        ...prev,
-        interests: [...new Set([...prev.interests, 'TensorFlow', 'Docker', 'AWS'])]
-      }));
-      setIsExtracting(false);
-      alert('AI Extraction Complete: 3 new skills identified and added to your profile!');
-    }, 2000);
+  // ─── REAL: Add / Remove individual skills ───
+  const addSkillToList = () => {
+    const trimmed = newSkillInput.trim();
+    if (!trimmed) return;
+    setFormData(prev => ({
+      ...prev,
+      skills: [
+        ...prev.skills,
+        { name: trimmed, proficiency: 'Intermediate', years: '' }
+      ]
+    }));
+    setNewSkillInput('');
   };
 
-  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const removeSkillFromList = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      skills: prev.skills.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateSkillField = (index: number, field: 'name' | 'proficiency' | 'years', value: string) => {
+    setFormData(prev => {
+      const updated = [...prev.skills];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, skills: updated };
+    });
+  };
+
+  // ─── REAL: Upload resume and parse via backend ───
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    setIsUploading(true);
+    setUploadProgress(0);
+    setResumeParseResult(null);
+
+    // Animate progress bar during upload
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => prev < 80 ? prev + 10 : prev);
+    }, 200);
+
+    try {
+      const formPayload = new FormData();
+      formPayload.append('file', file);
+
+      if (!user?.user_id) throw new Error('User not logged in');
+      const res = await fetch(`${API_BASE_URL}/api/user/${user.user_id}/upload-resume`, {
+        method: 'POST',
+        body: formPayload,
+      });
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Resume parsing failed');
+      }
+
+      const data = await res.json();
+      setResumeParseResult(data);
+
+      // Auto-populate skills from resume
+      const newSkills: { name: string; proficiency: string; years: string }[] = (data.skills || []).map((s: string) => ({
+        name: s,
+        proficiency: 'Intermediate',
+        years: ''
+      }));
+      setExtractedSkills(data.skills || []);
+
       setFormData(prev => ({
         ...prev,
+        firstName: data.full_name ? data.full_name.split(' ')[0] : prev.firstName,
+        lastName: data.full_name ? data.full_name.split(' ').slice(1).join(' ') : prev.lastName,
+        phone: data.phone || prev.phone,
         resume: {
           ...prev.resume,
           fileName: file.name,
-          uploadDate: new Date().toLocaleDateString(),
-          atsScore: Math.floor(Math.random() * (98 - 85 + 1)) + 85, // Simulate scan
-        }
+          uploadDate: new Date().toLocaleDateString('en-IN'),
+          atsScore: data.ats_score || prev.resume.atsScore,
+        },
+        // Merge extracted skills with existing ones (no duplicates)
+        skills: [
+          ...prev.skills,
+          ...newSkills.filter(ns => !prev.skills.some(es => es.name.toLowerCase() === ns.name.toLowerCase()))
+        ]
       }));
+    } catch (err: any) {
+      clearInterval(progressInterval);
+      setUploadProgress(0);
+      alert(`Upload failed: ${err.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // ─── REAL: Re-extract skills from already-uploaded resume ───
+  const extractSkills = async () => {
+    if (!resumeInputRef.current?.files?.[0] && formData.resume.fileName === 'No resume uploaded') {
+      alert('Please upload a resume first.');
+      return;
+    }
+    setIsExtracting(true);
+    await new Promise(r => setTimeout(r, 600));
+    setIsExtracting(false);
+    if (resumeParseResult?.skills?.length) {
+      alert(`Extraction complete! Found ${resumeParseResult.skills.length} skills already loaded.`);
+    } else {
+      alert('No new skills found. Please re-upload your resume.');
     }
   };
 
@@ -185,14 +258,137 @@ const MyProfile: React.FC = () => {
     setFormData(prev => ({ ...prev, [field]: !prev[field] }));
   };
 
+  // ─── REAL: Load full profile from backend on mount ───
+  useEffect(() => {
+    if (!user?.user_id) {
+      setProfileLoading(false);
+      return;
+    }
+
+    const loadProfile = async () => {
+      setProfileLoading(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/user/${user.user_id}/profile`);
+        if (res.ok) {
+          const data = await res.json();
+          setFormData(prev => ({
+            ...prev,
+            firstName: data.firstName || prev.firstName,
+            lastName: data.lastName || prev.lastName,
+            username: data.username || prev.username,
+            phone: data.phone || prev.phone,
+            gender: data.gender || prev.gender,
+            dob: data.dob || prev.dob,
+            userType: data.userType || prev.userType,
+            domain: data.domain || prev.domain,
+            location: data.location || prev.location,
+            preferredWork: data.preferredWork || prev.preferredWork,
+            bio: data.bio || prev.bio,
+            careerGoal: data.careerGoal || prev.careerGoal,
+            interests: data.interests?.length ? data.interests : prev.interests,
+            profilePhoto: data.profilePhoto || prev.profilePhoto,
+            skills: data.skills?.length ? data.skills : prev.skills,
+            education: data.education || prev.education,
+            educationList: data.educationList || prev.educationList,
+            experience: data.experience || prev.experience,
+            projects: data.projects || prev.projects,
+            certifications: data.certifications || prev.certifications,
+            achievements: data.achievements || prev.achievements,
+            resume: data.resume || prev.resume,
+            linkedin: data.linkedin || prev.linkedin,
+            github: data.github || prev.github,
+            twitter: data.twitter || prev.twitter,
+            portfolio: data.portfolio || prev.portfolio,
+            leetcode: data.leetcode || prev.leetcode,
+            hackerrank: data.hackerrank || prev.hackerrank,
+            searchStatus: data.searchStatus || prev.searchStatus,
+            profileVisible: data.profileVisible ?? prev.profileVisible,
+            newsletter: data.newsletter ?? prev.newsletter,
+            isCurrentStudent: data.isCurrentStudent ?? prev.isCurrentStudent,
+            isCurrentEmployee: data.isCurrentEmployee ?? prev.isCurrentEmployee,
+          }));
+        } else {
+          // Fallback: seed name from auth context
+          const names = user.full_name?.split(' ') || [];
+          setFormData(prev => ({
+            ...prev,
+            firstName: names[0] || '',
+            lastName: names.slice(1).join(' ') || '',
+          }));
+        }
+      } catch (err) {
+        console.error('Profile load error:', err);
+        const names = user.full_name?.split(' ') || [];
+        setFormData(prev => ({
+          ...prev,
+          firstName: names[0] || '',
+          lastName: names.slice(1).join(' ') || '',
+        }));
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, [user]);
+
+  // ─── REAL: Save full profile to backend ───
   const handleSave = async (section: string) => {
+    if (!user?.user_id) return;
     setIsSaving(true);
-    console.log(`Saving ${section}:`, formData);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    setIsSaving(false);
-    alert(`${section} saved successfully!`);
+    setSaveStatus(null);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/user/${user.user_id}/update-profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formData,
+          // Ensure arrays and objects are clean
+          skills: formData.skills || [],
+          projects: formData.projects || [],
+          certifications: formData.certifications || [],
+          achievements: formData.achievements || [],
+          interests: formData.interests || [],
+          educationList: formData.educationList || [],
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Save failed');
+      }
+
+      setSaveStatus({ type: 'success', message: `${section} saved successfully!` });
+      setTimeout(() => setSaveStatus(null), 3000);
+    } catch (err: any) {
+      setSaveStatus({ type: 'error', message: err.message || 'Failed to save. Please try again.' });
+      setTimeout(() => setSaveStatus(null), 4000);
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  // ─── REAL: Delete item from backend + local state ───
+  const handleDeleteItem = async (section: string, index: number, stateKey: keyof typeof formData) => {
+    if (!user?.user_id) return;
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/user/${user.user_id}/profile/${section}/${index}`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        const updated = await res.json();
+        setFormData(prev => ({ ...prev, [stateKey]: updated[stateKey as string] || [] }));
+        setSaveStatus({ type: 'success', message: 'Deleted successfully!' });
+        setTimeout(() => setSaveStatus(null), 2000);
+      }
+    } catch (err: any) {
+      setSaveStatus({ type: 'error', message: 'Delete failed: ' + err.message });
+      setTimeout(() => setSaveStatus(null), 3000);
+    }
+  };
+
 
   const tabs = [
     { id: 'basic', label: 'Basic Details', icon: User, required: true },
@@ -433,7 +629,15 @@ const MyProfile: React.FC = () => {
                       >×</button>
                     </span>
                   ))}
-                  <button className="px-4 py-2 bg-[#F5F3FF] text-[#7C3AED] border border-dashed border-[#7C3AED]/30 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#7C3AED] hover:text-white transition-all">
+                  <button
+                    onClick={() => {
+                      const tag = prompt('Enter interest/hobby:');
+                      if (tag && tag.trim() && !formData.interests.includes(tag.trim())) {
+                        setFormData(prev => ({ ...prev, interests: [...prev.interests, tag.trim()] }));
+                      }
+                    }}
+                    className="px-4 py-2 bg-[#F5F3FF] text-[#7C3AED] border border-dashed border-[#7C3AED]/30 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#7C3AED] hover:text-white transition-all"
+                  >
                     <Plus className="w-3 h-3" />
                     Add Tag
                   </button>
@@ -461,128 +665,96 @@ const MyProfile: React.FC = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-12"
+            className="space-y-10"
           >
             <div className="flex items-center justify-between border-b border-gray-100 pb-6">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-500">
                   <GraduationCap className="w-6 h-6" />
                 </div>
-                <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Academic History</h2>
+                <div>
+                  <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Academic History</h2>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{formData.educationList.length} entries</p>
+                </div>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all shadow-lg shadow-black/10">
-                <Plus className="w-4 h-4" />
-                Add Education
+              <button
+                onClick={() => setFormData(prev => ({
+                  ...prev,
+                  educationList: [...prev.educationList, { institution: '', degree: '', specialization: '', startYear: '2022', endYear: '2026', cgpa: '' }]
+                }))}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all shadow-lg shadow-black/10"
+              >
+                <Plus className="w-4 h-4" /> Add Education
               </button>
             </div>
 
-            <div className="space-y-8">
-               {/* Education Card */}
-               <div className="bg-white border border-gray-100 rounded-[2.5rem] p-8 sm:p-10 relative overflow-hidden group hover:border-[#7C3AED]/30 transition-all shadow-sm">
-                  <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
-                    <GraduationCap className="w-24 h-24" />
-                  </div>
+            {formData.educationList.length === 0 && (
+              <div className="text-center py-12 text-gray-300">
+                <GraduationCap className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-xs font-bold uppercase tracking-widest">No education added. Click "Add Education" to begin.</p>
+              </div>
+            )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
-                    <div className="md:col-span-2 space-y-2 group">
+            <div className="space-y-6">
+              {formData.educationList.map((edu, i) => (
+                <div key={`edu-${i}`} className="bg-white border border-gray-100 rounded-[2.5rem] p-8 relative group hover:border-[#7C3AED]/30 transition-all shadow-sm">
+                  <button
+                    onClick={() => handleDeleteItem('education', i, 'educationList')}
+                    className="absolute top-6 right-6 p-2 text-gray-200 hover:text-red-400 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <Plus className="w-5 h-5 rotate-45" />
+                  </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                    <div className="md:col-span-2 space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1 group-focus-within:text-[#7C3AED] transition-colors">Institution Name</label>
-                      <input 
-                        type="text" 
-                        name="education.institution"
-                        value={formData.education.institution}
-                        onChange={handleChange}
-                        className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#7C3AED]/5 focus:border-[#7C3AED]/30 transition-all" 
-                        placeholder="Enter college or university name" 
-                      />
+                      <input type="text" value={edu.institution} onChange={e => { const u = [...formData.educationList]; u[i] = { ...u[i], institution: e.target.value }; setFormData(prev => ({ ...prev, educationList: u })); }} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#7C3AED]/5 focus:border-[#7C3AED]/30 transition-all" placeholder="Enter college or university name" />
                     </div>
-
-                    <div className="space-y-2 group">
+                    <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1 group-focus-within:text-[#7C3AED] transition-colors">Degree</label>
-                      <input 
-                        type="text" 
-                        name="education.degree"
-                        value={formData.education.degree}
-                        onChange={handleChange}
-                        className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#7C3AED]/5 focus:border-[#7C3AED]/30 transition-all" 
-                        placeholder="e.g. Bachelor of Technology" 
-                      />
+                      <input type="text" value={edu.degree} onChange={e => { const u = [...formData.educationList]; u[i] = { ...u[i], degree: e.target.value }; setFormData(prev => ({ ...prev, educationList: u })); }} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#7C3AED]/5 focus:border-[#7C3AED]/30 transition-all" placeholder="e.g. Bachelor of Technology" />
                     </div>
-
-                    <div className="space-y-2 group">
+                    <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1 group-focus-within:text-[#7C3AED] transition-colors">Specialization</label>
-                      <input 
-                        type="text" 
-                        name="education.specialization"
-                        value={formData.education.specialization}
-                        onChange={handleChange}
-                        className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#7C3AED]/5 focus:border-[#7C3AED]/30 transition-all" 
-                        placeholder="e.g. Computer Science" 
-                      />
+                      <input type="text" value={edu.specialization} onChange={e => { const u = [...formData.educationList]; u[i] = { ...u[i], specialization: e.target.value }; setFormData(prev => ({ ...prev, educationList: u })); }} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#7C3AED]/5 focus:border-[#7C3AED]/30 transition-all" placeholder="e.g. Computer Science" />
                     </div>
-
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2 group">
+                      <div className="space-y-2">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Start Year</label>
-                        <select 
-                          name="education.startYear"
-                          value={formData.education.startYear}
-                          onChange={handleChange}
-                          className="w-full px-4 py-4 bg-gray-50 border border-transparent rounded-2xl text-xs font-bold focus:outline-none focus:bg-white transition-all appearance-none outline-none"
-                        >
-                          <option>2022</option>
-                          <option>2021</option>
-                          <option>2020</option>
+                        <select value={edu.startYear} onChange={e => { const u = [...formData.educationList]; u[i] = { ...u[i], startYear: e.target.value }; setFormData(prev => ({ ...prev, educationList: u })); }} className="w-full px-4 py-4 bg-gray-50 border border-transparent rounded-2xl text-xs font-bold focus:outline-none focus:bg-white transition-all appearance-none outline-none">
+                          <option>2024</option><option>2023</option><option>2022</option><option>2021</option><option>2020</option>
                         </select>
                       </div>
-                      <div className="space-y-2 group">
+                      <div className="space-y-2">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">End Year</label>
-                        <select 
-                          name="education.endYear"
-                          value={formData.education.endYear}
-                          onChange={handleChange}
-                          className="w-full px-4 py-4 bg-gray-50 border border-transparent rounded-2xl text-xs font-bold focus:outline-none focus:bg-white transition-all appearance-none outline-none"
-                        >
-                          <option>2026</option>
-                          <option>2025</option>
-                          <option>2024</option>
+                        <select value={edu.endYear} onChange={e => { const u = [...formData.educationList]; u[i] = { ...u[i], endYear: e.target.value }; setFormData(prev => ({ ...prev, educationList: u })); }} className="w-full px-4 py-4 bg-gray-50 border border-transparent rounded-2xl text-xs font-bold focus:outline-none focus:bg-white transition-all appearance-none outline-none">
+                          <option>2028</option><option>2027</option><option>2026</option><option>2025</option><option>2024</option>
                         </select>
                       </div>
                     </div>
-
-                    <div className="space-y-2 group">
+                    <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1 group-focus-within:text-[#7C3AED] transition-colors">CGPA / Percentage</label>
-                      <input 
-                        type="text" 
-                        name="education.cgpa"
-                        value={formData.education.cgpa}
-                        onChange={handleChange}
-                        className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#7C3AED]/5 focus:border-[#7C3AED]/30 transition-all" 
-                        placeholder="e.g. 9.4 or 88%" 
-                      />
-                    </div>
-
-                    <div className="md:col-span-2 flex items-center justify-between p-6 bg-gray-50/50 rounded-2xl border border-gray-100">
-                      <div className="flex items-center gap-4">
-                         <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-[#7C3AED] shadow-sm">
-                            <Calendar className="w-4 h-4" />
-                         </div>
-                         <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">I am currently studying here</span>
-                      </div>
-                      <div 
-                        onClick={() => toggleStatus('isCurrentStudent')}
-                        className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${formData.isCurrentStudent ? 'bg-[#7C3AED]' : 'bg-gray-200'}`}
-                      >
-                         <motion.div 
-                          animate={{ x: formData.isCurrentStudent ? 24 : 4 }}
-                          className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm" 
-                         />
-                      </div>
+                      <input type="text" value={edu.cgpa} onChange={e => { const u = [...formData.educationList]; u[i] = { ...u[i], cgpa: e.target.value }; setFormData(prev => ({ ...prev, educationList: u })); }} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#7C3AED]/5 focus:border-[#7C3AED]/30 transition-all" placeholder="e.g. 9.4 or 88%" />
                     </div>
                   </div>
-               </div>
+                </div>
+              ))}
             </div>
+
+            {formData.educationList.length > 0 && (
+              <div className="pt-8 flex justify-end">
+                <button 
+                  onClick={() => handleSave('Education')}
+                  disabled={isSaving}
+                  className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50"
+                >
+                  {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {isSaving ? 'Saving...' : `Save ${formData.educationList.length} Education`}
+                </button>
+              </div>
+            )}
           </motion.div>
         );
+
       case 'skills':
         return (
           <motion.div
@@ -590,87 +762,168 @@ const MyProfile: React.FC = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-12"
+            className="space-y-10"
           >
             <div className="flex items-center justify-between border-b border-gray-100 pb-6">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-orange-50 rounded-full flex items-center justify-center text-orange-500">
                   <Terminal className="w-6 h-6" />
                 </div>
-                <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Skills & Expertise</h2>
+                <div>
+                  <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Skills &amp; Expertise</h2>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{formData.skills.length} skills added</p>
+                </div>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all">
-                <Plus className="w-4 h-4" />
-                Add Skill
+            </div>
+
+            {/* Trending Suggestions */}
+            <div className="bg-[#F5F3FF]/50 border border-[#7C3AED]/10 p-8 rounded-[2.5rem]">
+              <div className="flex items-center gap-3 mb-5">
+                <Sparkles className="w-4 h-4 text-[#7C3AED]" />
+                <span className="text-[10px] font-black text-[#7C3AED] uppercase tracking-widest">Trending for ML Engineers — Click to Add</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {['TensorFlow', 'PyTorch', 'Scikit-Learn', 'Deep Learning', 'SQL', 'LangChain', 'Docker', 'AWS'].map(skill => {
+                  const alreadyAdded = formData.skills.some(s => s.name.toLowerCase() === skill.toLowerCase());
+                  return (
+                    <button
+                      key={skill}
+                      onClick={() => {
+                        if (!alreadyAdded) {
+                          setFormData(prev => ({
+                            ...prev,
+                            skills: [...prev.skills, { name: skill, proficiency: 'Intermediate', years: '' }]
+                          }));
+                        }
+                      }}
+                      className={`px-5 py-2 rounded-xl text-[10px] font-bold transition-all shadow-sm ${alreadyAdded ? 'bg-[#7C3AED] text-white border border-[#7C3AED] cursor-default' : 'bg-white border border-white hover:border-[#7C3AED] hover:text-[#7C3AED] text-gray-600'}`}
+                    >
+                      {alreadyAdded ? '✓ ' : '+ '}{skill}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Manual Add Row */}
+            <div className="bg-white border border-gray-100 rounded-3xl p-6 flex flex-col md:flex-row items-center gap-4 shadow-sm">
+              <input
+                type="text"
+                value={newSkillInput}
+                onChange={e => setNewSkillInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addSkillToList()}
+                placeholder="Type a skill name and press Enter or click Add..."
+                className="flex-grow px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all"
+              />
+              <button
+                onClick={addSkillToList}
+                disabled={!newSkillInput.trim()}
+                className="px-8 py-4 bg-[#7C3AED] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6D28D9] transition-all flex items-center gap-2 disabled:opacity-40"
+              >
+                <Plus className="w-4 h-4" /> Add Skill
               </button>
             </div>
 
-            <div className="space-y-10">
-              {/* Trending Suggestions */}
-              <div className="bg-[#F5F3FF]/50 border border-[#7C3AED]/10 p-8 rounded-[2.5rem]">
-                 <div className="flex items-center gap-3 mb-6">
-                    <Sparkles className="w-4 h-4 text-[#7C3AED]" />
-                    <span className="text-[10px] font-black text-[#7C3AED] uppercase tracking-widest">Trending for ML Engineers</span>
-                 </div>
-                 <div className="flex flex-wrap gap-3">
-                    {['TensorFlow', 'PyTorch', 'Scikit-Learn', 'Deep Learning', 'SQL'].map(skill => (
-                      <button key={skill} className="px-5 py-2 bg-white border border-white rounded-xl text-[10px] font-bold text-gray-600 hover:border-[#7C3AED] hover:text-[#7C3AED] transition-all shadow-sm">
-                        + {skill}
-                      </button>
-                    ))}
-                 </div>
-              </div>
-
-              <div className="space-y-6">
-                 {/* Skill Row */}
-                 <div className="bg-white border border-gray-100 rounded-3xl p-6 flex flex-col md:flex-row items-center gap-6 group hover:border-[#7C3AED]/30 transition-all shadow-sm">
-                    <div className="flex-grow space-y-2 w-full">
-                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Skill Name</label>
-                       <input 
-                        type="text" 
-                        name="skill.name"
-                        value={formData.skill.name}
-                        onChange={handleChange}
-                        className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" 
-                        placeholder="Enter skill..." 
-                       />
-                    </div>
-                    
-                    <div className="w-full md:w-64 space-y-2">
-                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Proficiency</label>
-                       <select 
-                        name="skill.proficiency"
-                        value={formData.skill.proficiency}
-                        onChange={handleChange}
-                        className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 appearance-none focus:bg-white outline-none transition-all"
-                       >
-                          <option>Beginner</option>
-                          <option>Intermediate</option>
-                          <option>Advanced</option>
-                       </select>
+            {/* Live Skills List */}
+            <div className="space-y-4">
+              <AnimatePresence>
+                {formData.skills.length === 0 && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="text-center py-10 text-gray-300"
+                  >
+                    <Terminal className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p className="text-xs font-bold uppercase tracking-widest">No skills yet. Upload your resume or add manually above.</p>
+                  </motion.div>
+                )}
+                {formData.skills.map((sk, i) => (
+                  <motion.div
+                    key={`skill-row-${i}`}
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ delay: i * 0.02 }}
+                    className="bg-white border border-gray-100 rounded-3xl p-5 flex flex-col md:flex-row items-center gap-5 group hover:border-[#7C3AED]/30 transition-all shadow-sm"
+                  >
+                    {/* Rank badge */}
+                    <div className="w-8 h-8 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-[10px] font-black text-gray-400 shrink-0">
+                      {i + 1}
                     </div>
 
-                    <div className="w-full md:w-48 space-y-2">
-                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Experience</label>
-                       <div className="flex items-center gap-3">
-                          <input 
-                            type="number" 
-                            name="skill.years"
-                            value={formData.skill.years}
-                            onChange={handleChange}
-                            className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white outline-none transition-all" 
-                            placeholder="0" 
-                          />
-                          <span className="text-[10px] font-black text-gray-400 uppercase">Yrs</span>
-                       </div>
+                    {/* Skill Name */}
+                    <div className="flex-grow">
+                      <input
+                        type="text"
+                        value={sk.name}
+                        onChange={e => updateSkillField(i, 'name', e.target.value)}
+                        className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none border-b border-transparent focus:border-[#7C3AED]/30 transition-all pb-1"
+                        placeholder="Skill name"
+                      />
                     </div>
 
-                    <button className="p-4 text-gray-300 hover:text-red-400 hover:bg-red-50 rounded-2xl transition-all self-end md:self-center">
-                       <Plus className="w-5 h-5 rotate-45" />
+                    {/* Proficiency */}
+                    <select
+                      value={sk.proficiency}
+                      onChange={e => updateSkillField(i, 'proficiency', e.target.value)}
+                      className="w-36 px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs font-bold text-gray-900 appearance-none focus:bg-white outline-none transition-all"
+                    >
+                      <option>Beginner</option>
+                      <option>Intermediate</option>
+                      <option>Advanced</option>
+                      <option>Expert</option>
+                    </select>
+
+                    {/* Years */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={sk.years}
+                        onChange={e => updateSkillField(i, 'years', e.target.value)}
+                        min="0"
+                        max="30"
+                        className="w-16 px-3 py-2 bg-gray-50 border border-transparent rounded-xl text-xs font-bold text-center focus:bg-white outline-none transition-all"
+                        placeholder="0"
+                      />
+                      <span className="text-[10px] font-black text-gray-400 uppercase">Yrs</span>
+                    </div>
+
+                    {/* Proficiency bar */}
+                    <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: sk.proficiency === 'Expert' ? '100%' : sk.proficiency === 'Advanced' ? '75%' : sk.proficiency === 'Intermediate' ? '50%' : '25%',
+                          backgroundColor: sk.proficiency === 'Expert' ? '#7C3AED' : sk.proficiency === 'Advanced' ? '#3B82F6' : sk.proficiency === 'Intermediate' ? '#F59E0B' : '#9CA3AF'
+                        }}
+                      />
+                    </div>
+
+                    {/* Delete */}
+                    <button
+                      onClick={() => removeSkillFromList(i)}
+                      className="p-2 text-gray-200 hover:text-red-400 hover:bg-red-50 rounded-xl transition-all"
+                    >
+                      <Plus className="w-4 h-4 rotate-45" />
                     </button>
-                 </div>
-              </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
+
+            {formData.skills.length > 0 && (
+              <div className="pt-4 flex justify-end">
+                <button
+                  onClick={() => handleSave('Skills')}
+                  disabled={isSaving}
+                  className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50"
+                >
+                  {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {isSaving ? 'Saving...' : `Save ${formData.skills.length} Skills`}
+                </button>
+              </div>
+            )}
           </motion.div>
         );
 
@@ -681,92 +934,188 @@ const MyProfile: React.FC = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-12"
+            className="space-y-10"
           >
             <div className="flex items-center justify-between border-b border-gray-100 pb-6">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-500">
                   <FileText className="w-6 h-6" />
                 </div>
-                <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Resume Management</h2>
+                <div>
+                  <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Resume Management</h2>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Upload your resume to auto-extract skills &amp; get an ATS score</p>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-               {/* Upload Card */}
-               <input 
-                type="file" 
-                ref={resumeInputRef} 
-                onChange={handleResumeUpload} 
-                className="hidden" 
-                accept=".pdf,.docx" 
-               />
-               <div 
-                onClick={() => resumeInputRef.current?.click()}
-                className="md:col-span-2 bg-gray-50/50 border-2 border-dashed border-gray-100 rounded-[3rem] p-12 flex flex-col items-center justify-center text-center group hover:border-[#7C3AED]/30 transition-all cursor-pointer"
-               >
-                  <div className="w-20 h-20 bg-white rounded-3xl shadow-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                    <Plus className="w-8 h-8 text-[#7C3AED]" />
-                  </div>
-                  <h3 className="text-lg font-black uppercase text-gray-900 mb-2">Upload New Resume</h3>
-                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-widest">PDF, DOCX (Max 10MB)</p>
-               </div>
+            {/* Upload Zone */}
+            <input
+              type="file"
+              ref={resumeInputRef}
+              onChange={handleResumeUpload}
+              className="hidden"
+              accept=".pdf,.docx"
+            />
+            <div
+              onClick={() => !isUploading && resumeInputRef.current?.click()}
+              className={`relative border-2 border-dashed rounded-[3rem] p-12 flex flex-col items-center justify-center text-center transition-all cursor-pointer overflow-hidden
+                ${isUploading ? 'border-[#7C3AED]/50 bg-[#F5F3FF]/30 cursor-not-allowed' : 'border-gray-100 bg-gray-50/50 hover:border-[#7C3AED]/30 hover:bg-[#F5F3FF]/20 group'}`}
+            >
+              {/* Upload progress fill */}
+              {isUploading && (
+                <div
+                  className="absolute inset-0 bg-[#7C3AED]/10 transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              )}
 
-               {/* AI Score Card */}
-               <div className="bg-gradient-to-br from-gray-900 to-black rounded-[3rem] p-10 text-white flex flex-col justify-between shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-10 opacity-10">
-                     <Scan className="w-32 h-32" />
-                  </div>
-                  <div className="relative z-10">
-                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-4 block">AI Optimizer</span>
-                    <h3 className="text-3xl font-black mb-2">{formData.resume.atsScore}<span className="text-sm opacity-60">/100</span></h3>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">ATS Score</p>
-                  </div>
-                  <button className="w-full py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all relative z-10">
-                    {formData.resume.atsScore > 0 ? 'Detailed Report' : 'Awaiting Scan'}
-                  </button>
-               </div>
+              <div className={`w-20 h-20 bg-white rounded-3xl shadow-xl flex items-center justify-center mb-6 transition-transform relative z-10 ${isUploading ? 'animate-pulse' : 'group-hover:scale-110'}`}>
+                {isUploading
+                  ? <div className="w-8 h-8 border-4 border-[#7C3AED]/20 border-t-[#7C3AED] rounded-full animate-spin" />
+                  : <Plus className="w-8 h-8 text-[#7C3AED]" />
+                }
+              </div>
+              <h3 className="text-lg font-black uppercase text-gray-900 mb-2 relative z-10">
+                {isUploading ? `Parsing Resume... ${uploadProgress}%` : 'Upload Your Resume'}
+              </h3>
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-widest relative z-10">
+                {isUploading ? 'Extracting skills and computing ATS score...' : 'PDF or DOCX · Max 10MB · Auto-extracts skills'}
+              </p>
+              {isUploading && (
+                <div className="w-64 h-1.5 bg-gray-100 rounded-full mt-6 overflow-hidden relative z-10">
+                  <div
+                    className="h-full bg-[#7C3AED] rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Resume Version List */}
-            <div className="space-y-4">
-               <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Current Versions</h4>
-               <div className="bg-white border border-gray-100 rounded-3xl p-6 flex items-center justify-between group hover:border-blue-500/30 transition-all shadow-sm">
-                  <div className="flex items-center gap-6">
-                    <div className="w-12 h-16 bg-red-50 rounded-xl flex flex-col items-center justify-center border border-red-100 group-hover:scale-105 transition-transform">
-                      <FileText className="w-6 h-6 text-red-500" />
-                      <span className="text-[8px] font-black text-red-400 mt-1 uppercase">PDF</span>
+            {/* ATS Score + File Info Row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* ATS Score Card */}
+              <div className="bg-gradient-to-br from-gray-900 to-black rounded-[2.5rem] p-8 text-white flex flex-col justify-between shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8 opacity-10">
+                  <Scan className="w-28 h-28" />
+                </div>
+                <div className="relative z-10">
+                  <span className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-3 block">ATS Score</span>
+                  <h3 className="text-4xl font-black mb-1">
+                    {formData.resume.atsScore > 0 ? formData.resume.atsScore : '—'}
+                    <span className="text-base opacity-50">/100</span>
+                  </h3>
+                  {formData.resume.atsScore > 0 && (
+                    <div className="w-full h-1 bg-white/10 rounded-full mt-3">
+                      <div
+                        className="h-full rounded-full transition-all duration-1000"
+                        style={{
+                          width: `${formData.resume.atsScore}%`,
+                          backgroundColor: formData.resume.atsScore >= 80 ? '#22C55E' : formData.resume.atsScore >= 60 ? '#F59E0B' : '#EF4444'
+                        }}
+                      />
                     </div>
-                    <div>
-                      <h5 className="font-bold text-gray-900 text-sm mb-1">{formData.resume.fileName}</h5>
-                      <div className="flex items-center gap-4">
-                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">v{formData.resume.version}</span>
-                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
-                           <Calendar className="w-3 h-3" /> {formData.resume.uploadDate || 'Not uploaded yet'}
+                  )}
+                  <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-2">
+                    {formData.resume.atsScore >= 80 ? 'Excellent' : formData.resume.atsScore >= 60 ? 'Good' : formData.resume.atsScore > 0 ? 'Needs Work' : 'Awaiting Upload'}
+                  </p>
+                </div>
+              </div>
+
+              {/* File Details Card */}
+              <div className="md:col-span-2 bg-white border border-gray-100 rounded-[2.5rem] p-8 flex flex-col justify-between shadow-sm">
+                <div className="flex items-center gap-5 mb-6">
+                  <div className={`w-14 h-18 rounded-2xl flex flex-col items-center justify-center border shadow-sm px-3 py-4 ${formData.resume.fileName.endsWith('.pdf') || formData.resume.fileName.endsWith('.docx') ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}>
+                    <FileText className={`w-6 h-6 ${formData.resume.fileName.endsWith('.pdf') || formData.resume.fileName.endsWith('.docx') ? 'text-red-500' : 'text-gray-300'}`} />
+                    <span className="text-[8px] font-black mt-1 uppercase text-red-400">
+                      {formData.resume.fileName.endsWith('.pdf') ? 'PDF' : formData.resume.fileName.endsWith('.docx') ? 'DOCX' : '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-gray-900 text-sm mb-1 max-w-xs truncate">{formData.resume.fileName}</h5>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">v{formData.resume.version}</span>
+                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                        <Calendar className="w-3 h-3" /> {formData.resume.uploadDate || 'Not uploaded yet'}
+                      </span>
+                      {resumeParseResult && (
+                        <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1">
+                          ✓ {resumeParseResult.word_count} words
                         </span>
-                      </div>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={extractSkills}
-                      disabled={isExtracting || formData.resume.atsScore === 0}
-                      className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 disabled:opacity-50"
-                    >
-                       {isExtracting ? <Plus className="w-3 h-3 animate-spin" /> : <Scan className="w-3 h-3" />}
-                       {isExtracting ? 'Extracting...' : 'Extract Skills'}
-                    </button>
-                    <button 
-                      onClick={() => handleSave('Resume Version')}
-                      className="p-3 text-gray-400 hover:text-gray-900 transition-colors"
-                    >
-                       <Save className="w-5 h-5" />
-                    </button>
-                  </div>
-               </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => resumeInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="flex-1 py-3 border-2 border-dashed border-gray-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-500 hover:border-[#7C3AED] hover:text-[#7C3AED] transition-all disabled:opacity-50"
+                  >
+                    {isUploading ? 'Parsing...' : 'Re-upload Resume'}
+                  </button>
+                  <button
+                    onClick={() => handleSave('Resume')}
+                    disabled={isSaving || formData.resume.atsScore === 0}
+                    className="px-6 py-3 bg-[#7C3AED] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6D28D9] transition-all flex items-center gap-2 shadow-lg shadow-[#7C3AED]/20 disabled:opacity-40"
+                  >
+                    {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save
+                  </button>
+                </div>
+              </div>
             </div>
+
+            {/* Extracted Skills Section — live populated after upload */}
+            {formData.skills.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-[#F5F3FF]/50 border border-[#7C3AED]/10 rounded-[2.5rem] p-8"
+              >
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="w-4 h-4 text-[#7C3AED]" />
+                    <span className="text-[10px] font-black text-[#7C3AED] uppercase tracking-widest">
+                      {resumeParseResult ? `${formData.skills.length} Skills Auto-Extracted` : `${formData.skills.length} Skills`}
+                    </span>
+                  </div>
+                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Click × to remove · Click Skills tab to edit</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {formData.skills.map((sk, i) => (
+                    <motion.span
+                      key={`${sk.name}-${i}`}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: i * 0.03 }}
+                      className="px-4 py-2 bg-white border border-[#7C3AED]/20 rounded-xl text-[10px] font-bold text-[#7C3AED] flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
+                    >
+                      {sk.name}
+                      <button
+                        onClick={() => removeSkillFromList(i)}
+                        className="text-[#7C3AED]/40 hover:text-red-400 transition-colors ml-1"
+                      >
+                        ×
+                      </button>
+                    </motion.span>
+                  ))}
+                </div>
+                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-4">
+                  These skills have been synced to your Skills tab. Save to persist.
+                </p>
+              </motion.div>
+            )}
+
+            {/* Empty state before upload */}
+            {formData.skills.length === 0 && !isUploading && (
+              <div className="text-center py-8 text-gray-300">
+                <Scan className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p className="text-xs font-bold uppercase tracking-widest">Upload a resume above to auto-extract your skills and get an ATS score.</p>
+              </div>
+            )}
           </motion.div>
         );
+
 
       case 'experience':
         return (
@@ -775,129 +1124,85 @@ const MyProfile: React.FC = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-12"
+            className="space-y-10"
           >
             <div className="flex items-center justify-between border-b border-gray-100 pb-6">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-500">
                   <Briefcase className="w-6 h-6" />
                 </div>
-                <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Professional Experience</h2>
+                <div>
+                  <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Professional Experience</h2>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{formData.experienceList.length} entries</p>
+                </div>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all shadow-lg shadow-black/10">
-                <Plus className="w-4 h-4" />
-                Add Experience
+              <button
+                onClick={() => setFormData(prev => ({
+                  ...prev,
+                  experienceList: [...prev.experienceList, { company: '', role: '', type: 'Full-time', responsibilities: '', location: '' }]
+                }))}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all shadow-lg shadow-black/10"
+              >
+                <Plus className="w-4 h-4" /> Add Experience
               </button>
             </div>
 
-            <div className="space-y-8">
-               {/* Experience Card */}
-               <div className="bg-white border border-gray-100 rounded-[2.5rem] p-10 relative group hover:border-[#7C3AED]/30 transition-all shadow-sm">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                     <div className="md:col-span-2 flex items-center gap-6 mb-4">
-                        <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center border border-gray-100 shadow-sm overflow-hidden text-gray-400">
-                           <Globe className="w-8 h-8 opacity-20" />
-                        </div>
-                        <div className="space-y-2 flex-grow">
-                           <input 
-                            type="text" 
-                            name="experience.company"
-                            value={formData.experience.company}
-                            onChange={handleChange}
-                            className="w-full text-lg font-black uppercase tracking-tight text-gray-900 bg-transparent border-none outline-none focus:ring-0 placeholder:text-gray-200" 
-                            placeholder="COMPANY NAME" 
-                           />
-                           <div className="flex gap-2">
-                             <input 
-                              type="text" 
-                              name="experience.type"
-                              value={formData.experience.type}
-                              onChange={handleChange}
-                              className="w-24 text-[10px] font-black text-[#7C3AED] uppercase tracking-widest bg-transparent border-none outline-none focus:ring-0 placeholder:text-gray-200" 
-                              placeholder="FULL-TIME" 
-                             />
-                             <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">•</span>
-                             <input 
-                              type="text" 
-                              name="experience.location"
-                              value={(formData.experience as any).location || ''}
-                              onChange={handleChange}
-                              className="flex-grow text-[10px] font-black text-[#7C3AED] uppercase tracking-widest bg-transparent border-none outline-none focus:ring-0 placeholder:text-gray-200" 
-                              placeholder="REMOTE" 
-                             />
-                           </div>
-                        </div>
-                     </div>
+            {formData.experienceList.length === 0 && (
+              <div className="text-center py-12 text-gray-300">
+                <Briefcase className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-xs font-bold uppercase tracking-widest">No experience added. Click "Add Experience" to begin.</p>
+              </div>
+            )}
 
-                     <div className="space-y-2 group">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Job Role</label>
-                        <input 
-                          type="text" 
-                          name="experience.role"
-                          value={formData.experience.role}
-                          onChange={handleChange}
-                          className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" 
-                          placeholder="e.g. Senior Frontend Engineer" 
-                        />
-                     </div>
-
-                     <div className="space-y-2 group">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Employment Type</label>
-                        <select 
-                          name="experience.type"
-                          value={formData.experience.type}
-                          onChange={handleChange}
-                          className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold appearance-none text-gray-900 focus:bg-white outline-none transition-all"
-                        >
-                           <option>Internship</option>
-                           <option>Full-time</option>
-                           <option>Freelance</option>
-                           <option>Contract</option>
-                        </select>
-                     </div>
-
-                     <div className="md:col-span-2 space-y-2 group">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Responsibilities & Impact</label>
-                        <textarea 
-                          name="experience.responsibilities"
-                          value={formData.experience.responsibilities}
-                          onChange={handleChange}
-                          className="w-full px-8 py-6 bg-gray-50 border border-transparent rounded-[2rem] text-sm font-bold min-h-[150px] leading-relaxed text-gray-900 focus:bg-white outline-none transition-all" 
-                          placeholder="Mention your key deliverables, technologies used, and business impact..." 
-                        />
-                     </div>
-
-                     <div className="md:col-span-2 flex items-center justify-between p-6 bg-gray-50/50 rounded-2xl border border-gray-100">
-                        <div className="flex items-center gap-4">
-                           <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-[#7C3AED] shadow-sm">
-                              <Calendar className="w-4 h-4" />
-                           </div>
-                           <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Currently Working Here</span>
-                        </div>
-                        <div 
-                          onClick={() => toggleStatus('isCurrentEmployee')}
-                          className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${formData.isCurrentEmployee ? 'bg-[#7C3AED]' : 'bg-gray-200'}`}
-                        >
-                           <motion.div 
-                             animate={{ x: formData.isCurrentEmployee ? 24 : 4 }}
-                             className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm" 
-                           />
-                        </div>
-                     </div>
+            <div className="space-y-6">
+              {formData.experienceList.map((exp, i) => (
+                <div key={`exp-${i}`} className="bg-white border border-gray-100 rounded-[2.5rem] p-8 relative group hover:border-[#7C3AED]/30 transition-all shadow-sm">
+                  <button
+                    onClick={() => handleDeleteItem('experience', i, 'experienceList')}
+                    className="absolute top-6 right-6 p-2 text-gray-200 hover:text-red-400 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <Plus className="w-5 h-5 rotate-45" />
+                  </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Company Name</label>
+                      <input type="text" value={exp.company} onChange={e => { const u = [...formData.experienceList]; u[i] = { ...u[i], company: e.target.value }; setFormData(prev => ({ ...prev, experienceList: u })); }} className="w-full px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="e.g. Google, Infosys" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Job Role</label>
+                      <input type="text" value={exp.role} onChange={e => { const u = [...formData.experienceList]; u[i] = { ...u[i], role: e.target.value }; setFormData(prev => ({ ...prev, experienceList: u })); }} className="w-full px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="e.g. Frontend Engineer" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Employment Type</label>
+                      <select value={exp.type} onChange={e => { const u = [...formData.experienceList]; u[i] = { ...u[i], type: e.target.value }; setFormData(prev => ({ ...prev, experienceList: u })); }} className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-xs font-bold appearance-none text-gray-900 focus:bg-white outline-none transition-all">
+                        <option>Internship</option><option>Full-time</option><option>Freelance</option><option>Contract</option><option>Part-time</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Location</label>
+                      <input type="text" value={exp.location || ''} onChange={e => { const u = [...formData.experienceList]; u[i] = { ...u[i], location: e.target.value }; setFormData(prev => ({ ...prev, experienceList: u })); }} className="w-full px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="e.g. Remote, Hyderabad" />
+                    </div>
+                    <div className="md:col-span-2 space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Responsibilities &amp; Impact</label>
+                      <textarea value={exp.responsibilities} onChange={e => { const u = [...formData.experienceList]; u[i] = { ...u[i], responsibilities: e.target.value }; setFormData(prev => ({ ...prev, experienceList: u })); }} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold min-h-[100px] text-gray-900 focus:bg-white outline-none transition-all" placeholder="Mention key deliverables, technologies used..." />
+                    </div>
                   </div>
-               </div>
+                </div>
+              ))}
             </div>
 
-            <div className="pt-8 flex justify-end">
-               <button 
-                onClick={() => handleSave('Work Experience')}
-                disabled={isSaving}
-                className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50"
-               >
-                 {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                 {isSaving ? 'Saving...' : 'Save Experience'}
-               </button>
-            </div>
+            {formData.experienceList.length > 0 && (
+              <div className="pt-4 flex justify-end">
+                <button
+                  onClick={() => handleSave('Work Experience')}
+                  disabled={isSaving}
+                  className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50"
+                >
+                  {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {isSaving ? 'Saving...' : `Save ${formData.experienceList.length} Experiences`}
+                </button>
+              </div>
+            )}
           </motion.div>
         );
 
@@ -908,121 +1213,104 @@ const MyProfile: React.FC = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-12"
+            className="space-y-10"
           >
             <div className="flex items-center justify-between border-b border-gray-100 pb-6">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500">
                   <Settings className="w-6 h-6" />
                 </div>
-                <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Personal Projects</h2>
+                <div>
+                  <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Personal Projects</h2>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{formData.projects.length} projects</p>
+                </div>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all">
-                <Plus className="w-4 h-4" />
-                New Project
+              <button
+                onClick={() => setFormData(prev => ({
+                  ...prev,
+                  projects: [...prev.projects, { title: '', description: '', link: '', isFeatured: false, tags: [] }]
+                }))}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all"
+              >
+                <Plus className="w-4 h-4" /> New Project
               </button>
             </div>
 
-            <div className="space-y-10">
-               {/* Project Card */}
-               <div className="bg-white border border-gray-100 rounded-[3rem] p-10 relative overflow-hidden group hover:border-[#7C3AED]/30 transition-all shadow-sm">
-                  <div className="flex flex-col lg:flex-row gap-12">
-                     <div className="flex-1 space-y-8 relative z-10">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                           <div className="md:col-span-2 space-y-2 group">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1 group-focus-within:text-[#7C3AED] transition-colors">Project Title</label>
-                              <input 
-                                type="text" 
-                                name="project.title"
-                                value={formData.project.title}
-                                onChange={handleChange}
-                                className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" 
-                                placeholder="e.g. AI-Powered Portfolio Hub" 
-                              />
-                           </div>
+            {formData.projects.length === 0 && (
+              <div className="text-center py-12 text-gray-300">
+                <Settings className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-xs font-bold uppercase tracking-widest">No projects yet. Click "New Project" above to add one.</p>
+              </div>
+            )}
 
-                           <div className="md:col-span-2 space-y-2 group">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1 group-focus-within:text-[#7C3AED] transition-colors">Project Description</label>
-                              <textarea 
-                                name="project.description"
-                                value={formData.project.description}
-                                onChange={handleChange}
-                                className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold min-h-[120px] text-gray-900 focus:bg-white outline-none transition-all" 
-                                placeholder="Detailed breakdown of your project, architecture, and impact..." 
-                              />
-                           </div>
-
-                           <div className="space-y-2 group">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Tech Stack</label>
-                              <div className="flex flex-wrap gap-2 p-4 bg-gray-50 rounded-2xl border border-transparent">
-                                 {formData.project.title ? (
-                                   ['React', 'Node.js', 'MongoDB'].map(t => (
-                                     <span key={t} className="px-3 py-1 bg-white border border-gray-100 rounded-lg text-[9px] font-bold text-gray-600">{t}</span>
-                                   ))
-                                 ) : (
-                                   <span className="text-[9px] font-bold text-gray-300 italic px-2">No tags added yet</span>
-                                 )}
-                                 <button className="text-[#7C3AED] font-black text-[9px] uppercase tracking-widest ml-1">+ Add</button>
-                              </div>
-                           </div>
-
-                           <div className="space-y-2 group">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">GitHub Link</label>
-                              <div className="relative">
-                                <span className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400"><Share2 className="w-4 h-4" /></span>
-                                <input 
-                                  type="url" 
-                                  name="project.link"
-                                  value={formData.project.link}
-                                  onChange={handleChange}
-                                  className="w-full pl-12 pr-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" 
-                                  placeholder="https://github.com/..." 
-                                />
-                              </div>
-                           </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-6 bg-emerald-50/30 rounded-2xl border border-emerald-100/50">
-                           <div className="flex items-center gap-4">
-                              <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-emerald-500 shadow-sm">
-                                 <Award className="w-4 h-4" />
-                              </div>
-                              <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Featured Project</span>
-                           </div>
-                           <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer shadow-lg shadow-emerald-500/20">
-                              <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
-                           </div>
-                        </div>
-                     </div>
-
-                     {/* Screenshot Placeholder Area */}
-                     <div className="w-full lg:w-72 space-y-4 relative z-10">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1 block">Screenshots</label>
-                        <div className="w-full aspect-video bg-gray-50 border-2 border-dashed border-gray-100 rounded-[2rem] flex flex-col items-center justify-center text-center group/img cursor-pointer hover:border-[#7C3AED]/30 transition-all">
-                           <div className="w-12 h-12 bg-white rounded-2xl shadow-lg flex items-center justify-center mb-3 group-hover/img:scale-110 transition-transform">
-                              <Plus className="w-6 h-6 text-gray-400" />
-                           </div>
-                           <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Add Preview</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                           <div className="aspect-square bg-gray-50 rounded-2xl border border-gray-100" />
-                           <div className="aspect-square bg-gray-50 rounded-2xl border border-gray-100" />
-                        </div>
-                     </div>
+            <div className="space-y-8">
+              {formData.projects.map((proj, i) => (
+                <div key={`proj-${i}`} className="bg-white border border-gray-100 rounded-[2.5rem] p-8 relative group hover:border-[#7C3AED]/30 transition-all shadow-sm">
+                  <button
+                    onClick={() => handleDeleteItem('project', i, 'projects')}
+                    className="absolute top-6 right-6 p-2 text-gray-200 hover:text-red-400 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <Plus className="w-5 h-5 rotate-45" />
+                  </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="md:col-span-2 space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Project Title</label>
+                      <input
+                        type="text"
+                        value={proj.title}
+                        onChange={e => {
+                          const updated = [...formData.projects];
+                          updated[i] = { ...updated[i], title: e.target.value };
+                          setFormData(prev => ({ ...prev, projects: updated }));
+                        }}
+                        className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all"
+                        placeholder="e.g. AI-Powered Portfolio Hub"
+                      />
+                    </div>
+                    <div className="md:col-span-2 space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Description</label>
+                      <textarea
+                        value={proj.description}
+                        onChange={e => {
+                          const updated = [...formData.projects];
+                          updated[i] = { ...updated[i], description: e.target.value };
+                          setFormData(prev => ({ ...prev, projects: updated }));
+                        }}
+                        className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold min-h-[100px] text-gray-900 focus:bg-white outline-none transition-all"
+                        placeholder="Describe your project..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">GitHub / Link</label>
+                      <input
+                        type="url"
+                        value={proj.link}
+                        onChange={e => {
+                          const updated = [...formData.projects];
+                          updated[i] = { ...updated[i], link: e.target.value };
+                          setFormData(prev => ({ ...prev, projects: updated }));
+                        }}
+                        className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all"
+                        placeholder="https://github.com/..."
+                      />
+                    </div>
                   </div>
-               </div>
+                </div>
+              ))}
             </div>
 
-            <div className="pt-8 flex justify-end">
-               <button 
-                onClick={() => handleSave('Projects')}
-                disabled={isSaving}
-                className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50"
-               >
-                 {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                 {isSaving ? 'Saving...' : 'Save Projects'}
-               </button>
-            </div>
+            {formData.projects.length > 0 && (
+              <div className="pt-4 flex justify-end">
+                <button
+                  onClick={() => handleSave('Projects')}
+                  disabled={isSaving}
+                  className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50"
+                >
+                  {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {isSaving ? 'Saving...' : `Save ${formData.projects.length} Projects`}
+                </button>
+              </div>
+            )}
           </motion.div>
         );
 
@@ -1033,77 +1321,69 @@ const MyProfile: React.FC = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-12"
+            className="space-y-10"
           >
             <div className="flex items-center justify-between border-b border-gray-100 pb-6">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center text-amber-500">
                   <ShieldCheck className="w-6 h-6" />
                 </div>
-                <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Licenses & Certifications</h2>
+                <div>
+                  <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Licenses &amp; Certifications</h2>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{formData.certifications.length} certificates</p>
+                </div>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all">
-                <Plus className="w-4 h-4" />
-                Add Certificate
+              <button
+                onClick={() => setFormData(prev => ({
+                  ...prev,
+                  certifications: [...prev.certifications, { name: '', issuer: '', date: '', link: '' }]
+                }))}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all"
+              >
+                <Plus className="w-4 h-4" /> Add Certificate
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-               {/* Certificate Card */}
-               <div className="bg-white border border-gray-100 rounded-[2.5rem] p-8 group hover:border-[#7C3AED]/30 transition-all shadow-sm">
-                  <div className="flex items-center gap-6 mb-8">
-                     <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center border border-gray-100 text-gray-200">
-                        <Award className="w-8 h-8" />
-                     </div>
-                     <div className="space-y-2 flex-grow">
-                        <input 
-                          type="text" 
-                          name="certification.name"
-                          value={formData.certification.name}
-                          onChange={handleChange}
-                          className="w-full font-black text-gray-900 uppercase text-xs tracking-widest bg-transparent border-none outline-none focus:ring-0 placeholder:text-gray-200" 
-                          placeholder="CERTIFICATE NAME" 
-                        />
-                        <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            name="certification.issuer"
-                            value={formData.certification.issuer}
-                            onChange={handleChange}
-                            className="w-32 text-[10px] font-bold text-[#7C3AED] uppercase tracking-widest bg-transparent border-none outline-none focus:ring-0 placeholder:text-gray-200" 
-                            placeholder="GOOGLE CLOUD" 
-                          />
-                          <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">•</span>
-                          <input 
-                            type="text" 
-                            name="certification.date"
-                            value={formData.certification.date}
-                            onChange={handleChange}
-                            className="flex-grow text-[10px] font-bold text-[#7C3AED] uppercase tracking-widest bg-transparent border-none outline-none focus:ring-0 placeholder:text-gray-200" 
-                            placeholder="2023" 
-                          />
-                        </div>
-                     </div>
+            {formData.certifications.length === 0 && (
+              <div className="text-center py-12 text-gray-300">
+                <ShieldCheck className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-xs font-bold uppercase tracking-widest">No certifications yet. Click "Add Certificate" above.</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {formData.certifications.map((cert, i) => (
+                <div key={`cert-${i}`} className="bg-white border border-gray-100 rounded-[2.5rem] p-8 group hover:border-[#7C3AED]/30 transition-all shadow-sm relative">
+                  <button
+                    onClick={() => handleDeleteItem('certification', i, 'certifications')}
+                    className="absolute top-5 right-5 p-2 text-gray-200 hover:text-red-400 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <Plus className="w-4 h-4 rotate-45" />
+                  </button>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Certificate Name</label>
+                      <input type="text" value={cert.name} onChange={e => { const u = [...formData.certifications]; u[i] = { ...u[i], name: e.target.value }; setFormData(prev => ({ ...prev, certifications: u })); }} className="w-full px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="AWS Certified Solutions Architect" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Issuer</label>
+                        <input type="text" value={cert.issuer} onChange={e => { const u = [...formData.certifications]; u[i] = { ...u[i], issuer: e.target.value }; setFormData(prev => ({ ...prev, certifications: u })); }} className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-xs font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="Google Cloud" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Date</label>
+                        <input type="text" value={cert.date} onChange={e => { const u = [...formData.certifications]; u[i] = { ...u[i], date: e.target.value }; setFormData(prev => ({ ...prev, certifications: u })); }} className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-xs font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="2024" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Credential URL</label>
+                      <input type="url" value={cert.link} onChange={e => { const u = [...formData.certifications]; u[i] = { ...u[i], link: e.target.value }; setFormData(prev => ({ ...prev, certifications: u })); }} className="w-full px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="https://..." />
+                    </div>
                   </div>
-                  
-                  <div className="space-y-6">
-                     <div className="space-y-2 group">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Credential URL</label>
-                        <input 
-                          type="url" 
-                          name="certification.link"
-                          value={formData.certification.link}
-                          onChange={handleChange}
-                          className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white transition-all outline-none" 
-                          placeholder="https://..." 
-                        />
-                     </div>
-                     <button className="w-full py-4 bg-[#F5F3FF] text-[#7C3AED] rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#7C3AED] hover:text-white transition-all">
-                        <Plus className="w-4 h-4" /> Upload Certificate Proof
-                     </button>
-                  </div>
-               </div>
+                </div>
+              ))}
             </div>
+
 
             <div className="pt-8 flex justify-end">
                <button 
@@ -1132,141 +1412,64 @@ const MyProfile: React.FC = () => {
                 <div className="w-10 h-10 bg-rose-50 rounded-full flex items-center justify-center text-rose-500">
                   <Award className="w-6 h-6" />
                 </div>
-                <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Accomplishments</h2>
+                <div>
+                  <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Accomplishments</h2>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{formData.achievements.length} entries</p>
+                </div>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all">
-                <Plus className="w-4 h-4" />
-                Add Achievement
+              <button
+                onClick={() => setFormData(prev => ({
+                  ...prev,
+                  achievements: [...prev.achievements, { title: '', organization: '', month: 'Jan', year: '2024', category: 'Hackathon', description: '', link: '', isFeatured: false }]
+                }))}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all"
+              >
+                <Plus className="w-4 h-4" /> Add Achievement
               </button>
             </div>
 
-            <div className="space-y-8">
-               <div className="bg-white border border-gray-100 rounded-[3rem] p-10 relative group hover:border-[#7C3AED]/30 transition-all shadow-sm">
-                  {/* Top Header with Highlight Toggle */}
-                  <div className="flex items-center justify-between mb-8">
-                     <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${formData.achievement.isFeatured ? 'bg-amber-50 text-amber-500' : 'bg-rose-50 text-rose-500'}`}>
-                           <Award className="w-6 h-6" />
-                        </div>
-                        <div className="flex flex-col">
-                           <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">New Accomplishment</span>
-                           <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-gray-900">Featured on Profile?</span>
-                              <button 
-                                onClick={() => setFormData(prev => ({ ...prev, achievement: { ...prev.achievement, isFeatured: !prev.achievement.isFeatured }}))}
-                                className={`p-1 rounded-lg transition-colors ${formData.achievement.isFeatured ? 'text-amber-500 bg-amber-50' : 'text-gray-300 hover:text-gray-400'}`}
-                              >
-                                <Sparkles className="w-4 h-4 fill-current" />
-                              </button>
-                           </div>
-                        </div>
-                     </div>
-                     <button className="p-3 text-gray-300 hover:text-red-400 hover:bg-red-50 rounded-2xl transition-all">
-                        <Plus className="w-6 h-6 rotate-45" />
-                     </button>
+            {formData.achievements.length === 0 && (
+              <div className="text-center py-12 text-gray-300">
+                <Award className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-xs font-bold uppercase tracking-widest">No achievements yet. Click "Add Achievement" above.</p>
+              </div>
+            )}
+
+            <div className="space-y-6">
+              {formData.achievements.map((ach, i) => (
+                <div key={`ach-${i}`} className="bg-white border border-gray-100 rounded-[2.5rem] p-8 relative group hover:border-[#7C3AED]/30 transition-all shadow-sm">
+                  <button
+                    onClick={() => handleDeleteItem('achievement', i, 'achievements')}
+                    className="absolute top-6 right-6 p-2 text-gray-200 hover:text-red-400 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <Plus className="w-5 h-5 rotate-45" />
+                  </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Achievement Title</label>
+                      <input type="text" value={ach.title} onChange={e => { const u = [...formData.achievements]; u[i] = { ...u[i], title: e.target.value }; setFormData(prev => ({ ...prev, achievements: u })); }} className="w-full px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="Hackathon Winner, AWS Certified" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Organization / Event</label>
+                      <input type="text" value={ach.organization} onChange={e => { const u = [...formData.achievements]; u[i] = { ...u[i], organization: e.target.value }; setFormData(prev => ({ ...prev, achievements: u })); }} className="w-full px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="Smart India Hackathon" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Category</label>
+                      <select value={ach.category} onChange={e => { const u = [...formData.achievements]; u[i] = { ...u[i], category: e.target.value }; setFormData(prev => ({ ...prev, achievements: u })); }} className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-xs font-bold appearance-none outline-none focus:bg-white">
+                        {['Hackathon', 'Certification', 'Competition', 'Scholarship', 'Leadership', 'Research', 'Open Source', 'Sports', 'Volunteer'].map(c => <option key={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Link</label>
+                      <input type="url" value={ach.link} onChange={e => { const u = [...formData.achievements]; u[i] = { ...u[i], link: e.target.value }; setFormData(prev => ({ ...prev, achievements: u })); }} className="w-full px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="https://..." />
+                    </div>
+                    <div className="md:col-span-2 space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Description</label>
+                      <textarea value={ach.description} onChange={e => { const u = [...formData.achievements]; u[i] = { ...u[i], description: e.target.value }; setFormData(prev => ({ ...prev, achievements: u })); }} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold min-h-[80px] text-gray-900 focus:bg-white outline-none transition-all" placeholder="Explain what you achieved..." />
+                    </div>
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                     {/* Title & Organization */}
-                     <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2 group">
-                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Achievement Title</label>
-                           <input 
-                            type="text" 
-                            name="achievement.title"
-                            value={formData.achievement.title}
-                            onChange={handleChange}
-                            className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" 
-                            placeholder="Hackathon Winner, AWS Certified, Research Publication" 
-                           />
-                        </div>
-                        <div className="space-y-2 group">
-                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Organization / Event</label>
-                           <input 
-                            type="text" 
-                            name="achievement.organization"
-                            value={formData.achievement.organization}
-                            onChange={handleChange}
-                            className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" 
-                            placeholder="Smart India Hackathon, Google, IIT Hyderabad" 
-                           />
-                        </div>
-                     </div>
-
-                     {/* Date & Category */}
-                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Month + Year</label>
-                           <div className="flex gap-2">
-                              <select 
-                                name="achievement.month"
-                                value={formData.achievement.month}
-                                onChange={handleChange}
-                                className="w-full px-4 py-4 bg-gray-50 border border-transparent rounded-2xl text-xs font-bold appearance-none outline-none focus:bg-white"
-                              >
-                                 {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(m => <option key={m}>{m}</option>)}
-                              </select>
-                              <select 
-                                name="achievement.year"
-                                value={formData.achievement.year}
-                                onChange={handleChange}
-                                className="w-full px-4 py-4 bg-gray-50 border border-transparent rounded-2xl text-xs font-bold appearance-none outline-none focus:bg-white"
-                              >
-                                 {['2024', '2023', '2022', '2021', '2020'].map(y => <option key={y}>{y}</option>)}
-                              </select>
-                           </div>
-                        </div>
-                        <div className="space-y-2">
-                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Category</label>
-                           <select 
-                            name="achievement.category"
-                            value={formData.achievement.category}
-                            onChange={handleChange}
-                            className="w-full px-4 py-4 bg-gray-50 border border-transparent rounded-2xl text-xs font-bold appearance-none outline-none focus:bg-white"
-                           >
-                              {['Hackathon', 'Certification', 'Competition', 'Scholarship', 'Leadership', 'Research', 'Open Source', 'Sports', 'Volunteer'].map(c => <option key={c}>{c}</option>)}
-                           </select>
-                        </div>
-                     </div>
-
-                     {/* Link & Proof */}
-                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Achievement Link</label>
-                           <div className="relative">
-                              <Share2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                              <input 
-                                type="url" 
-                                name="achievement.link"
-                                value={formData.achievement.link}
-                                onChange={handleChange}
-                                className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-transparent rounded-2xl text-xs font-bold outline-none focus:bg-white transition-all" 
-                                placeholder="Devfolio, GitHub, etc." 
-                              />
-                           </div>
-                        </div>
-                        <div className="space-y-2">
-                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Proof Upload</label>
-                           <button className="w-full py-4 bg-[#F5F3FF] text-[#7C3AED] border border-dashed border-[#7C3AED]/30 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#7C3AED] hover:text-white transition-all">
-                              <FileText className="w-3 h-3" />
-                              Upload Proof
-                           </button>
-                        </div>
-                     </div>
-
-                     {/* Description */}
-                     <div className="md:col-span-2 space-y-2">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Impact Description</label>
-                        <textarea 
-                          name="achievement.description"
-                          value={formData.achievement.description}
-                          onChange={handleChange}
-                          className="w-full px-8 py-6 bg-gray-50 border border-transparent rounded-[2rem] text-sm font-bold min-h-[120px] leading-relaxed text-gray-900 focus:bg-white outline-none transition-all" 
-                          placeholder="Explain what you achieved, your contribution, and the outcome." 
-                        />
-                     </div>
-                  </div>
-               </div>
+                </div>
+              ))}
             </div>
 
             <div className="pt-8 flex justify-end">
@@ -1485,6 +1688,17 @@ const MyProfile: React.FC = () => {
                   </div>
                </div>
             </div>
+
+            <div className="pt-8 flex justify-end">
+               <button 
+                onClick={() => handleSave('Preferences')}
+                disabled={isSaving}
+                className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50"
+               >
+                 {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                 {isSaving ? 'Saving...' : 'Save Preferences'}
+               </button>
+            </div>
           </motion.div>
         );
     }
@@ -1492,6 +1706,31 @@ const MyProfile: React.FC = () => {
 
   return (
     <div className="max-w-[1400px] mx-auto min-h-screen bg-transparent p-4 sm:p-8 lg:p-12 font-sans selection:bg-[#7C3AED] selection:text-white">
+
+      {/* ── Global Save Toast ── */}
+      <AnimatePresence>
+        {saveStatus && (
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-8 py-4 rounded-2xl text-white text-sm font-bold shadow-2xl flex items-center gap-3 backdrop-blur-md
+              ${saveStatus.type === 'success' ? 'bg-emerald-500/90' : 'bg-red-500/90'}`}
+          >
+            <span>{saveStatus.type === 'success' ? '✓' : '✗'}</span>
+            {saveStatus.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Loading Overlay ── */}
+      {profileLoading && (
+        <div className="fixed inset-0 bg-white/70 backdrop-blur-sm z-40 flex flex-col items-center justify-center gap-4">
+          <div className="w-12 h-12 border-4 border-[#7C3AED]/20 border-t-[#7C3AED] rounded-full animate-spin" />
+          <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Loading Profile...</p>
+        </div>
+      )}
+
       {/* Header with Back Button */}
       <div className="flex items-center gap-6 mb-12">
         <button 
@@ -1505,6 +1744,7 @@ const MyProfile: React.FC = () => {
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-1">Configure your professional identity</p>
         </div>
       </div>
+
 
       <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-10 items-start">
         {/* Left Sidebar */}

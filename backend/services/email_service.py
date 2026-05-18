@@ -385,7 +385,7 @@ async def send_course_purchase_email(to_email: str, student_name: str, course_na
                     <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #FFFFFF; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);">
                         <tr>
                             <td align="center" style="background: linear-gradient(135deg, #7C3AED 0%, #3B82F6 100%); padding: 40px 30px;">
-                                <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">Welcome to the Elite Club</h1>
+                                <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">Welcome to Studlyf</h1>
                                 <p style="color: rgba(255,255,255,0.8); margin: 10px 0 0 0; font-size: 16px;">Your learning journey begins now.</p>
                             </td>
                         </tr>
