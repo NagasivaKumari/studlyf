@@ -1,12 +1,12 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { ShoppingCart, User } from 'lucide-react';
 
 const StudlyfLogo = ({ className = "h-8 sm:h-10" }: { className?: string }) => (
-  <div className={`flex items-center bg-white px-3 py-1.5 rounded-xl shadow-sm ${className}`}>
+  <div className={`flex items-center ${className}`}>
     <img
       src="/images/studlyf.png"
       alt="STUDLYF Logo"
@@ -112,8 +112,20 @@ const Navigation: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeMobileOverlay, setActiveMobileOverlay] = useState<string | null>(null);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
 
   const timeoutRef = useRef<number | null>(null);
+  const userDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setIsUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleMouseEnter = (menu: string) => {
     if (window.innerWidth < 1024) return;
@@ -179,14 +191,7 @@ const Navigation: React.FC = () => {
                 >
                   OPPORTUNITIES
                 </Link>
-                {user && role !== 'institution' ? (
-                  <Link
-                    to="/opportunities/my-applications"
-                    className="flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-white/80 hover:text-white ml-2"
-                  >
-                    MY APPLICATIONS
-                  </Link>
-                ) : null}
+
               </div>
             </div>
 
@@ -211,20 +216,78 @@ const Navigation: React.FC = () => {
                     </Link>
                   )}
 
-                  <Link
-                    to="/dashboard"
-                    className="hidden sm:flex items-center justify-center w-10 h-10 rounded-full bg-white/20 border border-white/30 hover:bg-white/30 transition-all mr-2 group/profile"
-                  >
-                    <User className="w-5 h-5 text-white group-hover/profile:text-[#A78BFA] transition-colors" />
-                  </Link>
-
-                  <motion.button
-                    onClick={() => logout()}
-                    whileHover={{ scale: 0.96 }}
-                    className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 sm:px-6 sm:py-2 rounded-lg sm:rounded-xl font-bold text-[8px] sm:text-[9px] uppercase tracking-[0.15em] sm:tracking-[0.25em] border border-white/20 backdrop-blur-md"
-                  >
-                    Logout
-                  </motion.button>
+                  <div className="relative hidden sm:block" ref={userDropdownRef}>
+                    <button
+                      onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                      className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 border border-white/30 hover:bg-white/30 transition-all mr-2 group/profile cursor-pointer outline-none"
+                    >
+                      <User className="w-5 h-5 text-white group-hover/profile:text-[#A78BFA] transition-colors" />
+                    </button>
+                    
+                    <AnimatePresence>
+                      {isUserDropdownOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          transition={{ duration: 0.2 }}
+                          className="absolute right-0 mt-4 w-72 bg-[#0B0B0F]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-4 z-[150] shadow-purple-500/5 text-left"
+                        >
+                          <div className="flex flex-col gap-2.5 pb-3.5 border-b border-white/5">
+                            <span className="text-[9px] font-black uppercase tracking-[0.25em] text-[#A78BFA]">
+                              AUTHENTICATED MEMBER
+                            </span>
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#7C3AED] to-[#A78BFA] flex items-center justify-center text-white font-black text-sm shadow-md">
+                                {user?.full_name?.split(' ').map((n: string) => n[0]).join('') || user?.displayName?.charAt(0) || 'U'}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-black text-white truncate">{user?.full_name || user?.displayName || 'User'}</p>
+                                <p className="text-[10px] font-medium text-white/50 truncate mt-0.5">{user?.email}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1 pt-3.5">
+                            <Link
+                              to="/dashboard/profile"
+                              onClick={() => setIsUserDropdownOpen(false)}
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest group"
+                            >
+                              <span className="text-sm group-hover:scale-110 transition-transform">👤</span>
+                              My Profile
+                            </Link>
+                            <Link
+                              to="/dashboard/my-courses"
+                              onClick={() => setIsUserDropdownOpen(false)}
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest group"
+                            >
+                              <span className="text-sm group-hover:scale-110 transition-transform">📖</span>
+                              My Courses
+                            </Link>
+                            <Link
+                              to="/opportunities/my-applications"
+                              onClick={() => setIsUserDropdownOpen(false)}
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest group"
+                            >
+                              <span className="text-sm group-hover:scale-110 transition-transform">🛒</span>
+                              Applications
+                            </Link>
+                            <div className="h-px bg-white/5 my-2" />
+                            <button
+                              onClick={() => {
+                                setIsUserDropdownOpen(false);
+                                logout();
+                              }}
+                              className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-xl text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all text-xs font-bold uppercase tracking-widest group cursor-pointer outline-none"
+                            >
+                              <span className="text-sm group-hover:scale-110 transition-transform">🚪</span>
+                              Sign Out
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 sm:gap-4">
@@ -347,7 +410,9 @@ const Navigation: React.FC = () => {
                   className="lg:hidden fixed top-0 left-0 bottom-0 w-[280px] sm:w-[320px] bg-[#0B0B0F] z-[120] shadow-2xl flex flex-col border-r border-white/10"
                 >
                   <div className="p-6 flex items-center justify-between border-b border-white/5">
-                    <StudlyfLogo />
+                    <Link to="/" onClick={() => setMobileMenuOpen(false)}>
+                      <StudlyfLogo />
+                    </Link>
                     <button
                       onClick={() => setMobileMenuOpen(false)}
                       className="text-white/60 hover:text-white p-2"
@@ -406,21 +471,42 @@ const Navigation: React.FC = () => {
                       <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.4em]">Member Center</p>
                       <div className="space-y-2">
                         {user ? (
-                          <>
+                          <div className="grid gap-2">
                             <Link
-                              to="/dashboard"
+                              to="/dashboard/learner"
                               onClick={() => setMobileMenuOpen(false)}
                               className="block w-full text-left px-5 py-4 bg-white/5 rounded-xl text-xs font-bold text-white uppercase tracking-widest hover:bg-white/10"
                             >
-                              Dashboard
+                              Hub Home
+                            </Link>
+                            <Link
+                              to="/dashboard/profile"
+                              onClick={() => setMobileMenuOpen(false)}
+                              className="block w-full text-left px-5 py-4 bg-white/5 rounded-xl text-xs font-bold text-white uppercase tracking-widest hover:bg-white/10"
+                            >
+                              My Profile
+                            </Link>
+                            <Link
+                              to="/dashboard/my-courses"
+                              onClick={() => setMobileMenuOpen(false)}
+                              className="block w-full text-left px-5 py-4 bg-white/5 rounded-xl text-xs font-bold text-white uppercase tracking-widest hover:bg-white/10"
+                            >
+                              My Courses
+                            </Link>
+                            <Link
+                              to="/opportunities/my-applications"
+                              onClick={() => setMobileMenuOpen(false)}
+                              className="block w-full text-left px-5 py-4 bg-white/5 rounded-xl text-xs font-bold text-white uppercase tracking-widest hover:bg-white/10"
+                            >
+                              Applications
                             </Link>
                             <button
                               onClick={() => { logout(); setMobileMenuOpen(false); }}
-                              className="w-full py-4 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold uppercase tracking-[0.25em] hover:bg-red-500 hover:text-white transition-colors"
+                              className="w-full py-4 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold uppercase tracking-[0.25em] hover:bg-red-500 hover:text-white transition-colors cursor-pointer outline-none"
                             >
-                              Logout
+                              Sign Out
                             </button>
-                          </>
+                          </div>
                         ) : (
                           <div className="grid gap-2">
                             <button

@@ -22,7 +22,11 @@ const CoursesOverview: React.FC = () => {
                 const data = await res.json();
 
                 if (data && Array.isArray(data)) {
-                    setCourses(data);
+                    const filteredCourses = data.filter((c: any) => {
+                        const str = JSON.stringify(c).toLowerCase();
+                        return !str.includes('aws');
+                    });
+                    setCourses(filteredCourses);
                 }
             } catch (err) {
                 console.error("Fetch Error:", err);

@@ -46,7 +46,11 @@ const DashboardHome: React.FC = () => {
         const res = await fetch(`${API_BASE_URL}/api/courses`);
         const data = await res.json();
         if (data && data.length > 0) {
-          setCourses(data);
+          const filteredCourses = data.filter((c: any) => {
+            const str = JSON.stringify(c).toLowerCase();
+            return !str.includes('aws');
+          });
+          setCourses(filteredCourses);
         }
       } catch (error) {
         console.error('Error fetching courses:', error);

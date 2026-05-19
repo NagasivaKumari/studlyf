@@ -201,7 +201,7 @@ const DashboardFooter: React.FC = () => {
                 >
                     {/* Column 1: Logo & Slogan */}
                     <div className="col-span-2 lg:col-span-1 flex flex-col items-start space-y-6">
-                        <div className="relative group/logo">
+                        <Link to="/" className="relative group/logo block">
                             {/* Animated Outer Glow Background */}
                             <div className="absolute inset-0 bg-[#7C3AED]/20 blur-2xl rounded-3xl opacity-50 group-hover/logo:opacity-100 transition-opacity duration-500" />
 
@@ -215,7 +215,7 @@ const DashboardFooter: React.FC = () => {
                                     className="h-10 md:h-14 w-auto object-contain relative z-10"
                                 />
                             </div>
-                        </div>
+                        </Link>
                         <p className="text-[#CFCFEA]/80 text-sm md:text-base font-poppins leading-relaxed font-semibold opacity-60">
                             Empowering the next generation of engineers with AI-driven career tools and resources.
                         </p>
