@@ -421,7 +421,7 @@ class ManualEvaluationService:
                 </div>
                 <p>Please log in to the judge portal to review and evaluate this submission.</p>
                 <p>
-                    <a href="https://studlyf.com/judge-portal" 
+                    <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/judge-portal" 
                        style="background-color: #6B46C1; color: white; padding: 12px 24px; 
                               text-decoration: none; border-radius: 6px; display: inline-block;">
                         Go to Judge Portal
@@ -465,7 +465,7 @@ class ManualEvaluationService:
                 </div>
                 <p>You can view the detailed evaluation and feedback in your dashboard.</p>
                 <p>
-                    <a href="https://studlyf.com/dashboard" 
+                    <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/dashboard" 
                        style="background-color: #6B46C1; color: white; padding: 12px 24px; 
                               text-decoration: none; border-radius: 6px; display: inline-block;">
                         View Evaluation
