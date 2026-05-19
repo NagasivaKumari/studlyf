@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../AuthContext';
 import { API_BASE_URL, FRONTEND_URL, authHeaders } from '../../apiConfig';
 import { ChevronLeft, Users, Copy, Check, Link2, LogOut, Crown, UserPlus, Hash } from 'lucide-react';
@@ -39,12 +39,14 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
     const [copiedCode, setCopiedCode] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
+    const [searchParams] = useSearchParams();
+    const autoJoinAttempted = React.useRef(false);
 
     const minSize = opportunity?.minTeamSize ?? opportunity?.min_team_size ?? 1;
     const maxSize = opportunity?.maxTeamSize ?? opportunity?.max_team_size ?? 5;
 
     const shareableLink = generatedInvite
-        ? `${FRONTEND_URL}/opportunities/${eventId}?tab=team&invite=${generatedInvite}`
+        ? `${FRONTEND_URL}/#/opportunities/${eventId}?tab=team&invite=${generatedInvite}`
         : null;
 
     const fetchProgress = async () => {
@@ -75,8 +77,20 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
 
     useEffect(() => {
         if (!eventId) { setLoading(false); return; }
-        fetchProgress();
+        fetchProgress().then(() => {
+            const codeFromUrl = searchParams.get('invite');
+            if (codeFromUrl && !autoJoinAttempted.current) {
+                autoJoinAttempted.current = true;
+                setInviteCode(codeFromUrl.toUpperCase());
+            }
+        });
     }, [eventId]);
+
+    useEffect(() => {
+        if (inviteCode && !team && registered && !loading && autoJoinAttempted.current) {
+            handleJoinTeam(new Event('submit') as any);
+        }
+    }, [inviteCode, team, registered, loading]);
 
     const handleCreateTeam = async (e: React.FormEvent) => {
         e.preventDefault();
