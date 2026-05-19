@@ -275,7 +275,8 @@ async def join_by_invite(
     if not raw:
         raise HTTPException(status_code=400, detail="Invite code is required")
 
-    team = await teams_col.find_one({"invites.code": raw})
+    # Support both permanent invite_code and time-limited invites[] codes
+    team = await teams_col.find_one({"$or": [{"invite_code": raw.upper()}, {"invites.code": raw}]})
     if not team:
         raise HTTPException(status_code=404, detail="Invite code not found")
 
@@ -293,7 +294,6 @@ async def join_by_invite(
         raise HTTPException(status_code=400, detail="You are already in a team")
 
     if not p:
-        # Auto-register since they are joining via invite
         from db import users_col
         u = await users_col.find_one({"user_id": uid}) or {}
         first_stage = None
@@ -320,35 +320,34 @@ async def join_by_invite(
         res = await participants_col.insert_one(p)
         p["_id"] = res.inserted_id
     
-    # Check if user is already a member of this team
     existing_members = team.get("members", [])
     is_already_member = any(member.get("user_id") == uid for member in existing_members)
     if is_already_member:
         raise HTTPException(status_code=400, detail="You are already a member of this team")
 
-    # validate invite not expired/revoked
-    invites = team.get("invites") or []
-    inv = next((x for x in invites if str(x.get("code")) == raw), None)
-    if not inv or inv.get("revoked"):
-        raise HTTPException(status_code=400, detail="Invite is not active")
-    try:
-        exp = datetime.fromisoformat(str(inv.get("expires_at")).replace("Z", "+00:00"))
-        if datetime.utcnow() > exp.replace(tzinfo=None):
-            raise HTTPException(status_code=400, detail="Invite has expired")
-    except HTTPException:
-        raise
-    except Exception:
-        pass
+    # Check if using permanent invite_code (skip expiry check)
+    is_permanent = team.get("invite_code") and team["invite_code"] == raw.upper()
 
-    # join team
+    if not is_permanent:
+        invites = team.get("invites") or []
+        inv = next((x for x in invites if str(x.get("code")) == raw), None)
+        if not inv or inv.get("revoked"):
+            raise HTTPException(status_code=400, detail="Invite is not active")
+        try:
+            exp = datetime.fromisoformat(str(inv.get("expires_at")).replace("Z", "+00:00"))
+            if datetime.utcnow() > exp.replace(tzinfo=None):
+                raise HTTPException(status_code=400, detail="Invite has expired")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
     await teams_col.update_one(
         {"_id": team["_id"]},
         {
             "$push": {"members": {"user_id": uid, "role": "MEMBER"}},
             "$set": {"updated_at": datetime.utcnow()},
-            "$inc": {"invites.$[i].uses": 1},
         },
-        array_filters=[{"i.code": raw}],
     )
     await participants_col.update_one(
         {"_id": p["_id"]},
