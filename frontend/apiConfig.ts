@@ -4,7 +4,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.en
     ? (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000')
     : 'http://localhost:8000');
 
-export const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin;
+export const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || 'https://studlyf-thub.vercel.app';
 
 /** Merge with fetch headers so institution / learner JWT routes work after server hardening. */
 export function authHeaders(): Record<string, string> {
