@@ -50,14 +50,18 @@ const EventHub: React.FC = () => {
                 setTeam(data.team);
                 setIsEvaluated(!!data.is_evaluated);
                 setEvaluation(data.evaluation);
-                // Auto-surface the most recent active invite code so leader
-                // doesn't have to click "Generate" just to see it.
-                const invites: any[] = (data.team as any)?.invites || [];
-                const now = Date.now();
-                const active = [...invites].reverse().find(
-                    (inv: any) => !inv.revoked && (!inv.expires_at || new Date(inv.expires_at).getTime() > now)
-                );
-                if (active) setGeneratedCode(active.code);
+                // Auto-surface permanent invite code so leader doesn't have to click "Generate"
+                const permanentCode = (data.team as any)?.invite_code;
+                if (permanentCode) {
+                    setGeneratedCode(permanentCode);
+                } else {
+                    const invites: any[] = (data.team as any)?.invites || [];
+                    const now = Date.now();
+                    const active = [...invites].reverse().find(
+                        (inv: any) => !inv.revoked && (!inv.expires_at || new Date(inv.expires_at).getTime() > now)
+                    );
+                    if (active) setGeneratedCode(active.code);
+                }
             }
         } catch (error) {
             console.error("Failed to fetch hub data", error);
@@ -166,15 +170,15 @@ const EventHub: React.FC = () => {
     const generateInvite = async () => {
         setWorking(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/teams/${team?._id}/invites`, {
+            const res = await fetch(`${API_BASE_URL}/api/v1/stages/teams/${team?._id}/invite`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ ttl_hours: 72 })
+                body: JSON.stringify({ ttl_hours: 720 })
             });
             if (res.ok) {
                 const data = await res.json();
-                setGeneratedCode(data.code);
-                // If code was reused from DB, nothing new was written — that's fine
+                const code = data.invite_code || data.code;
+                if (code) setGeneratedCode(code);
             }
         } finally {
             setWorking(false);

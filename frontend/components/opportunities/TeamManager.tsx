@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../AuthContext';
 import { API_BASE_URL, FRONTEND_URL, authHeaders } from '../../apiConfig';
-import { ChevronLeft, Users, Copy, Check, Link2, LogOut, Crown, UserPlus, Hash } from 'lucide-react';
+import { ChevronLeft, Users, Copy, Check, Link2, LogOut, Crown, UserPlus, Hash, Send, X, ThumbsUp, ThumbsDown } from 'lucide-react';
 
 type TeamMember = {
     user_id?: string;
@@ -18,6 +18,18 @@ type Team = {
     team_leader_id?: string;
     leader_name?: string;
     members?: TeamMember[];
+    invite_code?: string;
+};
+
+type JoinRequest = {
+    _id: string;
+    requester_user_id: string;
+    requester_name: string;
+    requester_email: string;
+    requester_college?: string;
+    message?: string;
+    status: string;
+    created_at: string;
 };
 
 type TeamManagerProps = {
@@ -28,6 +40,7 @@ type TeamManagerProps = {
 const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
 
     const [team, setTeam] = useState<Team | null>(null);
     const [loading, setLoading] = useState(true);
@@ -39,12 +52,18 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
     const [copiedCode, setCopiedCode] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
+    const autoJoinAttempted = useRef(false);
+
+    const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+    const [joinRequestMessage, setJoinRequestMessage] = useState('');
+    const [showRequestForm, setShowRequestForm] = useState(false);
+    const [sentRequest, setSentRequest] = useState<string | null>(null);
 
     const minSize = opportunity?.minTeamSize ?? opportunity?.min_team_size ?? 1;
     const maxSize = opportunity?.maxTeamSize ?? opportunity?.max_team_size ?? 5;
 
     const shareableLink = generatedInvite
-        ? `${FRONTEND_URL}/opportunities/${eventId}?tab=team&invite=${generatedInvite}`
+        ? `${FRONTEND_URL}/#/opportunities/${eventId}?tab=team&invite=${generatedInvite}`
         : null;
 
     const fetchProgress = async () => {
@@ -66,6 +85,9 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
             }
             setRegistered(true);
             setTeam(data.team || null);
+            if (data.team?.invite_code) {
+                setGeneratedInvite(data.team.invite_code);
+            }
         } catch (err: any) {
             setError(err.message || 'Failed to load team status.');
         } finally {
@@ -73,10 +95,43 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
         }
     };
 
+    const fetchJoinRequests = async () => {
+        if (!team?._id) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/teams/requests/teams/${team._id}/requests`, {
+                headers: { ...authHeaders() },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setJoinRequests(data.requests || []);
+            }
+        } catch { }
+    };
+
     useEffect(() => {
         if (!eventId) { setLoading(false); return; }
         fetchProgress();
     }, [eventId]);
+
+    useEffect(() => {
+        if (team?._id) {
+            fetchJoinRequests();
+        }
+    }, [team?._id]);
+
+    useEffect(() => {
+        const codeFromUrl = searchParams.get('invite');
+        if (codeFromUrl && !autoJoinAttempted.current) {
+            autoJoinAttempted.current = true;
+            setInviteCode(codeFromUrl.toUpperCase());
+        }
+    }, [searchParams]);
+
+    useEffect(() => {
+        if (inviteCode && !team && registered && !loading && autoJoinAttempted.current) {
+            handleJoinTeam(new Event('submit') as any);
+        }
+    }, [inviteCode, team, registered, loading]);
 
     const handleCreateTeam = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -158,7 +213,7 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
             const response = await fetch(`${API_BASE_URL}/api/v1/stages/teams/${team._id}/invite`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ ttl_hours: 72 }),
+                body: JSON.stringify({ ttl_hours: 720 }),
             });
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
@@ -173,12 +228,83 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
         }
     };
 
+    const handleSendJoinRequest = async () => {
+        if (!team?._id || !eventId) return;
+        setError(null);
+        setActionLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/teams/requests/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({
+                    event_id: eventId,
+                    team_id: team._id,
+                    message: joinRequestMessage,
+                }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setSentRequest(data.request_id || 'sent');
+                setShowRequestForm(false);
+            } else {
+                const err = await res.json();
+                throw new Error(err.detail || 'Failed to send request');
+            }
+        } catch (err: any) {
+            setError(err.message || 'Failed to send join request.');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleApproveRequest = async (requestId: string) => {
+        setActionLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/teams/requests/${requestId}/approve`, {
+                method: 'POST',
+                headers: { ...authHeaders() },
+            });
+            if (res.ok) {
+                await fetchJoinRequests();
+                await fetchProgress();
+            } else {
+                const err = await res.json();
+                throw new Error(err.detail || 'Failed to approve');
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleRejectRequest = async (requestId: string) => {
+        setActionLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/teams/requests/${requestId}/reject`, {
+                method: 'POST',
+                headers: { ...authHeaders() },
+                body: JSON.stringify({ reason: 'Declined by team leader' }),
+            });
+            if (res.ok) {
+                await fetchJoinRequests();
+            } else {
+                const err = await res.json();
+                throw new Error(err.detail || 'Failed to reject');
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     const copyToClipboard = async (text: string, type: 'code' | 'link') => {
         try {
             await navigator.clipboard.writeText(text);
             if (type === 'code') { setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); }
             else { setCopiedLink(true); setTimeout(() => setCopiedLink(false), 2000); }
-        } catch { /* ignore */ }
+        } catch { }
     };
 
     const isLeader = team && String(team.team_leader_id || '') === String(user?.user_id || '');
@@ -190,6 +316,8 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
         else navigate(`/opportunities/${eventId}`);
     };
 
+    const isTeamMember = team?.members?.some(m => String(m.user_id) === String(user?.user_id));
+
     if (loading) {
         return (
             <div className="min-h-[400px] flex items-center justify-center">
@@ -200,7 +328,6 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
 
     return (
         <div className="max-w-2xl mx-auto px-4 py-8">
-            {/* Back button */}
             <button
                 type="button"
                 onClick={handleBack}
@@ -209,7 +336,6 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                 <ChevronLeft size={18} /> Back to Event
             </button>
 
-            {/* Header */}
             <div className="mb-6">
                 <h1 className="text-2xl font-black text-slate-900">Team Hub</h1>
                 <p className="text-slate-500 font-medium mt-1">
@@ -217,7 +343,6 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                 </p>
             </div>
 
-            {/* Error */}
             {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-sm font-semibold mb-5">
                     {error}
@@ -235,12 +360,10 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                         Go Back & Register
                     </button>
                 </div>
-            ) : team ? (
-                /* ── TEAM VIEW ── */
+            ) : team && isTeamMember ? (
+                /* ── TEAM VIEW (member) ── */
                 <div className="space-y-4">
-                    {/* Team card */}
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                        {/* Team header */}
                         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-5">
                             <div className="flex items-center justify-between">
                                 <div>
@@ -253,7 +376,6 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                             </div>
                         </div>
 
-                        {/* Members list */}
                         <div className="p-5">
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Members</p>
                             <div className="space-y-2">
@@ -278,7 +400,6 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                                         </div>
                                     );
                                 })}
-                                {/* Empty slots */}
                                 {Array.from({ length: Math.max(0, maxSize - memberCount) }).map((_, i) => (
                                     <div key={`empty-${i}`} className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-200 rounded-xl">
                                         <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
@@ -307,7 +428,6 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                                 </button>
                             ) : (
                                 <div className="space-y-3">
-                                    {/* Invite code */}
                                     <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
                                         <Hash size={16} className="text-purple-600 shrink-0" />
                                         <span className="flex-1 font-mono font-black text-slate-900 tracking-widest text-sm">{generatedInvite}</span>
@@ -321,7 +441,6 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                                         </button>
                                     </div>
 
-                                    {/* Shareable link */}
                                     {shareableLink && (
                                         <div className="flex items-center gap-2 p-3 bg-purple-50 rounded-xl border border-purple-100">
                                             <Link2 size={16} className="text-purple-600 shrink-0" />
@@ -337,18 +456,45 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                                         </div>
                                     )}
 
-                                    <p className="text-xs text-slate-400 font-medium text-center">Valid for 72 hours · Share the code or link</p>
-
-                                    <button
-                                        type="button"
-                                        onClick={handleGenerateInvite}
-                                        disabled={actionLoading}
-                                        className="w-full py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors disabled:opacity-50"
-                                    >
-                                        Regenerate Code
-                                    </button>
+                                    <p className="text-xs text-slate-400 font-medium text-center">This code never expires — share it with your teammates</p>
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* Join Requests — leader can approve/reject */}
+                    {isLeader && joinRequests.filter(r => r.status === 'PENDING').length > 0 && (
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Pending Join Requests</p>
+                            <div className="space-y-3">
+                                {joinRequests.filter(r => r.status === 'PENDING').map(req => (
+                                    <div key={req._id} className="flex items-center justify-between p-3 bg-amber-50 rounded-xl border border-amber-200">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-slate-900">{req.requester_name || req.requester_email}</p>
+                                            <p className="text-xs text-slate-500 truncate">{req.requester_email}{req.requester_college ? ` · ${req.requester_college}` : ''}</p>
+                                            {req.message && <p className="text-xs text-slate-400 mt-1 italic">"{req.message}"</p>}
+                                        </div>
+                                        <div className="flex gap-2 ml-3">
+                                            <button
+                                                onClick={() => handleApproveRequest(req._id)}
+                                                disabled={actionLoading || memberCount >= maxSize}
+                                                className="p-2 bg-emerald-100 text-emerald-700 rounded-xl hover:bg-emerald-200 transition-colors disabled:opacity-50"
+                                                title="Approve"
+                                            >
+                                                <ThumbsUp size={16} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleRejectRequest(req._id)}
+                                                disabled={actionLoading}
+                                                className="p-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-colors disabled:opacity-50"
+                                                title="Reject"
+                                            >
+                                                <ThumbsDown size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -362,10 +508,64 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                         <LogOut size={16} /> {isLeader ? 'Disband Team' : 'Leave Team'}
                     </button>
                 </div>
+            ) : team && !isTeamMember ? (
+                /* ── VIEWING SOMEONE ELSE'S TEAM (request to join) ── */
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+                    <div className="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <Users size={28} className="text-purple-600" />
+                    </div>
+                    <h2 className="text-lg font-black text-slate-900 mb-1">{team.team_name}</h2>
+                    <p className="text-sm text-slate-500 font-medium mb-2">
+                        Led by {team.leader_name || 'Team Leader'} · {memberCount}/{maxSize} members
+                    </p>
+
+                    {sentRequest ? (
+                        <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-2xl">
+                            <p className="text-sm font-bold text-green-700">Request sent!</p>
+                            <p className="text-xs text-green-600 mt-1">Waiting for the team leader to approve.</p>
+                        </div>
+                    ) : showRequestForm ? (
+                        <div className="mt-6 space-y-3 text-left">
+                            <textarea
+                                value={joinRequestMessage}
+                                onChange={(e) => setJoinRequestMessage(e.target.value)}
+                                placeholder="Add a message to the team leader (optional)"
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-300 transition-all resize-none"
+                                rows={3}
+                            />
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleSendJoinRequest}
+                                    disabled={actionLoading}
+                                    className="flex-1 py-3 bg-purple-600 text-white rounded-xl text-sm font-black hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    <Send size={14} /> Send Request
+                                </button>
+                                <button
+                                    onClick={() => setShowRequestForm(false)}
+                                    className="py-3 px-4 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    ) : memberCount < maxSize ? (
+                        <button
+                            onClick={() => setShowRequestForm(true)}
+                            disabled={actionLoading}
+                            className="mt-6 px-6 py-3 bg-purple-600 text-white rounded-xl text-sm font-black hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mx-auto"
+                        >
+                            <Send size={14} /> Request to Join
+                        </button>
+                    ) : (
+                        <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                            <p className="text-sm font-medium text-slate-500">This team is full.</p>
+                        </div>
+                    )}
+                </div>
             ) : (
                 /* ── NO TEAM VIEW ── */
                 <div className="grid md:grid-cols-2 gap-4">
-                    {/* Create team */}
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
                         <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center mb-4">
                             <Users size={20} className="text-purple-600" />
@@ -391,7 +591,6 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                         </form>
                     </div>
 
-                    {/* Join team */}
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
                         <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-4">
                             <Hash size={20} className="text-green-600" />
