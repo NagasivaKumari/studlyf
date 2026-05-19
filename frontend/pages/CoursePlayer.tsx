@@ -88,13 +88,7 @@ const getLessonLabel = (type: LessonType): string => {
   return 'Assessment Quiz';
 };
 
-const DUMMY_TRANSCRIPT = [
-  { time: '0:00', text: "Welcome back to this module. Today we'll explore the core concepts behind system architecture and design patterns." },
-  { time: '0:45', text: "Let's start by understanding the fundamental building blocks. Every scalable system relies on a few essential principles." },
-  { time: '1:30', text: "The first principle is separation of concerns. This ensures each component has a single, well-defined responsibility." },
-  { time: '2:15', text: "Next, we'll look at fault tolerance — how systems recover gracefully when individual components fail." },
-  { time: '3:00', text: "Finally, we'll discuss scalability vectors: horizontal vs vertical scaling and when to choose each approach." },
-];
+const DUMMY_TRANSCRIPT: { time: string; text: string }[] = [];
 
 /* ═══════ Component ═══════ */
 const CoursePlayer: React.FC = () => {
@@ -197,14 +191,6 @@ const CoursePlayer: React.FC = () => {
       }
 
       let fetched = Array.isArray(data) ? data : [];
-      if (fetched.length === 0) {
-        fetched = [
-          { _id: 'dummy-mod-1', title: 'Foundations & Architectures', order_index: 1, estimated_time: '2h 30m', progress: { status: 'unlocked', theory_completed: false, video_completed: false, quiz_score: 0, quiz_answers: [], project_status: 'pending', review_status: 'pending' } },
-          { _id: 'dummy-mod-2', title: 'Advanced Implementations', order_index: 2, estimated_time: '3h 15m', progress: { status: 'locked', theory_completed: false, video_completed: false, quiz_score: 0, quiz_answers: [], project_status: 'pending' } },
-          { _id: 'dummy-mod-3', title: 'Production Deployment', order_index: 3, estimated_time: '2h 45m', progress: { status: 'locked', theory_completed: false, video_completed: false, quiz_score: 0, quiz_answers: [], project_status: 'pending' } },
-          { _id: 'dummy-mod-4', title: 'Testing & CI/CD Pipelines', order_index: 4, estimated_time: '1h 50m', progress: { status: 'locked', theory_completed: false, video_completed: false, quiz_score: 0, quiz_answers: [], project_status: 'pending' } },
-        ];
-      }
       setModules(fetched);
       setLoading(false);
       return fetched;
@@ -242,21 +228,7 @@ const CoursePlayer: React.FC = () => {
   const fetchModuleDetails = async (moduleId: string) => {
     let data: any = {};
     if (moduleId.startsWith('dummy-mod')) {
-      data = {
-        theory: {
-          markdown_content: "# System Architectures & Frameworks\n\nWelcome to the simulated track.\n\n## Subsystem Overview\n\n1. Component isolation\n2. Fault tolerance parameters\n3. Scalability vectors\n\n> **Note:** Understanding these metrics is critical for successful system initialization.\n\n## Design Patterns\n\n### Microservices\nBreak monoliths into independently deployable services.\n\n### Event-Driven Architecture\nUse message queues and event buses for loose coupling.\n\n| Pattern | Use Case | Complexity |\n|---------|----------|------------|\n| MVC | Web apps | Low |\n| CQRS | High-read systems | Medium |\n| Event Sourcing | Audit trails | High |\n\n```python\ndef initialize_system(config):\n    services = load_services(config)\n    for svc in services:\n        svc.start()\n    return SystemStatus.READY\n```\n\nUnderstand the metrics and variables for successful initialization.",
-          key_takeaways: ["Understand system boundaries", "Deploy fault-tolerant systems", "End-to-end telemetry mapping"]
-        },
-        video: { video_url: "https://www.youtube.com/embed/dQw4w9WgXcQ" },
-        quiz: {
-          questions: [
-            { question: "What primarily drives system latency here?", options: ["Bandwidth", "Distance", "Processing Overhead", "All of the above"], correct_answers: [3], explanation: "All elements heavily impact latency." },
-            { question: "Which protocol is connection-oriented?", options: ["UDP", "TCP", "ICMP", "IP"], correct_answers: [1], explanation: "TCP guarantees reliable delivery." },
-            { question: "What does CAP theorem state about distributed systems?", options: ["You can have all three guarantees", "You can only pick two of Consistency, Availability, Partition tolerance", "It only applies to databases", "It was disproven"], correct_answers: [1], explanation: "CAP theorem states you must choose two out of three." },
-          ]
-        },
-        project: { problem_statement: "Deploy a foundational analytics service proxy.", requirements: ["Implement basic rate limiting", "Route dynamic health-checks", "Ensure secure CORS headers"] }
-      };
+      data = {};
     } else {
       try {
         const res = await fetch(`${API_BASE_URL}/api/modules/${moduleId}`);
@@ -328,7 +300,7 @@ const CoursePlayer: React.FC = () => {
     const currentLesson = modules[activeModuleIndex]?.lessons?.[activeLessonIndex];
     const embeddedQuestions = currentLesson?.type === 'quiz' ? currentLesson.questions : null;
 
-    if (modules[activeModuleIndex]._id.startsWith('dummy-mod') || embeddedQuestions) {
+    if (embeddedQuestions) {
       let correct = 0;
       const qs = embeddedQuestions || moduleDetails?.quiz?.questions || [];
       qs.forEach((q: any, i: number) => {
@@ -339,10 +311,7 @@ const CoursePlayer: React.FC = () => {
       score = Math.round((correct / Math.max(qs.length, 1)) * 100);
       data = { score, passed: score >= 60 };
       
-      // Update progress locally if it's a dummy or if we evaluated it locally
-      if (!modules[activeModuleIndex]._id.startsWith('dummy-mod')) {
-        await updateProgress({ quiz_score: score, quiz_answers: quizAnswers });
-      }
+      await updateProgress({ quiz_score: score, quiz_answers: quizAnswers });
     } else {
       const res = await fetch(`${API_BASE_URL}/api/quiz/submit`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

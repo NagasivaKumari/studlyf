@@ -113,6 +113,11 @@ const LearnerDashboard: React.FC = () => {
         .then(data => setDashboardStats(data))
         .catch(console.error);
 
+      fetch(`${API_BASE_URL}/api/student/stats/${user.user_id}`)
+        .then(res => res.json())
+        .then(data => setDashboardStats((prev: any) => ({ ...prev, ...data })))
+        .catch(console.error);
+
       // Fetch global leaderboard
       fetch(`${API_BASE_URL}/api/leaderboard/global`)
         .then(res => res.json())
@@ -169,10 +174,10 @@ const LearnerDashboard: React.FC = () => {
               {/* Stats Grid */}
               <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {[
-                  { label: "Profile Strength", value: "88%", color: "#7C3AED", icon: "✨" },
-                  { label: "Course Progress", value: "64%", color: "#0052CC", icon: "📚" },
-                  { label: "Skill Assessments", value: "12", color: "#059669", icon: "🎯" },
-                  { label: "Global Rank", value: "#42", color: "#D97706", icon: "🏆" }
+                  { label: "Profile Strength", value: `${dashboardStats?.profile_strength || 88}%`, color: "#7C3AED", icon: "✨" },
+                  { label: "Course Progress", value: `${dashboardStats?.course_progress || 64}%`, color: "#0052CC", icon: "📚" },
+                  { label: "Skill Assessments", value: `${dashboardStats?.skill_assessments || 12}`, color: "#059669", icon: "🎯" },
+                  { label: "Global Rank", value: `#${dashboardStats?.global_rank || 42}`, color: "#D97706", icon: "🏆" }
                 ].map((stat, i) => (
                   <div key={i} className="bg-white border border-gray-100 rounded-[2rem] p-8 hover:border-[#7C3AED]/30 transition-all shadow-sm group">
                     <div className="flex items-center justify-between mb-4">

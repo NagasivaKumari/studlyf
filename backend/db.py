@@ -195,6 +195,27 @@ applications_col = db["applications"] # Tracks Selections, Rejections, and Statu
 opportunities_col = db["opportunities"]
 opportunity_applications_col = db["opportunity_applications"]
 
+# Career Assessment & Goals
+career_assessments_col = db["career_assessments"]
+career_goals_col = db["career_goals"]
+assessment_questions_col = db["assessment_questions"]
+
+# Content & Community
+blogs_col = db["blogs"]
+learning_tracks_col = db["learning_tracks"]
+
+# Company & Partner Ecosystem
+company_questions_col = db["company_questions"]
+partners_col = db["partners"]
+partner_talent_pool_col = db["partner_talent_pool"]
+
+# Gamification & Simulations
+job_simulations_col = db["job_simulations"]
+gd_topics_col = db["gd_topics"]
+gamification_col = db["gamification"]
+user_gamification_col = db["user_gamification"]
+user_stats_col = db["user_stats"]
+
 # ─── GRIDFS BUCKET (persistent file storage, survives Render restarts) ────────
 # Usage: await gridfs_bucket.upload_from_stream(filename, data) → ObjectId
 #        await gridfs_bucket.open_download_stream(file_id) → stream
