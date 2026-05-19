@@ -3,7 +3,7 @@ Stage Management Service - Dynamic Stage Rendering & Progression
 Handles: Registration, Team Formation, Submissions, Final stages with dynamic fields
 """
 
-
+from db import db, events_col, participants_col, teams_col, submission_data_col, users_col
 from bson import ObjectId
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
@@ -147,8 +147,12 @@ async def get_participant_stage_progress(event_id: str, user_id: str) -> dict:
             if isinstance(end_date, str):
                 try:
                     end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                    if end_date.tzinfo is None:
+                        end_date = end_date.replace(tzinfo=timezone.utc)
                 except:
                     end_date = None
+            elif isinstance(end_date, datetime) and end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
             
             # Check if stage deadline passed
             stage_passed = end_date and current_time > end_date

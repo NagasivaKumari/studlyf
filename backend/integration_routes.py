@@ -38,7 +38,7 @@ def _event_id_query(event_id: str) -> dict:
     or_clauses = [{"_id": event_id}]  # string _id fallback
     try:
         or_clauses.append({"_id": ObjectId(event_id)})
-    except (InvalidId, Exception):
+    except (InvalidId, ValueError):
         pass
     return {"$or": or_clauses}
 
@@ -120,8 +120,8 @@ async def _dispatch_status_email(target_id: str, status: str, doc: dict):
                             member_email = member_rec.get("email")
                             if member_email not in recipient_emails:
                                 recipient_emails.append(member_email)
-        except Exception:
-            pass
+        except (TypeError, ValueError, KeyError) as e:
+            logger.warning(f"[EMAIL] Could not fetch team members: {e}")
     
     # 3. Fallback for solo participants
     if not recipient_emails:
