@@ -1,0 +1,443 @@
+"""
+Team Join Request Service - Handle team join requests with approval system
+Implements Unstop-like team formation with request/approval workflow
+"""
+
+from db import (
+    teams_col, participants_col, users_col, events_col,
+    notifications_col
+)
+from bson import ObjectId
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, Any, List
+from enum import Enum
+import secrets
+
+class JoinRequestStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+    EXPIRED = "expired"
+
+async def send_join_request(
+    event_id: str,
+    team_id: str,
+    requester_user_id: str,
+    message: str = ""
+) -> Dict[str, Any]:
+    """
+    Student sends join request to a team.
+    Team lead gets notified.
+    """
+    try:
+        # Get team
+        team = await teams_col.find_one({"_id": ObjectId(team_id)})
+        if not team:
+            return {"error": "Team not found"}
+        
+        # Check if team is full
+        max_size = team.get("max_size", 5)
+        member_ids = team.get("members", [])
+        if len(member_ids) >= max_size:
+            return {"error": "Team is at full capacity"}
+        
+        # Check if requester already in team
+        if str(requester_user_id) in [str(m) for m in member_ids]:
+            return {"error": "You are already a member of this team"}
+        
+        # Check if request already pending
+        existing = await find_join_request(
+            event_id, team_id, requester_user_id, [JoinRequestStatus.PENDING]
+        )
+        if existing:
+            return {"error": "You already have a pending request for this team"}
+        
+        # Get requester profile
+        requester = await users_col.find_one({"user_id": str(requester_user_id)})
+        if not requester:
+            return {"error": "User profile not found"}
+        
+        # Create join request
+        join_request_doc = {
+            "event_id": str(event_id),
+            "team_id": str(team_id),
+            "requester_user_id": str(requester_user_id),
+            "team_lead_user_id": str(team.get("created_by")),
+            "requester_name": requester.get("full_name", ""),
+            "requester_email": requester.get("email", ""),
+            "requester_college": requester.get("college", ""),
+            "requester_skills": requester.get("skills", []),
+            "message": message,
+            "status": JoinRequestStatus.PENDING,
+            "created_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+            "responded_at": None,
+            "response_by_user_id": None,
+            "response_message": None,
+        }
+        
+        result = await find_join_requests_collection().insert_one(join_request_doc)
+        
+        # Create notification for team lead
+        await create_notification(
+            user_id=str(team.get("created_by")),
+            type="join_request",
+            title=f"Join Request from {requester.get('full_name', 'A student')}",
+            message=f"{requester.get('full_name')} requested to join your team '{team.get('name')}'",
+            related_id=str(result.inserted_id),
+            related_type="join_request",
+            event_id=str(event_id),
+        )
+        
+        return {
+            "status": "success",
+            "message": "Join request sent successfully",
+            "request_id": str(result.inserted_id),
+            "team_id": str(team_id),
+            "expires_at": join_request_doc["expires_at"].isoformat(),
+        }
+    
+    except Exception as e:
+        print(f"[ERROR] send_join_request: {e}")
+        return {"error": str(e)}
+
+async def approve_join_request(
+    request_id: str,
+    approver_user_id: str,
+    message: str = ""
+) -> Dict[str, Any]:
+    """
+    Team lead approves a join request.
+    Student is added to team and gets notified.
+    """
+    try:
+        # Get request
+        join_request = await find_join_requests_collection().find_one(
+            {"_id": ObjectId(request_id)}
+        )
+        if not join_request:
+            return {"error": "Request not found"}
+        
+        # Verify approver is team lead
+        team = await teams_col.find_one({"_id": ObjectId(join_request["team_id"])})
+        if not team or str(team.get("created_by")) != str(approver_user_id):
+            return {"error": "You are not authorized to approve this request"}
+        
+        # Check request not expired
+        if join_request.get("status") != JoinRequestStatus.PENDING:
+            return {"error": f"Request is already {join_request.get('status')}"}
+        
+        if datetime.now(timezone.utc) > join_request.get("expires_at"):
+            await find_join_requests_collection().update_one(
+                {"_id": ObjectId(request_id)},
+                {"$set": {"status": JoinRequestStatus.EXPIRED}}
+            )
+            return {"error": "Request has expired"}
+        
+        # Add member to team
+        requester_id = str(join_request["requester_user_id"])
+        await teams_col.update_one(
+            {"_id": ObjectId(join_request["team_id"])},
+            {
+                "$push": {"members": requester_id},
+                "$set": {"updated_at": datetime.now(timezone.utc)}
+            }
+        )
+        
+        # Update participant to reflect team membership
+        await participants_col.update_one(
+            {
+                "event_id": str(join_request["event_id"]),
+                "user_id": requester_id
+            },
+            {
+                "$set": {
+                    "team_id": str(join_request["team_id"]),
+                    "team_name": team.get("name", ""),
+                    "team_lead_id": str(team.get("created_by")),
+                    "joined_team_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            }
+        )
+        
+        # Update request
+        await find_join_requests_collection().update_one(
+            {"_id": ObjectId(request_id)},
+            {
+                "$set": {
+                    "status": JoinRequestStatus.APPROVED,
+                    "responded_at": datetime.now(timezone.utc),
+                    "response_by_user_id": str(approver_user_id),
+                    "response_message": message,
+                }
+            }
+        )
+        
+        # Notify requester
+        requester = await users_col.find_one({"user_id": requester_id})
+        await create_notification(
+            user_id=requester_id,
+            type="join_approved",
+            title="Team Join Request Approved! 🎉",
+            message=f"You've been accepted to join team '{team.get('name')}'",
+            related_id=str(request_id),
+            related_type="join_request",
+            event_id=str(join_request["event_id"]),
+        )
+        
+        return {
+            "status": "success",
+            "message": "Join request approved",
+            "team_id": str(join_request["team_id"]),
+            "requester_name": join_request.get("requester_name"),
+        }
+    
+    except Exception as e:
+        print(f"[ERROR] approve_join_request: {e}")
+        return {"error": str(e)}
+
+async def reject_join_request(
+    request_id: str,
+    rejector_user_id: str,
+    reason: str = ""
+) -> Dict[str, Any]:
+    """
+    Team lead rejects a join request.
+    Student is notified with reason.
+    """
+    try:
+        # Get request
+        join_request = await find_join_requests_collection().find_one(
+            {"_id": ObjectId(request_id)}
+        )
+        if not join_request:
+            return {"error": "Request not found"}
+        
+        # Verify rejector is team lead
+        team = await teams_col.find_one({"_id": ObjectId(join_request["team_id"])})
+        if not team or str(team.get("created_by")) != str(rejector_user_id):
+            return {"error": "You are not authorized to reject this request"}
+        
+        # Check request not already responded
+        if join_request.get("status") != JoinRequestStatus.PENDING:
+            return {"error": f"Request is already {join_request.get('status')}"}
+        
+        # Update request
+        await find_join_requests_collection().update_one(
+            {"_id": ObjectId(request_id)},
+            {
+                "$set": {
+                    "status": JoinRequestStatus.REJECTED,
+                    "responded_at": datetime.now(timezone.utc),
+                    "response_by_user_id": str(rejector_user_id),
+                    "response_message": reason,
+                }
+            }
+        )
+        
+        # Notify requester
+        await create_notification(
+            user_id=str(join_request["requester_user_id"]),
+            type="join_rejected",
+            title="Team Join Request Declined",
+            message=f"Your request to join '{team.get('name')}' was declined" + 
+                   (f": {reason}" if reason else ""),
+            related_id=str(request_id),
+            related_type="join_request",
+            event_id=str(join_request["event_id"]),
+        )
+        
+        return {
+            "status": "success",
+            "message": "Join request rejected",
+            "requester_name": join_request.get("requester_name"),
+        }
+    
+    except Exception as e:
+        print(f"[ERROR] reject_join_request: {e}")
+        return {"error": str(e)}
+
+async def withdraw_join_request(
+    request_id: str,
+    requester_user_id: str
+) -> Dict[str, Any]:
+    """
+    Requester withdraws their join request.
+    """
+    try:
+        join_request = await find_join_requests_collection().find_one(
+            {"_id": ObjectId(request_id)}
+        )
+        if not join_request:
+            return {"error": "Request not found"}
+        
+        # Verify requester
+        if str(join_request["requester_user_id"]) != str(requester_user_id):
+            return {"error": "You can only withdraw your own requests"}
+        
+        if join_request.get("status") != JoinRequestStatus.PENDING:
+            return {"error": f"Cannot withdraw a {join_request.get('status')} request"}
+        
+        await find_join_requests_collection().update_one(
+            {"_id": ObjectId(request_id)},
+            {"$set": {"status": JoinRequestStatus.WITHDRAWN}}
+        )
+        
+        return {
+            "status": "success",
+            "message": "Join request withdrawn",
+        }
+    
+    except Exception as e:
+        print(f"[ERROR] withdraw_join_request: {e}")
+        return {"error": str(e)}
+
+async def find_join_request(
+    event_id: str,
+    team_id: str,
+    requester_user_id: str,
+    statuses: List[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Find specific join request."""
+    try:
+        query = {
+            "event_id": str(event_id),
+            "team_id": str(team_id),
+            "requester_user_id": str(requester_user_id),
+        }
+        
+        if statuses:
+            query["status"] = {"$in": statuses}
+        
+        return await find_join_requests_collection().find_one(query)
+    
+    except Exception as e:
+        print(f"[ERROR] find_join_request: {e}")
+        return None
+
+async def get_team_join_requests(
+    team_id: str,
+    user_id: str,
+    status: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Get join requests for a team (team lead only).
+    Shows pending requests with requester details.
+    """
+    try:
+        # Verify user is team lead
+        team = await teams_col.find_one({"_id": ObjectId(team_id)})
+        if not team or str(team.get("created_by")) != str(user_id):
+            return {"error": "You are not the team lead"}
+        
+        query = {"team_id": str(team_id)}
+        if status:
+            query["status"] = status
+        
+        requests = []
+        cursor = find_join_requests_collection().find(query).sort("created_at", -1)
+        
+        async for req in cursor:
+            req["_id"] = str(req["_id"])
+            req["created_at"] = req["created_at"].isoformat()
+            req["expires_at"] = req["expires_at"].isoformat()
+            if req.get("responded_at"):
+                req["responded_at"] = req["responded_at"].isoformat()
+            requests.append(req)
+        
+        # Count by status
+        pending_count = await find_join_requests_collection().count_documents({
+            "team_id": str(team_id),
+            "status": JoinRequestStatus.PENDING
+        })
+        approved_count = await find_join_requests_collection().count_documents({
+            "team_id": str(team_id),
+            "status": JoinRequestStatus.APPROVED
+        })
+        rejected_count = await find_join_requests_collection().count_documents({
+            "team_id": str(team_id),
+            "status": JoinRequestStatus.REJECTED
+        })
+        
+        return {
+            "status": "success",
+            "team_id": str(team_id),
+            "requests": requests,
+            "stats": {
+                "pending": pending_count,
+                "approved": approved_count,
+                "rejected": rejected_count,
+            }
+        }
+    
+    except Exception as e:
+        print(f"[ERROR] get_team_join_requests: {e}")
+        return {"error": str(e)}
+
+async def get_user_sent_requests(
+    user_id: str,
+    event_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Get all join requests sent by a user."""
+    try:
+        query = {"requester_user_id": str(user_id)}
+        if event_id:
+            query["event_id"] = str(event_id)
+        
+        requests = []
+        cursor = find_join_requests_collection().find(query).sort("created_at", -1)
+        
+        async for req in cursor:
+            req["_id"] = str(req["_id"])
+            req["created_at"] = req["created_at"].isoformat()
+            req["expires_at"] = req["expires_at"].isoformat()
+            if req.get("responded_at"):
+                req["responded_at"] = req["responded_at"].isoformat()
+            requests.append(req)
+        
+        return {
+            "status": "success",
+            "requests": requests,
+            "count": len(requests),
+        }
+    
+    except Exception as e:
+        print(f"[ERROR] get_user_sent_requests: {e}")
+        return {"error": str(e)}
+
+def find_join_requests_collection():
+    """Get join requests collection - creates if doesn't exist."""
+    from db import db
+    return db["team_join_requests"]
+
+async def create_notification(
+    user_id: str,
+    type: str,
+    title: str,
+    message: str,
+    related_id: str,
+    related_type: str,
+    event_id: str
+) -> Optional[str]:
+    """Create in-app notification."""
+    try:
+        notification_doc = {
+            "user_id": str(user_id),
+            "type": type,
+            "title": title,
+            "message": message,
+            "related_id": str(related_id),
+            "related_type": related_type,
+            "event_id": str(event_id),
+            "created_at": datetime.now(timezone.utc),
+            "read": False,
+        }
+        
+        result = await notifications_col.insert_one(notification_doc)
+        return str(result.inserted_id)
+    
+    except Exception as e:
+        print(f"[ERROR] create_notification: {e}")
+        return None

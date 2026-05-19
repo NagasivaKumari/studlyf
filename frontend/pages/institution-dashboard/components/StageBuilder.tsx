@@ -28,14 +28,27 @@ interface StageBuilderProps {
 }
 
 const STAGE_TYPES = [
-    { id: 'Registration', icon: UserCheck, color: 'text-blue-500', bg: 'bg-blue-50' },
-    { id: 'Team Formation', icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50' },
-    { id: 'Quiz', icon: FileText, color: 'text-amber-500', bg: 'bg-amber-50' },
-    { id: 'Submission', icon: Plus, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-    { id: 'Review', icon: Gavel, color: 'text-purple-500', bg: 'bg-purple-50' },
-    { id: 'Final', icon: Trophy, color: 'text-orange-500', bg: 'bg-orange-50' },
-    { id: 'Custom', icon: Settings2, color: 'text-slate-500', bg: 'bg-slate-50' },
+    { id: 'REGISTRATION', label: 'Registration', icon: UserCheck, color: 'text-blue-500', bg: 'bg-blue-50' },
+    { id: 'TEAM_FORMATION', label: 'Team Formation', icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50' },
+    { id: 'QUIZ', label: 'Quiz', icon: FileText, color: 'text-amber-500', bg: 'bg-amber-50' },
+    { id: 'SUBMISSION', label: 'Submission', icon: Plus, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+    { id: 'REVIEW', label: 'Review', icon: Gavel, color: 'text-purple-500', bg: 'bg-purple-50' },
+    { id: 'FINAL', label: 'Final', icon: Trophy, color: 'text-orange-500', bg: 'bg-orange-50' },
+    { id: 'CUSTOM', label: 'Custom', icon: Settings2, color: 'text-slate-500', bg: 'bg-slate-50' },
 ];
+
+const normalizeStageTypeId = (rawType: string | undefined) => {
+    const cleaned = String(rawType || '').trim();
+    if (!cleaned) return 'CUSTOM';
+    const normalized = cleaned.replace(/\s+/g, '_').toUpperCase();
+    const known = new Set(STAGE_TYPES.map((t) => t.id));
+    return known.has(normalized) ? normalized : 'CUSTOM';
+};
+
+const getStageMeta = (rawType: string | undefined) => {
+    const normalized = normalizeStageTypeId(rawType);
+    return STAGE_TYPES.find((t) => t.id === normalized) || STAGE_TYPES[STAGE_TYPES.length - 1];
+};
 
 const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigureQuiz, availableJudges = [] }) => {
     const [expandedStage, setExpandedStage] = useState<string | null>(null);
@@ -61,7 +74,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
         const newStage: IStage = {
             id: Math.random().toString(36).substr(2, 9),
             name: 'New Stage',
-            type: 'Submission',
+            type: 'SUBMISSION',
             start_date: startDate,
             end_date: endDate,
             status: calculateStatus(startDate, endDate),
@@ -126,7 +139,10 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                         <p className="text-xs mt-1">Start by adding a Registration or Submission stage</p>
                     </div>
                 ) : (
-                    stages.map((stage, index) => (
+                    stages.map((stage, index) => {
+                        const stageTypeId = normalizeStageTypeId(stage.type);
+                        const stageMeta = getStageMeta(stage.type);
+                        return (
                         <div 
                             key={stage.id}
                             className={`bg-white border rounded-3xl transition-all ${expandedStage === stage.id ? 'border-[#6C3BFF] shadow-xl shadow-purple-50 ring-1 ring-purple-100' : 'border-slate-100 shadow-sm'}`}
@@ -140,10 +156,10 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                     <GripVertical size={20} />
                                 </div>
 
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${STAGE_TYPES.find(t => t.id === stage.type)?.bg || 'bg-slate-50'}`}>
-                                    {React.createElement(STAGE_TYPES.find(t => t.id === stage.type)?.icon || Settings2, {
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stageMeta?.bg || 'bg-slate-50'}`}>
+                                    {React.createElement(stageMeta?.icon || Settings2, {
                                         size: 20,
-                                        className: STAGE_TYPES.find(t => t.id === stage.type)?.color || 'text-slate-500'
+                                        className: stageMeta?.color || 'text-slate-500'
                                     })}
                                 </div>
 
@@ -163,7 +179,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                         </span>
                                         <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
                                             <CheckCircle2 size={12} />
-                                            {stage.type}
+                                            {stageMeta?.label || stage.type}
                                         </span>
                                     </div>
                                 </div>
@@ -217,12 +233,12 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                             <div className="space-y-4">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Stage Type</label>
                                                 <select 
-                                                    value={stage.type}
+                                                    value={stageTypeId}
                                                     onChange={(e) => updateStage(stage.id, { type: e.target.value as any })}
                                                     className="w-full px-5 py-3.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-100 outline-none font-bold text-slate-900"
                                                 >
                                                     {STAGE_TYPES.map(t => (
-                                                        <option key={t.id} value={t.id}>{t.id}</option>
+                                                        <option key={t.id} value={t.id}>{t.label}</option>
                                                     ))}
                                                 </select>
                                             </div>
@@ -278,7 +294,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                 </div>
                                             </div>
 
-                                            {stage.type === 'Submission' && (
+                                            {stageTypeId === 'SUBMISSION' && (
                                                 <div className="md:col-span-2 p-8 bg-emerald-50/30 rounded-[2rem] border border-emerald-100/50">
                                                     <div className="flex items-center gap-3 mb-6">
                                                         <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600">
@@ -299,7 +315,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                 </div>
                                             )}
 
-                                            {stage.type === 'Review' && (
+                                            {stageTypeId === 'REVIEW' && (
                                                 <div className="md:col-span-2 p-8 bg-purple-50/30 rounded-[2rem] border border-purple-100/50">
                                                     <div className="flex items-center gap-3 mb-6">
                                                         <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-purple-600">
@@ -321,7 +337,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                 </div>
                                             )}
 
-                                            {stage.type === 'Quiz' ? (
+                                            {stageTypeId === 'QUIZ' ? (
                                                 <div className="md:col-span-2 p-8 bg-amber-50/30 rounded-[2rem] border border-amber-100/50 space-y-4">
                                                     <div className="flex items-center justify-between gap-4">
                                                         <div>
@@ -370,7 +386,8 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                 )}
                             </AnimatePresence>
                         </div>
-                    ))
+                    );
+                    })
                 )}
             </div>
         </div>

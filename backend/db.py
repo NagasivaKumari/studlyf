@@ -66,8 +66,7 @@ class DatabaseManager:
         self.db_name = os.getenv("DB_NAME", "studlyf_db")
         
         if not self.url:
-            logger.warning("MONGO_URL is not set in environment variables. Using placeholder.")
-            self.url = "mongodb://localhost:27017"
+            raise RuntimeError("MONGO_URL is not set. Refusing to start without a real database connection.")
             
         try:
             self.client = AsyncIOMotorClient(
@@ -92,6 +91,7 @@ class DatabaseManager:
                 logger.error(f"Database Connection Failed: {e}")
                 self.client = None
                 self.db = None
+                raise RuntimeError("Database connection failed") from e
 
     async def connect(self):
         """Verify connectivity and run health checks."""
@@ -124,8 +124,7 @@ class DatabaseManager:
     def __getitem__(self, collection_name: str):
         """Allows db['collection'] access with lazy connection."""
         if self.db is None:
-            # Return a mock collection that doesn't crash
-            return MockCollection()
+            raise RuntimeError("Database is not connected")
         return self.db[collection_name]
 
     def __getattr__(self, name: str):

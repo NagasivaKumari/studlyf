@@ -1,0 +1,257 @@
+"""
+Stage Access Control - Validate participant eligibility for stage submissions
+Admin controls who can progress through stages via shortlist/reject status
+Also enforces time-based stage deadlines (e.g., registration 18:00-19:00)
+"""
+
+from fastapi import HTTPException
+from db import participants_col, opportunities_col
+from datetime import datetime, timezone
+from bson import ObjectId
+
+async def check_stage_submission_access(
+    event_id: str, 
+    user_id: str, 
+    team_id: str = None,
+    stage_type: str = None  # "team_formation", "submission", "final"
+):
+    """
+    Validate if participant can submit at this stage.
+    
+    Rules:
+    - team_formation stage: participant must exist (registered)
+    - submission stage: participant status must be "shortlisted" or "accepted"
+    - final stage: participant status must be "shortlisted" or "accepted"
+    
+    Args:
+        event_id: The event/opportunity ID
+        user_id: The user attempting to submit
+        team_id: Optional team ID (for team submissions)
+        stage_type: The current stage type
+    
+    Returns:
+        dict with participant data if allowed
+    
+    Raises:
+        HTTPException 403 if not eligible
+        HTTPException 404 if participant not found
+    """
+    
+    # Find participant record
+    query = {
+        "event_id": str(event_id),
+        "user_id": str(user_id)
+    }
+    
+    participant = await participants_col.find_one(query)
+    
+    if not participant:
+        raise HTTPException(
+            status_code=404, 
+            detail="Participant not found. Please register for this event first."
+        )
+    
+    current_status = (participant.get("status") or "pending").lower()
+    
+    # Stage-specific validation
+    if stage_type in ["submission", "final"]:
+        # Only shortlisted/accepted participants can submit in these stages
+        allowed_statuses = ["shortlisted", "accepted"]
+        
+        if current_status not in allowed_statuses:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You cannot submit at this stage. Your application status is '{current_status}'. "
+                       f"Only shortlisted participants can submit. Please wait for admin review."
+            )
+    
+    elif stage_type == "team_formation":
+        # Registered participants can form teams
+        # But rejected participants cannot
+        if current_status == "rejected":
+            raise HTTPException(
+                status_code=403,
+                detail="Your application has been rejected. You cannot proceed to team formation."
+            )
+    
+    return participant
+
+
+async def check_team_submission_access(
+    event_id: str,
+    team_id: str,
+    stage_type: str = None
+):
+    """
+    Validate if team can submit at this stage.
+    All team members must be shortlisted for submission/final stages.
+    """
+    from db import teams_col
+    
+    team = await teams_col.find_one({"_id": team_id, "event_id": str(event_id)})
+    
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found.")
+    
+    if stage_type in ["submission", "final"]:
+        # Check all team members' status
+        member_ids = team.get("members", [])
+        
+        for member in member_ids:
+            member_user_id = member.get("user_id")
+            member_status = await participants_col.find_one({
+                "event_id": str(event_id),
+                "user_id": str(member_user_id)
+            })
+            
+            if not member_status or (member_status.get("status") or "").lower() not in ["shortlisted", "accepted"]:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Not all team members are shortlisted. All members must be approved before submission."
+                )
+    
+    return team
+
+
+async def check_stage_deadline(event_id: str, stage_index: int = None, stage_name: str = None):
+    """
+    Validate if current time is within stage deadline window.
+    
+    Stages have start_date and end_date. Users can only act during this window.
+    Example: Registration open 18:00-19:00 only
+    
+    Args:
+        event_id: The event/opportunity ID
+        stage_index: Index of stage (0, 1, 2, etc.)
+        stage_name: Name of stage (e.g., "Registration", "Team Formation")
+    
+    Returns:
+        dict with stage data if allowed
+    
+    Raises:
+        HTTPException 403 if outside stage window
+        HTTPException 404 if stage not found
+    """
+    try:
+        opp_id = ObjectId(event_id) if len(str(event_id)) == 24 else event_id
+    except:
+        opp_id = event_id
+    
+    opportunity = await opportunities_col.find_one({"_id": opp_id})
+    if not opportunity:
+        opportunity = await opportunities_col.find_one({"event_link_id": str(event_id)})
+    
+    if not opportunity:
+        raise HTTPException(status_code=404, detail="Event/Opportunity not found")
+    
+    stages = opportunity.get("stages", [])
+    
+    if not stages:
+        raise HTTPException(status_code=404, detail="No stages configured for this event")
+    
+    # Find the target stage
+    target_stage = None
+    stage_pos = None
+    
+    if stage_index is not None and 0 <= stage_index < len(stages):
+        target_stage = stages[stage_index]
+        stage_pos = stage_index
+    elif stage_name:
+        for idx, s in enumerate(stages):
+            if (s.get("name") or "").lower() == stage_name.lower():
+                target_stage = s
+                stage_pos = idx
+                break
+    
+    if not target_stage:
+        raise HTTPException(status_code=404, detail=f"Stage not found (index: {stage_index}, name: {stage_name})")
+    
+    # Check if current time is within stage window
+    now = datetime.now(timezone.utc)
+    start_date = target_stage.get("start_date")
+    end_date = target_stage.get("end_date")
+    
+    # Convert to datetime if they're strings
+    if isinstance(start_date, str):
+        start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+    if isinstance(end_date, str):
+        end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    if isinstance(start_date, datetime) and start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=timezone.utc)
+    if isinstance(end_date, datetime) and end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=timezone.utc)
+    
+    if not start_date or not end_date:
+        # If no dates set, allow it
+        return target_stage
+    
+    # Check if now is within [start_date, end_date]
+    if now < start_date:
+        raise HTTPException(
+            status_code=403,
+            detail=f"This stage has not started yet. It opens at {start_date.strftime('%Y-%m-%d %H:%M UTC')}"
+        )
+    
+    if now > end_date:
+        raise HTTPException(
+            status_code=403,
+            detail=f"This stage has ended. It closed at {end_date.strftime('%Y-%m-%d %H:%M UTC')}"
+        )
+    
+    return target_stage
+
+
+async def check_stage_access(event_id: str, user_id: str, stage_index: int = None, stage_name: str = None):
+    """
+    Combined check: verify user can access stage (deadline + eligibility).
+    
+    Runs both deadline and eligibility checks.
+    
+    Args:
+        event_id: The event/opportunity ID
+        user_id: The user attempting to access
+        stage_index: Index of stage
+        stage_name: Name of stage
+    
+    Returns:
+        dict with stage and participant data
+    
+    Raises:
+        HTTPException if not allowed
+    """
+    # Check deadline first
+    stage = await check_stage_deadline(event_id, stage_index, stage_name)
+    
+    # Check participant status
+    participant = await participants_col.find_one({
+        "event_id": str(event_id),
+        "user_id": str(user_id)
+    })
+    
+    if not participant:
+        raise HTTPException(
+            status_code=404,
+            detail="Participant not found. Please register for this event first."
+        )
+    
+    current_status = (participant.get("status") or "pending").lower()
+    stage_name_lower = (stage.get("name") or "").lower()
+    
+    # Submission/Final stages require shortlisted status
+    if "submission" in stage_name_lower or "final" in stage_name_lower:
+        if current_status not in ["shortlisted", "accepted"]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You cannot access this stage. Your status is '{current_status}'. "
+                       f"Only shortlisted participants can proceed."
+            )
+    
+    # Rejected users blocked from team formation onwards
+    elif "team" in stage_name_lower or "formation" in stage_name_lower:
+        if current_status == "rejected":
+            raise HTTPException(
+                status_code=403,
+                detail="Your application has been rejected. You cannot proceed."
+            )
+    
+    return {"stage": stage, "participant": participant}

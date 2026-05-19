@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Body, Depends
+from fastapi import APIRouter, HTTPException, Body, Depends, File, UploadFile, Form
 from services.event_service import (
     create_event,
     get_all_events,
@@ -8,43 +8,143 @@ from services.event_service import (
     update_event_status
 )
 from typing import List, Optional
-from auth_institution import get_auth_user
+from auth_institution import get_auth_user, get_auth_user_optional, assert_institution_owns_event
 from bson import ObjectId
+import os
+import uuid
+from db import events_col
+from datetime import datetime
 
 router = APIRouter(prefix="/api/v1/events", tags=["Events"])
 
 @router.post("/")
-async def post_event(data: dict = Body(...)):
+async def post_event(data: dict = Body(...), user: dict = Depends(get_auth_user)):
     try:
+        role = str(user.get("role") or "").lower()
+        if role not in ("institution", "admin", "super_admin"):
+            raise HTTPException(status_code=403, detail="Institution access required")
+        if role == "institution":
+            institution_id = user.get("institution_id")
+            if not institution_id:
+                raise HTTPException(status_code=403, detail="Institution profile is not linked")
+            data["institution_id"] = institution_id
         return await create_event(data)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/")
-async def list_events(status: Optional[str] = None, institution_id: Optional[str] = None):
+async def list_events(
+    status: Optional[str] = None,
+    institution_id: Optional[str] = None,
+    user: Optional[dict] = Depends(get_auth_user_optional),
+):
     filters = {}
-    if status: filters["status"] = status
-    if institution_id: filters["institution_id"] = institution_id
+    role = str((user or {}).get("role") or "").lower()
+    if role in ("admin", "super_admin"):
+        if status: filters["status"] = status
+        if institution_id: filters["institution_id"] = institution_id
+    elif role == "institution":
+        filters["institution_id"] = str((user or {}).get("institution_id") or institution_id or "")
+        if status: filters["status"] = status
+    else:
+        filters["status"] = "LIVE"
     return await get_all_events(filters)
 
 @router.get("/{event_id}")
-async def view_event(event_id: str):
+async def view_event(event_id: str, user: Optional[dict] = Depends(get_auth_user_optional)):
     event = await get_event_by_id(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
+    role = str((user or {}).get("role") or "").lower()
+    if str(event.get("status") or "").upper() not in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
+        if role not in ("admin", "super_admin") and str((user or {}).get("institution_id") or "") != str(event.get("institution_id") or ""):
+            raise HTTPException(status_code=404, detail="Event not found")
     return event
 
 @router.put("/{event_id}")
-async def modify_event(event_id: str, data: dict = Body(...)):
+async def modify_event(event_id: str, data: dict = Body(...), user: dict = Depends(get_auth_user)):
+    await assert_institution_owns_event(event_id, user)
+    if str(user.get("role") or "").lower() == "institution":
+        data.pop("institution_id", None)
     return await update_event(event_id, data)
 
 @router.delete("/{event_id}")
-async def remove_event(event_id: str):
+async def remove_event(event_id: str, user: dict = Depends(get_auth_user)):
+    await assert_institution_owns_event(event_id, user)
     return await delete_event(event_id)
 
 @router.patch("/{event_id}/status")
-async def change_event_status(event_id: str, status: str = Body(embed=True)):
+async def change_event_status(event_id: str, status: str = Body(embed=True), user: dict = Depends(get_auth_user)):
+    await assert_institution_owns_event(event_id, user)
     return await update_event_status(event_id, status)
+
+@router.post("/{event_id}/upload-media")
+async def upload_event_media(
+    event_id: str,
+    file: UploadFile = File(...),
+    field: str = Form(...),
+    user: dict = Depends(get_auth_user)
+):
+    """
+    Upload logo or banner for an event.
+    field should be 'logo_url' or 'banner_url'
+    """
+    try:
+        # Validate field parameter
+        if field not in ['logo_url', 'banner_url']:
+            raise HTTPException(status_code=400, detail="field must be 'logo_url' or 'banner_url'")
+        
+        # Create uploads directory if needed
+        upload_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "events")
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Validate file extension
+        await assert_institution_owns_event(event_id, user)
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            raise HTTPException(status_code=400, detail=f"File type {file_ext} not allowed. Use: {', '.join(allowed_extensions)}")
+        
+        # Generate unique filename
+        filename = f"{event_id}_{field}_{uuid.uuid4()}{file_ext}"
+        filepath = os.path.join(upload_dir, filename)
+        
+        # Save file
+        file_content = await file.read()
+        if len(file_content) > 10 * 1024 * 1024:  # 10MB limit
+            raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
+        
+        with open(filepath, "wb") as f:
+            f.write(file_content)
+        
+        # Get base URL from environment or construct it
+        base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
+        url = f"{base_url}/uploads/events/{filename}"
+        
+        # Update event in DB
+        try:
+            event_id_obj = ObjectId(event_id)
+        except:
+            event_id_obj = event_id
+        
+        result = await events_col.update_one(
+            {"_id": event_id_obj},
+            {"$set": {field: url}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        return {"url": url, "status": "success", "field": field}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @router.get("/{event_id}/hub")
 async def get_event_hub_data(event_id: str, user: dict = Depends(get_auth_user)):
@@ -155,3 +255,180 @@ async def get_event_hub_data(event_id: str, user: dict = Depends(get_auth_user))
         "is_evaluated": is_evaluated,
         "evaluation": evaluation_data
     }
+
+
+# ============================================================================
+# STAGE ACCESS CONTROL - Admin endpoints for managing participant eligibility
+# ============================================================================
+
+@router.patch("/{event_id}/participants/{user_id}/status")
+async def update_participant_status(
+    event_id: str, 
+    user_id: str, 
+    status: str = Body(embed=True),
+    user: dict = Depends(get_auth_user)
+):
+    """
+    Admin endpoint: Update participant status (shortlisted, rejected, pending, accepted).
+    Only admins can call this endpoint.
+    
+    Status values:
+    - pending: registered but not reviewed
+    - shortlisted: approved to proceed to submission stages
+    - accepted: same as shortlisted
+    - rejected: not allowed to proceed
+    """
+    from db import participants_col
+    
+    # Verify user is admin/host
+    calling_user = user.get("user_id")
+    if not calling_user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Check if calling user is host/admin of this event
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event or str(event.get("institution_id")) != str(user.get("institution_id")):
+        raise HTTPException(status_code=403, detail="Only event hosts can manage participant status")
+    
+    # Validate status
+    allowed_statuses = ["pending", "shortlisted", "accepted", "rejected"]
+    if status.lower() not in allowed_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(allowed_statuses)}")
+    
+    # Update participant
+    try:
+        result = await participants_col.update_one(
+            {"event_id": str(event_id), "user_id": str(user_id)},
+            {"$set": {"status": status.lower(), "updated_at": datetime.utcnow()}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Participant not found for this event")
+        
+        return {
+            "status": "success",
+            "message": f"Participant {user_id} marked as {status}",
+            "event_id": event_id,
+            "user_id": user_id,
+            "new_status": status.lower()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{event_id}/participants")
+async def list_event_participants(
+    event_id: str,
+    status_filter: Optional[str] = None,
+    user: dict = Depends(get_auth_user)
+):
+    """
+    Admin endpoint: List all participants for an event with their status.
+    Optional status filter: pending, shortlisted, accepted, rejected
+    """
+    from db import participants_col, users_col
+    
+    # Verify event ownership
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event or str(event.get("institution_id")) != str(user.get("institution_id")):
+        raise HTTPException(status_code=403, detail="Only event hosts can view participants")
+    
+    # Build query
+    query = {"event_id": str(event_id)}
+    if status_filter:
+        query["status"] = status_filter.lower()
+    
+    # Get participants
+    cursor = participants_col.find(query)
+    participants = await cursor.to_list(length=None)
+    
+    # Enrich with user info
+    user_ids = [str(p.get("user_id")) for p in participants]
+    users_dict = {}
+    if user_ids:
+        user_cursor = users_col.find({"user_id": {"$in": user_ids}})
+        async for u in user_cursor:
+            users_dict[str(u["user_id"])] = {
+                "name": u.get("name", "Unknown"),
+                "email": u.get("email", ""),
+                "college_name": u.get("college_name", "")
+            }
+    
+    # Format response
+    result = []
+    for p in participants:
+        p_id = str(p.get("user_id"))
+        user_data = users_dict.get(p_id, {})
+        result.append({
+            "_id": str(p["_id"]),
+            "user_id": p_id,
+            "name": user_data.get("name"),
+            "email": user_data.get("email"),
+            "college": user_data.get("college_name"),
+            "status": p.get("status", "pending"),
+            "team_id": p.get("team_id"),
+            "registered_at": p.get("registered_at"),
+            "updated_at": p.get("updated_at")
+        })
+    
+    return {
+        "event_id": event_id,
+        "total_count": len(result),
+        "pending": len([p for p in result if p["status"] == "pending"]),
+        "shortlisted": len([p for p in result if p["status"] in ["shortlisted", "accepted"]]),
+        "rejected": len([p for p in result if p["status"] == "rejected"]),
+        "participants": result
+    }
+
+
+@router.post("/{event_id}/participants/bulk-status")
+async def bulk_update_participant_status(
+    event_id: str,
+    data: dict = Body(...),
+    user: dict = Depends(get_auth_user)
+):
+    """
+    Admin endpoint: Bulk update participant statuses.
+    
+    Request body:
+    {
+        "user_ids": ["user1", "user2"],
+        "status": "shortlisted"
+    }
+    """
+    from db import participants_col
+    
+    # Verify event ownership
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event or str(event.get("institution_id")) != str(user.get("institution_id")):
+        raise HTTPException(status_code=403, detail="Only event hosts can manage participants")
+    
+    user_ids = data.get("user_ids", [])
+    new_status = data.get("status", "").lower()
+    
+    if not user_ids or not new_status:
+        raise HTTPException(status_code=400, detail="Missing user_ids or status")
+    
+    allowed_statuses = ["pending", "shortlisted", "accepted", "rejected"]
+    if new_status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(allowed_statuses)}")
+    
+    try:
+        result = await participants_col.update_many(
+            {"event_id": str(event_id), "user_id": {"$in": [str(uid) for uid in user_ids]}},
+            {"$set": {"status": new_status, "updated_at": datetime.utcnow()}}
+        )
+        
+        return {
+            "status": "success",
+            "message": f"Updated {result.modified_count} participants to {new_status}",
+            "modified_count": result.modified_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

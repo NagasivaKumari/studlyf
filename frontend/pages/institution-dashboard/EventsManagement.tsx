@@ -145,13 +145,8 @@ const EventsManagement: React.FC<EventsManagementProps> = ({ institutionId, onVi
                 const response = await fetch(`${API_BASE_URL}/api/v1/institution/events/${institutionId}`, { headers: { ...authHeaders() } });
                 if (!response.ok) throw new Error("Fetch failed");
                 const data = await response.json();
-                
-                // STRICT FILTER: Only include Jobs and Internships
-                const filteredData = data.filter((e: any) => 
-                    e.category === 'Job' || e.category === 'Internship'
-                );
 
-                setEvents(filteredData.map((e: any) => ({
+                setEvents(data.map((e: any) => ({
                     id: e._id,
                     name: e.title,
                     status: e.status || 'Live',

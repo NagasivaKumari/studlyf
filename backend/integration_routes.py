@@ -3054,7 +3054,7 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
             "createdAt": datetime.utcnow(),
             "createdBy": str(iid),
             "institution_id": str(iid),
-            "status": "active" if event_data["status"] in ["ACTIVE", "LIVE", "PUBLISHED"] else "draft",
+            "status": "active",
             "event_link_id": str(result.inserted_id),  # link back to full event
             "registrationFields": reg_fields,
             "logo_url": event_data.get("logo_url", ""),
@@ -3228,7 +3228,7 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
             }
 
             if updated_event.get("status"):
-                opp_data["status"] = "active" if updated_event.get("status") in ["ACTIVE", "LIVE", "PUBLISHED"] else "draft"
+                opp_data["status"] = "active"
             
             # Ensure deadline is datetime
             if isinstance(opp_data["deadline"], str):

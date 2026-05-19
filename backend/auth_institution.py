@@ -77,7 +77,7 @@ async def assert_institution_owns_event(event_id: str, user: dict) -> dict:
     id_query: list = [{"event_id": event_id}]  # custom string field fallback
     try:
         id_query.append({"_id": ObjectId(event_id)})
-    except (InvalidId, Exception):
+    except (InvalidId, ValueError):
         pass
     id_query.append({"_id": event_id})  # string _id fallback
     
