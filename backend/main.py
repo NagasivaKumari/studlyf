@@ -41,13 +41,12 @@ logger = logging.getLogger("main_service")
 # Configure CORS - Restricted to specific domains for security
 # Load allowed origins from environment or use defaults
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+backend_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
 additional_origins = os.getenv("ADDITIONAL_CORS_ORIGINS", "").split(",") if os.getenv("ADDITIONAL_CORS_ORIGINS") else []
 
 origins = list(set([
-    frontend_url, 
-    "https://studlyff.vercel.app",
-    "https://studlyf-thub.vercel.app",
-    "https://studlyff.onrender.com"
+    frontend_url,
+    backend_url
 ] + [origin.strip() for origin in additional_origins if origin.strip()]))
 
 # Add localhost origins for development
@@ -2331,7 +2330,7 @@ async def confirm_track_enrollment(user_id: str, data: dict = Body(...)):
 
                 <!-- Footer -->
                 <div style="background-color: #F9FAFB; padding: 30px; border-top: 1px solid #E5E7EB; text-align: center; font-size: 11px; color: #9CA3AF; font-weight: 500;">
-                    <p style="margin: 0 0 10px 0;">Have queries? Reach our team at <a href="mailto:support@studlyf.com" style="color: #7C3AED; text-decoration: none; font-weight: bold;">support@studlyf.com</a></p>
+                    <p style="margin: 0 0 10px 0;">Have queries? Reach our team at <a href="mailto:{os.getenv('SUPPORT_EMAIL', 'support@studlyf.com')}" style="color: #7C3AED; text-decoration: none; font-weight: bold;">{os.getenv('SUPPORT_EMAIL', 'support@studlyf.com')}</a></p>
                     <p style="margin: 0;">Studlyf Engineering Systems &copy; 2026. All Rights Reserved.</p>
                 </div>
             </div>

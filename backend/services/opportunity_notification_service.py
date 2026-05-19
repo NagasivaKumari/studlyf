@@ -79,13 +79,13 @@ async def send_new_opportunity_email(opportunity: dict, event: dict = None) -> d
                     </div>
 
                     <div style="text-align: center; margin-bottom: 30px;">
-                        <a href="https://studlyf.com/opportunities/{opp_id}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-block; transition: transform 0.2s; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/opportunities/{opp_id}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-block; transition: transform 0.2s; text-transform: uppercase; letter-spacing: 0.5px;">
                             View Opportunity
                         </a>
                     </div>
 
                     <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; text-align: center; color: #64748b; font-size: 12px;">
-                        <p style="margin: 0;">You're receiving this because you're registered on Studlyf. <a href="https://studlyf.com/settings/notifications" style="color: #667eea; text-decoration: none;">Manage preferences</a></p>
+                        <p style="margin: 0;">You're receiving this because you're registered on Studlyf. <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/settings/notifications" style="color: #667eea; text-decoration: none;">Manage preferences</a></p>
                     </div>
                 </div>
             </body>
@@ -202,7 +202,7 @@ async def send_deadline_reminder_emails(days_until: int = 3) -> dict:
                                     </div>
 
                                     <div style="text-align: center; margin-bottom: 30px;">
-                                        <a href="https://studlyf.com/opportunities/{opp_id}" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-block; text-transform: uppercase; letter-spacing: 0.5px;">
+                                        <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/opportunities/{opp_id}" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-block; text-transform: uppercase; letter-spacing: 0.5px;">
                                             Apply Now
                                         </a>
                                     </div>
@@ -297,7 +297,7 @@ async def send_daily_digest_email() -> dict:
                         <p style="margin: 0 0 8px 0; color: #64748b; font-size: 13px;">{opp.get('organization', 'Partner Institution')}</p>
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="color: #64748b; font-size: 12px;">📅 {deadline_str} <span style="color: #f59e0b; font-weight: 600;">({days_left}d left)</span></span>
-                            <a href="https://studlyf.com/opportunities/{str(opp.get('_id'))}" style="background: #667eea; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: 600;">View</a>
+                            <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/opportunities/{str(opp.get('_id'))}" style="background: #667eea; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: 600;">View</a>
                         </div>
                     </div>
                     """
@@ -318,13 +318,13 @@ async def send_daily_digest_email() -> dict:
                             </div>
 
                             <div style="text-align: center; margin-bottom: 30px;">
-                                <a href="https://studlyf.com/opportunities" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-block; text-transform: uppercase; letter-spacing: 0.5px;">
+                                <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/opportunities" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-block; text-transform: uppercase; letter-spacing: 0.5px;">
                                     Browse All Opportunities
                                 </a>
                             </div>
 
                             <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; text-align: center; color: #64748b; font-size: 12px;">
-                                <p style="margin: 0;">You're receiving this daily digest because you're registered on Studlyf. <a href="https://studlyf.com/settings/notifications" style="color: #667eea; text-decoration: none;">Manage preferences</a></p>
+                                <p style="margin: 0;">You're receiving this daily digest because you're registered on Studlyf. <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/settings/notifications" style="color: #667eea; text-decoration: none;">Manage preferences</a></p>
                             </div>
                         </div>
                     </body>

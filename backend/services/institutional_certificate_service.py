@@ -37,7 +37,8 @@ class InstitutionalCertificateService:
     async def issue_event_certificate(self, cert_data: dict):
         cert_id = str(uuid.uuid4())
         v_code = hashlib.sha256(f"{cert_id}".encode()).hexdigest()[:10].upper()
-        v_url = f"https://studlyf.com/verify/{cert_id}"
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        v_url = f"{frontend_url}/verify/{cert_id}"
         qr_blob = self._generate_qr_blob(v_url)
 
         # HTML Rendering logic...

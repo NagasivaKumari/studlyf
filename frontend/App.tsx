@@ -158,7 +158,7 @@ const App: React.FC = () => {
       return;
     }
 
-    if (user?.email?.toLowerCase() === 'admin@studlyf.com') {
+    if (user?.email?.toLowerCase() === (import.meta.env.VITE_ADMIN_EMAIL || 'admin@studlyf.com')) {
       if (!pathname.startsWith('/admin')) {
         navigate('/admin', { replace: true });
       }

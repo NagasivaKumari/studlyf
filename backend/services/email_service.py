@@ -77,7 +77,7 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
     smtp_pass = os.getenv("SMTP_PASSWORD", "").strip().replace(" ", "").replace('"', '').replace("'", "")
     
     # For Google/Custom SMTP, use the verified domain if available
-    final_from_address = verified_from if "studlyf.com" in verified_from else smtp_user
+    final_from_address = verified_from if verified_from else smtp_user
 
     if not smtp_user or not smtp_pass:
         logger.error("[EMAIL ERROR] No SMTP credentials found.")
@@ -170,8 +170,8 @@ def get_registration_template(user_name: str, event_name: str, custom_message: s
     """
 
 def get_team_invite_template(leader_name: str, team_name: str, event_name: str, invite_code: str):
-    # Base URL for joining - adjust as needed for production
-    join_url = f"https://studlyf.com/events/join-team?code={invite_code}"
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    join_url = f"{frontend_url}/events/join-team?code={invite_code}"
     return f"""
     <html>
         <body style="font-family: 'Segoe UI', sans-serif; color: #1f2937; line-height: 1.6;">
@@ -226,7 +226,7 @@ def get_shortlist_template(team_name: str, event_name: str, stage_name: str = "N
                 
                 <p style="text-align: center; color: #4b5563; font-size: 14px;">This is a significant milestone. Please check your Event Hub for updated deadlines and submission requirements for this new stage.</p>
                 <div style="text-align: center; margin-top: 30px;">
-                    <a href="https://studlyf.com/dashboard/learner" style="background-color: #111827; color: white; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block;">GO TO EVENT HUB</a>
+                    <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/dashboard/learner" style="background-color: #111827; color: white; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block;">GO TO EVENT HUB</a>
                 </div>
             </div>
         </body>
@@ -281,7 +281,7 @@ def get_certificate_template(user_name: str, event_name: str, rank: str = None, 
                                 </div>
 
                                 <div style="text-align: center; margin-top: 30px;">
-                                    <a href="https://studlyf.com/dashboard/learner" style="background-color: #7C3AED; color: white; padding: 16px 36px; border-radius: 14px; text-decoration: none; font-weight: 800; font-size: 13px; display: inline-block; text-transform: uppercase; letter-spacing: 0.12em; box-shadow: 0 4px 15px rgba(124,58,237,0.4);">
+                                    <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/dashboard/learner" style="background-color: #7C3AED; color: white; padding: 16px 36px; border-radius: 14px; text-decoration: none; font-weight: 800; font-size: 13px; display: inline-block; text-transform: uppercase; letter-spacing: 0.12em; box-shadow: 0 4px 15px rgba(124,58,237,0.4);">
                                         View My Certificate
                                     </a>
                                 </div>
@@ -414,7 +414,7 @@ async def send_course_purchase_email(to_email: str, student_name: str, course_na
                                 <table width="100%" border="0" cellspacing="0" cellpadding="0">
                                     <tr>
                                         <td align="center">
-                                            <a href="https://studlyf.com/dashboard/learner" style="display: inline-block; background: #7C3AED; color: #FFFFFF; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-weight: 800; font-size: 16px; letter-spacing: 0.5px;">Start Learning Now</a>
+                                            <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/dashboard/learner" style="display: inline-block; background: #7C3AED; color: #FFFFFF; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-weight: 800; font-size: 16px; letter-spacing: 0.5px;">Start Learning Now</a>
                                         </td>
                                     </tr>
                                 </table>

@@ -129,7 +129,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleCollapse }) => {
                     {!isCollapsed && (
                         <div className="flex flex-col min-w-0">
                             <span className="text-sm font-semibold text-white truncate">{user?.full_name || 'Super Admin'}</span>
-                            <span className="text-xs text-white/50 truncate">{user?.email || 'admin@studlyf.com'}</span>
+                            <span className="text-xs text-white/50 truncate">{user?.email || import.meta.env.VITE_ADMIN_EMAIL || 'admin@studlyf.com'}</span>
                         </div>
                     )}
                 </div>

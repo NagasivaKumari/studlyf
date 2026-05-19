@@ -96,7 +96,7 @@ async def send_welcome_email(email: str, name: str):
                     </ul>
 
                     <div style="text-align: center; margin: 30px 0;">
-                        <a href="http://localhost:3000/login" style="background-color: #7c3aed; color: #ffffff; padding: 12px 30px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 14px; display: inline-block;">Go to Dashboard</a>
+                        <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/login" style="background-color: #7c3aed; color: #ffffff; padding: 12px 30px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 14px; display: inline-block;">Go to Dashboard</a>
                     </div>
                     
                     <p style="font-size: 13px; color: #9ca3af; text-align: center;">The Studlyf team is here to support you at every step of your journey.</p>

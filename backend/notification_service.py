@@ -319,7 +319,7 @@ class NotificationService:
                 <h2 style="color: #6B46C1;">{notification.get('title', 'New Notification')}</h2>
                 <p>{notification.get('message', '')}</p>
                 <p>
-                    <a href="https://studlyf.com/notifications" 
+                    <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/notifications" 
                        style="background-color: #6B46C1; color: white; padding: 12px 24px; 
                               text-decoration: none; border-radius: 6px; display: inline-block;">
                         View Notifications

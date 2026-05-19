@@ -41,7 +41,7 @@ const TeamsManagement: React.FC = () => {
     const handleAddTeam = async () => {
         try {
             // Send team formation email
-            const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
             const response = await fetch(`${API_BASE_URL}/api/team-formation/send-email`, {
                 method: 'POST',
                 headers: {

@@ -3478,7 +3478,7 @@ async def bulk_onboard_members(data: dict):
                         </div>
 
                         <div style="text-align: center;">
-                            <a href="http://localhost:5173/login" class="btn-primary">Initialize Dashboard Access</a>
+                            <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/login" class="btn-primary">Initialize Dashboard Access</a>
                         </div>
 
                         <p style="font-size: 14px; font-weight: 500; text-align: center;">Need assistance? Our team is available 24/7 to help you settle in.</p>
