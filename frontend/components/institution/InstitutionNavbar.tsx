@@ -244,7 +244,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
             <motion.div 
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="w-full bg-[#6C3BFF] h-16 rounded-[1.5rem] shadow-2xl shadow-purple-200 flex items-center px-6 relative overflow-hidden group"
+                className="w-full bg-[#6C3BFF] h-16 rounded-[1.5rem] shadow-2xl shadow-purple-200 flex items-center px-6 relative group"
             >
                 {/* 1. Left (Empty to match old layout) */}
                 <div className="w-12 shrink-0 hidden lg:block" />
@@ -436,15 +436,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
                                 displayName.charAt(0).toUpperCase()
                              )}
                         </div>
-                        <div className="hidden sm:block max-w-[120px] overflow-hidden text-left">
-                            <p className="text-xs font-bold text-white leading-tight truncate font-sans">
-                                {profile?.name || displayName || 'Loading...'}
-                            </p>
-                            <p className="text-[9px] font-black text-purple-200/50 uppercase tracking-widest font-sans">
-                                {role === 'judge' ? 'Judge' : 'Admin'}
-                            </p>
-                        </div>
-                        
+                        {/* Removed text name for cleaner UI as requested */}
                         <div className="h-6 w-px bg-white/10 mx-1 hidden sm:block" />
                         
                         <button 

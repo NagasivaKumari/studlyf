@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { 
     Calendar, 
     MapPin, 
     ChevronLeft, 
+    ChevronRight,
     CheckCircle2, 
     Upload, 
     Send,
@@ -31,6 +32,14 @@ import { getStatusById, getStatusColor, getStatusLabel } from '../../utils/calen
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
+import SubmissionForm from '../../components/opportunities/SubmissionForm';
+import TeamManager from '../../components/opportunities/TeamManager';
+import {
+    formatOpportunityLocation,
+    plainTextFromRichContent,
+    richHtmlFromOpportunityField,
+    sanitizePresentationHtml,
+} from '../../utils/text';
 
 // Define User type for the component
 interface User {
@@ -39,13 +48,6 @@ interface User {
   name?: string;
   email?: string;
 }
-import TeamManager from './TeamManager';
-import {
-    formatOpportunityLocation,
-    plainTextFromRichContent,
-    richHtmlFromOpportunityField,
-    sanitizePresentationHtml,
-} from '../../utils/text';
 
 type RegField = {
     id: string;
@@ -87,6 +89,8 @@ const OpportunityDetails: React.FC = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const [searchParams] = useSearchParams();
+    const activeTab = searchParams.get('tab');
     
     const [opportunity, setOpportunity] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -106,7 +110,7 @@ const OpportunityDetails: React.FC = () => {
     const [related, setRelated] = useState<any[]>([]);
     const [favorited, setFavorited] = useState(false);
     const [descExpanded, setDescExpanded] = useState(false);
-    const [activeSection, setActiveSection] = useState<'details' | 'dates' | 'prizes' | 'reviews' | 'faq'>('details');
+    const [activeSection, setActiveSection] = useState<'details' | 'dates' | 'prizes' | 'reviews' | 'faq' | 'submissions' | 'leaderboard'>('details');
 
     const detailsRef = useRef<HTMLDivElement>(null);
     const datesRef = useRef<HTMLDivElement>(null);
@@ -134,6 +138,11 @@ const OpportunityDetails: React.FC = () => {
         githubLink: '',
         deployedLink: ''
     });
+
+    const [stageRegistrationFields, setStageRegistrationFields] = useState<any>(null);
+    const [prefilledFields, setPrefilledFields] = useState<Record<string, any>>({});
+    const [loadingFields, setLoadingFields] = useState(false);
+    const eventId = String(opportunity?.event_link_id || opportunity?.event_id || id || '');
 
     useEffect(() => {
         if (opportunity) {
@@ -207,7 +216,7 @@ const OpportunityDetails: React.FC = () => {
                     ? `${API_BASE_URL}/api/opportunities/${id}?applicant_user_id=${encodeURIComponent(user.user_id)}`
                     : `${API_BASE_URL}/api/opportunities/${id}`;
                 const [oppRes, appRes, subRes] = await Promise.all([
-                    fetch(oppUrl),
+                    fetch(oppUrl, { headers: { ...authHeaders() } }),
                     user
                         ? fetch(`${API_BASE_URL}/api/opportunities/me/applications`, {
                               headers: { ...authHeaders() },
@@ -268,9 +277,44 @@ const OpportunityDetails: React.FC = () => {
         return () => clearInterval(refreshInterval);
     }, [id, user?.user_id]);
 
-    const registrationFields: RegField[] = Array.isArray(opportunity?.registrationFields)
-        ? opportunity.registrationFields
-        : [];
+        useEffect(() => {
+                if (!user || !eventId || isApplied) return;
+        
+                setLoadingFields(true);
+                fetch(`${API_BASE_URL}/api/v1/stages/events/${eventId}/registration-fields`, {
+                    headers: authHeaders()
+                })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success') {
+            setStageRegistrationFields(data);
+            // Extract prefilled values
+            const prefilled = {};
+            data.prefilled_fields?.forEach(field => {
+              if (field.prefilled_value) {
+                prefilled[field.id] = field.prefilled_value;
+              }
+            });
+            setPrefilledFields(prefilled);
+          }
+        })
+                .finally(() => setLoadingFields(false));
+            }, [user, eventId, isApplied]);
+
+    const registrationFields: RegField[] = Array.isArray(stageRegistrationFields?.custom_fields)
+        ? stageRegistrationFields.custom_fields.map((field: any) => ({
+            id: String(field.id || field.field_id || field.name || field.label),
+            label: String(field.label || field.name || 'Field'),
+            type: String(field.type || field.field_type || 'text'),
+            required: Boolean(field.required),
+            isFixed: Boolean(field.isFixed || field.prefilled),
+            options: Array.isArray(field.options) ? field.options : undefined,
+            hint: field.hint || field.placeholder || field.help_text || '',
+        }))
+        : Array.isArray(opportunity?.registrationFields)
+            ? opportunity.registrationFields
+            : [];
+    const useStageRegistration = Array.isArray(stageRegistrationFields?.custom_fields);
     const useInstitutionForm = registrationFields.length > 0;
 
     const buildLegacyPayload = () => {
@@ -342,27 +386,69 @@ const OpportunityDetails: React.FC = () => {
             return;
         }
 
+        if (!eventId) {
+            alert('Event data is still loading. Please try again.');
+            return;
+        }
+
+        // NEW: Use the new registration endpoint if registrationFields are present
+        if (useStageRegistration) {
+            const customFieldPayload: Record<string, any> = {};
+            let allRequiredFilled = true;
+
+            registrationFields.forEach((field: any) => {
+                if (field.required) {
+                    if (field.type === 'file' && !regFiles[field.id]) {
+                        alert(`Please upload a file for: ${field.label}`);
+                        allRequiredFilled = false;
+                    } else if (!regAnswers[field.id]) {
+                        alert(`Please fill out: ${field.label}`);
+                        allRequiredFilled = false;
+                    }
+                }
+                customFieldPayload[field.id] = regAnswers[field.id] || '';
+            });
+
+            if (!allRequiredFilled) {
+                return;
+            }
+
+            setSubmitting(true);
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/v1/stages/events/${eventId}/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...authHeaders(),
+                    },
+                    body: JSON.stringify({
+                        custom_fields: customFieldPayload,
+                        institution_id: opportunity.createdBy || opportunity.institution_id,
+                    }),
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    setMyApplication(data.participant);
+                    setSubmitted(true);
+                    setIsApplied(true);
+                } else {
+                    const errorData = await response.json();
+                    alert(`Registration failed: ${errorData.detail || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error("Registration error:", err);
+                alert("An error occurred during registration.");
+            } finally {
+                setSubmitting(false);
+            }
+            return;
+        }
+
+        // Fallback to old logic if new registration fields are not used
         if (useInstitutionForm) {
             for (const f of registrationFields) {
-                if (!f.required) continue;
-                const t = (f.type || 'text').toLowerCase();
-                if (t === 'file' || t === 'upload') {
-                    if (!regFiles[f.id]) {
-                        alert(`Please complete: ${f.label}`);
-                        return;
-                    }
-                } else if (t === 'accept') {
-                    if (regAnswers[f.id] !== 'on' && regAnswers[f.id] !== 'true') {
-                        alert(`Please accept: ${f.label}`);
-                        return;
-                    }
-                } else if (t === 'checkbox' && f.options && f.options.length > 0) {
-                    const anyOn = f.options.some((opt) => regAnswers[`${f.id}:${opt}`] === 'on');
-                    if (!anyOn) {
-                        alert(`Please complete: ${f.label}`);
-                        return;
-                    }
-                } else if (!(regAnswers[f.id] || '').trim()) {
+                if (!(regAnswers[f.id] || '').trim()) {
                     alert(`Please complete: ${f.label}`);
                     return;
                 }
@@ -376,7 +462,7 @@ const OpportunityDetails: React.FC = () => {
             const payload = useInstitutionForm ? buildInstitutionPayload() : buildLegacyPayload();
             const response = await fetch(`${API_BASE_URL}/api/opportunities/apply`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({
                     opportunity_id: id,
                     user_id: user.user_id,
@@ -601,6 +687,79 @@ const OpportunityDetails: React.FC = () => {
         ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
+    const handleStageClick = (s: any) => {
+        const stype = s.type?.toUpperCase();
+        const sname = s.name?.toUpperCase() || '';
+        const event_hub_id = String(opportunity.event_link_id || opportunity.event_id || id);
+
+        if (stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION')) {
+            // Scroll to the registration / apply form
+            const formElement = document.querySelector('form') || document.querySelector('.sticky');
+            if (formElement) {
+                formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            }
+            return;
+        }
+
+        // For all other stages, they require registration first!
+        if (!isApplied) {
+            alert(`Please register/apply for "${opportunity.title}" first to participate in this stage!`);
+            const formElement = document.querySelector('form') || document.querySelector('.sticky');
+            if (formElement) {
+                formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            }
+            return;
+        }
+
+        // Check if stage is active based on dates
+        const start = s.startDate || s.start_date;
+        const end = s.endDate || s.end_date;
+        const now = new Date();
+        
+        if (start && new Date(start) > now) {
+            alert(`This stage hasn't started yet. It will start on ${new Date(start).toLocaleString()}.`);
+            return;
+        }
+        
+        if (end) {
+            const endDate = new Date(end);
+            if (endDate.getHours() === 0 && endDate.getMinutes() === 0 && !String(end).includes('T')) {
+                endDate.setHours(23, 59, 59, 999);
+            }
+            if (now > endDate) {
+                alert(`This stage has ended on ${endDate.toLocaleString()}. You can no longer participate.`);
+                // We might still want to let them view results (if FINAL stage), but for now, we alert.
+                if (stype !== 'FINAL' && !sname.includes('RESULT')) {
+                    return;
+                }
+            }
+        }
+
+        // If already applied:
+        const oppPath = id ? `/opportunities/${encodeURIComponent(String(id))}` : '';
+
+        if ((stype === 'TEAM_FORMATION' || sname.includes('TEAM')) && oppPath) {
+            navigate(`${oppPath}?tab=team`);
+        } else if ((stype === 'SUBMISSION' || sname.includes('SUBMISSION')) && oppPath) {
+            navigate(`${oppPath}?tab=submissions`);
+        } else if (stype === 'QUIZ' || stype === 'ASSESSMENT' || sname.includes('QUIZ') || sname.includes('ASSESSMENT')) {
+            const quizId = s.config?.quiz_id || s.quiz_id || s.config?.quizId || s.quizId;
+            if (quizId) {
+                navigate(`/events/${encodeURIComponent(event_hub_id)}/quiz/${quizId}`);
+            } else {
+                // Fallback: direct to timeline in event hub
+                navigate(`/events/${encodeURIComponent(event_hub_id)}`);
+            }
+        } else {
+            // Default fallback: direct to event hub timeline
+            navigate(`/events/${encodeURIComponent(event_hub_id)}`);
+        }
+    };
+
     const venueLine = buildVenueLine(opportunity);
     const teamSize = teamSizeLabel(opportunity);
     const elig = eligibilityList(opportunity);
@@ -623,6 +782,14 @@ const OpportunityDetails: React.FC = () => {
     const processStats = opportunity.processStats || null;
     const shortlistedCount = processStats?.byStatus?.shortlisted ?? 0;
     const rejectedCount = processStats?.byStatus?.rejected ?? 0;
+    const submissionStage =
+        Array.isArray(opportunity?.stages)
+            ? opportunity.stages.find((stage: any) => {
+                  const type = String(stage.type || '').toUpperCase();
+                  const name = String(stage.name || '').toUpperCase();
+                  return type === 'SUBMISSION' || name.includes('SUBMISSION');
+              })
+            : null;
 
     const prizePoolLabel =
         String(opportunity.prize_pool ?? opportunity.prizePool ?? opportunity.prizePoolLabel ?? '').trim() || '';
@@ -817,6 +984,102 @@ const OpportunityDetails: React.FC = () => {
                 >
                     <ChevronLeft size={18} /> Back
                 </button>
+
+                {/* Conditional rendering for tabs */}
+                {activeTab === 'team' && opportunity ? (
+                    <div className="my-8">
+                        {eventId ? (
+                            <TeamManager eventId={eventId} opportunity={opportunity} />
+                        ) : (
+                            <div className="bg-white p-6 rounded-lg shadow-md text-slate-600">
+                                Event data is still loading. Please refresh the page.
+                            </div>
+                        )}
+                    </div>
+                ) : activeTab === 'submissions' && opportunity ? (
+                    <div className="my-8">
+                        {eventId && submissionStage ? (
+                            <SubmissionForm eventId={eventId} stage={submissionStage} />
+                        ) : (
+                            <div className="bg-white p-6 rounded-lg shadow-md text-slate-600">
+                                Submission stage is not configured for this event yet.
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                <>
+                {/* Stages Timeline */}
+                {Array.isArray(opportunity?.stages) && opportunity.stages.length > 0 && (
+                    <div className="mb-8">
+                        <h2 className="text-2xl font-black text-slate-800 mb-4">Event Timeline</h2>
+                        <div className="flex items-center overflow-x-auto pb-4 -mb-4">
+                            {opportunity.stages.map((stage: any, index: number) => {
+                                const now = new Date();
+                                const startDate = stage.startDate || stage.start_date ? new Date(stage.startDate || stage.start_date) : null;
+                                const endDate = stage.endDate || stage.end_date ? new Date(stage.endDate || stage.end_date) : null;
+                                
+                                let status: 'completed' | 'active' | 'upcoming' | 'locked' = 'locked';
+                                if (endDate && now > endDate) {
+                                    status = 'completed';
+                                } else if (startDate && now >= startDate) {
+                                    status = 'active';
+                                } else if (startDate && now < startDate) {
+                                    status = 'upcoming';
+                                }
+
+                                // The first stage is never locked if it's not completed
+                                if (index === 0 && status !== 'completed') {
+                                    status = 'active';
+                                }
+                                
+                                // A stage is locked if the previous one isn't complete (this is a simplification)
+                                // Real logic might depend on participant's progress
+                                if (index > 0 && status !== 'completed') {
+                                    const prevStage = opportunity.stages[index - 1];
+                                    const prevEndDate = prevStage.endDate || prevStage.end_date ? new Date(prevStage.endDate || prevStage.end_date) : null;
+                                    if (!prevEndDate || now < prevEndDate) {
+                                       // status = 'locked'; // This logic needs to be tied to actual user progress
+                                    }
+                                }
+
+
+                                return (
+                                    <React.Fragment key={stage.id || index}>
+                                        <div 
+                                            className="flex flex-col items-center cursor-pointer group"
+                                            onClick={() => handleStageClick(stage)}
+                                        >
+                                            <div className={`w-16 h-16 rounded-full flex items-center justify-center border-4 ${
+                                                status === 'active' ? 'bg-purple-100 border-purple-500' :
+                                                status === 'completed' ? 'bg-green-100 border-green-500' :
+                                                'bg-slate-100 border-slate-300'
+                                            }`}>
+                                                <span className={`text-2xl font-bold ${
+                                                    status === 'active' ? 'text-purple-600' :
+                                                    status === 'completed' ? 'text-green-600' :
+                                                    'text-slate-500'
+                                                }`}>{index + 1}</span>
+                                            </div>
+                                            <p className={`mt-2 text-sm font-bold text-center w-32 ${
+                                                status === 'active' ? 'text-purple-700' :
+                                                status === 'completed' ? 'text-green-700' :
+                                                'text-slate-600'
+                                            }`}>{stage.name}</p>
+                                            <p className="text-xs text-slate-500 text-center">
+                                                {status === 'active' ? 'Live Now' : 
+                                                 status === 'completed' ? 'Finished' : 
+                                                 status === 'upcoming' ? `Starts ${startDate?.toLocaleDateString()}` : 'Locked'}
+                                            </p>
+                                        </div>
+                                        {index < opportunity.stages.length - 1 && (
+                                            <div className="flex-1 h-1 bg-slate-300 group-hover:bg-purple-300 transition-colors" style={{minWidth: '50px'}}></div>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* Hero card — reference layout */}
                 <article className="bg-white rounded-2xl border border-slate-200 shadow-sm border-t-4 border-purple-600 overflow-hidden mb-8">
@@ -1059,101 +1322,101 @@ const OpportunityDetails: React.FC = () => {
                                         Defined by the host — each hackathon can have different stages.
                                     </p>
                                     <ol className="space-y-3">
-                                        {opportunity.stages.map((s: any, i: number) => (
-                                            <li
-                                                key={s.id || i}
-                                                className="flex gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100"
-                                            >
-                                                <span className="flex-shrink-0 w-9 h-9 rounded-lg bg-purple-600/10 text-purple-600 font-black flex items-center justify-center text-sm">
-                                                    {i + 1}
-                                                </span>
-                                                <div>
-                                                    <p className="font-bold text-slate-900">{s.name || `Stage ${i + 1}`}</p>
-                                                    {s.type ? (
-                                                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                                                            {s.type}
-                                                            {s.roundMode || s.mode || s.round_mode ? (
-                                                                <span className="ml-2 text-slate-300">
-                                                                    • {String(s.roundMode || s.mode || s.round_mode)}
-                                                                </span>
+                                        {opportunity.stages.map((s: any, i: number) => {
+                                            const stype = s.type?.toUpperCase();
+                                            const sname = s.name?.toUpperCase() || '';
+                                            
+                                            let actionLabel = 'Unlock';
+                                            if (stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION')) {
+                                                actionLabel = isApplied ? 'Registered' : 'Apply Now';
+                                            } else if (stype === 'TEAM_FORMATION' || sname.includes('TEAM')) {
+                                                actionLabel = 'Manage Team';
+                                            } else if (stype === 'SUBMISSION' || sname.includes('SUBMISSION')) {
+                                                actionLabel = 'Submit Portal';
+                                            } else if (stype === 'QUIZ' || stype === 'ASSESSMENT' || sname.includes('QUIZ') || sname.includes('ASSESSMENT')) {
+                                                actionLabel = 'Take Assessment';
+                                            } else {
+                                                actionLabel = 'View Stage';
+                                            }
+
+                                            return (
+                                                <li
+                                                    key={s.id || i}
+                                                    onClick={() => handleStageClick(s)}
+                                                    className="flex items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-purple-300 hover:bg-purple-50/20 hover:scale-[1.01] hover:shadow-md transition-all cursor-pointer group animate-fade-in"
+                                                >
+                                                    <div className="flex gap-4 min-w-0 flex-grow">
+                                                        <span className="flex-shrink-0 w-9 h-9 rounded-lg bg-purple-600/10 text-purple-600 font-black flex items-center justify-center text-sm group-hover:bg-purple-600 group-hover:text-white transition-all">
+                                                            {i + 1}
+                                                        </span>
+                                                        <div className="min-w-0 flex-grow">
+                                                            <p className="font-bold text-slate-900 truncate">{s.name || `Stage ${i + 1}`}</p>
+                                                            {s.type ? (
+                                                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                                                                    {s.type}
+                                                                    {s.roundMode || s.mode || s.round_mode ? (
+                                                                        <span className="ml-2 text-slate-300">
+                                                                            • {String(s.roundMode || s.mode || s.round_mode)}
+                                                                        </span>
+                                                                    ) : null}
+                                                                </p>
                                                             ) : null}
-                                                        </p>
-                                                    ) : null}
-                                                    
-                                                    {(s.startDate || s.endDate || s.start_date || s.end_date) && (() => {
-                                                        const start = s.startDate || s.start_date;
-                                                        const end = s.endDate || s.end_date;
-                                                        const now = new Date();
-                                                        let statusNode = null;
-                                                        
-                                                        if (start && end) {
-                                                            const startDate = new Date(start);
-                                                            const endDate = new Date(end);
                                                             
-                                                            // If end date is just a date (00:00:00), treat as end of day
-                                                            if (endDate.getHours() === 0 && endDate.getMinutes() === 0 && !end.includes('T')) {
-                                                                endDate.setHours(23, 59, 59, 999);
-                                                            }
-                                                            
-                                                            if (now < startDate) {
-                                                                const days = Math.max(1, Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-                                                                statusNode = <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Starts in {days} day{days !== 1 ? 's' : ''}</span>;
-                                                            } else if (now > endDate) {
-                                                                statusNode = <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-400">Ended</span>;
-                                                            } else {
-                                                                const days = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-                                                                statusNode = (
-                                                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 flex items-center gap-1">
-                                                                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
-                                                                        {days === 0 ? 'Ends today' : `Ends in ${days} day${days !== 1 ? 's' : ''}`}
-                                                                    </span>
+                                                            {(s.startDate || s.endDate || s.start_date || s.end_date) && (() => {
+                                                                const start = s.startDate || s.start_date;
+                                                                const end = s.endDate || s.end_date;
+                                                                const now = new Date();
+                                                                let statusNode = null;
+                                                                
+                                                                if (start && end) {
+                                                                    const startDate = new Date(start);
+                                                                    const endDate = new Date(end);
+                                                                    
+                                                                    // If end date is just a date (00:00:00), treat as end of day
+                                                                    if (endDate.getHours() === 0 && endDate.getMinutes() === 0 && !end.includes('T')) {
+                                                                        endDate.setHours(23, 59, 59, 999);
+                                                                    }
+                                                                    
+                                                                    if (now < startDate) {
+                                                                        const days = Math.max(1, Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+                                                                        statusNode = <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Starts in {days} day{days !== 1 ? 's' : ''}</span>;
+                                                                    } else if (now > endDate) {
+                                                                        statusNode = <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-400">Ended</span>;
+                                                                    } else {
+                                                                        const days = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+                                                                        statusNode = (
+                                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 flex items-center gap-1">
+                                                                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                                                                                {days === 0 ? 'Ends today' : `Ends in ${days} day${days !== 1 ? 's' : ''}`}
+                                                                            </span>
+                                                                        );
+                                                                    }
+                                                                }
+                                                                
+                                                                return (
+                                                                    <div className="mt-2.5 flex items-center gap-3">
+                                                                        <div className="text-[11px] font-medium text-slate-500 flex items-center gap-1.5">
+                                                                            <Calendar className="w-3.5 h-3.5 opacity-70" />
+                                                                            <span>
+                                                                                {start ? new Date(start).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'TBD'} 
+                                                                                {' — '}
+                                                                                {end ? new Date(end).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'TBD'}
+                                                                            </span>
+                                                                        </div>
+                                                                        {statusNode}
+                                                                    </div>
                                                                 );
-                                                            }
-                                                        }
-                                                        
-                                                        return (
-                                                            <div className="mt-2.5 flex items-center gap-3">
-                                                                <div className="text-[11px] font-medium text-slate-500 flex items-center gap-1.5">
-                                                                    <Calendar className="w-3.5 h-3.5 opacity-70" />
-                                                                    <span>
-                                                                        {start ? new Date(start).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'TBD'} 
-                                                                        {' — '}
-                                                                        {end ? new Date(end).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'TBD'}
-                                                                    </span>
-                                                                </div>
-                                                                {statusNode}
-                                                            </div>
-                                                        );
-                                                    })()}
-                                                    {isApplied && (() => {
-                                                        const stype = s.type?.toUpperCase();
-                                                        const event_hub_id = String(opportunity.event_link_id || opportunity.event_id || id);
-                                                        
-                                                        if (stype === 'TEAM_FORMATION' || s.name?.toUpperCase().includes('TEAM')) {
-                                                            return (
-                                                                <Link 
-                                                                    to={`/events/${encodeURIComponent(event_hub_id)}`}
-                                                                    className="inline-flex mt-4 px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-lg shadow-slate-900/10"
-                                                                >
-                                                                    Manage team & members
-                                                                </Link>
-                                                            );
-                                                        }
-                                                        if (stype === 'SUBMISSION') {
-                                                            return (
-                                                                <Link 
-                                                                    to={`/events/${encodeURIComponent(event_hub_id)}`}
-                                                                    className="inline-flex mt-4 px-4 py-2 bg-purple-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-lg shadow-purple-900/10"
-                                                                >
-                                                                    Enter submission portal
-                                                                </Link>
-                                                            );
-                                                        }
-                                                        return null;
-                                                    })()}
-                                                </div>
-                                            </li>
-                                        ))}
+                                                            })()}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center shrink-0 ml-2">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-purple-600 transition-colors flex items-center gap-1 bg-white border border-slate-150 px-3 py-1.5 rounded-xl shadow-sm">
+                                                            {actionLabel} <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform text-slate-400 group-hover:text-purple-600" />
+                                                        </span>
+                                                    </div>
+                                                </li>
+                                            );
+                                        })}
                                     </ol>
                                 </section>
                             ) : null}
@@ -1447,7 +1710,8 @@ const OpportunityDetails: React.FC = () => {
                                     const fh = sanitizePresentationHtml(richHtmlFromOpportunityField(opportunity.festivalDetails));
                                     return fh.trim() ? (
                                         <div
-                                            className="opportunity-rich-text text-slate-600 font-medium leading-relaxed [&_p]:mb-3 [&_strong]:font-bold [&_blockquote]:border-l-4 [&_blockquote]:border-purple-200 [&_blockquote]:pl-4"
+                                            className="opportunity-rich-text text-slate-600 font-medium leading-relaxed [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_strong]:font-bold [&_em]:italic [&_a]:text-purple-600 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-purple-600 [&_blockquote]:pl-4 [&_blockquote]:my-4 [&_blockquote]:text-slate-700 [&_h1]:text-xl [&_h1]:font-black [&_h1]:mb-2 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-bold"
+
                                             dangerouslySetInnerHTML={{ __html: fh }}
                                         />
                                     ) : (
@@ -2093,9 +2357,10 @@ const OpportunityDetails: React.FC = () => {
                         </div>
                     </div>
                 </div>
-        </div>
+                </>
+                )}
 
-        {/* Hackathon Submission Modal */}
+            {/* Hackathon Submission Modal */}
         <AnimatePresence>
             {showSubmissionModal && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4">
@@ -2282,7 +2547,8 @@ const OpportunityDetails: React.FC = () => {
                 </div>
             )}
         </AnimatePresence>
-    </div>
+        </div>
+        </div>
     );
 };
 

@@ -33,6 +33,7 @@ def _super_admin_email_set() -> set:
     return {x.strip().lower() for x in raw.split(",") if x.strip()}
 
 # Setup logging
+from notification_helpers import notify_institution
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main_service")
@@ -40,13 +41,12 @@ logger = logging.getLogger("main_service")
 # Configure CORS - Restricted to specific domains for security
 # Load allowed origins from environment or use defaults
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+backend_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
 additional_origins = os.getenv("ADDITIONAL_CORS_ORIGINS", "").split(",") if os.getenv("ADDITIONAL_CORS_ORIGINS") else []
 
 origins = list(set([
-    frontend_url, 
-    "https://studlyff.vercel.app",
-    "https://studlyf-thub.vercel.app",
-    "https://studlyff.onrender.com"
+    frontend_url,
+    backend_url
 ] + [origin.strip() for origin in additional_origins if origin.strip()]))
 
 # Add localhost origins for development
@@ -364,6 +364,7 @@ def fix_progress(prog, default_status="locked"):
 from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes
 from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
+from routes import stage_navigation_routes, team_join_request_routes
 from rate_limiter import rate_limit, check_rate_limit
 
 
@@ -400,6 +401,8 @@ app.include_router(test_sync_routes.router)
 app.include_router(direct_sync_routes.router)
 app.include_router(hackathon_judging_routes.router)
 app.include_router(hackathon_submission_routes.router)
+app.include_router(stage_navigation_routes.router)
+app.include_router(team_join_request_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -727,7 +730,7 @@ async def health_check():
 
 
 # Get Groq API key from environment
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "YOUR-GROQ-API-KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 # Configure the Client for Groq
 client = Groq(api_key=GROQ_API_KEY)
 
@@ -1701,7 +1704,7 @@ latex_env = Environment(
     line_statement_prefix='%%',
     line_comment_prefix='%#',
     trim_blocks=True,
-    autoescape=False,
+    autoescape=True,
 )
 latex_env.filters['e'] = latex_escape
 latex_env.filters['latex_escape'] = latex_escape
@@ -2095,6 +2098,256 @@ async def checkout(user_id: str):
         "total_courses": len(formatted_courses),
         "enrolled_at": datetime.now(timezone.utc).isoformat()
     }
+
+@app.post("/api/enrollment-flow/confirm/{user_id}")
+async def confirm_track_enrollment(user_id: str, data: dict = Body(...)):
+    import random
+    from datetime import datetime
+    
+    track_title = data.get("track_title", "Engineering Track")
+    selected_plan = data.get("selected_plan", "Yearly")
+    amount = data.get("amount")
+    
+    # Secure fallback pricing logic if not explicitly passed
+    if amount is None:
+        selected_plan_lower = selected_plan.lower()
+        if "yearly" in selected_plan_lower:
+            amount = 14999.0
+        elif "monthly" in selected_plan_lower:
+            amount = 1999.0
+        elif "course" in selected_plan_lower:
+            amount = 4999.0
+        else:
+            amount = 0.0
+            
+    # Format amount for display
+    formatted_amount = f"₹{amount:,.2f}"
+    
+    user_doc = await users_col.find_one({"user_id": user_id})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Enrolling user in MongoDB collections
+    course_id = data.get("course_id")
+    track_id = data.get("track_id")
+    
+    enrolled_course_titles = []
+    
+    if course_id:
+        # Single course enrollment
+        course = await courses_col.find_one({"_id": course_id})
+        if course:
+            enrolled_course_titles.append(course.get("title", ""))
+            enrollment = {
+                "user_id": user_id,
+                "course_id": course_id,
+                "course_title": course.get("title", ""),
+                "enrolled_at": datetime.utcnow().isoformat(),
+                "progress": 0.0,
+                "last_accessed": None,
+                "last_accessed_module": None
+            }
+            # Deduplicate
+            existing = await enrollments_col.find_one({"user_id": user_id, "course_id": course_id})
+            if not existing:
+                await enrollments_col.insert_one(enrollment)
+                # Initialize first module progress
+                first_module = await modules_col.find_one({"course_id": course_id}, sort=[("order_index", 1)])
+                if first_module:
+                    await progress_col.update_one(
+                        {"user_id": user_id, "module_id": first_module["_id"]},
+                        {"$set": {
+                            "course_id": course_id,
+                            "lessons_completed": [],
+                            "total_lessons": len(first_module.get("lessons", [])),
+                            "status": "in_progress",
+                            "updated_at": datetime.utcnow().isoformat()
+                        }},
+                        upsert=True
+                    )
+    elif track_id:
+        # Track-based enrollment (enroll in all courses of that track)
+        track_map = {
+            "ai": ["AI"],
+            "swe": ["Software Engineering", "Backend", "Frontend"],
+            "data": ["Data", "Data & Analytics"],
+            "pm": ["Product Management"],
+            "cyber": ["Cyber", "Cyber Security"]
+        }
+        target_categories = track_map.get(str(track_id).lower(), [track_title])
+        
+        async for course in courses_col.find({"role_tag": {"$in": target_categories}}):
+            c_id = course["_id"]
+            enrolled_course_titles.append(course.get("title", ""))
+            enrollment = {
+                "user_id": user_id,
+                "course_id": c_id,
+                "course_title": course.get("title", ""),
+                "enrolled_at": datetime.utcnow().isoformat(),
+                "progress": 0.0,
+                "last_accessed": None,
+                "last_accessed_module": None
+            }
+            existing = await enrollments_col.find_one({"user_id": user_id, "course_id": c_id})
+            if not existing:
+                await enrollments_col.insert_one(enrollment)
+                first_module = await modules_col.find_one({"course_id": c_id}, sort=[("order_index", 1)])
+                if first_module:
+                    await progress_col.update_one(
+                        {"user_id": user_id, "module_id": first_module["_id"]},
+                        {"$set": {
+                            "course_id": c_id,
+                            "lessons_completed": [],
+                            "total_lessons": len(first_module.get("lessons", [])),
+                            "status": "in_progress",
+                            "updated_at": datetime.utcnow().isoformat()
+                        }},
+                        upsert=True
+                    )
+    else:
+        # Fallback to matching courses where role_tag fits track_title
+        async for course in courses_col.find({"role_tag": track_title}):
+            c_id = course["_id"]
+            enrolled_course_titles.append(course.get("title", ""))
+            enrollment = {
+                "user_id": user_id,
+                "course_id": c_id,
+                "course_title": course.get("title", ""),
+                "enrolled_at": datetime.utcnow().isoformat(),
+                "progress": 0.0,
+                "last_accessed": None,
+                "last_accessed_module": None
+            }
+            existing = await enrollments_col.find_one({"user_id": user_id, "course_id": c_id})
+            if not existing:
+                await enrollments_col.insert_one(enrollment)
+                first_module = await modules_col.find_one({"course_id": c_id}, sort=[("order_index", 1)])
+                if first_module:
+                    await progress_col.update_one(
+                        {"user_id": user_id, "module_id": first_module["_id"]},
+                        {"$set": {
+                            "course_id": c_id,
+                            "lessons_completed": [],
+                            "total_lessons": len(first_module.get("lessons", [])),
+                            "status": "in_progress",
+                            "updated_at": datetime.utcnow().isoformat()
+                        }},
+                        upsert=True
+                    )
+
+    courses_list_str = ", ".join(enrolled_course_titles) if enrolled_course_titles else track_title
+        
+    email_to = user_doc.get("email")
+    if email_to:
+        payment_id = data.get("payment_id")
+        if not payment_id:
+            raise HTTPException(status_code=400, detail="Razorpay payment_id is required")
+            
+        receipt_number = f"SL-{payment_id}"
+        payment_date = datetime.now().strftime("%B %d, %Y")
+        user_name = user_doc.get('full_name') or user_doc.get('name', 'Learner')
+        
+        email_body = f"""
+        <html>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #F9FAFB; margin: 0; padding: 0; color: #1F2937;">
+            <div style="max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04); border: 1px solid #E5E7EB;">
+                <!-- Header Gradient Banner -->
+                <div style="background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%); padding: 40px; text-align: center; color: #ffffff;">
+                    <div style="background-color: #ffffff; display: inline-block; padding: 10px 24px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                        <strong style="color: #7C3AED; font-family: monospace; font-size: 20px; letter-spacing: 0.1em; display: inline-block;">STUDLYF</strong>
+                    </div>
+                    <h1 style="font-size: 24px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.05em; font-family: inherit;">Enrollment & Payment Confirmed</h1>
+                    <p style="font-size: 14px; opacity: 0.85; margin: 10px 0 0 0; font-weight: 500;">Premium Career Track Unlocked</p>
+                </div>
+
+                <!-- Main Body -->
+                <div style="padding: 40px;">
+                    <p style="font-size: 16px; line-height: 1.6; margin: 0 0 24px 0; font-weight: 500;">Hello <strong>{user_name}</strong>,</p>
+                    <p style="font-size: 14px; line-height: 1.6; color: #4B5563; margin: 0 0 24px 0;">Thank you for investing in your engineering future with Studlyf. We are thrilled to confirm your enrollment in the <strong>{track_title} Track</strong>. Your clinical credentials and advanced pipeline access have been successfully verified and unlocked.</p>
+                    <p style="font-size: 13px; line-height: 1.5; color: #1F2937; margin: 0 0 24px 0; background-color: #F5F3FF; padding: 16px 20px; border-left: 4px solid #7C3AED; border-radius: 12px;"><strong>Unlocked Course(s):</strong> {courses_list_str}</p>
+
+                    <!-- Receipt Details Card -->
+                    <div style="background-color: #F3F4F6; border-radius: 16px; padding: 24px; margin-bottom: 30px;">
+                        <h3 style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #9CA3AF; margin: 0 0 16px 0;">Receipt Information</h3>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <tr>
+                                <td style="padding: 6px 0; color: #6B7280; font-weight: 500;">Receipt Number:</td>
+                                <td style="padding: 6px 0; text-align: right; color: #1F2937; font-weight: 700; font-family: monospace;">{receipt_number}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 6px 0; color: #6B7280; font-weight: 500;">Payment Date:</td>
+                                <td style="padding: 6px 0; text-align: right; color: #1F2937; font-weight: 700;">{payment_date}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 6px 0; color: #6B7280; font-weight: 500;">Payment Mode:</td>
+                                <td style="padding: 6px 0; text-align: right; color: #1F2937; font-weight: 700;">UPI / NetBanking (Simulation Mode)</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 6px 0; color: #6B7280; font-weight: 500;">Payment Status:</td>
+                                <td style="padding: 6px 0; text-align: right; color: #059669; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">PAID (SUCCESS)</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Itemized Statement -->
+                    <h3 style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #4B5563; margin: 0 0 12px 6px;">Itemized Statement</h3>
+                    <div style="border: 1px solid #E5E7EB; border-radius: 16px; overflow: hidden; margin-bottom: 30px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <tr style="background-color: #F9FAFB; border-bottom: 1px solid #E5E7EB;">
+                                <th style="padding: 14px 20px; text-align: left; color: #4B5563; font-weight: 700; text-transform: uppercase; font-size: 11px;">Item Description</th>
+                                <th style="padding: 14px 20px; text-align: right; color: #4B5563; font-weight: 700; text-transform: uppercase; font-size: 11px;">Amount</th>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #F3F4F6;">
+                                <td style="padding: 18px 20px; color: #1F2937; font-weight: 600;">
+                                    {track_title} Track Enrollment
+                                    <span style="display: block; font-size: 11px; color: #9CA3AF; font-weight: 500; margin-top: 4px;">Access Tier: {selected_plan} Plan</span>
+                                </td>
+                                <td style="padding: 18px 20px; text-align: right; color: #1F2937; font-weight: 700; font-size: 14px;">{formatted_amount}</td>
+                            </tr>
+                            <tr style="background-color: #F9FAFB; border-top: 1px solid #E5E7EB;">
+                                <td style="padding: 14px 20px; color: #4B5563; font-weight: 600;">Subtotal</td>
+                                <td style="padding: 14px 20px; text-align: right; color: #1F2937; font-weight: 700;">{formatted_amount}</td>
+                            </tr>
+                            <tr style="background-color: #F9FAFB;">
+                                <td style="padding: 10px 20px; color: #4B5563; font-weight: 600;">CGST (0%) + SGST (0%)</td>
+                                <td style="padding: 10px 20px; text-align: right; color: #1F2937; font-weight: 700;">₹0.00</td>
+                            </tr>
+                            <tr style="background-color: #F5F3FF; border-top: 1px solid #E5E7EB;">
+                                <td style="padding: 18px 20px; color: #7C3AED; font-weight: 800; font-size: 14px; text-transform: uppercase;">Total Charged</td>
+                                <td style="padding: 18px 20px; text-align: right; color: #7C3AED; font-weight: 900; font-size: 18px;">{formatted_amount}</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Direct Access Button -->
+                    <div style="text-align: center; margin: 40px 0 20px 0;">
+                        <a href="{os.getenv('FRONTEND_URL', 'http://localhost:5173')}/#/dashboard/learner?view=overview" 
+                           style="background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%); color: #ffffff; padding: 16px 36px; text-decoration: none; border-radius: 14px; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; display: inline-block; box-shadow: 0 10px 20px rgba(124, 58, 237, 0.25);">
+                            Go to My Dashboard →
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="background-color: #F9FAFB; padding: 30px; border-top: 1px solid #E5E7EB; text-align: center; font-size: 11px; color: #9CA3AF; font-weight: 500;">
+                    <p style="margin: 0 0 10px 0;">Have queries? Reach our team at <a href="mailto:{os.getenv('SUPPORT_EMAIL', 'support@studlyf.com')}" style="color: #7C3AED; text-decoration: none; font-weight: bold;">{os.getenv('SUPPORT_EMAIL', 'support@studlyf.com')}</a></p>
+                    <p style="margin: 0;">Studlyf Engineering Systems &copy; 2026. All Rights Reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        try:
+            asyncio.create_task(send_notification_email(
+                to_email=email_to,
+                subject=f"Enrollment Confirmed: {track_title} Track (Receipt #{receipt_number})",
+                body_html=email_body
+            ))
+            logger.info(f"Track enrollment email task created for {email_to}")
+        except Exception as e:
+            logger.error(f"Failed to send track enrollment email: {e}")
+            
+    return {"status": "success", "message": "Enrollment confirmed and email sent"}
 
 @app.delete("/api/enrollment/{user_id}/{course_id}")
 async def unenroll_from_course(user_id: str, course_id: str):
@@ -4535,13 +4788,25 @@ async def generate_career_roadmap(req: dict):
     except Exception as e:
         return {"roadmap": []}
 
-if __name__ == "__main__":
-    import uvicorn
-    import os
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
-
 # ─── AI Tools Scraping Endpoint ──────────────────────────────────────────────
+# --- Auth Request Models ---
+class UserSignup(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    role: str = "Participant"
+    institution_id: Optional[str] = None
+    institution_name: Optional[str] = None
+    college_name: Optional[str] = None
+    graduation_year: Optional[str] = None
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+# In-memory stores for Reset Tokens
+reset_tokens = {} # email: {token, expiry}
+
 @app.get("/api/ai-tools")
 async def get_ai_tools():
     """Fetch AI tools — served from in-memory cache after first load."""
@@ -4554,25 +4819,281 @@ async def get_ai_tools():
         print(f"ERROR fetching AI tools: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch AI tools")
 
-# ─── End AI Tools API ────────────────────────────────────────────────────────
+@app.get("/api/user/{user_id}/profile")
+async def get_user_profile(user_id: str):
+    """Load the complete learner profile from users_col and learner_profiles_col."""
+    try:
+        user = await users_col.find_one({"user_id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-# ─── INSTITUTION DASHBOARD SYSTEM ─────────────────────────────────────────────
+        # Load extended profile from dedicated collection
+        profile = await db["learner_profiles"].find_one({"user_id": user_id}) or {}
 
-# --- Auth Request Models ---
-class UserSignup(BaseModel):
-    email: str
-    password: str
-    full_name: str
-    role: str = "Participant"
-    institution_id: Optional[str] = None
-    institution_name: Optional[str] = None
+        # Merge base user data with extended profile
+        result = {
+            # Base identity (from users_col)
+            "user_id": user_id,
+            "email": user.get("email", ""),
+            "full_name": user.get("full_name", ""),
+            "college_name": user.get("college_name", ""),
+            "graduation_year": user.get("graduation_year", ""),
+            "role": user.get("role", "student"),
+            # Extended profile fields (from learner_profiles)
+            "firstName": profile.get("firstName", user.get("full_name", "").split(" ")[0] if user.get("full_name") else ""),
+            "lastName": profile.get("lastName", " ".join(user.get("full_name", "").split(" ")[1:]) if user.get("full_name") else ""),
+            "username": profile.get("username", ""),
+            "phone": profile.get("phone", ""),
+            "gender": profile.get("gender", ""),
+            "dob": profile.get("dob", ""),
+            "userType": profile.get("userType", ""),
+            "domain": profile.get("domain", ""),
+            "location": profile.get("location", ""),
+            "preferredWork": profile.get("preferredWork", ""),
+            "bio": profile.get("bio", ""),
+            "careerGoal": profile.get("careerGoal", ""),
+            "interests": profile.get("interests", []),
+            "profilePhoto": profile.get("profilePhoto", None),
+            "skills": profile.get("skills", []),
+            "education": profile.get("education", {
+                "institution": "", "degree": "", "specialization": "",
+                "startYear": "2022", "endYear": "2026", "cgpa": ""
+            }),
+            "educationList": profile.get("educationList", []),
+            "experience": profile.get("experience", {
+                "company": "", "role": "", "type": "Full-time", "responsibilities": ""
+            }),
+            "experienceList": profile.get("experienceList", []),
+            "projects": profile.get("projects", []),
+            "certifications": profile.get("certifications", []),
+            "achievements": profile.get("achievements", []),
+            "resume": profile.get("resume", {
+                "fileName": "No resume uploaded", "uploadDate": "", "atsScore": 0, "version": "1.0"
+            }),
+            "linkedin": profile.get("linkedin", ""),
+            "github": profile.get("github", ""),
+            "twitter": profile.get("twitter", ""),
+            "portfolio": profile.get("portfolio", ""),
+            "leetcode": profile.get("leetcode", ""),
+            "hackerrank": profile.get("hackerrank", ""),
+            "searchStatus": profile.get("searchStatus", "active"),
+            "profileVisible": profile.get("profileVisible", True),
+            "newsletter": profile.get("newsletter", False),
+            "isCurrentStudent": profile.get("isCurrentStudent", True),
+            "isCurrentEmployee": profile.get("isCurrentEmployee", False),
+        }
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Profile GET error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-class UserLogin(BaseModel):
-    email: str
-    password: str
+@app.post("/api/user/{user_id}/update-profile")
+async def update_profile(user_id: str, data: dict = Body(...)):
+    """
+    Comprehensive profile update. Saves all sections:
+    basic info, photo, bio, skills, education, experience, projects,
+    certifications, achievements, social links, preferences.
+    """
+    try:
+        # 1. Verify user exists
+        user = await users_col.find_one({"user_id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-# In-memory stores for Reset Tokens
-reset_tokens = {} # email: {token, expiry}
+        # 2. Fields that go to users_col (core identity)
+        core_update = {}
+        first = data.get("firstName", "")
+        last = data.get("lastName", "")
+        if first or last:
+            full_name = f"{first} {last}".strip()
+            if full_name:
+                core_update["full_name"] = full_name
+        if data.get("college_name") is not None:
+            core_update["college_name"] = data["college_name"]
+        elif data.get("education", {}).get("institution"):
+            core_update["college_name"] = data["education"]["institution"]
+        if data.get("graduation_year") is not None:
+            core_update["graduation_year"] = data["graduation_year"]
+        elif data.get("education", {}).get("endYear"):
+            core_update["graduation_year"] = data["education"]["endYear"]
+
+        if core_update:
+            await users_col.update_one(
+                {"user_id": user_id},
+                {"$set": core_update}
+            )
+
+        # 3. All extended profile data → learner_profiles collection
+        profile_update = {
+            "user_id": user_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Copy all allowed fields from payload
+        allowed_fields = [
+            "firstName", "lastName", "username", "phone", "gender", "dob",
+            "userType", "domain", "location", "preferredWork",
+            "bio", "careerGoal", "interests", "profilePhoto",
+            "skills", "education", "educationList",
+            "experience", "experienceList",
+            "projects", "certifications", "achievements",
+            "resume",
+            "linkedin", "github", "twitter", "portfolio", "leetcode", "hackerrank",
+            "searchStatus", "profileVisible", "newsletter",
+            "isCurrentStudent", "isCurrentEmployee",
+        ]
+        for field in allowed_fields:
+            if field in data:
+                profile_update[field] = data[field]
+
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": profile_update},
+            upsert=True
+        )
+
+        return {
+            "success": True,
+            "message": "Profile saved successfully",
+            "updated_fields": list(profile_update.keys())
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Profile update error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─── Individual section DELETE endpoints ───
+
+@app.delete("/api/user/{user_id}/profile/skill/{skill_index}")
+async def delete_skill(user_id: str, skill_index: int):
+    """Remove a skill by index from the profile."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        skills = profile.get("skills", [])
+        if skill_index < 0 or skill_index >= len(skills):
+            raise HTTPException(status_code=400, detail="Invalid skill index")
+        skills.pop(skill_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"skills": skills, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "skills": skills}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/user/{user_id}/profile/project/{project_index}")
+async def delete_project(user_id: str, project_index: int):
+    """Remove a project by index."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        projects = profile.get("projects", [])
+        if project_index < 0 or project_index >= len(projects):
+            raise HTTPException(status_code=400, detail="Invalid project index")
+        projects.pop(project_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"projects": projects, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "projects": projects}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/user/{user_id}/profile/certification/{cert_index}")
+async def delete_certification(user_id: str, cert_index: int):
+    """Remove a certification by index."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        certs = profile.get("certifications", [])
+        if cert_index < 0 or cert_index >= len(certs):
+            raise HTTPException(status_code=400, detail="Invalid certification index")
+        certs.pop(cert_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"certifications": certs, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "certifications": certs}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/user/{user_id}/profile/achievement/{ach_index}")
+async def delete_achievement(user_id: str, ach_index: int):
+    """Remove an achievement by index."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        achievements = profile.get("achievements", [])
+        if ach_index < 0 or ach_index >= len(achievements):
+            raise HTTPException(status_code=400, detail="Invalid achievement index")
+        achievements.pop(ach_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"achievements": achievements, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "achievements": achievements}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/user/{user_id}/profile/education/{edu_index}")
+async def delete_education(user_id: str, edu_index: int):
+    """Remove an education entry by index."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        edu_list = profile.get("educationList", [])
+        if edu_index < 0 or edu_index >= len(edu_list):
+            raise HTTPException(status_code=400, detail="Invalid education index")
+        edu_list.pop(edu_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"educationList": edu_list, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "educationList": edu_list}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/user/{user_id}/profile/experience/{exp_index}")
+async def delete_experience(user_id: str, exp_index: int):
+    """Remove an experience entry by index."""
+    try:
+        profile = await db["learner_profiles"].find_one({"user_id": user_id})
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        exp_list = profile.get("experienceList", [])
+        if exp_index < 0 or exp_index >= len(exp_list):
+            raise HTTPException(status_code=400, detail="Invalid experience index")
+        exp_list.pop(exp_index)
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"experienceList": exp_list, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "experienceList": exp_list}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @app.post("/api/auth/forgot-password")
 async def forgot_password(data: dict = Body(...)):
@@ -4582,6 +5103,9 @@ async def forgot_password(data: dict = Body(...)):
     
     # Check if user exists
     user = await users_col.find_one({"email": email})
+    logger.info(f"[FORGOT PASSWORD DEBUG] Attempting reset for: {email}")
+    logger.info(f"[FORGOT PASSWORD DEBUG] User found in database: {bool(user)}")
+    
     if not user:
         # For security, don't reveal if user exists. Just say "If email exists, reset link sent"
         return {"status": "success", "message": "If this email is registered, a reset link has been sent."}
@@ -4592,7 +5116,7 @@ async def forgot_password(data: dict = Body(...)):
     
     # Send email
     from services.email_service import send_notification_email
-    reset_link = f"{frontend_url}/reset-password?token={token}"
+    reset_link = f"{frontend_url}/#/reset-password?token={token}"
     body = f"""
     <html>
         <body style="font-family: sans-serif; padding: 20px;">
@@ -4732,6 +5256,8 @@ async def signup(user_data: UserSignup, request: Request):
             "password": hashed_password,
             "full_name": user_data.full_name,
             "role": user_data.role,
+            "college_name": user_data.college_name,
+            "graduation_year": user_data.graduation_year,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
     await users_col.insert_one(user_doc)
@@ -4758,49 +5284,10 @@ async def login(credentials: UserLogin, request: Request):
     if not password_clean:
         raise HTTPException(status_code=400, detail="Password is required")
     
-    # Find user by exact email first, then case/whitespace tolerant fallback for legacy rows.
-    logger.info(f"Attempting to find user with email: {email_clean}")
-
-    async def _safe_find_candidates_by_email(email_value: str) -> list:
-        """
-        Supports both real Motor cursor behavior and mocked collections
-        where find(...) may return an awaitable/list-like object.
-        """
-        email_pattern = f"^\\s*{re.escape(email_value)}\\s*$"
-        find_result = users_col.find({"email": {"$regex": email_pattern, "$options": "i"}})
-        if inspect.isawaitable(find_result):
-            find_result = await find_result
-        if hasattr(find_result, "to_list"):
-            return await find_result.to_list(length=50)
-        if isinstance(find_result, list):
-            return find_result[:50]
-        return []
-
+    # Use an optimized, indexable case-insensitive search
     try:
-        user = await users_col.find_one({"email": email_clean})
-        if not user:
-            candidates = await _safe_find_candidates_by_email(email_clean)
-
-            # Try matching against all candidate rows (supports duplicate legacy rows).
-            for c in candidates:
-                cpass = str(c.get("password") or "")
-                if not cpass:
-                    continue
-                cand_valid = verify_password(password_clean, cpass) or cpass == password_clean
-                if cand_valid:
-                    user = c
-                    # Normalize legacy email formatting on successful auth.
-                    cemail = str(c.get("email") or "")
-                    if cemail != email_clean:
-                        try:
-                            await users_col.update_one(
-                                {"_id": c["_id"]},
-                                {"$set": {"email": email_clean}},
-                            )
-                        except Exception:
-                            pass
-                    break
-
+        user = await users_col.find_one({"email": {"$regex": f"^{re.escape(email_clean)}$", "$options": "i"}})
+        
         if not user:
             logger.warning(f"Login attempt with non-existent email: {email_clean}")
             raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -4815,8 +5302,9 @@ async def login(credentials: UserLogin, request: Request):
         logger.error(f"User {email_clean} missing password field")
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    # Verify password with enhanced error handling
+    # Verify password
     password_valid = verify_password(password_clean, user["password"])
+    
     # Backward-compatible fallback for legacy plaintext records; auto-migrate on success.
     if not password_valid and str(user.get("password") or "") == password_clean:
         password_valid = True
@@ -4827,29 +5315,7 @@ async def login(credentials: UserLogin, request: Request):
             )
         except Exception:
             pass
-    if not password_valid:
-        # Duplicate/legacy rows fallback: try any matching email variant record.
-        candidates = await _safe_find_candidates_by_email(email_clean)
-        for c in candidates:
-            if str(c.get("_id")) == str(user.get("_id")):
-                continue
-            cpass = str(c.get("password") or "")
-            if not cpass:
-                continue
-            cand_valid = verify_password(password_clean, cpass) or cpass == password_clean
-            if cand_valid:
-                user = c
-                password_valid = True
-                # Normalize canonical email
-                if str(c.get("email") or "") != email_clean:
-                    try:
-                        await users_col.update_one(
-                            {"_id": c["_id"]},
-                            {"$set": {"email": email_clean}},
-                        )
-                    except Exception:
-                        pass
-                break
+            
     if not password_valid:
         logger.warning(f"Invalid password attempt for user: {email_clean}")
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -4894,6 +5360,9 @@ async def login(credentials: UserLogin, request: Request):
             "user_id": user["user_id"],
             "institution_id": resolved_institution_id,
             "institution_name": user.get("institution_name"),
+            "college_name": user.get("college_name"),
+            "graduation_year": user.get("graduation_year"),
+            "status": user.get("status"),
             "last_login": login_time
         }
     }
@@ -4910,7 +5379,10 @@ async def get_me(user_payload: dict = Depends(get_current_user)):
         "role": user["role"],
         "user_id": user["user_id"],
         "institution_id": user.get("institution_id"),
-        "institution_name": user.get("institution_name")
+        "institution_name": user.get("institution_name"),
+        "college_name": user.get("college_name"),
+        "graduation_year": user.get("graduation_year"),
+        "status": user.get("status")
     }
 
 class UserRoleUpdate(BaseModel):
@@ -4918,6 +5390,67 @@ class UserRoleUpdate(BaseModel):
 
 @app.get("/api/institution/{inst_id}/stats")
 async def get_institution_stats(inst_id: str):
+    # ... existing logic ...
+    pass
+
+@app.get("/api/user/{user_id}/dashboard-stats")
+async def get_user_dashboard_stats(user_id: str):
+    """
+    COMPREHENSIVE STATS: Returns readiness scores and skill metrics for the learner.
+    """
+    try:
+        # 1. Base readiness score from profile completion
+        user = await users_col.find_one({"user_id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        base_score = 25 # Every user starts with base score
+        if user.get("college_name"): base_score += 15
+        if user.get("graduation_year"): base_score += 10
+        
+        # 2. Add points for certifications
+        cert_count = await certificates_col.count_documents({"user_id": user_id})
+        cert_score = min(cert_count * 10, 50) # Max 50 points from certs
+        
+        total_readiness = min(base_score + cert_score, 100)
+        
+        # 3. Fetch certifications
+        certs = await certificates_col.find({"user_id": user_id}).to_list(10)
+        for c in certs: c["_id"] = str(c["_id"])
+        
+        return {
+            "readiness_score": total_readiness,
+            "certifications_count": cert_count,
+            "skills": {
+                "Backend": 40 + cert_score,
+                "Frontend": 35 + cert_score,
+                "GenAI": 20 + cert_score,
+                "DevOps": 15 + cert_score
+            },
+            "recent_certificates": certs
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/leaderboard/global")
+async def get_global_leaderboard():
+    """
+    GLOBAL RANKINGS: Returns top performers across the platform.
+    """
+    try:
+        # Mocking for now, in production pull from aggregate scores
+        rankings = [
+            {"rank": 1, "name": "Sarah Q.", "score": 98.2, "status": "Verified", "movement": "▲"},
+            {"rank": 2, "name": "James L.", "score": 96.5, "status": "Verified", "movement": "-"},
+            {"rank": 3, "name": "Akshay A.", "score": 92.4, "status": "Active", "movement": "▲"},
+            {"rank": 4, "name": "Sravanthi K.", "score": 89.1, "status": "Active", "movement": "▼"},
+            {"rank": 5, "name": "Varshini R.", "score": 87.8, "status": "Active", "movement": "▲"}
+        ]
+        # Try to pull actual user names if available
+        # ... logic to fetch real top users ...
+        return {"rankings": rankings}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     """
     DYNAMIC STATS: Aggregates real-time data from MongoDB for the dashboard.
     """
@@ -5114,21 +5647,94 @@ async def get_activity_heatmap(inst_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/utils/parse-resume")
-async def parse_resume(file: UploadFile = File(...)):
+@app.post("/api/user/{user_id}/upload-resume")
+async def upload_user_resume(user_id: str, file: UploadFile = File(...)):
     """
-    AI RESUME PARSER: Uses Groq to extract details from a resume (Placeholder for actual PDF parsing).
+    AI RESUME PARSER: Saves the resume locally, uses Groq to extract details,
+    calculates an ATS score, and stores the path in the database.
     """
     try:
-        # For now, we simulate extraction. In a real scenario, use pdfplumber + Groq.
-        # This is a backbone structure for Sravanthi to use.
-        return {
-            "full_name": "Extracted Name",
-            "email": "extracted@email.com",
-            "skills": ["Python", "React", "MongoDB"],
-            "message": "Resume parsed successfully via Nagasiva AI Logic"
+        import os
+        import io
+        import base64
+        import docx
+        
+        # Ensure uploads directory exists
+        upload_dir = os.path.join(os.getcwd(), "uploads", "resumes")
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Secure filename and save
+        safe_filename = f"{user_id}_{file.filename}"
+        file_path = os.path.join(upload_dir, safe_filename)
+        
+        file_bytes = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+            
+        # Extract text based on file type
+        text = ""
+        if file.filename.lower().endswith(".pdf"):
+            try:
+                with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                    for page in pdf.pages:
+                        text += page.extract_text() or ""
+            except Exception as e:
+                print(f"PDF extraction error: {e}")
+        elif file.filename.lower().endswith(".docx"):
+            try:
+                doc = docx.Document(io.BytesIO(file_bytes))
+                text = "\n".join([p.text for p in doc.paragraphs])
+            except Exception as e:
+                print(f"DOCX extraction error: {e}")
+                
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="Could not extract text from the file.")
+            
+        # Call Groq to parse
+        parsed_data_raw = parse_with_groq(text)
+        try:
+            parsed_data = json.loads(parsed_data_raw)
+        except:
+            parsed_data = {}
+            
+        # Compute dynamic ATS Score (simple heuristic for now)
+        word_count = len(text.split())
+        skills_extracted = parsed_data.get("skills", [])
+        experience = parsed_data.get("experience", [])
+        
+        ats_score = min(100, (word_count // 10) + (len(skills_extracted) * 2) + (len(experience) * 10))
+        if ats_score < 10:
+            ats_score = 45 # baseline for parsable file
+            
+        # Prepare response and DB update
+        resume_metadata = {
+            "fileName": file.filename,
+            "uploadDate": datetime.now(timezone.utc).strftime("%d/%m/%Y"),
+            "atsScore": ats_score,
+            "version": "1.0",
+            "filePath": f"/uploads/resumes/{safe_filename}"
         }
+        
+        # Update user profile
+        await db["learner_profiles"].update_one(
+            {"user_id": user_id},
+            {"$set": {"resume": resume_metadata, "updated_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        
+        return {
+            "success": True,
+            "full_name": parsed_data.get("name", "Extracted Name"),
+            "email": parsed_data.get("email", ""),
+            "skills": skills_extracted,
+            "ats_score": ats_score,
+            "word_count": word_count,
+            "message": "Resume uploaded, saved, and parsed successfully."
+        }
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"Resume Upload Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/events/{event_id}/matchmaking")
@@ -5334,6 +5940,16 @@ async def register_for_event(event_id: str, participant: Participant):
             target_email = user_record["email"] if user_record and "email" in user_record else participant.user_id
 
             asyncio.create_task(send_notification_email(target_email, subject, body))
+            
+            # Create In-App Notification
+            asyncio.create_task(notifications_col.insert_one({
+                "user_id": participant.user_id,
+                "title": "Registration Successful",
+                "message": f"You have successfully registered for {event['title']}.",
+                "type": "event_alert",
+                "is_read": False,
+                "created_at": datetime.utcnow()
+            }))
 
         # 7. DASHBOARD UPDATE (Implicit via real-time fetch)
         # Note: We removed admin email notifications for registrations as per 'Dashboard-First' policy.
@@ -5341,9 +5957,16 @@ async def register_for_event(event_id: str, participant: Participant):
         # Audit Log
         await log_admin_action(target_email, "EVENT_REGISTRATION", f"Registered for event: {event_id}")
 
-        # Update Institution Stats in Background
+        # Recalculate stats in background
         if inst_id:
             asyncio.create_task(recalculate_institution_stats(inst_id))
+            # Notify Institution
+            asyncio.create_task(notify_institution(
+                institution_id=inst_id,
+                title="New Registration",
+                message=f"A new participant has registered for {event['title']}.",
+                ntype="success"
+            ))
 
         return {"status": "success", "registration_id": str(result.inserted_id)}
     except Exception as e:
@@ -5370,6 +5993,18 @@ async def update_participant_status(p_id: str, status: str = Body(embed=True), c
             {"$set": {"registration_status": status, "updated_at": datetime.utcnow()}}
         )
         await log_admin_action(current_user["email"], "PARTICIPANT_STATUS_UPDATE", f"Updated participant {p_id} to {status}")
+        
+        # Create In-App Notification for student
+        p_doc = await participants_col.find_one({"_id": ObjectId(p_id)})
+        if p_doc:
+            asyncio.create_task(notifications_col.insert_one({
+                "user_id": p_doc["user_id"],
+                "title": "Application Update",
+                "message": f"Your application for {p_doc.get('event_title', 'the event')} has been updated to: {status}.",
+                "type": "status_update",
+                "is_read": False,
+                "created_at": datetime.utcnow()
+            }))
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -5386,6 +6021,22 @@ async def update_team_status(team_id: str, status: str = Body(embed=True), curre
             {"$set": {"status": status, "updated_at": datetime.utcnow()}}
         )
         await log_admin_action(current_user["email"], "TEAM_STATUS_UPDATE", f"Updated team {team_id} to {status}")
+        
+        # Create In-App Notification for all team members
+        team_doc = await teams_col.find_one({"_id": ObjectId(team_id)})
+        if team_doc:
+            members = team_doc.get("members", [])
+            for m in members:
+                m_uid = m.get("user_id")
+                if m_uid:
+                    asyncio.create_task(notifications_col.insert_one({
+                        "user_id": str(m_uid),
+                        "title": "Team Status Update",
+                        "message": f"Your team '{team_doc.get('name') or team_doc.get('team_name')}' status has been updated to: {status}.",
+                        "type": "status_update",
+                        "is_read": False,
+                        "created_at": datetime.utcnow()
+                    }))
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -5471,4 +6122,19 @@ async def enroll_course(req: EnrollRequest, current_user: dict = Depends(get_cur
                 body_html=f"<h3>Welcome to Studyleaf!</h3><p>You have successfully enrolled in the <b>{track_name}</b> track. Your journey starts now.</p>"
             )
         )
-    return {"status": "success", "message": "Enrolled successfully"}
+        # Create In-App Notification
+        user_doc = await users_col.find_one({"email": user_email})
+        if user_doc:
+            asyncio.create_task(notifications_col.insert_one({
+                "user_id": user_doc["user_id"],
+                "title": "Enrollment Confirmed",
+                "message": f"You've successfully enrolled in the {track_name} track. Start learning now!",
+                "type": "enrollment",
+                "is_read": False,
+                "created_at": datetime.utcnow()
+            }))
+            
+            # Notify Institution (if any institution is associated with the course - fallback to general for now)
+            # Find which institution owns this course/track if possible
+            # For now, we'll notify the 'Studlyf' main admin or just skip if no specific inst_id
+        return {"status": "success", "message": "Enrolled successfully"}

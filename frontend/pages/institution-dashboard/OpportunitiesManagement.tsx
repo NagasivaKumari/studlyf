@@ -29,11 +29,12 @@ interface Event {
     visibility: 'Public' | 'Private';
     registrationStatus: 'Open' | 'Close';
     lastSaved: string;
+    organisation?: string;
 }
 
 interface OpportunitiesManagementProps {
     institutionId?: string;
-    onViewEvent: (id: string) => void;
+    onViewEvent: (id: string, status?: string) => void;
     onCreateEvent: () => void;
 }
 
@@ -372,7 +373,7 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
                                     {filteredEvents.map((event, idx) => (
                                         <tr 
                                             key={event.id} 
-                                            onClick={() => onViewEvent(event.id)}
+                                            onClick={() => onViewEvent(event.id, event.status)}
                                             className="hover:bg-slate-50/50 transition-all group cursor-pointer"
                                         >
                                             <td className="px-6 py-8 text-sm font-bold text-slate-400 text-center">{idx + 1}</td>
@@ -417,7 +418,7 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
                                                     <button 
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            onViewEvent(event.id);
+                                                            onViewEvent(event.id, event.status);
                                                         }}
                                                         className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-white hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm"
                                                     >

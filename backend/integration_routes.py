@@ -8,7 +8,7 @@ import json
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile, Body, Depends, Query
 from auth_institution import get_auth_user, assert_institution_scope, assert_institution_owns_event
-from services.email_service import send_notification_email
+from services.email_service import send_notification_email, get_certificate_template, get_shortlist_template, get_announcement_template
 from services.institutional_analytics_service import analytics_service
 from services.institutional_certificate_service import certificate_service
 from services.leaderboard_service import leaderboard_service
@@ -20,7 +20,7 @@ from quiz_visibility_service import quiz_visibility_service, _check_quiz_visibil
 import logging
 
 # Ensure upload directory exists
-EVENTS_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "events")
+EVENTS_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads", "events")
 os.makedirs(EVENTS_UPLOAD_DIR, exist_ok=True)
 
 BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
@@ -38,7 +38,7 @@ def _event_id_query(event_id: str) -> dict:
     or_clauses = [{"_id": event_id}]  # string _id fallback
     try:
         or_clauses.append({"_id": ObjectId(event_id)})
-    except (InvalidId, Exception):
+    except (InvalidId, ValueError):
         pass
     return {"$or": or_clauses}
 
@@ -120,8 +120,8 @@ async def _dispatch_status_email(target_id: str, status: str, doc: dict):
                             member_email = member_rec.get("email")
                             if member_email not in recipient_emails:
                                 recipient_emails.append(member_email)
-        except Exception:
-            pass
+        except (TypeError, ValueError, KeyError) as e:
+            logger.warning(f"[EMAIL] Could not fetch team members: {e}")
     
     # 3. Fallback for solo participants
     if not recipient_emails:
@@ -138,51 +138,67 @@ async def _dispatch_status_email(target_id: str, status: str, doc: dict):
 
     # Get event title
     event_title = "your event"
+    next_round_name = "Next Round"
     if event_id:
         event = await events_col.find_one(_event_id_query(str(event_id)))
         if event:
             event_title = event.get("title", "your event")
+            # Smart Round Detection: Try to find what they qualified for
+            stages = event.get("stages") or []
+            current_stage_name = doc.get("current_stage")
+            
+            if current_stage_name:
+                for i, s in enumerate(stages):
+                    if s.get("name") == current_stage_name and i + 1 < len(stages):
+                        next_round_name = stages[i+1].get("name")
+                        break
+            elif stages:
+                next_round_name = stages[0].get("name")
 
-    subject = f"Update on your submission for {event_title}"
+    from services.email_service import get_shortlist_template
     
-    status_colors = {
-        "Shortlisted": "#6C3BFF",
-        "Approved": "#10B981",
-        "Rejected": "#EF4444"
-    }
-    color = status_colors.get(status, "#6C3BFF")
-
-    body_html = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-            <div style="max-width: 600px; margin: auto; padding: 40px; border: 1px solid #edf2f7; border-radius: 24px; background: white;">
-                <div style="text-align: center; margin-bottom: 30px;">
-                    <div style="display: inline-block; padding: 12px; background: {color}10; border-radius: 16px; margin-bottom: 15px;">
-                        <span style="font-size: 32px;">📢</span>
+    if status == "Shortlisted":
+        subject = f"CONGRATULATIONS: {user_name} is moving to {next_round_name}!"
+        body_html = get_shortlist_template(user_name, event_title, next_round_name)
+    else:
+        subject = f"Update on your submission for {event_title}"
+        status_colors = {
+            "Shortlisted": "#6C3BFF",
+            "Approved": "#10B981",
+            "Rejected": "#EF4444"
+        }
+        color = status_colors.get(status, "#6C3BFF")
+        body_html = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+                <div style="max-width: 600px; margin: auto; padding: 40px; border: 1px solid #edf2f7; border-radius: 24px; background: white;">
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <div style="display: inline-block; padding: 12px; background: {color}10; border-radius: 16px; margin-bottom: 15px;">
+                            <span style="font-size: 32px;">📢</span>
+                        </div>
+                        <h2 style="color: #1a202c; margin: 0; font-size: 24px; font-weight: 800;">Status Update</h2>
                     </div>
-                    <h2 style="color: #1a202c; margin: 0; font-size: 24px; font-weight: 800;">Status Update</h2>
-                </div>
 
-                <p>Hello <strong>{user_name}</strong>,</p>
-                <p>We have an update regarding your project for <strong>{event_title}</strong>.</p>
-                
-                <div style="margin: 30px 0; padding: 25px; background: {color}08; border: 2px dashed {color}20; border-radius: 20px; text-align: center;">
-                    <p style="margin: 0; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; color: #64748b;">Current Status</p>
-                    <p style="margin: 10px 0 0 0; font-size: 32px; font-weight: 900; color: {color}; text-transform: uppercase;">{status}</p>
-                </div>
+                    <p>Hello <strong>{user_name}</strong>,</p>
+                    <p>We have an update regarding your project for <strong>{event_title}</strong>.</p>
+                    
+                    <div style="margin: 30px 0; padding: 25px; background: {color}08; border: 2px dashed {color}20; border-radius: 20px; text-align: center;">
+                        <p style="margin: 0; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; color: #64748b;">Current Status</p>
+                        <p style="margin: 10px 0 0 0; font-size: 32px; font-weight: 900; color: {color}; text-transform: uppercase;">{status}</p>
+                    </div>
 
-                <p style="color: #4a5568;">
-                    {f"Congratulations! You have been <strong>{status.lower()}</strong>. Next steps will be shared soon." if status != "Rejected" else "Thank you for your participation. Unfortunately, your project was not selected for the next phase."}
-                </p>
+                    <p style="color: #4a5568;">
+                        {f"Congratulations! You have been <strong>{status.lower()}</strong>. Next steps will be shared soon." if status != "Rejected" else "Thank you for your participation. Unfortunately, your project was not selected for the next phase."}
+                    </p>
 
-                <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #edf2f7; text-align: center; color: #a0aec0; font-size: 12px;">
-                    This is an automated notification from the Studlyf Institutional Portal.<br>
-                    Please do not reply directly to this email.
+                    <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #edf2f7; text-align: center; color: #a0aec0; font-size: 12px;">
+                        This is an automated notification from the Studlyf Institutional Portal.<br>
+                        Please do not reply directly to this email.
+                    </div>
                 </div>
-            </div>
-        </body>
-    </html>
-    """
+            </body>
+        </html>
+        """
 
     try:
         # Send to all team members
@@ -420,6 +436,32 @@ async def get_all_events(institution_id: str, user: dict = Depends(get_auth_user
     events_list.sort(key=_sort_key, reverse=True)
 
     return events_list
+
+@router.delete("/events/{event_id}")
+async def delete_institution_listing(event_id: str, user: dict = Depends(get_auth_user)):
+    """Deletes an event or a standalone opportunity listing owned by the institution."""
+    from db import events_col, opportunities_col
+    from bson import ObjectId
+    
+    # Try deleting from events first
+    try:
+        event_result = await events_col.delete_one({"_id": ObjectId(event_id)})
+        if event_result.deleted_count > 0:
+            # Also clean up any associated opportunities mirrored from this event
+            await opportunities_col.delete_many({"event_link_id": event_id})
+            return {"status": "success", "message": "Event deleted successfully"}
+    except Exception:
+        pass
+        
+    # Try deleting from standalone opportunities
+    try:
+        opp_result = await opportunities_col.delete_one({"_id": ObjectId(event_id)})
+        if opp_result.deleted_count > 0:
+            return {"status": "success", "message": "Opportunity deleted successfully"}
+    except Exception:
+        pass
+        
+    raise HTTPException(status_code=404, detail="Listing not found")
 
 @router.get("/events/{event_id}/participants")
 async def get_event_participants(event_id: str, user: dict = Depends(get_auth_user)):
@@ -935,7 +977,8 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
     next_stage = data.get("next_stage", "Next Round")
     
     event = await events_col.find_one({"_id": ObjectId(event_id)})
-    from db import teams_col, users_col
+    from db import teams_col, users_col, notifications_col
+    from datetime import datetime
     
     success_count = 0
     for tid in team_ids:
@@ -948,50 +991,67 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
                 if recipient_email:
                     name = sub.get("user_name") or sub.get("team_name") or "Participant"
                     subject = f"Selection Alert: Your project is moving to {next_stage}!"
-                    body = f"""
-                    <html>
-                        <body style="font-family: Arial, sans-serif; color: #333;">
-                            <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 20px;">
-                                <h2 style="color: #6C3BFF;">Congratulations {name}!</h2>
-                                <p>Your submission has successfully qualified for the <strong>{next_stage}</strong> of <strong>{event['title']}</strong>.</p>
-                                <p>Our judges were impressed with your work!</p>
-                                <br>
-                                <p><strong>What's Next?</strong><br>Keep an eye on your dashboard for the next steps.</p>
-                                <br>
-                                <p>Best Regards,<br>{event['title']} Organizing Team</p>
-                            </div>
-                        </body>
-                    </html>
-                    """
+                    body = get_shortlist_template(name, event.get("title", "the event"), next_stage)
                     asyncio.create_task(send_notification_email(recipient_email, subject, body))
+                    
+                    # Also create a dynamic in-app notification record
+                    user_id_to_notif = sub.get("user_id") or str(sub.get("_id"))
+                    asyncio.create_task(notifications_col.insert_one({
+                        "user_id": str(user_id_to_notif),
+                        "title": subject,
+                        "message": f"Congratulations! You've been selected for {next_stage} in {event.get('title')}.",
+                        "type": "selection_alert",
+                        "is_read": False,
+                        "created_at": datetime.utcnow()
+                    }))
                     success_count += 1
             continue
 
-        team = await teams_col.find_one({"_id": ObjectId(tid)})
         if team:
             # Send to all members of the team
             members = team.get("members", [])
+            team_name = team.get("name") or team.get("team_name") or "Your team"
+            
+            # Check for custom message from admin
+            custom_msg = data.get("custom_message") or data.get("message")
+            
+            # Robust member hydration
+            member_emails = []
             for m in members:
-                member_email = m.get("email") if isinstance(m, dict) else m
-                if not member_email: continue
+                email = m.get("email") if isinstance(m, dict) else m
+                if email and "@" in str(email):
+                    member_emails.append(email)
+                elif isinstance(m, dict) and m.get("user_id"):
+                    # Look up user to get email
+                    user_rec = await users_col.find_one({"user_id": str(m["user_id"])})
+                    if user_rec and user_rec.get("email"):
+                        member_emails.append(user_rec["email"])
+            
+            for member_email in set(member_emails):
+                if custom_msg:
+                    subject = data.get("subject") or f"Important Update: {event.get('title')}"
+                    body = get_announcement_template(team_name, event.get("title", "the event"), custom_msg, next_stage)
+                else:
+                    subject = f"Selection Alert: {team_name} is moving to {next_stage}!"
+                    body = get_shortlist_template(team_name, event.get("title", "the event"), next_stage)
                 
-                subject = f"Selection Alert: {team.get('name', 'Your team')} is moving to {next_stage}!"
-                body = f"""
-                <html>
-                    <body style="font-family: Arial, sans-serif; color: #333;">
-                        <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 20px;">
-                            <h2 style="color: #6C3BFF;">Congratulations Team {team.get('name', 'Success')}!</h2>
-                            <p>You have successfully qualified for the <strong>{next_stage}</strong> of <strong>{event['title']}</strong>.</p>
-                            <p>Our judges were impressed with your performance!</p>
-                            <br>
-                            <p><strong>What's Next?</strong><br>Check your dashboard for new submission requirements and deadlines.</p>
-                            <br>
-                            <p>Best Regards,<br>{event['title']} Organizing Team</p>
-                        </div>
-                    </body>
-                </html>
-                """
                 asyncio.create_task(send_notification_email(member_email, subject, body))
+                
+                # Also create a dynamic in-app notification record for each team member
+                # Find member user_id if we have email
+                try:
+                    m_user = await users_col.find_one({"email": member_email})
+                    if m_user:
+                        asyncio.create_task(notifications_col.insert_one({
+                            "user_id": str(m_user["user_id"]),
+                            "title": subject,
+                            "message": f"Your team '{team_name}' has been moved to {next_stage} in {event.get('title')}.",
+                            "type": "selection_alert" if not custom_msg else "announcement",
+                            "is_read": False,
+                            "created_at": datetime.utcnow()
+                        }))
+                except Exception as e:
+                    logger.error(f"Failed to create DB notification for {member_email}: {e}")
             
             # Update team status in participants_col if needed
             await participants_col.update_many(
@@ -1380,26 +1440,12 @@ async def generate_event_certificates(event_id: str, rankings: list):
             
             if recipient_email:
                 subject = f"Congratulations! Your Certificate for {cert['event_title']} is ready"
-                rank_text = f"Rank: {cert['rank']}" if cert['rank'] else ""
-                body = f"""
-                <html>
-                    <body style="font-family: Arial, sans-serif; color: #333;">
-                        <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee;">
-                            <h2 style="color: #D4AF37;">Congratulations, {cert['recipient_name']}!</h2>
-                            <p>You have been awarded a certificate for your achievement in <strong>{cert['event_title']}</strong>.</p>
-                            <p><strong>Category:</strong> {cert['category']}</p>
-                            {f"<p><strong>Rank:</strong> {cert['rank']}</p>" if cert['rank'] else ""}
-                            <br>
-                            <p>Your official certificate has been issued and is available in your Studlyf profile.</p>
-                            <p>Verification Code: <strong>{cert['verification_code']}</strong></p>
-                            <br>
-                            <p>Great job on your hard work!</p>
-                            <br>
-                            <p>Best Regards,<br>Studlyf Team</p>
-                        </div>
-                    </body>
-                </html>
-                """
+                body = get_certificate_template(
+                    user_name=cert['recipient_name'],
+                    event_name=cert['event_title'],
+                    rank=str(cert.get('rank')) if cert.get('rank') else None,
+                    category=cert.get('category', 'Participant')
+                )
                 asyncio.create_task(send_notification_email(recipient_email, subject, body))
     
     return {"status": "Event finalized and leaderboard generated successfully"}
@@ -1762,10 +1808,22 @@ async def create_submission(submission_data: dict):
     submission_data["submitted_at"] = datetime.utcnow()
     result = await submissions_col.insert_one(submission_data)
     
+    # Notify Institution
+    try:
+        inst_id = str(user.get("institution_id") or "").strip()
+        if inst_id:
+            asyncio.create_task(notify_institution(
+                institution_id=inst_id,
+                title="New Submission",
+                message=f"A new project submission has been received for {submission_data.get('event_title', 'an event')}.",
+                ntype="success"
+            ))
+    except Exception as ne:
+        pass
+    
     # [REAL-TIME NOTIFICATION] Notify Institution
     inst_id = submission_data.get("institution_id")
     if inst_id:
-        from db import institutions_col, events_col
         institution = await institutions_col.find_one({"institution_id": inst_id})
         if institution:
             notif_settings = institution.get("notifications", {})
@@ -2099,6 +2157,28 @@ async def update_team_status(event_id: str, team_id: str, status_update: dict, u
     except Exception:
         pass  # Team might not exist or update might fail
     
+    # Also notify team members dynamically
+    try:
+        from db import notifications_col
+        from datetime import datetime
+        team_doc = await teams_col.find_one({"_id": ObjectId(team_id)})
+        event_doc = await events_col.find_one({"_id": ObjectId(event_id)})
+        if team_doc and event_doc:
+            members = team_doc.get("members", [])
+            for m in members:
+                m_uid = m.get("user_id")
+                if m_uid:
+                    asyncio.create_task(notifications_col.insert_one({
+                        "user_id": str(m_uid),
+                        "title": f"Status Update: {event_doc.get('title')}",
+                        "message": f"Your team '{team_doc.get('name')}' status has been updated to '{status_update['status']}'.",
+                        "type": "selection_alert",
+                        "is_read": False,
+                        "created_at": datetime.utcnow()
+                    }))
+    except Exception as e:
+        logger.error(f"Failed to create manual team notification: {e}")
+
     return {"status": "success", "updated_count": result.modified_count}
 
 @router.post("/events/{event_id}/send-status-email")
@@ -2276,6 +2356,51 @@ async def update_event_details(event_id: str, update_data: dict, user: dict = De
         print(f"[ERROR] Failed to sync opportunity: {e}")
 
     return {"status": "success"}
+
+@router.post("/events/{event_id}/upload-media")
+async def upload_event_media(
+    event_id: str,
+    file: UploadFile = File(...),
+    field: str = Form(...),
+    user: dict = Depends(get_auth_user)
+):
+    """Uploads a logo or banner image for an existing event and updates its record."""
+    await assert_institution_owns_event(event_id, user)
+    from db import events_col, opportunities_col
+
+    if field not in ("logo_url", "banner_url"):
+        raise HTTPException(status_code=400, detail="field must be 'logo_url' or 'banner_url'")
+
+    ext = os.path.splitext(file.filename or "image.jpg")[1].lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+
+    EVENTS_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads", "events")
+    os.makedirs(EVENTS_UPLOAD_DIR, exist_ok=True)
+
+    prefix = "logo" if field == "logo_url" else "banner"
+    fname = f"{prefix}_{uuid.uuid4()}{ext}"
+    fpath = os.path.join(EVENTS_UPLOAD_DIR, fname)
+    content = await file.read()
+    with open(fpath, "wb") as f:
+        f.write(content)
+
+    BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
+    url = f"{BASE_URL}/uploads/events/{fname}"
+
+    await events_col.update_one(_event_id_query(event_id), {"$set": {field: url}})
+
+    # Sync to linked opportunity
+    try:
+        await opportunities_col.update_many(
+            {"event_link_id": str(event_id)},
+            {"$set": {field: url}}
+        )
+    except Exception as e:
+        logger.warning(f"[SYNC] Failed to update opportunity media: {e}")
+
+    return {"url": url, "field": field}
+
 
 @router.post("/events/{event_id}/stages")
 async def add_event_stage(event_id: str, stage: dict, user: dict = Depends(get_auth_user)):
@@ -2824,28 +2949,40 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
     fest_logo_file = form.get('festival_logo_file')
     fest_banner_file = form.get('festival_banner_file')
     
-    if isinstance(logo_file, UploadFile):
+    print("=== DEBUG CREATE PRO EVENT ===")
+    print("Form keys:", list(form.keys()))
+    print("logo_file:", logo_file, "type:", type(logo_file))
+    print("banner_file:", banner_file, "type:", type(banner_file))
+    
+    if logo_file and hasattr(logo_file, "filename") and logo_file.filename:
         url = await save_image(logo_file, "logo")
+        print("Saved logo URL:", url)
         if url: event_data["logo_url"] = url
         
-    if isinstance(banner_file, UploadFile):
+    if banner_file and hasattr(banner_file, "filename") and banner_file.filename:
         url = await save_image(banner_file, "banner")
         if url: event_data["banner_url"] = url
 
     # Handle festival images if present
     if "festivalData" in event_data:
         fest_data = event_data["festivalData"]
-        if isinstance(fest_logo_file, UploadFile):
+        if fest_logo_file and hasattr(fest_logo_file, "filename") and fest_logo_file.filename:
             url = await save_image(fest_logo_file, "fest_logo")
             if url: fest_data["logo_url"] = url
-        if isinstance(fest_banner_file, UploadFile):
+        if fest_banner_file and hasattr(fest_banner_file, "filename") and fest_banner_file.filename:
             url = await save_image(fest_banner_file, "fest_banner")
             if url: fest_data["banner_url"] = url
         event_data["festivalData"] = fest_data
 
     # 3. Finalize Event Data
+    if "opportunityType" in event_data:
+        event_data["category"] = event_data["opportunityType"]
     event_data["created_at"] = datetime.utcnow()
-    event_data["status"] = "DRAFT"
+    status_val = form.get("status")
+    if status_val:
+        event_data["status"] = str(status_val).upper()
+    else:
+        event_data["status"] = "DRAFT"
 
     _rd = event_data.get("registrationDeadline")
     fd = event_data.get("festivalData") if isinstance(event_data.get("festivalData"), dict) else {}
@@ -2920,6 +3057,8 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
             "status": "active",
             "event_link_id": str(result.inserted_id),  # link back to full event
             "registrationFields": reg_fields,
+            "logo_url": event_data.get("logo_url", ""),
+            "banner_url": event_data.get("banner_url", ""),
         }
         
         # Ensure deadline is datetime
@@ -2935,6 +3074,175 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
         logger.error(f"[SYNC ERROR] Failed to mirror event to opportunities: {str(e)}")
 
     return {"event_id": str(result.inserted_id), "status": "success"}
+
+
+@router.patch("/events/{event_id}/professional")
+async def update_pro_event(event_id: str, request: Request, user: dict = Depends(get_auth_user)):
+    """Updates a high-end event with stages, fees, and prizes, supporting multipart images."""
+    await assert_institution_owns_event(event_id, user)
+    from db import events_col, opportunities_col
+    
+    # 1. Parse Form Data
+    form = await request.form()
+    event_data = {}
+    
+    # Extract all string/json fields
+    for key, value in form.items():
+        if key in ['logo_file', 'banner_file', 'festival_logo_file', 'festival_banner_file']:
+            continue
+            
+        try:
+            # Try to parse as JSON if it looks like an object/array
+            if isinstance(value, str) and (value.startswith('{') or value.startswith('[')):
+                event_data[key] = json.loads(value)
+            else:
+                # Handle numeric strings
+                if isinstance(value, str) and value.isdigit():
+                    event_data[key] = int(value)
+                elif value.lower() == 'true':
+                    event_data[key] = True
+                elif value.lower() == 'false':
+                    event_data[key] = False
+                else:
+                    event_data[key] = value
+        except:
+            event_data[key] = value
+
+    # 2. Handle Image Uploads
+    async def save_image(upload_file: UploadFile, prefix: str):
+        if not upload_file or not upload_file.filename:
+            return None
+        ext = os.path.splitext(upload_file.filename)[1].lower()
+        if ext not in ['.jpg', '.jpeg', '.png', '.webp']:
+            return None
+            
+        fname = f"{prefix}_{uuid.uuid4()}{ext}"
+        fpath = os.path.join(EVENTS_UPLOAD_DIR, fname)
+        
+        # Ensure we read the file correctly
+        content = await upload_file.read()
+        with open(fpath, "wb") as f:
+            f.write(content)
+            
+        return f"{BASE_URL}/uploads/events/{fname}"
+
+    # Process files
+    logo_file = form.get('logo_file')
+    banner_file = form.get('banner_file')
+    fest_logo_file = form.get('festival_logo_file')
+    fest_banner_file = form.get('festival_banner_file')
+    
+    print("=== DEBUG UPDATE PRO EVENT ===")
+    print("Form keys:", list(form.keys()))
+    print("logo_file:", logo_file, "type:", type(logo_file))
+    print("banner_file:", banner_file, "type:", type(banner_file))
+    
+    if logo_file and hasattr(logo_file, "filename") and logo_file.filename:
+        url = await save_image(logo_file, "logo")
+        print("Saved logo URL:", url)
+        if url: event_data["logo_url"] = url
+        
+    if banner_file and hasattr(banner_file, "filename") and banner_file.filename:
+        url = await save_image(banner_file, "banner")
+        if url: event_data["banner_url"] = url
+
+    # Handle festival images if present
+    if "festivalData" in event_data:
+        fest_data = event_data["festivalData"]
+        if fest_logo_file and hasattr(fest_logo_file, "filename") and fest_logo_file.filename:
+            url = await save_image(fest_logo_file, "fest_logo")
+            if url: fest_data["logo_url"] = url
+        if fest_banner_file and hasattr(fest_banner_file, "filename") and fest_banner_file.filename:
+            url = await save_image(fest_banner_file, "fest_banner")
+            if url: fest_data["banner_url"] = url
+        event_data["festivalData"] = fest_data
+
+    # Remove fields we shouldn't overwrite in update unless desired
+    if "_id" in event_data: del event_data["_id"]
+    if "opportunityType" in event_data:
+        event_data["category"] = event_data["opportunityType"]
+    event_data["updated_at"] = datetime.utcnow()
+
+    # Read status from form field (sent by frontend as 'status'), default to existing status
+    status_val = form.get('status')
+    if status_val:
+        event_data["status"] = str(status_val).upper()
+
+    _rd = event_data.get("registrationDeadline")
+    fd = event_data.get("festivalData") if isinstance(event_data.get("festivalData"), dict) else {}
+    if _rd:
+        if not event_data.get("start_date") and not event_data.get("startDate"):
+            event_data["start_date"] = fd.get("startDate") or _rd
+        if not event_data.get("end_date") and not event_data.get("endDate"):
+            event_data["end_date"] = fd.get("endDate") or fd.get("startDate") or _rd
+
+    # Synchronize registration Deadline from stages if provided
+    if isinstance(event_data.get("stages"), list):
+        for s in event_data["stages"]:
+            if isinstance(s, dict) and not s.get("id"):
+                s["id"] = str(uuid.uuid4())
+            if isinstance(s, dict) and str(s.get("type", "")).upper() == "REGISTRATION":
+                reg_end = s.get("end_date") or s.get("endDate") or s.get("deadline")
+                if reg_end:
+                    event_data["registrationDeadline"] = reg_end
+
+    # Perform update in events collection
+    await events_col.update_one({"_id": ObjectId(event_id)}, {"$set": event_data})
+    
+    # Retrieve updated event to sync with opportunities
+    updated_event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if updated_event:
+        # [SYNC] Centralized Opportunity Pipeline
+        try:
+            opp_type = updated_event.get("opportunityType", "Competition")
+            if "Hackathon" in opp_type: opp_type = "Hackathon"
+            elif "Job" in opp_type: opp_type = "Job"
+            elif "Internship" in opp_type: opp_type = "Internship"
+            else: opp_type = "Competition"
+
+            reg_fields = updated_event.get("registrationFields") or []
+            if isinstance(reg_fields, str):
+                try:
+                    reg_fields = json.loads(reg_fields)
+                except:
+                    reg_fields = []
+
+            _city = (updated_event.get("city") or updated_event.get("venueAddress") or "").strip()
+            _mode = (updated_event.get("opportunityMode") or "online").strip()
+            if _city:
+                _location = f"{_city}, {_mode}"
+            else:
+                _location = _mode or "online"
+
+            opp_data = {
+                "title": updated_event.get("title", "New Opportunity"),
+                "organization": updated_event.get("organisation", "Partner Institution"),
+                "type": opp_type,
+                "description": updated_event.get("description", ""),
+                "skills": updated_event.get("skills", ""),
+                "location": _location,
+                "deadline": updated_event.get("registrationDeadline", datetime.now(timezone.utc)),
+                "registrationFields": reg_fields,
+                "logo_url": updated_event.get("logo_url", ""),
+                "banner_url": updated_event.get("banner_url", ""),
+            }
+
+            if updated_event.get("status"):
+                opp_data["status"] = "active"
+            
+            # Ensure deadline is datetime
+            if isinstance(opp_data["deadline"], str):
+                try:
+                    opp_data["deadline"] = datetime.fromisoformat(opp_data["deadline"].replace("Z", "+00:00"))
+                except:
+                    opp_data["deadline"] = datetime.now(timezone.utc)
+
+            await opportunities_col.update_many({"event_link_id": str(event_id)}, {"$set": opp_data})
+            logger.info(f"[SYNC] Event {event_id} updates mirrored to opportunities collection.")
+        except Exception as e:
+            logger.error(f"[SYNC ERROR] Failed to mirror event update to opportunities: {str(e)}")
+
+    return {"status": "success"}
 
 # ============================================================
 # EXPORT & DISTRIBUTION ENDPOINTS (Blueprint Requirements)
@@ -3170,7 +3478,7 @@ async def bulk_onboard_members(data: dict):
                         </div>
 
                         <div style="text-align: center;">
-                            <a href="http://localhost:5173/login" class="btn-primary">Initialize Dashboard Access</a>
+                            <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/login" class="btn-primary">Initialize Dashboard Access</a>
                         </div>
 
                         <p style="font-size: 14px; font-weight: 500; text-align: center;">Need assistance? Our team is available 24/7 to help you settle in.</p>

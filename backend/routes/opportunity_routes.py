@@ -4,7 +4,7 @@ from bson import ObjectId
 from datetime import datetime
 import asyncio
 
-from auth_institution import get_auth_user
+from auth_institution import get_auth_user, get_auth_user_optional
 from services.opportunity_service import (
     create_opportunity,
     get_all_opportunities,
@@ -20,10 +20,21 @@ from services.email_service import send_notification_email
 router = APIRouter(prefix="/api/opportunities", tags=["Opportunities"])
 
 @router.post("/")
-async def post_opportunity(data: dict = Body(...)):
+async def post_opportunity(data: dict = Body(...), user: dict = Depends(get_auth_user)):
     """API to post a new opportunity."""
     try:
+        role = str(user.get("role") or "").lower()
+        if role not in ("institution", "admin", "super_admin"):
+            raise HTTPException(status_code=403, detail="Institution access required")
+        if role == "institution":
+            institution_id = user.get("institution_id")
+            if not institution_id:
+                raise HTTPException(status_code=403, detail="Institution profile is not linked")
+            data["institution_id"] = institution_id
+            data["createdBy"] = institution_id
         return await create_opportunity(data)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -97,9 +108,10 @@ async def list_user_applications(user_id: str, user: dict = Depends(get_auth_use
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/apply")
-async def apply(data: dict = Body(...)):
+async def apply(data: dict = Body(...), user: dict = Depends(get_auth_user)):
     """API to apply for an opportunity."""
     try:
+        data["user_id"] = user["user_id"]
         return await apply_for_opportunity(data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -113,10 +125,12 @@ async def view_opportunity(
         None,
         description="If set, draft listings remain visible when this user has already applied.",
     ),
+    user: Optional[dict] = Depends(get_auth_user_optional),
 ):
     """API to view a specific opportunity."""
     try:
-        opportunity = await get_opportunity_by_id(opportunity_id, applicant_user_id)
+        trusted_applicant_user_id = user.get("user_id") if user else None
+        opportunity = await get_opportunity_by_id(opportunity_id, trusted_applicant_user_id)
         if not opportunity:
             raise HTTPException(status_code=404, detail="Opportunity not found")
         return opportunity
@@ -381,6 +395,21 @@ async def learner_upload_stage_file(
     p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
     if not p:
         raise HTTPException(status_code=403, detail="Not registered for this event")
+        
+    # If in a team, ONLY team leader can submit
+    if p.get("team_id"):
+        from db import teams_col
+        from bson import ObjectId
+        team = await teams_col.find_one({"_id": ObjectId(p["team_id"])})
+        if team:
+            leader_id = team.get("team_leader_id") or team.get("leader_id")
+            if not leader_id:
+                for m in team.get("members", []):
+                    if str(m.get("role", "")).upper() == "LEADER":
+                        leader_id = m.get("user_id")
+                        break
+            if str(leader_id) != uid:
+                raise HTTPException(status_code=403, detail="Only the team leader can submit files for the team")
 
     # 2. Basic file validation
     if not file or not file.filename:
@@ -706,6 +735,37 @@ async def learner_submit_stage_data(
     if not p:
         raise HTTPException(status_code=403, detail="You must register/apply for this event first")
 
+    # Enforce team size requirement
+    min_team = ev.get("min_team_size", ev.get("minTeamSize", 1))
+    if isinstance(min_team, int) and min_team > 1:
+        if not p.get("team_id"):
+            raise HTTPException(
+                status_code=403,
+                detail=f"This event requires a team of at least {min_team} members. Please form or join a team first."
+            )
+        from db import teams_col as _t_col
+        _team = await _t_col.find_one({"_id": ObjectId(p["team_id"])})
+        if _team and len(_team.get("members", [])) < min_team:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Your team has {len(_team.get('members', []))} member(s) but needs at least {min_team}."
+            )
+
+    # If in a team, ONLY team leader can submit
+    if p.get("team_id"):
+        from db import teams_col
+        from bson import ObjectId
+        team = await teams_col.find_one({"_id": ObjectId(p["team_id"])})
+        if team:
+            leader_id = team.get("team_leader_id") or team.get("leader_id")
+            if not leader_id:
+                for m in team.get("members", []):
+                    if str(m.get("role", "")).upper() == "LEADER":
+                        leader_id = m.get("user_id")
+                        break
+            if str(leader_id) != uid:
+                raise HTTPException(status_code=403, detail="Only the team leader can submit data for the team")
+
     # 2. Verify stage exists
     stages = ev.get("stages") if isinstance(ev.get("stages"), list) else []
     target_stage = None
@@ -818,6 +878,26 @@ async def hackathon_project_submit(
     p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
     if not p:
         raise HTTPException(status_code=403, detail="You must be registered for this event")
+
+    # Enforce team size requirement
+    ev = await events_col.find_one({"_id": ObjectId(str(event_id))})
+    if ev:
+        min_team = ev.get("min_team_size", ev.get("minTeamSize", 1))
+        if isinstance(min_team, int) and min_team > 1:
+            if not p.get("team_id"):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"This event requires a team of at least {min_team} members. Please form or join a team first."
+                )
+            from db import teams_col as _teams_col
+            team = await _teams_col.find_one({"_id": ObjectId(p["team_id"])})
+            if team:
+                member_count = len(team.get("members", []))
+                if member_count < min_team:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Your team has {member_count} member(s) but this event requires at least {min_team}. Invite more members before submitting."
+                    )
 
     # Build submission doc — lightweight, links only
     from db import submissions_col

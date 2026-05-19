@@ -47,7 +47,7 @@ const OpportunitiesList: React.FC = () => {
         const matchesType = selectedType === 'All' || 
                            (selectedType === 'My Events' && appliedIds.includes(opp._id)) ||
                            opp.type.toLowerCase() === selectedType.toLowerCase();
-        return matchesSearch || matchesType;
+        return matchesSearch && matchesType;
     });
 
     const getTypeColor = (type: string) => {

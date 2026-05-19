@@ -1,6 +1,5 @@
 import os
 from jinja2 import Environment, FileSystemLoader
-from weasyprint import HTML
 from datetime import datetime
 
 class CertificateService:
@@ -8,7 +7,10 @@ class CertificateService:
         # Setup Jinja2 environment
         template_dir = os.path.join(os.path.dirname(__file__), '../templates')
         os.makedirs(template_dir, exist_ok=True)
-        self.jinja_env = Environment(loader=FileSystemLoader(template_dir))
+        self.jinja_env = Environment(
+            loader=FileSystemLoader(template_dir),
+            autoescape=True
+        )
 
     async def generate_certificate_pdf(self, cert_data: dict):
         """
@@ -34,9 +36,16 @@ class CertificateService:
         pdf_path = f"artifacts/certs/cert_{cert_data.get('certificate_id')}.pdf"
         os.makedirs("artifacts/certs", exist_ok=True)
         
-        HTML(string=html_content).write_pdf(pdf_path)
-        
-        return pdf_path
+        try:
+            from weasyprint import HTML
+            HTML(string=html_content).write_pdf(pdf_path)
+            return pdf_path
+        except Exception as e:
+            html_path = f"artifacts/certs/cert_{cert_data.get('certificate_id')}.html"
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            print(f"[WARNING] WeasyPrint failed to compile PDF: {e}. Saved certificate as HTML fallback at {html_path}")
+            return html_path
 
     def _create_default_template(self, path):
         with open(path, 'w', encoding='utf-8') as f:

@@ -1,38 +1,166 @@
+# Environment variables and secrets (NEVER COMMIT)
 .env
-node_modules
-__pycache__
-*.pyc
+.env.local
+.env.*.local
+.env.production
+.env.*.example
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 env/
 venv/
 backend/venv/
+.Python
+build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
 
-# Firebase & Secrets
+# Firebase & Secrets (CRITICAL - NEVER COMMIT)
 service-account.json
-*.json
-!package.json
-!tsconfig.json
+serviceAccountKey.json
+firebase-key.json
+secrets/
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+.aws/
+.credentials
+credentials.json
 
-# Test Scripts
-backend/debug_firestore.py
-backend/test_stats.py
+# API Keys (NEVER COMMIT)
+*.apikey
+api_keys.txt
+
+# Test Files
 backend/test_*.py
+backend/debug_*.py
+backend/check_*.py
 backend/test_*.pdf
 backend/cloud_test*.pdf
-test_grid
+test_grid/
 
-# AI Logs & Scratch
+# Build outputs
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.log
+backend/uploads/
+uploads/
+scratch/
 brain/
 .gemini/
 backend/scratch/
-scratch/
-backend/uploads/
-backend/check_*.py
-backend/check_institution_user.py
-backend/check_user.py
 .windsurf/
+
+# Cache
+.cache/
+.pytest_cache/
+*.cache
+
+# ==========================================
+# ONE-OFF SCRIPTS, DIAGNOSTICS & CLUTTER (ADDED FOR CLEANUP)
+# ==========================================
+script.py
+script_profile.py
+script_update.py
+PRODUCTION_FIXES.py
 migrate_gridfs_files.py
+
+# Backend Scratch & Diagnostic files
+backend/scratch_*.py
+backend/check_*.py
+backend/verify_seed.py
+backend/add_missing_courses.py
+backend/audit_db.py
+backend/cleanup_db.py
+backend/create_col.py
+backend/fix_branding.py
+backend/list_courses*.py
+backend/migrate_modules.py
+backend/update_courses.py
+backend/update_videos.py
+backend/upgrade_routes.py
+
+# Inactive Clean Architecture proposed structure
+backend/app/
+
+# Local Audit Documentation Reports
+*_AUDIT.md
+*AUDIT_REPORT.md
+*_SUMMARY.md
+*_CHECKLIST.md
+AUDIT_COMPLETE.md
+EXECUTIVE_SUMMARY.md
+IMPLEMENTATION_CHECKLIST.md
+PRODUCTION_AUDIT_REPORT.md
+README_AUDIT.md
+SECURITY_AUDIT.md
+backend/ARCHITECTURE_MIGRATION_GUIDE.md
+backend/DOCUMENTATION_INDEX.md
+backend/IMPLEMENTATION_SUMMARY.md
+backend/QUICK_REFERENCE.md
+backend/VERIFICATION_CHECKLIST.md
+
+# Local Test Files
 test_gridfs_check.py
 test_pdf_serving.py
 test_upload.py
+backend/test.pdf
+backend/get_test.pdf
+backend/local_test.pdf
+.aider*
+.pip-audit-cache/
+
+# One-off scripts & temp docs (root)
+EVENT_VISIBILITY_FIX.md
+IMPLEMENTATION_COMPLETE.md
+QUICK_START.md
+REGISTRATION_AUTO_FILL_IMPLEMENTATION.md
+STAGE_NAVIGATION_GUIDE.md
+SYSTEM_ARCHITECTURE.md
+TESTING_GUIDE.md
+debug_events.py
+sync_event_opportunity.py
+
+# Backend one-off scripts & readme txts
+backend/fix_event_status.py
+backend/production_sync_events.py
+backend/update_draft_opportunities.py
+backend/STAGE_ACCESS_CONTROL_README.txt
+backend/STAGE_DEADLINE_README.txt
+
+# Frontend build output (should never be committed)
+frontend/dist/

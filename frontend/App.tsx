@@ -135,7 +135,7 @@ const App: React.FC = () => {
     prevUserRef.current = user;
   }, [loading, user, role, isHydHackOpportunity]);
 
-  const isLoginPage = pathname === '/login' || pathname === '/signup';
+  const isLoginPage = pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password' || pathname === '/reset-password';
   const isDashboard = pathname.startsWith('/dashboard');
   const isAdmin = pathname.startsWith('/admin');
   const isPlayer = pathname.startsWith('/learn/course-player');
@@ -158,7 +158,7 @@ const App: React.FC = () => {
       return;
     }
 
-    if (user?.email?.toLowerCase() === 'admin@studlyf.com') {
+    if (user?.email?.toLowerCase() === (import.meta.env.VITE_ADMIN_EMAIL || 'admin@studlyf.com')) {
       if (!pathname.startsWith('/admin')) {
         navigate('/admin', { replace: true });
       }
@@ -189,17 +189,17 @@ const App: React.FC = () => {
         console.log('[StudentCheck] Student user detected, current path:', pathname);
         // Students land on learner dashboard by default
         if (pathname === '/') {
-          console.log('[StudentRedirect] Redirecting student from landing page to learner dashboard');
+          console.log('[StudentRedirect] Redirecting student from landing page to dashboard');
           navigate('/dashboard/learner', { replace: true });
           return;
         }
         // Also redirect if they try to access institution or judge pages
         if (pathname.startsWith('/institution-dashboard') || pathname.startsWith('/judge-portal')) {
-          console.log('[StudentRedirect] Redirecting student from restricted pages to learner dashboard');
+          console.log('[StudentRedirect] Redirecting student from restricted pages to dashboard');
           navigate('/dashboard/learner', { replace: true });
           return;
         }
-        // Only redirect from base /dashboard, not /dashboard/learner
+        // Redirect from base /dashboard to /dashboard/learner
         if (pathname === '/dashboard') {
           console.log('[StudentRedirect] Redirecting student from /dashboard to learner dashboard');
           navigate('/dashboard/learner', { replace: true });
@@ -224,6 +224,8 @@ const App: React.FC = () => {
   return (
     <div className={`relative min-h-screen flex flex-col selection:bg-[#7C3AED] selection:text-white ${isDashboard || isAdmin ? 'bg-transparent' : 'bg-white'}`}>
 
+      {/* Hackathon Popup Disabled for now as per user request */}
+      {/* 
       <HackathonWelcomePopup
         open={showHackPopup}
         onClose={() => {
@@ -231,12 +233,12 @@ const App: React.FC = () => {
           setShowHackPopup(false);
         }}
         onProblemStatements={() => {
-          // Keep user on the hackathon listing; if they are elsewhere, take them to it.
           if (!isHydHackOpportunity) navigate(`/opportunities/${HYD_HACK_OPP_ID}`);
           sessionStorage.setItem('studlyf_ai_popup_dismissed', '1');
           setShowHackPopup(false);
         }}
       />
+      */}
 
       {(() => {
         const showNav = !isLoginPage && !isPlayer && !isCheckout && !isAdmin && !isHome && !isResume && !isVisualizer && !isCareerOnboarding && !pathname.startsWith('/evaluate/') && !pathname.startsWith('/institution-dashboard');

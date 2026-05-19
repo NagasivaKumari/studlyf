@@ -37,7 +37,7 @@ const Hero: React.FC = () => {
               transition={{ duration: 1, ease: [0.19, 1, 0.22, 1] }}
               className="inline-flex items-center gap-3 sm:gap-4 mb-8 sm:mb-10 bg-[#7C3AED] px-4 py-2 sm:px-6 sm:py-2.5 rounded-xl shadow-2xl shadow-[#7C3AED]/20"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
               <span className="font-mono text-[9px] sm:text-[11px] text-white font-bold tracking-[0.4em] sm:tracking-[0.5em] uppercase">Protocol_v3.0.1 // Active</span>
             </motion.div>
 

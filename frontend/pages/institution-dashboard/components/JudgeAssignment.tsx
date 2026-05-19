@@ -28,6 +28,7 @@ interface JudgeAssignmentProps {
     onUpdate: (judgeIds: string[]) => void;
     currentInstitutionId?: string;
     showInstitutionFilter?: boolean;
+    availableJudges?: Judge[];
 }
 
 const JudgeAssignment: React.FC<JudgeAssignmentProps> = ({ 
@@ -35,13 +36,13 @@ const JudgeAssignment: React.FC<JudgeAssignmentProps> = ({
     onUpdate, 
     currentInstitutionId,
     showInstitutionFilter = true,
-    availableJudges
+    availableJudges = []
 }) => {
     const [selectedInstitution, setSelectedInstitution] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Get unique institutions for filter
-    const institutions = Array.from(new Set(availableJudges.map(j => j.institutionName)));
+    // Get unique institutions for filter safely
+    const institutions = Array.from(new Set(availableJudges.map(j => j.institutionName || 'Unknown')));
     
     const filteredJudges = availableJudges.filter(judge => {
         const matchesSearch = judge.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -135,7 +136,7 @@ const JudgeAssignment: React.FC<JudgeAssignmentProps> = ({
                                     )}
                                 </div>
                                 <div className="flex flex-wrap gap-1 mt-2">
-                                    {judge.expertise.map(exp => (
+                                    {(judge.expertise || []).map(exp => (
                                         <span key={exp} className="px-2 py-0.5 bg-white border border-slate-100 rounded-md text-[8px] font-bold text-slate-500 uppercase">
                                             {exp}
                                         </span>

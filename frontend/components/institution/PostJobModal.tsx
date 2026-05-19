@@ -131,14 +131,66 @@ const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose, institutio
         if (step > 1) setStep(step - 1);
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (isDraft = false) => {
+        if (!formData.jobTitle.trim()) {
+            alert("Job Title is required.");
+            return;
+        }
+        if (!formData.companyName.trim()) {
+            alert("Company Name is required.");
+            return;
+        }
         setLoading(true);
-        // Simulate API call
-        setTimeout(() => {
+        try {
+            const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
+            
+            // Map the modal's fields to the opportunity schema expected by MongoDB
+            const payload = {
+                title: formData.jobTitle,
+                organization: formData.companyName,
+                type: "Job",
+                description: JSON.stringify({
+                    summary: formData.jobSummary,
+                    responsibilities: formData.responsibilities,
+                    requirements: formData.requirements,
+                    preferredQualifications: formData.preferredQualifications,
+                    benefits: formData.benefits,
+                    experienceLevel: formData.experienceLevel,
+                    screeningQuestions: formData.questions,
+                    aboutCompany: formData.aboutCompany,
+                    industryType: formData.industryType
+                }),
+                skills: formData.skills.join(', '),
+                location: formData.locationType,
+                deadline: formData.deadline ? new Date(formData.deadline).toISOString() : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                institution_id: institutionId || '',
+                createdBy: institutionId || '',
+                status: isDraft ? 'draft' : 'active'
+            };
+
+            const response = await fetch(`${API_BASE_URL}/api/opportunities`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...authHeaders() 
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                alert(isDraft ? "Job Draft Saved Successfully!" : "Job Posted Successfully!");
+                onClose();
+                window.location.reload();
+            } else {
+                const errorData = await response.json();
+                alert(`Failed to save job: ${errorData.detail || response.statusText || 'Unknown Error'}`);
+            }
+        } catch (err) {
+            console.error("Job submit failed", err);
+            alert("Network error: Failed to connect to the server.");
+        } finally {
             setLoading(false);
-            alert("Job Posted Successfully!");
-            onClose();
-        }, 1500);
+        }
     };
 
     if (!isOpen) return null;
@@ -463,7 +515,7 @@ const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose, institutio
                             )}
                             
                             <div className="flex gap-4">
-                                <button className="px-6 py-3 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center gap-2">
+                                <button onClick={() => handleSubmit(true)} className="px-6 py-3 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center gap-2">
                                     <Save size={16} /> Save Draft
                                 </button>
                                 {step < steps.length ? (

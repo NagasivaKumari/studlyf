@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE_URL } from '../apiConfig';
 import { useAuth } from '../AuthContext';
 import DashboardFooter from '../components/DashboardFooter';
+import MyProfile from './MyProfile';
 import { downloadCertPDF } from '../utils/downloadCertPDF';
 import { generatePdfHtml } from './ResumeBuilder';
+import { Plus, Sparkles, GraduationCap, Briefcase } from 'lucide-react';
 // @ts-ignore
 import html2pdf from "html2pdf.js";
 
@@ -51,7 +53,16 @@ const CircularProgress = ({ value, size = 180, strokeWidth = 12, color = "#7C3AE
 const LearnerDashboard: React.FC = () => {
   const { user, role, logout } = useAuth();
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<'profile' | 'knowledge' | 'leaderboard' | 'certificates' | 'resume'>('profile');
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const viewParam = searchParams.get('view') as any;
+  const [activeView, setActiveView] = useState<'overview' | 'profile' | 'applications' | 'knowledge' | 'leaderboard' | 'certificates' | 'resume'>(viewParam || 'profile');
+
+  useEffect(() => {
+    if (viewParam) {
+      setActiveView(viewParam);
+    }
+  }, [viewParam]);
   const [activeTab, setActiveTab] = useState<'overall' | 'dev' | 'ai'>('overall');
   const [githubData, setGithubData] = useState<any>(null);
   const [certificates, setCertificates] = useState<any[]>([]);
@@ -60,6 +71,16 @@ const LearnerDashboard: React.FC = () => {
   const [downloadingCertId, setDownloadingCertId] = useState<string | null>(null);
   const [resumeData, setResumeData] = useState<any>(null);
   const [badges, setBadges] = useState<any[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
+  const [globalRankings, setGlobalRankings] = useState<any[]>([]);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({ 
+    full_name: user?.full_name || '', 
+    email: user?.email || '',
+    college_name: user?.college_name || '',
+    graduation_year: user?.graduation_year || ''
+  });
+  const [updatingProfile, setUpdatingProfile] = useState(false);
 
   useEffect(() => {
     if (user?.user_id) {
@@ -84,6 +105,18 @@ const LearnerDashboard: React.FC = () => {
       fetch(`${API_BASE_URL}/api/user/${user.user_id}/badges`)
         .then(res => res.json())
         .then(data => setBadges(data.badges || []))
+        .catch(console.error);
+
+      // Fetch dashboard stats
+      fetch(`${API_BASE_URL}/api/user/${user.user_id}/dashboard-stats`)
+        .then(res => res.json())
+        .then(data => setDashboardStats(data))
+        .catch(console.error);
+
+      // Fetch global leaderboard
+      fetch(`${API_BASE_URL}/api/leaderboard/global`)
+        .then(res => res.json())
+        .then(data => setGlobalRankings(data.rankings || []))
         .catch(console.error);
     }
   }, [user]);
@@ -111,15 +144,68 @@ const LearnerDashboard: React.FC = () => {
   };
 
   const sidebarItems = [
-    { id: 'profile', label: 'My Profile', icon: '👤' },
-    { id: 'knowledge', label: 'Tech Stack', icon: '🕸️' },
-    { id: 'leaderboard', label: 'Rankings', icon: '🏆' },
-    { id: 'certificates', label: 'Certificates', icon: '📜' },
-    { id: 'resume', label: 'My Resume', icon: '📄' }
+    { id: 'profile', label: 'My Profile', icon: '👤' }
   ];
 
   const renderView = () => {
     switch (activeView) {
+      case 'overview':
+        return (
+          <div className="space-y-12">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+              <div>
+                <h1 className="text-4xl font-black uppercase tracking-tighter text-[#111827] leading-tight">System Overview</h1>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] mt-2">Authenticated Session: {user?.full_name}</p>
+              </div>
+              <button 
+                onClick={() => setActiveView('profile')}
+                className="px-8 py-3 bg-[#7C3AED] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20"
+              >
+                Edit Professional Profile
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Stats Grid */}
+              <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {[
+                  { label: "Profile Strength", value: "88%", color: "#7C3AED", icon: "✨" },
+                  { label: "Course Progress", value: "64%", color: "#0052CC", icon: "📚" },
+                  { label: "Skill Assessments", value: "12", color: "#059669", icon: "🎯" },
+                  { label: "Global Rank", value: "#42", color: "#D97706", icon: "🏆" }
+                ].map((stat, i) => (
+                  <div key={i} className="bg-white border border-gray-100 rounded-[2rem] p-8 hover:border-[#7C3AED]/30 transition-all shadow-sm group">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-lg">{stat.icon}</div>
+                      <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Live Sync</span>
+                    </div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{stat.label}</p>
+                    <h3 className="text-3xl font-black text-[#111827] tracking-tighter" style={{ color: stat.color }}>{stat.value}</h3>
+                  </div>
+                ))}
+              </div>
+
+              {/* Quick Actions */}
+              <div className="bg-[#111827] rounded-[2.5rem] p-10 text-white relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+                   <Sparkles className="w-32 h-32" />
+                </div>
+                <h3 className="text-xl font-black uppercase tracking-tight mb-6 relative z-10">Next Protocols</h3>
+                <div className="space-y-4 relative z-10">
+                  <button onClick={() => navigate('/job-prep/resume-builder')} className="w-full p-4 bg-white/10 hover:bg-white/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-left flex items-center justify-between">
+                    Update Resume <Plus className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setActiveView('certificates')} className="w-full p-4 bg-white/10 hover:bg-white/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-left flex items-center justify-between">
+                    Claim Certificates <GraduationCap className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => navigate('/opportunities')} className="w-full p-4 bg-[#7C3AED] hover:bg-[#6D28D9] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-left flex items-center justify-between shadow-xl shadow-[#7C3AED]/20">
+                    Explore Jobs <Briefcase className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
       case 'knowledge':
         return (
           <div className="space-y-8">
@@ -169,13 +255,13 @@ const LearnerDashboard: React.FC = () => {
           <div className="space-y-8">
             <h2 className="text-4xl font-black uppercase tracking-tighter text-[#111827]">Global Rankings</h2>
             <div className="bg-white border border-gray-100 rounded-[2rem] overflow-hidden shadow-sm">
-              {[
+              {(globalRankings.length > 0 ? globalRankings : [
                 { rank: 1, name: "Sarah Q.", score: 98.2, status: "Verified", movement: "▲" },
                 { rank: 2, name: "James L.", score: 96.5, status: "Verified", movement: "-" },
                 { rank: 3, name: "Alex P.", score: 75.4, status: "Active", highlighted: true, movement: "▲" },
                 { rank: 4, name: "Mira K.", score: 74.1, status: "Active", movement: "▼" },
                 { rank: 5, name: "Chen W.", score: 72.8, status: "Active", movement: "▲" }
-              ].map((u, i) => (
+              ]).map((u, i) => (
                 <div key={i} className={`flex items-center justify-between p-6 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors ${u.highlighted ? 'bg-[#F5F3FF] hover:bg-[#F5F3FF]' : ''}`}>
                   <div className="flex items-center gap-6">
                     <div className={`w-8 h-8 flex items-center justify-center font-black ${i < 3 ? 'text-[#7C3AED]' : 'text-gray-400'}`}>
@@ -366,254 +452,26 @@ const LearnerDashboard: React.FC = () => {
           </div>
         );
       case 'profile':
-        return (
-          <>
-            {/* Back Button to Dashboard */}
-            <div className="mb-8">
-              <Link
-                to="/dashboard/learner"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-[#7C3AED] hover:border-[#7C3AED]/30 transition-all shadow-sm group"
-              >
-                <span className="group-hover:-translate-x-1 transition-transform">←</span>
-                Back to Hub
-              </Link>
-            </div>
-
-            {/* Profile Card Section */}
-            <section className="bg-[#FFFFFF] border border-gray-100 rounded-[2rem] sm:rounded-[3rem] p-6 sm:p-10 mb-8 sm:mb-12 relative overflow-hidden group shadow-sm">
-              <div className="flex flex-col lg:flex-row gap-8 sm:gap-12 items-center lg:items-start relative z-10">
-                <div className="flex flex-col items-center">
-                  <div className="w-28 h-28 sm:w-40 sm:h-40 bg-gradient-to-tr from-[#7C3AED] to-[#A78BFA] rounded-[1.5rem] sm:rounded-[2.5rem] flex items-center justify-center text-white font-black text-3xl sm:text-5xl shadow-2xl shadow-[#7C3AED]/30 relative overflow-hidden">
-                    {githubData?.avatar_url ? (
-                      <img src={githubData.avatar_url} className="w-full h-full object-cover" alt="Avatar" />
-                    ) : (
-                      user?.full_name?.split(' ').map(n => n[0]).join('') || 'AL'
-                    )}
-                    <div className="absolute -bottom-1 -right-1 w-8 h-8 sm:w-10 sm:h-10 bg-green-500 border-4 border-white rounded-full flex items-center justify-center z-10">
-                      <span className="text-white text-[8px] sm:text-[10px]">✓</span>
-                    </div>
-                  </div>
-                  <button className="mt-6 text-[8px] sm:text-[9px] font-bold text-[#7C3AED] uppercase tracking-widest bg-[#F5F3FF] border border-[#7C3AED]/10 px-4 py-2 sm:px-6 sm:py-2.5 rounded-xl hover:bg-[#7C3AED] hover:text-white transition-all shadow-sm">Verify College</button>
-                </div>
-
-                <div className="flex-grow text-center lg:text-left">
-                  <div className="flex flex-col sm:flex-row items-center gap-4 mb-8">
-                    <h2 className="text-3xl sm:text-5xl font-black tracking-tighter uppercase text-[#111827]">{user?.full_name || 'Elite Protocol'}</h2>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 text-[#475569]">
-                    <div>
-                      <label className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] block mb-1">Primary ID</label>
-                      <p className="text-xs sm:text-sm font-bold truncate">{user?.email}</p>
-                    </div>
-                    <div>
-                      <label className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] block mb-1">Status</label>
-                      <p className="text-xs sm:text-sm font-bold uppercase text-[#7C3AED]">Verified Student</p>
-                    </div>
-                    <div>
-                      <label className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] block mb-1">Graduation Horizon</label>
-                      <p className="text-xs sm:text-sm font-bold italic">Class of 2026</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="w-full lg:w-80 space-y-4">
-                  <button
-                    onClick={() => setActiveView('resume')}
-                    className="w-full py-4 sm:py-5 bg-[#FFFFFF] border border-gray-100 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] hover:border-[#7C3AED]/30 transition-all flex items-center justify-center gap-3 shadow-sm"
-                  >
-                    {resumeData ? `${resumeData.config?.tpl || 'Professional'} Resume` : 'Create Skill Resume'}
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            {/* Achievement Protocol (Badges) */}
-            {badges.length > 0 && (
-              <section className="mb-12">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="h-px flex-grow bg-gray-100" />
-                  <h3 className="text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.4em] whitespace-nowrap">Achievement Protocol</h3>
-                  <div className="h-px flex-grow bg-gray-100" />
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {badges.map((badge, idx) => (
-                    <motion.div
-                      key={idx}
-                      whileHover={{ y: -5 }}
-                      className="bg-white border border-gray-100 rounded-2xl p-6 flex flex-col items-center text-center group hover:border-[#7C3AED]/30 transition-all shadow-sm"
-                    >
-                      <div className="w-16 h-16 bg-[#F5F3FF] rounded-2xl flex items-center justify-center text-3xl mb-3 group-hover:scale-110 transition-transform">
-                        {badge.icon || '🏅'}
-                      </div>
-                      <span className="text-[8px] font-black text-[#7C3AED] uppercase tracking-[0.2em] mb-1">{badge.level || 'Elite'}</span>
-                      <h4 className="text-xs font-black uppercase tracking-tight text-[#111827] mb-1">{badge.name}</h4>
-                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest leading-tight">{badge.description || badge.reason}</p>
-                    </motion.div>
-                  ))}
-                  <div className="bg-gray-50/50 border border-dashed border-gray-200 rounded-2xl p-6 flex flex-col items-center justify-center text-center opacity-60">
-                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4 grayscale">
-                      🚀
-                    </div>
-                    <h4 className="text-xs font-black uppercase tracking-tight text-gray-400">Lock Detected</h4>
-                    <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest">Keep growing...</p>
-                  </div>
-                </div>
-              </section>
-            )}
-
-            {/* Performance Hub Section */}
-            <section className="bg-[#FFFFFF] border border-gray-100 rounded-[2rem] sm:rounded-[4rem] p-6 sm:p-12 mb-12 relative overflow-hidden shadow-sm">
-              <div className="text-center mb-8 sm:mb-16">
-                <p className="text-[9px] sm:text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.3em] sm:tracking-[0.5em] mb-4">PERFORMANCE HUB</p>
-                <h2 className="text-4xl sm:text-6xl font-black uppercase tracking-tighter text-[#111827]">Readiness Score.</h2>
-              </div>
-
-              <div className="flex justify-center mb-10 sm:mb-16">
-                <div className="flex flex-wrap justify-center bg-gray-50 p-1 rounded-xl sm:rounded-2xl border border-gray-100">
-                  {['overall', 'dev', 'ai'].map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab as any)}
-                      className={`px-4 sm:px-8 py-2 sm:py-3.5 rounded-lg sm:rounded-xl text-[8px] sm:text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-[#7C3AED] text-white shadow-xl shadow-[#7C3AED]/20' : 'text-gray-400 hover:text-gray-600'}`}
-                    >
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid lg:grid-cols-3 gap-8 sm:gap-12 items-center">
-                <div className="flex flex-col items-center">
-                  <CircularProgress
-                    value={githubData ? Math.round(githubData.readiness_score) : (analyzing ? 20 : 0)}
-                    size={window.innerWidth < 640 ? 180 : 240}
-                    strokeWidth={window.innerWidth < 640 ? 12 : 16}
-                    color="#7C3AED"
-                    label={analyzing ? "Analyzing..." : "Studlyf Score"}
-                  />
-                  {githubData?.languages && (
-                    <div className="mt-8 flex flex-wrap justify-center gap-2">
-                      {Object.entries(githubData.languages).map(([lang, pct]: any) => (
-                        <span key={lang} className="px-3 py-1 bg-gray-50 border border-gray-100 rounded-full text-[8px] font-bold text-gray-400 uppercase tracking-widest">
-                          {lang}: {pct}%
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="lg:col-span-2 grid md:grid-cols-2 gap-6 sm:gap-8">
-                  {[
-                    { label: 'Backend', val: githubData?.skills?.Backend || 0 },
-                    { label: 'Frontend', val: githubData?.skills?.Frontend || 0 },
-                    { label: 'GenAI', val: githubData?.skills?.GenAI || 0 },
-                    { label: 'DevOps', val: githubData?.skills?.DevOps || 0 }
-                  ].map((s) => (
-                    <div key={s.label} className="bg-white border border-gray-100 rounded-[2rem] p-6 sm:p-10 flex flex-col items-center group hover:border-[#7C3AED]/30 transition-all shadow-sm">
-                      <CircularProgress value={s.val} size={140} strokeWidth={10} color="#7C3AED" label={s.label} />
-                      <p className="mt-6 text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">{s.val} / 100</p>
-                      <button className="w-full py-3 bg-[#F5F3FF] text-[#7C3AED] rounded-xl text-[9px] font-black uppercase tracking-[0.1em] flex items-center justify-center gap-2 group-hover:bg-[#7C3AED] group-hover:text-white transition-all">Insights</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-          </>
-        );
+        return <MyProfile />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#FFFFFF] flex font-sans text-[#111827] selection:bg-[#7C3AED] selection:text-white pt-20 sm:pt-28 lg:pt-32">
-      <aside className="w-72 bg-[#FFFFFF] border-r border-gray-100 flex flex-col p-8 shrink-0 hidden lg:flex">
-        <Link to="/" className="flex items-center gap-3 mb-16 px-2 group">
-          <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100">
-            <img
-              src="/images/studlyf.png"
-              alt="STUDLYF Logo"
-              className="h-8 w-auto object-contain group-hover:scale-105 transition-transform"
-            />
-          </div>
-        </Link>
-        <nav className="space-y-3 flex-grow">
-          {sidebarItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveView(item.id as any)}
-              className={`w-full text-left px-5 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] transition-all flex items-center gap-4 group ${activeView === item.id ? 'bg-[#7C3AED] text-white shadow-xl shadow-[#7C3AED]/20' : 'text-gray-400 hover:text-[#7C3AED] hover:bg-gray-50'}`}
-            >
-              <span className="text-base">{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-          <Link
-            to="/dashboard/learner"
-            className="w-full text-left px-5 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] transition-all flex items-center gap-4 group text-gray-400 hover:text-[#7C3AED] hover:bg-gray-50"
+    <div className="min-h-screen bg-[#FFFFFF] flex flex-col font-sans text-[#111827] selection:bg-[#7C3AED] selection:text-white pt-20">
+      <main className="flex-grow p-4 sm:p-12 overflow-y-auto">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeView}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3, ease: "circOut" }}
           >
-            <span className="text-base">🏠</span>
-            Hub Home
-          </Link>
-          {(role === 'admin' || role === 'super_admin') && (
-            <Link
-              to="/admin"
-              className="w-full text-left px-5 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] transition-all flex items-center gap-4 group text-red-500 hover:text-red-500 hover:bg-red-50 border border-red-100"
-            >
-              <span className="text-base">🛠️</span>
-              Admin Portal
-            </Link>
-          )}
-
-          <button
-            key="logout"
-            onClick={() => logout()}
-            className="w-full text-left px-5 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] transition-all flex items-center gap-4 group text-red-400 hover:text-red-500 hover:bg-red-50"
-          >
-            <span className="text-base">🚪</span>
-            Logout
-          </button>
-        </nav>
-      </aside>
-
-      {/* Mobile Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-[#FFFFFF] border-t border-gray-100 flex lg:hidden items-center justify-around p-3 z-[100] shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
-        {sidebarItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveView(item.id as any)}
-            className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all ${activeView === item.id ? 'text-[#7C3AED] bg-[#F5F3FF]' : 'text-gray-400'}`}
-          >
-            <span className="text-xl">{item.icon}</span>
-            <span className="text-[8px] font-black uppercase tracking-widest">{item.label.split(' ')[1] || item.label}</span>
-          </button>
-        ))}
-        {(role === 'admin' || role === 'super_admin') && (
-          <Link
-            to="/admin"
-            className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl text-red-500"
-          >
-            <span className="text-xl">🛠️</span>
-            <span className="text-[8px] font-black uppercase tracking-widest">Admin</span>
-          </Link>
-        )}
-      </nav>
-
-      <main className="flex-grow overflow-y-auto bg-gray-50/30">
-        <div className="p-4 sm:p-6 lg:p-12">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeView}
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              {renderView()}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-        <DashboardFooter />
+            {renderView()}
+          </motion.div>
+        </AnimatePresence>
       </main>
+      <DashboardFooter />
     </div>
   );
 };

@@ -64,12 +64,14 @@ import JudgeInviteModal from './components/JudgeInviteModal';
 import EvaluationMatrixView from './components/EvaluationMatrixView';
 import { IEvent, IParticipant, ITeam, IStage, ISubmission } from '../../types/event';
 import { useAuth } from '../../AuthContext';
+import { sanitizePresentationHtml } from '../../utils/text';
 
 interface EventDetailsProps {
     eventId: string | null;
     onBack: () => void;
     institutionId?: string;
     initialSection?: string;
+    onEditEvent?: (eventId: string) => void;
 }
 
 const BUNDLE_TABS = ['shortlisted', 'approved', 'pending', 'rejected'] as const;
@@ -80,7 +82,7 @@ const BUNDLE_TAB_LABEL: Record<string, string> = {
     rejected: 'Rejected',
 };
 
-const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutionId: institutionIdProp, initialSection }) => {
+const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutionId: institutionIdProp, initialSection, onEditEvent }) => {
     const navigate = useNavigate();
     const { user, role } = useAuth();
     const [activeTab, setActiveTab] = useState(initialSection || 'dashboard');
@@ -126,6 +128,64 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [domainFilter, setDomainFilter] = useState('All Domains');
     const [judgeFilter, setJudgeFilter] = useState('All Judges');
     const [institutionJudges, setInstitutionJudges] = useState<any[]>([]);
+    const [isBulkNotifyModalOpen, setIsBulkNotifyModalOpen] = useState(false);
+    const [bulkNotifyMessage, setBulkNotifyMessage] = useState('');
+    const [bulkNotifySubject, setBulkNotifySubject] = useState('');
+    const [bulkNotifyNextStage, setBulkNotifyNextStage] = useState('Next Round');
+
+    const normalizeStageType = (rawType?: string) => {
+        const cleaned = String(rawType || '').trim();
+        if (!cleaned) return 'CUSTOM';
+        const normalized = cleaned.replace(/\s+/g, '_').toUpperCase();
+        switch (normalized) {
+            case 'REGISTRATION':
+            case 'TEAM_FORMATION':
+            case 'QUIZ':
+            case 'SUBMISSION':
+            case 'REVIEW':
+            case 'FINAL':
+            case 'CUSTOM':
+                return normalized;
+            default:
+                return 'CUSTOM';
+        }
+    };
+
+    const buildUiFieldsFromBackend = (fields: any[]) =>
+        fields.map((field: any, idx: number) => ({
+            id: String(field.field_id || field.id || field.label || `field-${idx}`),
+            label: String(field.label || field.field_id || 'Field'),
+            type: String(field.field_type || field.type || 'text'),
+            required: field.required !== false,
+            placeholder: field.placeholder || field.help_text || '',
+        }));
+
+    const buildBackendFieldsFromConfig = (stage: IStage) => {
+        const configFields = Array.isArray(stage.config?.fields) ? stage.config.fields : [];
+        if (configFields.length === 0) {
+            const existing = (stage as any).fields;
+            return Array.isArray(existing) ? existing : [];
+        }
+        return configFields.map((field: any) => ({
+            field_id: field.id,
+            label: field.label,
+            field_type: field.type,
+            required: field.required !== false,
+            placeholder: field.placeholder || '',
+            help_text: field.helpText || field.description || '',
+            options: field.options,
+            max_length: field.maxLength,
+        }));
+    };
+
+    const DEFAULT_SHORTLIST_MESSAGE = `Congratulations {team_name}!
+
+Your project has officially qualified for the {next_stage} of {event_name}. 
+
+We were impressed with your submission and are excited to see your progress in the next round. Please check your dashboard for new requirements and updated deadlines.
+
+Best regards,
+{event_name} Organizing Team`;
 
     /** Fetch judges for this institution from the judges collection */
     const fetchJudges = async () => {
@@ -214,6 +274,18 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             try {
                 const eventRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/details`, { headers: { ...authHeaders() } });
                 const eventData = await eventRes.json();
+                
+                // Proactively strip ProseMirror attributes (like data-start, data-end, data-section-id) to make the text clean and readable
+                if (eventData && typeof eventData.description === 'string') {
+                    eventData.description = eventData.description
+                        .replace(/data-start="[^"]*"/g, '')
+                        .replace(/data-end="[^"]*"/g, '')
+                        .replace(/data-section-id="[^"]*"/g, '')
+                        .replace(/&amp;/g, '&')
+                        .replace(/\s\s+/g, ' ')
+                        .trim();
+                }
+                
                 setEvent(eventData);
                 setStages(
                     (Array.isArray(eventData.stages) ? eventData.stages : []).map((s: any, idx: number) => ({
@@ -421,6 +493,30 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
+    // Logo / banner upload handler (used in Basic Info tab)
+    const handleMediaUpload = async (file: File, field: 'logo_url' | 'banner_url') => {
+        if (!eventId) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('field', field);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/upload-media`, {
+                method: 'POST',
+                headers: { ...authHeaders() },
+                body: formData,
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setEvent((prev: any) => prev ? { ...prev, [field]: data.url } : prev);
+                setShowSaveSuccess(true);
+            } else {
+                alert('Upload failed. Please try again.');
+            }
+        } catch {
+            alert('Network error during upload.');
+        }
+    };
+
     const handleBack = () => {
         // Try the provided onBack function first
         if (onBack && typeof onBack === 'function') {
@@ -474,22 +570,36 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         const currentBundle = bundleData?.[bundleTab] || [];
         if (currentBundle.length === 0) return;
 
-        const teamIds = currentBundle.map((item: any) => item.team_id);
-        const nextStage = prompt("Enter the name of the next stage (e.g. Semi-Finals, Finale):", "Next Round");
+        const stageInfo = getCurrentStageInfo();
+        const nextStageName = stageInfo.next_stage_name || "Next Round";
         
-        if (!nextStage) return;
+        setBulkNotifyNextStage(nextStageName);
+        setBulkNotifySubject(`Congratulations! You've been shortlisted for ${event?.title || 'the event'}`);
+        setBulkNotifyMessage(DEFAULT_SHORTLIST_MESSAGE.replace(/{next_stage}/g, nextStageName));
+        setIsBulkNotifyModalOpen(true);
+    };
 
+    const confirmBulkDispatch = async () => {
+        const currentBundle = bundleData?.[bundleTab] || [];
+        const teamIds = currentBundle.map((item: any) => item.team_id);
+        
         setNotifying(true);
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/bulk-notify`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ team_ids: teamIds, next_stage: nextStage })
+                body: JSON.stringify({ 
+                    team_ids: teamIds, 
+                    next_stage: bulkNotifyNextStage,
+                    custom_message: bulkNotifyMessage,
+                    subject: bulkNotifySubject
+                })
             });
 
             if (res.ok) {
                 const result = await res.json();
-                alert(`Successfully dispatched approval protocols to ${result.sent_to} candidates/teams!`);
+                alert(`Successfully dispatched notifications to ${result.sent_to} candidates/teams!`);
+                setIsBulkNotifyModalOpen(false);
             } else {
                 alert('Failed to dispatch notifications');
             }
@@ -513,6 +623,15 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             if (res.ok) {
                 const eventRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/details`, { headers: { ...authHeaders() } });
                 const eventData = await eventRes.json();
+                if (eventData && typeof eventData.description === 'string') {
+                    eventData.description = eventData.description
+                        .replace(/data-start="[^"]*"/g, '')
+                        .replace(/data-end="[^"]*"/g, '')
+                        .replace(/data-section-id="[^"]*"/g, '')
+                        .replace(/&amp;/g, '&')
+                        .replace(/\s\s+/g, ' ')
+                        .trim();
+                }
                 setEvent(eventData);
                 setShowSaveSuccess(true);
                 setTimeout(() => setShowSaveSuccess(false), 3000);
@@ -1482,7 +1601,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 </button>
                             </div>
                         )}
-                        <StageBuilder stages={stages} onUpdate={setStages} onConfigureQuiz={openQuizForStage} />
+                        <StageBuilder stages={stages} onUpdate={setStages} onConfigureQuiz={openQuizForStage} availableJudges={institutionJudges} />
                     </div>
                 );
             case 'teams':
@@ -1541,24 +1660,91 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
 
             case 'basic':
                 return (
-                    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                            <div className="space-y-4">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Opportunity Identity</label>
-                                <input type="text" value={event.title} onChange={(e) => setEvent({...event, title: e.target.value})} className="w-full px-6 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] outline-none font-bold text-slate-900 focus:ring-4 focus:ring-[#6C3BFF]/5 transition-all" />
+                    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 font-sans">
+                        {/* Header Action Card */}
+                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600">
+                                    <Info size={28} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-800">Opportunity Information</h3>
+                                    <p className="text-xs font-bold text-slate-400 mt-1">This opportunity's details are fully managed through the creation wizard.</p>
+                                </div>
                             </div>
-                            <div className="space-y-4">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Classification</label>
-                                <select value={event.category || 'Hackathon'} onChange={(e) => setEvent({...event, category: e.target.value})} className="w-full px-6 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] outline-none font-bold text-slate-900 appearance-none">
-                                    <option>Hackathon</option>
-                                    <option>Coding Competition</option>
-                                    <option>Design Challenge</option>
-                                    <option>Case Study</option>
-                                </select>
+                            <button
+                                onClick={() => onEditEvent?.(event._id)}
+                                className="flex items-center gap-2.5 px-6 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-xl shadow-purple-200"
+                            >
+                                <Edit3 size={14} /> Edit Opportunity
+                            </button>
+                        </div>
+
+                        {/* Detailed Grid Card */}
+                        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden p-10 space-y-10">
+                            {/* Images Row */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                <div className="space-y-3">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Event Logo</span>
+                                    <div className="w-full h-40 bg-slate-50 border border-slate-100 rounded-3xl flex items-center justify-center overflow-hidden p-4">
+                                        {event.logo_url ? (
+                                            <img src={event.logo_url} alt="Logo" className="max-w-full max-h-full object-contain" />
+                                        ) : (
+                                            <div className="text-slate-300 font-bold text-xs uppercase tracking-wider">No Logo Uploaded</div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="md:col-span-2 space-y-3">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Event Banner</span>
+                                    <div className="w-full h-40 bg-slate-50 border border-slate-100 rounded-3xl flex items-center justify-center overflow-hidden">
+                                        {event.banner_url ? (
+                                            <img src={event.banner_url} alt="Banner" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="text-slate-300 font-bold text-xs uppercase tracking-wider">No Banner Uploaded</div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                            <div className="md:col-span-2 space-y-4">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Strategic Overview</label>
-                                <textarea rows={8} value={event.description} onChange={(e) => setEvent({...event, description: e.target.value})} className="w-full px-6 py-6 bg-slate-50 border border-slate-100 rounded-[2rem] outline-none font-medium text-slate-600 resize-none leading-relaxed" />
+
+                            {/* Details Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-slate-50">
+                                <div className="space-y-2">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Opportunity Title</span>
+                                    <p className="text-[15px] font-black text-slate-800 leading-tight">{event.title || '—'}</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Classification</span>
+                                    <p className="text-[15px] font-black text-slate-800 leading-tight">{event.category || '—'}</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Opportunity Mode</span>
+                                    <p className="text-[15px] font-black text-slate-800 leading-tight capitalize">{event.opportunityMode || '—'}</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Assessed Skills</span>
+                                    <p className="text-[15px] font-black text-slate-800 leading-tight">{event.skills || 'None specified'}</p>
+                                </div>
+
+                                {event.prize_pool && (
+                                    <div className="space-y-2">
+                                        <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Prize Pool</span>
+                                        <p className="text-[15px] font-black text-slate-800 leading-tight">{event.prize_pool}</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Description / Strategic Overview */}
+                            <div className="space-y-4 pt-8 border-t border-slate-50">
+                                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Strategic Overview</span>
+                                <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2rem]">
+                                    <div 
+                                        className="opportunity-rich-text text-slate-600 font-medium leading-relaxed [&_p]:mb-4 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-2 [&_strong]:font-bold [&_em]:italic [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_a]:text-purple-600 [&_a]:underline outline-none"
+                                        dangerouslySetInnerHTML={{ __html: sanitizePresentationHtml(event.description || '<p>No description provided.</p>') }}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2530,6 +2716,110 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 onInvite={handleInviteJudge}
                 loading={isInvitingJudge}
             />
+
+            {/* Bulk Notification Modal */}
+            <FramerAnimatePresence>
+                {isBulkNotifyModalOpen && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                            className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col"
+                        >
+                            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">Bulk Communication Hub</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Targeted: Shortlisted Members • Elite Protocol</p>
+                                </div>
+                                <button 
+                                    onClick={() => setIsBulkNotifyModalOpen(false)}
+                                    className="p-4 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            
+                            <div className="flex-1 p-8 space-y-6 overflow-y-auto max-h-[70vh]">
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Email Subject</label>
+                                    <input 
+                                        value={bulkNotifySubject}
+                                        onChange={(e) => setBulkNotifySubject(e.target.value)}
+                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all outline-none"
+                                        placeholder="Enter email subject..."
+                                    />
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 flex justify-between">
+                                        <span>Message Content</span>
+                                        <span className="text-[#6C3BFF]">Personalization Active</span>
+                                    </label>
+                                    <textarea 
+                                        value={bulkNotifyMessage}
+                                        onChange={(e) => setBulkNotifyMessage(e.target.value)}
+                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all h-64 resize-none outline-none"
+                                        placeholder="Compose your custom message..."
+                                    />
+                                    <div className="flex flex-wrap gap-2 px-2">
+                                        {['{team_name}', '{event_name}'].map(tag => (
+                                            <button 
+                                                key={tag}
+                                                onClick={() => setBulkNotifyMessage(prev => prev + ' ' + tag)}
+                                                className="px-3 py-1.5 bg-purple-50 text-[#6C3BFF] rounded-lg text-[10px] font-black tracking-wider border border-purple-100 hover:bg-purple-600 hover:text-white transition-all"
+                                            >
+                                                + {tag}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                                    <div className="flex gap-4">
+                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm shrink-0">
+                                            <Zap size={20} className="text-amber-500" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[11px] font-black text-slate-900 uppercase tracking-tight">Professional Dispatch Protocol</p>
+                                            <p className="text-[10px] font-bold text-slate-400 leading-relaxed mt-1">
+                                                This message will be wrapped in the premium Studlyf Achievement Template automatically. 
+                                                The round will be set to: <strong className="text-[#6C3BFF]">{bulkNotifyNextStage}</strong>.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-8 border-t border-slate-100 bg-white flex items-center justify-between">
+                                <button 
+                                    onClick={() => setIsBulkNotifyModalOpen(false)}
+                                    className="px-8 py-4 text-sm font-black text-slate-400 hover:text-slate-600 transition-all"
+                                >
+                                    Discard Draft
+                                </button>
+                                <button 
+                                    onClick={confirmBulkDispatch}
+                                    disabled={notifying}
+                                    className="px-10 py-4 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 hover:shadow-2xl hover:shadow-purple-200 transition-all shadow-xl shadow-purple-600/10 flex items-center gap-3"
+                                >
+                                    {notifying ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                    ) : (
+                                        <Send size={18} />
+                                    )}
+                                    {notifying ? 'Dispatching...' : 'Dispatch Notifications'}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </FramerAnimatePresence>
         {/* Hackathon Evaluation Modal */}
         <FramerAnimatePresence>
             {evaluatingSubmission && (

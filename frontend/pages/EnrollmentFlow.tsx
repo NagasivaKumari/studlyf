@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../AuthContext';
 import {
     Check,
     ChevronRight,
@@ -29,6 +30,7 @@ const tracks = {
 
 const EnrollmentFlow: React.FC = () => {
     const { trackId } = useParams<{ trackId: string }>();
+    const { user } = useAuth();
     const [searchParams] = useSearchParams();
     const initialPlan = searchParams.get('plan') || 'yearly';
 
@@ -37,6 +39,7 @@ const EnrollmentFlow: React.FC = () => {
     const [selectedPlan, setSelectedPlan] = useState(initialPlan);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
+    const [paymentError, setPaymentError] = useState<string | null>(null);
     const [courses, setCourses] = useState<any[]>([]);
     const courseIdParam = searchParams.get('courseId');
 
@@ -64,45 +67,200 @@ const EnrollmentFlow: React.FC = () => {
         if (courses.length === 0) fetchCourses();
     }, [step]);
 
+    const targetCourse = courseIdParam && courses.length > 0 ? courses.find(c => c._id === courseIdParam) : null;
+    const isSingleCourse = !!courseIdParam;
+    const coursePrice = (targetCourse && typeof targetCourse.price === 'number') ? targetCourse.price : 4999;
+
     const handleNext = () => {
-        if (step < 2) setStep(step + 1);
-        else handlePayment();
+        if (step === 1) {
+            if (isSingleCourse) setStep(3); // Skip plans for single course
+            else setStep(2); 
+        }
+        else if (step === 2) setStep(3);
+        else if (step === 3) handlePayment();
     };
 
     const handleBack = () => {
-        if (step > 1) setStep(step - 1);
+        if (step === 3) {
+            if (isSingleCourse) setStep(1);
+            else setStep(2);
+        }
+        else if (step > 1) setStep(step - 1);
         else navigate(-1);
+    };
+
+    const loadRazorpayScript = () => {
+        return new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+            script.onload = () => resolve(true);
+            script.onerror = () => resolve(false);
+            document.body.appendChild(script);
+        });
     };
 
     const handlePayment = async () => {
         setIsProcessing(true);
+        setPaymentError(null);
+
+        const price = isSingleCourse ? coursePrice : (selectedPlan === 'yearly' ? 14999 : 1999);
+
+        if (price === 0) {
+            try {
+                if (user?.user_id) {
+                    await fetch(`${API_BASE_URL}/api/enrollment-flow/confirm/${user.user_id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            track_title: isSingleCourse ? (targetCourse?.title || 'Course') : track.title,
+                            selected_plan: isSingleCourse ? 'course' : selectedPlan,
+                            amount: 0,
+                            payment_id: `free_${Date.now()}`,
+                            course_id: isSingleCourse ? targetCourse?._id : null,
+                            track_id: !isSingleCourse ? trackId : null
+                        })
+                    });
+                }
+                setIsProcessing(false);
+                setIsSuccess(true);
+                setStep(4);
+                return;
+            } catch (err) {
+                console.error('Free enrollment error:', err);
+                setPaymentError('Could not process enrollment. Please try again.');
+                setIsProcessing(false);
+                return;
+            }
+        }
+
+        const res = await loadRazorpayScript();
+        if (!res) {
+            alert('Razorpay SDK failed to load. Are you online?');
+            setIsProcessing(false);
+            return;
+        }
+
         try {
-            // Call backend to trigger success email
-            // We use the new /api/enroll endpoint we'll create in main.py
-            await fetch(`${API_BASE_URL}/api/enroll`, {
+            const orderRes = await fetch(`${API_BASE_URL}/api/payments/create-order`, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-                },
-                body: JSON.stringify({ 
-                    trackId: decodedTrackId,
-                    courseId: courseIdParam 
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    amount: price,
+                    currency: 'INR',
+                    receipt: `rcpt_${Date.now()}`,
+                    user_id: user?.user_id || 'guest'
                 })
             });
+            
+            if (!orderRes.ok) {
+                setPaymentError('Order creation failed on the server. Please try again.');
+                throw new Error('Order creation failed');
+            }
+            const order = await orderRes.json();
+
+            const options = {
+                key: order.key_id,
+                amount: order.amount,
+                currency: order.currency,
+                name: 'Studlyf',
+                description: isSingleCourse ? (targetCourse?.title || 'Course') : `${track.title} - ${selectedPlan.toUpperCase()} Plan`,
+                image: '/images/studlyf.png',
+                order_id: order.order_id,
+                handler: async function (response: any) {
+                    try {
+                        const verifyRes = await fetch(`${API_BASE_URL}/api/payments/verify`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                razorpay_order_id: response.razorpay_order_id,
+                                razorpay_payment_id: response.razorpay_payment_id,
+                                razorpay_signature: response.razorpay_signature
+                            })
+                        });
+                        
+                        if (verifyRes.ok) {
+                            if (user?.user_id) {
+                                await fetch(`${API_BASE_URL}/api/enrollment-flow/confirm/${user.user_id}`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        track_title: isSingleCourse ? (targetCourse?.title || 'Course') : track.title,
+                                        selected_plan: isSingleCourse ? 'course' : selectedPlan,
+                                        amount: price,
+                                        payment_id: response.razorpay_payment_id,
+                                        course_id: isSingleCourse ? targetCourse?._id : null,
+                                        track_id: !isSingleCourse ? trackId : null
+                                    })
+                                });
+                            }
+                            setIsProcessing(false);
+                            setIsSuccess(true);
+                            setStep(4);
+                        } else {
+                            alert('Payment verification failed.');
+                            setIsProcessing(false);
+                        }
+                    } catch (err) {
+                        alert('Payment verification error.');
+                        setIsProcessing(false);
+                    }
+                },
+                prefill: {
+                    name: user?.full_name || 'Studlyf User',
+                    email: user?.email || '',
+                },
+                theme: { color: track.accent },
+                modal: {
+                    ondismiss: function () {
+                        console.log("[Razorpay] Payment modal dismissed by user.");
+                        setPaymentError("Payment canceled by user. You can try confirming the payment again.");
+                        setIsProcessing(false);
+
+                        // Log abandoned attempt to backend
+                        fetch(`${API_BASE_URL}/api/payments/log-event`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                order_id: order.order_id,
+                                status: 'abandoned',
+                                error_description: 'User dismissed the payment checkout popup.'
+                            })
+                        }).catch(err => console.error('[Analytics] Failed to log abandoned checkout:', err));
+                    }
+                }
+            };
+
+            const rzp = new (window as any).Razorpay(options);
+            rzp.on('payment.failed', function (response: any) {
+                const errorDesc = response.error.description || 'Payment transaction failed';
+                setPaymentError('Payment failed: ' + errorDesc);
+                setIsProcessing(false);
+
+                // Log failed attempt to backend
+                fetch(`${API_BASE_URL}/api/payments/log-event`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        order_id: order.order_id,
+                        status: 'failed',
+                        error_description: errorDesc
+                    })
+                }).catch(err => console.error('[Analytics] Failed to log failed checkout:', err));
+            });
+            rzp.open();
+
         } catch (error) {
-            console.error('Failed to send success email:', error);
+            console.error('Payment Error', error);
+            setPaymentError('Could not initiate payment. Please check your internet connection and try again.');
+            setIsProcessing(false);
         }
-        
-        setIsProcessing(false);
-        setIsSuccess(true);
-        setStep(3);
     };
 
     const steps = [
         { id: 1, name: 'Confirm Role', icon: UserCheck },
-        { id: 2, name: 'Payment', icon: Wallet },
-        { id: 3, name: 'Unlock', icon: Unlock },
+        { id: 2, name: 'Select Plan', icon: Package },
+        { id: 3, name: 'Payment', icon: Wallet },
+        { id: 4, name: 'Unlock', icon: Unlock },
     ];
 
     return (
@@ -231,15 +389,15 @@ const EnrollmentFlow: React.FC = () => {
                                 <div>
                                     <span className="text-[10px] font-black uppercase tracking-[0.5em] mb-4 block" style={{ color: track.accent }}>Step 01 / Confirmation</span>
                                     <h2 className="text-4xl sm:text-6xl font-black text-gray-900 tracking-tighter uppercase leading-[0.9]">
-                                        Confirm Your <br /> <span style={{ color: track.accent }}>Career Track</span>.
+                                        Confirm Your <br /> <span style={{ color: track.accent }}>{isSingleCourse ? 'Course' : 'Career Track'}</span>.
                                     </h2>
                                 </div>
-                                <p className="text-gray-500 text-lg">You have selected the <b>{track.title}</b> track. This intensive 16-week program is designed to move you from theory into verified engineering authority.</p>
+                                <p className="text-gray-500 text-lg">You have selected the <b>{isSingleCourse ? (targetCourse?.title || 'Course') : track.title}</b> {isSingleCourse ? 'course' : 'track'}. This intensive program is designed to move you from theory into verified engineering authority.</p>
                                 <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-6">
                                     <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center text-3xl shadow-inner">{track.icon}</div>
                                     <div>
                                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active Selection</p>
-                                        <h3 className="text-xl font-black text-gray-900 uppercase">Engineering: {track.title}</h3>
+                                        <h3 className="text-xl font-black text-gray-900 uppercase">{isSingleCourse ? (targetCourse?.title || 'Course') : `Engineering: ${track.title}`}</h3>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4">
@@ -279,10 +437,101 @@ const EnrollmentFlow: React.FC = () => {
                         </motion.div>
                     )}
 
-                    {/* ── STEP 2: PAYMENT ── */}
+                    {/* ── STEP 2: SELECT PLAN ── */}
                     {step === 2 && (
                         <motion.div
                             key="step2"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            className="space-y-12"
+                        >
+                            <div className="text-center max-w-2xl mx-auto">
+                                <span className="text-[10px] font-black uppercase tracking-[0.5em] mb-4 block" style={{ color: track.accent }}>Step 02 / Membership</span>
+                                <h2 className="text-4xl sm:text-6xl font-black text-gray-900 tracking-tighter uppercase leading-[0.9] mb-6">
+                                    Select Your <br /> <span style={{ color: track.accent }}>Mastery Plan</span>.
+                                </h2>
+                                <p className="text-gray-500 font-medium">Choose how you want to invest in your engineering journey. Yearly plans include verified certification and hiring support.</p>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                                <div
+                                    onClick={() => setSelectedPlan('monthly')}
+                                    className={`bg-white rounded-[2.5rem] p-10 border-2 cursor-pointer transition-all ${selectedPlan === 'monthly' ? 'border-gray-900 shadow-2xl scale-[1.02]' : 'border-gray-100 border-dashed opacity-60'}`}
+                                >
+                                    <div className="flex justify-between items-start mb-10">
+                                        <div>
+                                            <h4 className="text-xl font-black uppercase tracking-tighter">Monthly Sprint</h4>
+                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Pay as you go</p>
+                                        </div>
+                                        {selectedPlan === 'monthly' && <Check className="w-6 h-6 text-gray-900" />}
+                                    </div>
+                                    <div className="flex items-baseline gap-1 mb-8">
+                                        <span className="text-5xl font-black text-gray-900">₹1,999</span>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">/ Month</span>
+                                    </div>
+                                    <ul className="space-y-3 mb-10">
+                                        {['Access to all Courses', 'Project Reviews', 'Community Access'].map(f => (
+                                            <li key={f} className="flex items-center gap-3 text-xs font-bold text-gray-600">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-gray-200" /> {f}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+
+                                <div
+                                    onClick={() => setSelectedPlan('yearly')}
+                                    className={`bg-white rounded-[2.5rem] p-10 border-2 cursor-pointer transition-all relative overflow-hidden ${selectedPlan === 'yearly' ? 'border-gray-900 shadow-2xl scale-[1.02]' : 'border-gray-100 border-dashed opacity-60'}`}
+                                >
+                                    <div className="absolute top-6 right-6 bg-green-500 text-white px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">Best Value</div>
+                                    <div className="flex justify-between items-start mb-10">
+                                        <div>
+                                            <h4 className="text-xl font-black uppercase tracking-tighter">Yearly Mastery</h4>
+                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Full career support</p>
+                                        </div>
+                                        {selectedPlan === 'yearly' && <Check className="w-6 h-6 text-gray-900" />}
+                                    </div>
+                                    <div className="flex items-baseline gap-1 mb-8">
+                                        <span className="text-5xl font-black text-gray-900">₹14,999</span>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">/ Year</span>
+                                    </div>
+                                    <ul className="space-y-3 mb-10">
+                                        {['Full Authority Track', 'Verified Certification', 'Hiring Pipeline Access', 'Resume Verification'].map(f => (
+                                            <li key={f} className="flex items-center gap-3 text-xs font-bold text-gray-600">
+                                                <Check className="w-4 h-4 text-green-500" /> {f}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-center gap-6 pt-4">
+                                <button
+                                    onClick={handleBack}
+                                    className="premium-btn !px-8 !py-5 !rounded-2xl"
+                                >
+                                    <span className="premium-orb premium-orb1" />
+                                    <span className="premium-orb premium-orb2" />
+                                    <span className="premium-orb premium-orb3" />
+                                    <span className="premium-label">Back</span>
+                                </button>
+                                <button
+                                    onClick={handleNext}
+                                    className="premium-btn !px-12 !py-5 !rounded-2xl"
+                                >
+                                    <span className="premium-orb premium-orb1" />
+                                    <span className="premium-orb premium-orb2" />
+                                    <span className="premium-orb premium-orb3" />
+                                    <span className="premium-label">Select Plan & Pay <ChevronRight className="w-4 h-4" /></span>
+                                </button>
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {/* ── STEP 3: PAYMENT ── */}
+                    {step === 3 && (
+                        <motion.div
+                            key="step3"
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 1.05 }}
@@ -292,71 +541,92 @@ const EnrollmentFlow: React.FC = () => {
                                 <div className="p-10 sm:p-14 border-b border-gray-50">
                                     <div className="flex justify-between items-center mb-10">
                                         <span className="text-[10px] font-black uppercase tracking-[0.5em] text-gray-400">Order Summary</span>
-                                        <div className="bg-gray-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500">Free Enrollment</div>
+                                        <div className="bg-gray-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500">{isSingleCourse ? 'Single Course' : `${selectedPlan} Plan`}</div>
                                     </div>
                                     <div className="flex justify-between items-center mb-4">
-                                        <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">{track.title} Track</h3>
-                                        <span className="text-xl font-black text-gray-900">$0.00</span>
+                                        <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">{isSingleCourse ? targetCourse.title : `${track.title} Track`}</h3>
+                                        <span className="text-xl font-black text-gray-900">₹{isSingleCourse ? coursePrice.toLocaleString('en-IN') : (selectedPlan === 'yearly' ? '14,999' : '1,999')}.00</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm text-gray-400 mb-8">
-                                        <p>Membership Enrollment Fee</p>
-                                        <span>$0.00</span>
+                                        <p>{isSingleCourse ? 'Course Access Fee' : 'Membership Enrollment Fee'}</p>
+                                        <span>₹{isSingleCourse ? coursePrice.toLocaleString('en-IN') : (selectedPlan === 'yearly' ? '14,999' : '1,999')}.00</span>
                                     </div>
                                     <div className="flex justify-between items-center pt-6 border-t border-gray-100">
                                         <span className="text-2xl font-black text-gray-900 uppercase">Total</span>
-                                        <span className="text-2xl font-black text-gray-900" style={{ color: track.accent }}>$0.00</span>
+                                        <span className="text-2xl font-black text-gray-900" style={{ color: track.accent }}>₹{isSingleCourse ? coursePrice.toLocaleString('en-IN') : (selectedPlan === 'yearly' ? '14,999' : '1,999')}.00</span>
                                     </div>
                                 </div>
 
                                 <div className="p-10 sm:p-14 bg-gray-50/50">
                                     <div className="space-y-6">
-                                        <div className="relative">
-                                            <CreditCard className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                                            <input
-                                                disabled
-                                                type="text"
-                                                className="w-full bg-white border border-gray-100 h-16 rounded-2xl pl-16 pr-6 text-sm font-bold placeholder:text-gray-300 focus:outline-none"
-                                                placeholder="4242 4242 4242 4242"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <input disabled type="text" className="w-full bg-white border border-gray-100 h-16 rounded-2xl px-6 text-sm font-bold placeholder:text-gray-300 focus:outline-none" placeholder="MM/YY" />
-                                            <input disabled type="text" className="w-full bg-white border border-gray-100 h-16 rounded-2xl px-6 text-sm font-bold placeholder:text-gray-300 focus:outline-none" placeholder="CVC" />
+                                        <div className="bg-white p-8 rounded-3xl border border-gray-100 flex flex-col items-center justify-center gap-4">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-[#0051C3]/10 rounded-full flex items-center justify-center">
+                                                    <CreditCard className="w-6 h-6 text-[#0051C3]" />
+                                                </div>
+                                                <div className="w-12 h-12 bg-[#00A526]/10 rounded-full flex items-center justify-center">
+                                                    <Wallet className="w-6 h-6 text-[#00A526]" />
+                                                </div>
+                                            </div>
+                                            <p className="text-center text-sm font-bold text-gray-500">You will be securely redirected to Razorpay to complete your payment.</p>
                                         </div>
 
-                                        <p className="text-[10px] text-gray-400 font-bold uppercase text-center tracking-widest">Secured by Stripe & Verified by Studlyf</p>
+                                        {paymentError && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="p-5 bg-amber-50 border border-amber-200 rounded-[2rem] flex items-start gap-4 text-left"
+                                            >
+                                                <span className="text-xl">⚠️</span>
+                                                <div className="flex-grow">
+                                                    <p className="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">Payment Status</p>
+                                                    <p className="text-xs text-amber-700 font-bold leading-relaxed">{paymentError}</p>
+                                                </div>
+                                            </motion.div>
+                                        )}
 
-                                        <button
-                                            onClick={handlePayment}
-                                            disabled={isProcessing}
-                                            className="premium-btn w-full !py-6 !rounded-3xl"
-                                        >
-                                            <span className="premium-orb premium-orb1" />
-                                            <span className="premium-orb premium-orb2" />
-                                            <span className="premium-orb premium-orb3" />
-                                            <span className="premium-label">
-                                                {isProcessing ? (
-                                                    <>
-                                                        <div className="w-5 h-5 border-4 border-white/20 border-t-white rounded-full animate-spin" />
-                                                        Processing Protocol...
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        Confirm Payment <ArrowRight className="w-5 h-5" />
-                                                    </>
-                                                )}
-                                            </span>
-                                        </button>
+                                        <p className="text-[10px] text-gray-400 font-bold uppercase text-center tracking-widest">Secured by Razorpay & Verified by Studlyf</p>
+
+                                        <div className="flex gap-4">
+                                            <button
+                                                type="button"
+                                                onClick={handleBack}
+                                                className="premium-btn !px-8 !py-6 !rounded-3xl bg-transparent !text-gray-500 hover:!text-gray-900 border border-gray-200 !shadow-none hover:!bg-gray-100 flex items-center justify-center"
+                                            >
+                                                <ArrowLeft className="w-5 h-5 text-gray-400" />
+                                            </button>
+                                            <button
+                                                onClick={handlePayment}
+                                                disabled={isProcessing}
+                                                className="premium-btn flex-grow !py-6 !rounded-3xl"
+                                            >
+                                                <span className="premium-orb premium-orb1" />
+                                                <span className="premium-orb premium-orb2" />
+                                                <span className="premium-orb premium-orb3" />
+                                                <span className="premium-label">
+                                                    {isProcessing ? (
+                                                        <>
+                                                            <div className="w-5 h-5 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+                                                            Processing Protocol...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            Confirm Payment <ArrowRight className="w-5 h-5" />
+                                                        </>
+                                                    )}
+                                                </span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </motion.div>
                     )}
 
-                    {/* ── STEP 3: SUCCESS / UNLOCK ── */}
-                    {step === 3 && (
+                    {/* ── STEP 4: SUCCESS / UNLOCK ── */}
+                    {step === 4 && (
                         <motion.div
-                            key="step3"
+                            key="step4"
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
                             className="max-w-3xl mx-auto text-center py-10"

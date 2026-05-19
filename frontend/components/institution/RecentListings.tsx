@@ -5,7 +5,7 @@ import { API_BASE_URL, authHeaders } from '../../apiConfig';
 
 interface RecentListingsProps {
     institutionId: string;
-    onViewEvent?: (eventId: string) => void;
+    onViewEvent?: (eventId: string, status?: string) => void;
     onViewAll?: () => void;
 }
 
@@ -46,15 +46,32 @@ const RecentListings: React.FC<RecentListingsProps> = ({ institutionId, onViewEv
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: idx * 0.1 }}
-                                onClick={() => onViewEvent?.(event._id)}
+                                onClick={() => onViewEvent?.(event._id, event.status)}
                                 className="group p-4 bg-slate-50 hover:bg-white hover:shadow-xl hover:shadow-purple-100/50 rounded-2xl border border-transparent hover:border-purple-100 transition-all cursor-pointer flex items-center justify-between"
                             >
                                 <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-purple-500 font-bold group-hover:scale-110 transition-transform">
-                                        {event.category?.charAt(0) || 'E'}
+                                    <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-purple-500 font-bold group-hover:scale-110 transition-transform overflow-hidden">
+                                        {(() => {
+                                            const logoSrc = event.logo_url || event.logo || event.institution_logo_url || event.institution_logo || event.image_url || event.image || '';
+                                            if (logoSrc) {
+                                                return <img src={logoSrc} className="w-full h-full object-cover" alt={event.title || 'Logo'} />;
+                                            }
+                                            return event.category?.charAt(0) || 'E';
+                                        })()}
                                     </div>
                                     <div>
-                                        <p className="text-sm font-bold text-slate-900 group-hover:text-[#6C3BFF] transition-colors line-clamp-1">{event.title}</p>
+                                        <div className="flex items-center flex-wrap gap-2">
+                                            <p className="text-sm font-bold text-slate-900 group-hover:text-[#6C3BFF] transition-colors line-clamp-1">{event.title}</p>
+                                            {event.status?.toUpperCase() === 'DRAFT' ? (
+                                                <span className="px-2 py-0.5 bg-amber-50 text-amber-600 border border-amber-100 rounded-md text-[9px] font-black uppercase tracking-wider">
+                                                    Draft
+                                                </span>
+                                            ) : (
+                                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-md text-[9px] font-black uppercase tracking-wider">
+                                                    Live
+                                                </span>
+                                            )}
+                                        </div>
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{event.category}</p>
                                     </div>
                                 </div>

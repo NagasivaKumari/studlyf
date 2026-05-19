@@ -132,7 +132,7 @@ const DashboardFooter: React.FC = () => {
                                             y: -5,
                                         }}
                                         whileTap={{ scale: 0.95 }}
-                                        href="mailto:saieshwarerelli10@gmail.com"
+                                        href="mailto: saieshwarerelli10@gmail.com"
                                         className="flex flex-col items-center gap-2 group"
                                     >
                                         <div className="w-14 h-14 rounded-full bg-white/[0.04] border border-white/10 shadow-xl flex items-center justify-center text-white group-hover:bg-[#6C3BFF] group-hover:text-white group-hover:border-[#6C3BFF] transition-all duration-300">
@@ -204,14 +204,14 @@ const DashboardFooter: React.FC = () => {
                         <Link to="/" className="relative group/logo block">
                             {/* Animated Outer Glow Background */}
                             <div className="absolute inset-0 bg-[#7C3AED]/20 blur-2xl rounded-3xl opacity-50 group-hover/logo:opacity-100 transition-opacity duration-500" />
-
-                            <div className="relative bg-white px-6 py-3 rounded-2xl border border-white/20 shadow-2xl transition-all duration-500 hover:scale-[1.03] hover:border-white/40 w-fit overflow-hidden">
+                            
+                            <div className="relative bg-white px-6 py-3 rounded-2xl shadow-2xl transition-all duration-500 hover:scale-[1.03] w-fit overflow-hidden">
                                 {/* Subtle Internal Radial Light */}
-                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(0,0,0,0.05)_0%,_transparent_75%)]" />
-
-                                <img
-                                    src="/images/studlyf.png"
-                                    alt="Studlyf"
+                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(0,0,0,0.02)_0%,_transparent_75%)]" />
+                                
+                                <img 
+                                    src="/images/studlyf.png" 
+                                    alt="Studlyf" 
                                     className="h-10 md:h-14 w-auto object-contain relative z-10"
                                 />
                             </div>

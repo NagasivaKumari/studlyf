@@ -147,9 +147,10 @@ const styles = `
     background: white;
     width: 210mm;
     min-height: 297mm;
-    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
     padding: 40px 50px;
     margin: 40px 0;
+    border: 1px solid rgba(0,0,0,0.05);
   }
 
   /* Forms and Inputs */
@@ -916,7 +917,7 @@ export default function ResumeBuilder() {
 
                             <div className="flex items-center justify-center gap-6">
                                 <button
-                                    onClick={() => setStep('template_selection')}
+                                onClick={() => setStep('template_selection')}
                                     className="flex items-center gap-4 bg-[#7c3aed] text-white px-12 py-5 rounded-2xl font-bold text-2xl hover:bg-[#6d28d9] transition-all shadow-2xl shadow-purple-200 hover:-translate-y-1"
                                 >
                                     <Plus size={28} />
@@ -1328,7 +1329,7 @@ export default function ResumeBuilder() {
         <div className="flex flex-col h-screen overflow-hidden bg-white">
             <style>{styles}</style>
 
-            <nav className="h-16 bg-[#0e141e] border-b border-white/5 flex items-center justify-between px-8 shrink-0">
+            <nav className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 shrink-0">
                 <div className="flex items-center gap-6">
                     <div
                         className="flex items-center cursor-pointer hover:opacity-80 transition-opacity"
@@ -1337,15 +1338,15 @@ export default function ResumeBuilder() {
                         <img 
                             src="/images/studlyf.png" 
                             alt="STUDLYF Logo" 
-                            className="h-7 sm:h-8 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]"
+                            className="h-7 sm:h-8 w-auto object-contain"
                         />
                     </div>
 
-                    <div className="h-4 border-l border-white/10 mx-2"></div>
+                    <div className="h-4 border-l border-slate-200 mx-2"></div>
 
                     <button
                         onClick={() => setStep(hasExistingData ? 'dashboard' : 'create_new')}
-                        className="text-slate-400 font-bold text-sm hover:text-white transition-colors"
+                        className="text-slate-500 font-bold text-sm hover:text-slate-900 transition-colors"
                     >
                         Home
                     </button>
@@ -1354,12 +1355,12 @@ export default function ResumeBuilder() {
                 <div className="flex items-center gap-4">
                     <button 
                         onClick={() => setIsShareModalOpen(true)}
-                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2"
+                        className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm"
                     >
                         <Share2 size={16} />
                         Share
                     </button>
-                    <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-slate-300">
+                    <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 border border-slate-200">
                         <User size={18} />
                     </div>
                 </div>
@@ -1924,7 +1925,7 @@ export default function ResumeBuilder() {
                             <div className="flex items-center gap-2 p-4 bg-slate-50 border border-slate-100 rounded-2xl group focus-within:border-purple-200 focus-within:bg-white transition-all">
                                 <input 
                                     readOnly 
-                                    value={`https://studlyf.io/resume/${Math.random().toString(36).substring(7)}`}
+                                    value={`${import.meta.env.VITE_FRONTEND_URL || window.location.origin}/resume/${Math.random().toString(36).substring(7)}`}
                                     className="flex-1 bg-transparent border-none outline-none text-slate-600 font-medium"
                                 />
                                 <button className="p-2 text-slate-400 hover:text-purple-600 transition-colors">

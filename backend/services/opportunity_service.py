@@ -6,7 +6,7 @@ from bson import ObjectId
 from datetime import datetime
 from typing import List, Optional
 
-from services.email_service import send_notification_email
+from services.email_service import send_notification_email, get_registration_template, get_shortlist_template
 
 opportunities_col = db["opportunities"]
 opportunity_applications_col = db["opportunity_applications"]
@@ -77,9 +77,13 @@ async def _notify_portal_review(app: dict, opp: dict, new_status: str) -> None:
     user = await users_col.find_one({"user_id": uid})
     email = (user or {}).get("email")
     if email:
-        subj = f"Application update: {title}"
-        body = f"""<html><body style="font-family:system-ui,sans-serif;color:#111827"><p>{msg}</p>
-        <p>Open Studlyf → Opportunities → My applications to review your status.</p></body></html>"""
+        if st == "shortlisted":
+            subj = f"CONGRATULATIONS: You've been shortlisted for {title}!"
+            body = get_shortlist_template(user.get("full_name", "Participant"), title, "Next Stage")
+        else:
+            subj = f"Application update: {title}"
+            body = f"""<html><body style="font-family:system-ui,sans-serif;color:#111827"><p>{msg}</p>
+            <p>Open Studlyf → Opportunities → My applications to review your status.</p></body></html>"""
         asyncio.create_task(send_notification_email(email, subj, body))
 
 # Event must be published-like for learners to see the mirrored listing
@@ -526,8 +530,20 @@ async def apply_for_opportunity(application_data: dict) -> dict:
                             "opportunity_application_id": app_id_str,
                         }
                     )
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[WARNING] Could not mirror participant for opportunity application: {e}")
+
+    # Send Registration Confirmation Email
+    try:
+        user_email = application_data.get("email")
+        user_name = application_data.get("name", "Participant")
+        opp_title = opp.get("title", "the opportunity")
+        if user_email:
+            subj = f"Confirmed: You're registered for {opp_title}"
+            body = get_registration_template(user_name, opp_title)
+            asyncio.create_task(send_notification_email(user_email, subj, body))
+    except Exception as e:
+        print(f"Error sending registration email: {e}")
 
     application_data["_id"] = str(result.inserted_id)
     return application_data

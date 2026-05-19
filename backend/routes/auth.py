@@ -1,6 +1,4 @@
 from fastapi import Depends, HTTPException, Request
-from bson import ObjectId
-from typing import Optional
 from auth_utils import decode_access_token
 
 def get_current_user(request: Request):
@@ -15,14 +13,5 @@ def get_current_user(request: Request):
                 return payload
         except Exception:
             pass
-    
-    # Fallback to query parameter (for development/legacy)
-    user_id = request.query_params.get("user_id")
-    if user_id:
-        return {
-            "user_id": user_id,
-            "email": "dev@example.com",
-            "role": "user"
-        }
     
     raise HTTPException(status_code=401, detail="Authentication required")
