@@ -84,24 +84,53 @@ function decodeHtmlEntities(text: string): string {
  */
 export function sanitizePresentationHtml(html: string): string {
     if (!html || !html.trim()) return '';
-    let s = html;
-    
-    // Remove dangerous tags
-    s = s.replace(/<script[\s\S]*?<\/script>/gi, '');
-    s = s.replace(/<style[\s\S]*?<\/style>/gi, '');
-    s = s.replace(/<iframe[\s\S]*?<\/iframe>/gi, '');
-    s = s.replace(/<object[\s\S]*?<\/object>/gi, '');
-    s = s.replace(/<embed[\s\S]*?>/gi, '');
-    
-    // Remove dangerous attributes
-    s = s.replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-    s = s.replace(/href\s*=\s*(?:"|')?\s*javascript:[^"'>\s]*/gi, 'href="#"');
-    
-    // Ensure common formatting tags are preserved
-    // These are safe tags that should be allowed
-    const allowedTags = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre'];
-    
-    return s;
+    const allowedTags = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre', 'a']);
+    const allowedHref = /^(https?:|mailto:|tel:)/i;
+
+    if (typeof document === 'undefined') {
+        return html
+            .replace(/<script[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[\s\S]*?<\/style>/gi, '')
+            .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+            .replace(/\s(?:src|srcdoc|style)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+            .replace(/href\s*=\s*(?:"|')?\s*(?:javascript:|data:)[^"'>\s]*/gi, 'href="#"');
+    }
+
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    const walk = (node: Node) => {
+        [...node.childNodes].forEach((child) => {
+            if (child.nodeType === Node.ELEMENT_NODE) {
+                const el = child as HTMLElement;
+                const tag = el.tagName.toLowerCase();
+                if (!allowedTags.has(tag)) {
+                    el.replaceWith(document.createTextNode(el.textContent || ''));
+                    return;
+                }
+                [...el.attributes].forEach((attr) => {
+                    const name = attr.name.toLowerCase();
+                    const value = attr.value || '';
+                    if (name.startsWith('on') || name === 'style' || name === 'src' || name === 'srcdoc') {
+                        el.removeAttribute(attr.name);
+                        return;
+                    }
+                    if (tag === 'a' && name === 'href') {
+                        if (!allowedHref.test(value)) {
+                            el.setAttribute('href', '#');
+                        }
+                        el.setAttribute('rel', 'noopener noreferrer');
+                        return;
+                    }
+                    if (!(tag === 'a' && (name === 'href' || name === 'rel' || name === 'target'))) {
+                        el.removeAttribute(attr.name);
+                    }
+                });
+            }
+            walk(child);
+        });
+    };
+    walk(template.content);
+    return template.innerHTML;
 }
 
 /** Location label without a leading comma when city/venue is missing */

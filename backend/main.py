@@ -365,6 +365,7 @@ def fix_progress(prog, default_status="locked"):
 from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes
 from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
+from routes import stage_navigation_routes, team_join_request_routes
 from rate_limiter import rate_limit, check_rate_limit
 
 
@@ -401,6 +402,8 @@ app.include_router(test_sync_routes.router)
 app.include_router(direct_sync_routes.router)
 app.include_router(hackathon_judging_routes.router)
 app.include_router(hackathon_submission_routes.router)
+app.include_router(stage_navigation_routes.router)
+app.include_router(team_join_request_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -728,7 +731,7 @@ async def health_check():
 
 
 # Get Groq API key from environment
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "YOUR-GROQ-API-KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 # Configure the Client for Groq
 client = Groq(api_key=GROQ_API_KEY)
 
@@ -5114,7 +5117,7 @@ async def forgot_password(data: dict = Body(...)):
     
     # Send email
     from services.email_service import send_notification_email
-    reset_link = f"{frontend_url}/reset-password?token={token}"
+    reset_link = f"{frontend_url}/#/reset-password?token={token}"
     body = f"""
     <html>
         <body style="font-family: sans-serif; padding: 20px;">

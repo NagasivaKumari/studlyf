@@ -404,6 +404,7 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
 
                 submitData.append('registrationFields', JSON.stringify(formData.registrationFields));
                 submitData.append('institution_id', institutionId || '');
+                submitData.append('status', 'LIVE');
 
                 // Append Opportunity Assets if exists
                 if (formData.festivalData.logo instanceof File) {
@@ -497,6 +498,7 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
             submitData.append('registrationLevel', formData.registrationLevel);
             submitData.append('registrationFields', JSON.stringify(formData.registrationFields));
             submitData.append('institution_id', institutionId || '');
+            submitData.append('status', 'DRAFT');
 
             // Append Opportunity Assets if exists
             if (formData.festivalData.logo instanceof File) {

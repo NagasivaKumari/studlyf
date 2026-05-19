@@ -20,8 +20,12 @@ def setup_admin():
             cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred)
 
-        email = "admin@studlyf.com"
-        password = "admin123"
+        email = os.getenv("ADMIN_EMAIL")
+        password = os.getenv("ADMIN_PASSWORD")
+
+        if not email or not password:
+            print("❌ ADMIN_EMAIL and ADMIN_PASSWORD must be set in .env")
+            return
 
         try:
             # Check if user exists
@@ -32,7 +36,7 @@ def setup_admin():
                 password=password,
                 display_name="System Admin"
             )
-            print(f"✅ Password successfully updated for {email} to: {password}")
+            print(f"✅ Password successfully updated for {email}")
         except auth.UserNotFoundError:
             print(f"🆕 User {email} not found. Creating new user...")
             auth.create_user(
@@ -40,7 +44,7 @@ def setup_admin():
                 password=password,
                 display_name="System Admin"
             )
-            print(f"✅ User {email} successfully created with password: {password}")
+            print(f"✅ User {email} successfully created")
 
     except Exception as e:
         print(f"❌ Error during admin setup: {e}")

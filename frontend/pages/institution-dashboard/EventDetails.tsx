@@ -64,6 +64,7 @@ import JudgeInviteModal from './components/JudgeInviteModal';
 import EvaluationMatrixView from './components/EvaluationMatrixView';
 import { IEvent, IParticipant, ITeam, IStage, ISubmission } from '../../types/event';
 import { useAuth } from '../../AuthContext';
+import { sanitizePresentationHtml } from '../../utils/text';
 
 interface EventDetailsProps {
     eventId: string | null;
@@ -131,6 +132,51 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [bulkNotifyMessage, setBulkNotifyMessage] = useState('');
     const [bulkNotifySubject, setBulkNotifySubject] = useState('');
     const [bulkNotifyNextStage, setBulkNotifyNextStage] = useState('Next Round');
+
+    const normalizeStageType = (rawType?: string) => {
+        const cleaned = String(rawType || '').trim();
+        if (!cleaned) return 'CUSTOM';
+        const normalized = cleaned.replace(/\s+/g, '_').toUpperCase();
+        switch (normalized) {
+            case 'REGISTRATION':
+            case 'TEAM_FORMATION':
+            case 'QUIZ':
+            case 'SUBMISSION':
+            case 'REVIEW':
+            case 'FINAL':
+            case 'CUSTOM':
+                return normalized;
+            default:
+                return 'CUSTOM';
+        }
+    };
+
+    const buildUiFieldsFromBackend = (fields: any[]) =>
+        fields.map((field: any, idx: number) => ({
+            id: String(field.field_id || field.id || field.label || `field-${idx}`),
+            label: String(field.label || field.field_id || 'Field'),
+            type: String(field.field_type || field.type || 'text'),
+            required: field.required !== false,
+            placeholder: field.placeholder || field.help_text || '',
+        }));
+
+    const buildBackendFieldsFromConfig = (stage: IStage) => {
+        const configFields = Array.isArray(stage.config?.fields) ? stage.config.fields : [];
+        if (configFields.length === 0) {
+            const existing = (stage as any).fields;
+            return Array.isArray(existing) ? existing : [];
+        }
+        return configFields.map((field: any) => ({
+            field_id: field.id,
+            label: field.label,
+            field_type: field.type,
+            required: field.required !== false,
+            placeholder: field.placeholder || '',
+            help_text: field.helpText || field.description || '',
+            options: field.options,
+            max_length: field.maxLength,
+        }));
+    };
 
     const DEFAULT_SHORTLIST_MESSAGE = `Congratulations {team_name}!
 
@@ -1696,7 +1742,7 @@ Best regards,
                                 <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2rem]">
                                     <div 
                                         className="opportunity-rich-text text-slate-600 font-medium leading-relaxed [&_p]:mb-4 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-2 [&_strong]:font-bold [&_em]:italic [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_a]:text-purple-600 [&_a]:underline outline-none"
-                                        dangerouslySetInnerHTML={{ __html: event.description || '<p>No description provided.</p>' }}
+                                        dangerouslySetInnerHTML={{ __html: sanitizePresentationHtml(event.description || '<p>No description provided.</p>') }}
                                     />
                                 </div>
                             </div>

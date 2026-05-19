@@ -20,7 +20,10 @@ class InstitutionalCertificateService:
     def __init__(self):
         template_dir = os.path.join(os.path.dirname(__file__), '../templates')
         os.makedirs(template_dir, exist_ok=True)
-        self.jinja_env = Environment(loader=FileSystemLoader(template_dir))
+        self.jinja_env = Environment(
+            loader=FileSystemLoader(template_dir),
+            autoescape=True
+        )
 
     def _generate_qr_blob(self, url: str):
         qr = qrcode.QRCode(version=1, box_size=10, border=5)
@@ -43,7 +46,8 @@ class InstitutionalCertificateService:
             self._create_template(template_path)
 
         template = self.jinja_env.get_template('professional_certificate.html')
-        html = template.render({**cert_data, "cert_id": cert_id, "v_code": v_code, "qr_blob": qr_blob})
+        issue_date = datetime.utcnow().strftime('%B %d, %Y')
+        html = template.render({**cert_data, "cert_id": cert_id, "v_code": v_code, "qr_blob": qr_blob, "issue_date": issue_date})
         
         if HAS_WEASYPRINT:
             output_path = f"artifacts/certs/certificate_{cert_id}.pdf"
@@ -87,7 +91,7 @@ class InstitutionalCertificateService:
         <div class="recipient">{{ recipient_name }}</div>
         <p>has achieved the rank of <strong>{{ rank }}</strong> in the</p>
         <h2>{{ event_name }}</h2>
-        <p>Date of Issue: {{ datetime.utcnow().strftime('%B %d, %Y') }}</p>
+        <p>Date of Issue: {{ issue_date }}</p>
         <div class="footer">
             <div style="text-align: left;">
                 <img class="qr" src="data:image/png;base64,{{ qr_blob }}">

@@ -5,6 +5,7 @@ from bson import ObjectId
 from db import hackathon_submissions_col, events_col, users_col, judges_col, participants_col, teams_col
 from models import HackathonSubmission
 from routes.auth import get_current_user
+from stage_access_control import check_stage_submission_access, check_stage_deadline
 
 router = APIRouter(prefix="/api/hackathons", tags=["Hackathon Submissions"])
 
@@ -16,9 +17,37 @@ def fix_id(doc):
 
 @router.post("/submissions")
 async def create_hackathon_submission(submission: HackathonSubmission, current_user: dict = Depends(get_current_user)):
-    """Create a new hackathon submission and auto-register participant/team."""
+    """Create a new hackathon submission and auto-register participant/team.
+    
+    STAGE ACCESS CONTROL:
+    - Only shortlisted participants can submit
+    - Submission must be within stage time window (e.g., 18:00-19:00)
+    """
     try:
         user_id = current_user.get("user_id")
+        
+        # 0. Resolve target Event ID first
+        target_event_id = submission.hackathonId
+        try:
+            from db import opportunities_col
+            opp = await opportunities_col.find_one({"_id": ObjectId(submission.hackathonId)})
+            if opp and opp.get("event_link_id"):
+                target_event_id = str(opp["event_link_id"])
+        except:
+            pass
+        
+        # Check stage access control - only shortlisted participants can submit
+        await check_stage_submission_access(
+            event_id=target_event_id,
+            user_id=user_id,
+            stage_type="submission"
+        )
+        
+        # Check stage deadline - submission must be within stage window (e.g., 18:00-19:00)
+        await check_stage_deadline(
+            event_id=target_event_id,
+            stage_name="Submission"
+        )
         
         # 1. Check if submission already exists for this team/user
         dup_query = {"hackathonId": submission.hackathonId}
@@ -38,18 +67,6 @@ async def create_hackathon_submission(submission: HackathonSubmission, current_u
         submission_dict["updatedAt"] = datetime.utcnow()
         submission_dict["status"] = "Pending"
         submission_dict["totalScore"] = 0.0
-        
-        submission_dict["totalScore"] = 0.0
-        
-        # 0. Resolve target Event ID (Student might submit via Opportunity ID)
-        target_event_id = submission.hackathonId
-        try:
-            from db import opportunities_col
-            opp = await opportunities_col.find_one({"_id": ObjectId(submission.hackathonId)})
-            if opp and opp.get("event_link_id"):
-                target_event_id = str(opp["event_link_id"])
-        except:
-            pass
 
         # 1. Ensure Participant Record exists (for the institution dashboard)
         participant_data = {
@@ -109,6 +126,8 @@ async def create_hackathon_submission(submission: HackathonSubmission, current_u
         submission_dict["_id"] = str(result.inserted_id)
         
         return fix_id(submission_dict)
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Submission Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

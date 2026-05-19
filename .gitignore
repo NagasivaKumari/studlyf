@@ -141,3 +141,26 @@ test_upload.py
 backend/test.pdf
 backend/get_test.pdf
 backend/local_test.pdf
+.aider*
+.pip-audit-cache/
+
+# One-off scripts & temp docs (root)
+EVENT_VISIBILITY_FIX.md
+IMPLEMENTATION_COMPLETE.md
+QUICK_START.md
+REGISTRATION_AUTO_FILL_IMPLEMENTATION.md
+STAGE_NAVIGATION_GUIDE.md
+SYSTEM_ARCHITECTURE.md
+TESTING_GUIDE.md
+debug_events.py
+sync_event_opportunity.py
+
+# Backend one-off scripts & readme txts
+backend/fix_event_status.py
+backend/production_sync_events.py
+backend/update_draft_opportunities.py
+backend/STAGE_ACCESS_CONTROL_README.txt
+backend/STAGE_DEADLINE_README.txt
+
+# Frontend build output (should never be committed)
+frontend/dist/

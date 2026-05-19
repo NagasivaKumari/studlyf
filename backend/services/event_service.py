@@ -3,27 +3,126 @@ from models import Event
 from bson import ObjectId
 from datetime import datetime
 from typing import List, Optional
+import asyncio
+
+async def _create_opportunity_for_event(event_data: dict, opportunities_col):
+    """Helper: Create or update opportunity mirror for an event."""
+    try:
+        event_id = event_data.get("_id") or ObjectId()
+        if isinstance(event_id, ObjectId):
+            event_id_str = str(event_id)
+        else:
+            event_id_str = str(event_id)
+        
+        # Check if opportunity already exists
+        existing_opp = await opportunities_col.find_one({"event_link_id": event_id_str})
+        
+        # Determine opportunity type
+        opp_type = event_data.get("opportunityType") or event_data.get("category", "Competition")
+        if "Hackathon" in str(opp_type):
+            opp_type = "Hackathon"
+        elif "Internship" in str(opp_type):
+            opp_type = "Internship"
+        elif "Job" in str(opp_type):
+            opp_type = "Job"
+        elif "Conference" in str(opp_type):
+            opp_type = "Competition"
+        else:
+            opp_type = "Competition"
+        
+        # Build opportunity data
+        opp_data = {
+            "title": event_data.get("title", "New Opportunity"),
+            "organization": event_data.get("organisation") or event_data.get("organization") or "Partner Institution",
+            "type": opp_type,
+            "description": event_data.get("description", ""),
+            "location": f"{event_data.get('city', 'Remote')}, {event_data.get('opportunityMode', 'Online')}",
+            "deadline": event_data.get("registrationDeadline") or event_data.get("registration_deadline") or datetime.utcnow(),
+            "applicantsCount": 0,
+            "createdBy": str(event_data.get("institution_id", "")),
+            "institution_id": str(event_data.get("institution_id", "")),
+            "status": "active",
+            "event_link_id": event_id_str,
+            "updated_at": datetime.utcnow()
+        }
+        
+        if existing_opp:
+            # Update existing opportunity
+            await opportunities_col.update_one(
+                {"_id": existing_opp["_id"]},
+                {"$set": opp_data}
+            )
+            print(f"[SYNC] Updated opportunity for event {event_id_str}")
+        else:
+            # Create new opportunity
+            opp_data["createdAt"] = datetime.utcnow()
+            result = await opportunities_col.insert_one(opp_data)
+            print(f"[SYNC] Created opportunity {result.inserted_id} for event {event_id_str}")
+    except Exception as e:
+        print(f"[WARNING] Failed to create opportunity mirror: {e}")
+        # Don't fail event creation if opportunity sync fails
+        pass
 
 async def create_event(event_data: dict):
+    """Create event and auto-sync to opportunities if status is LIVE."""
+    from db import opportunities_col
+    
     event_data["created_at"] = datetime.utcnow()
     event_data["updated_at"] = datetime.utcnow()
+    
+    # Default status to LIVE if not specified (for production)
+    if "status" not in event_data or not event_data.get("status"):
+        event_data["status"] = "LIVE"
+    
     result = await events_col.insert_one(event_data)
     event_data["_id"] = str(result.inserted_id)
+    
+    # Auto-create opportunity mirror if event is LIVE
+    if str(event_data.get("status", "")).upper() in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
+        asyncio.create_task(_create_opportunity_for_event(event_data, opportunities_col))
+    
     return event_data
 
 async def get_all_events(filters: dict = {}):
+    """Get all events and auto-sync any LIVE events to opportunities."""
+    from db import opportunities_col
+    
     cursor = events_col.find(filters)
     events = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
         events.append(doc)
+        
+        # Auto-sync LIVE events to opportunities in background (non-blocking)
+        if str(doc.get("status", "")).upper() in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
+            try:
+                existing = await opportunities_col.find_one({"event_link_id": str(doc["_id"])})
+                if not existing:
+                    # Queue for background sync
+                    asyncio.create_task(_create_opportunity_for_event(doc, opportunities_col))
+            except:
+                pass
+    
     return events
 
 async def get_event_by_id(event_id: str):
+    """Get event by ID and auto-sync to opportunities if LIVE."""
+    from db import opportunities_col
+    
     try:
         doc = await events_col.find_one({"_id": ObjectId(event_id)})
         if doc:
             doc["_id"] = str(doc["_id"])
+            
+            # Auto-sync LIVE events to opportunities
+            if str(doc.get("status", "")).upper() in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
+                try:
+                    existing = await opportunities_col.find_one({"event_link_id": str(doc["_id"])})
+                    if not existing:
+                        asyncio.create_task(_create_opportunity_for_event(doc, opportunities_col))
+                except:
+                    pass
+        
         return doc
     except Exception:
         return None
@@ -41,4 +140,25 @@ async def delete_event(event_id: str):
     return {"message": "Event deleted successfully"}
 
 async def update_event_status(event_id: str, status: str):
-    return await update_event(event_id, {"status": status})
+    """Update event status and auto-sync to opportunities if LIVE."""
+    from db import opportunities_col
+    
+    # Auto-normalize status for visibility
+    status_normalized = str(status).upper()
+    if status_normalized in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
+        status = "LIVE"
+    elif status_normalized in ("DRAFT", "PENDING"):
+        status = "DRAFT"
+    elif status_normalized in ("CLOSED", "ENDED"):
+        status = "CLOSED"
+    
+    # Update event status
+    updated_event = await update_event(event_id, {"status": status})
+    
+    # If status is being set to LIVE, create or update opportunity
+    if status and str(status).upper() in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
+        event = await events_col.find_one({"_id": ObjectId(event_id)})
+        if event:
+            asyncio.create_task(_create_opportunity_for_event(event, opportunities_col))
+    
+    return updated_event
