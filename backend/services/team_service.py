@@ -90,45 +90,29 @@ async def create_team(
         return {"error": str(e), "status": "error"}
 
 async def generate_invite_code(team_id: str, ttl_hours: int = 72) -> dict:
-    """Generate a time-limited invite code for team."""
+    """Return the team's permanent invite code, generating it once if it doesn't exist."""
     try:
         team = await teams_col.find_one({"_id": ObjectId(team_id)})
         if not team:
             return {"error": "Team not found"}
-        
-        # Check if team is full
-        current_members = len(team.get("members", []))
-        max_size = team.get("size_max", 5)
-        if current_members >= max_size:
-            return {"error": "Team is full"}
-        
-        # Generate code (6 characters, alphanumeric)
-        code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
-        
-        # Store invite in team doc
-        invite_doc = {
-            "code": code,
-            "created_at": datetime.now(timezone.utc),
-            "expires_at": datetime.now(timezone.utc) + timedelta(hours=ttl_hours),
-            "used_count": 0,
-            "max_uses": None,  # Unlimited
-        }
-        
+
+        # Return existing permanent code if already set
+        existing_code = team.get("invite_code")
+        if existing_code:
+            return {"status": "success", "invite_code": existing_code}
+
+        # Generate once — cryptographically unique, 12-char uppercase alphanumeric
+        import string
+        alphabet = string.ascii_uppercase + string.digits
+        code = ''.join(secrets.choice(alphabet) for _ in range(12))
+
+        # Persist permanently on the team document
         await teams_col.update_one(
             {"_id": ObjectId(team_id)},
-            {
-                "$push": {"invites": invite_doc},
-                "$set": {"updated_at": datetime.now(timezone.utc)}
-            }
+            {"$set": {"invite_code": code, "updated_at": datetime.now(timezone.utc)}}
         )
-        
-        return {
-            "status": "success",
-            "invite_code": code,
-            "expires_in_hours": ttl_hours,
-            "expires_at": invite_doc["expires_at"].isoformat(),
-            "share_message": f"Join my team! Use code: {code}"
-        }
+
+        return {"status": "success", "invite_code": code}
     except Exception as e:
         print(f"[ERROR] generate_invite_code: {e}")
         return {"error": str(e)}
@@ -153,26 +137,16 @@ async def join_team_with_code(
         if participant.get("team_id"):
             return {"error": "You are already in a team. Leave your current team first."}
         
-        # Find team with this code
+        # Find team with this code (permanent invite_code field)
         team = await teams_col.find_one({
             "event_id": str(event_id),
-            "invites.code": invite_code.upper()
+            "invite_code": invite_code.upper()
         })
         
         if not team:
-            return {"error": "Invalid invite code or code expired"}
-        
-        # Check if code is expired
-        valid_invite = None
-        for invite in team.get("invites", []):
-            if invite.get("code") == invite_code.upper():
-                if datetime.now(timezone.utc) > invite.get("expires_at", datetime.utcnow()):
-                    return {"error": "Invite code has expired"}
-                valid_invite = invite
-                break
-        
-        if not valid_invite:
             return {"error": "Invalid invite code"}
+        
+        valid_invite = True  # permanent code, always valid
         
         # Check if team is full
         current_members = len(team.get("members", []))
@@ -204,7 +178,6 @@ async def join_team_with_code(
                 "$set": {"updated_at": datetime.now(timezone.utc)}
             }
         )
-        
         # Update participant with team_id
         await participants_col.update_one(
             {"_id": participant["_id"]},

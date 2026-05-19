@@ -80,3 +80,4 @@ isort==5.13.2
 ipython==8.20.0
 razorpay==2.0.1
 pdfplumber
+groq
