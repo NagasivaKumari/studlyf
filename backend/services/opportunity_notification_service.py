@@ -33,10 +33,10 @@ async def send_new_opportunity_email(opportunity: dict, event: dict = None) -> d
         all_users = await users_col.find({"role": {"$in": ["student", "learner"]}}).to_list(length=None)
         
         opp_id = str(opportunity.get("_id", ""))
-        opp_title = opportunity.get("title", "New Opportunity")
-        opp_org = opportunity.get("organization", "Partner Institution")
+        opp_title = opportunity.get("title") or ""
+        opp_org = opportunity.get("organization") or ""
         opp_deadline = opportunity.get("deadline")
-        opp_type = opportunity.get("type", "Competition")
+        opp_type = opportunity.get("type") or ""
         
         # Format deadline
         deadline_str = "Not specified"
@@ -47,13 +47,14 @@ async def send_new_opportunity_email(opportunity: dict, event: dict = None) -> d
                 deadline_str = opp_deadline.strftime("%B %d, %Y")
         
         # Email template
-        email_subject = f"🚀 New {opp_type} Opportunity: {opp_title}"
+        type_label = f" {opp_type}" if opp_type else ""
+        email_subject = f"🚀 New{type_label} Opportunity: {opp_title}" if opp_title else f"🚀 New{type_label} Opportunity"
         email_body = f"""
         <html>
             <body style="font-family: system-ui, -apple-system, sans-serif; color: #111827; line-height: 1.6;">
                 <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
                     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
-                        <h1 style="margin: 0; font-size: 28px; font-weight: 900;">New Opportunity!</h1>
+                        <h1 style="margin: 0; font-size: 28px; font-weight: 900;">{opp_title or (opp_type or 'New')}</h1>
                         <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">Don't miss out on this exciting opportunity</p>
                     </div>
 
@@ -92,9 +93,12 @@ async def send_new_opportunity_email(opportunity: dict, event: dict = None) -> d
         </html>
         """
         
-        # Send to all students
+        # Only send to opted-in students
         for user in all_users:
             try:
+                prefs = user.get("email_preferences", {})
+                if not prefs.get("email_opportunity_alerts", False):
+                    continue
                 email = user.get("email", "").strip()
                 if email:
                     await send_notification_email(email, email_subject, email_body)
@@ -153,8 +157,8 @@ async def send_deadline_reminder_emails(days_until: int = 3) -> dict:
         for opp in opportunities:
             try:
                 opp_id = str(opp.get("_id", ""))
-                opp_title = opp.get("title", "Opportunity")
-                opp_org = opp.get("organization", "Partner Institution")
+                opp_title = opp.get("title") or ""
+                opp_org = opp.get("organization") or ""
                 
                 # Check if we already sent reminder for this opportunity and user combo
                 # Get all registered users
@@ -291,10 +295,10 @@ async def send_daily_digest_email() -> dict:
                     opportunities_html += f"""
                     <div style="padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 12px;">
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                            <h3 style="margin: 0; color: #111827; font-size: 16px; font-weight: 600;">{opp.get('title', 'Opportunity')}</h3>
-                            <span style="background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; white-space: nowrap;">{opp.get('type', 'Competition')}</span>
+                            <h3 style="margin: 0; color: #111827; font-size: 16px; font-weight: 600;">{opp.get('title') or ''}</h3>
+                            <span style="background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; white-space: nowrap;">{opp.get('type') or ''}</span>
                         </div>
-                        <p style="margin: 0 0 8px 0; color: #64748b; font-size: 13px;">{opp.get('organization', 'Partner Institution')}</p>
+                        <p style="margin: 0 0 8px 0; color: #64748b; font-size: 13px;">{opp.get('organization') or ''}</p>
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="color: #64748b; font-size: 12px;">📅 {deadline_str} <span style="color: #f59e0b; font-weight: 600;">({days_left}d left)</span></span>
                             <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/opportunities/{str(opp.get('_id'))}" style="background: #667eea; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: 600;">View</a>

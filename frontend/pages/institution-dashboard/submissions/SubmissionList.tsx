@@ -33,7 +33,7 @@ interface SubmissionListProps {
 }
 
 const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
-    const [submissions, setSubmissions] = useState<any>({ shortlisted: [], approved: [], pending: [], rejected: [], summary: {}, all: [] });
+    const [submissions, setSubmissions] = useState<any>({ shortlisted: [], accepted: [], pending: [], rejected: [], summary: {}, all: [] });
     const [stageSubmissions, setStageSubmissions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
@@ -286,9 +286,9 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
             _id: s._id,
             id: s._id,
             submission_id: s._id,
-            project_title: s.teamName,
-            team_name: s.teamLead || 'Hackathon Team',
-            event_title: 'Hackathon Submission', // We could fetch actual title if needed
+                            project_title: s.teamName,
+                            team_name: s.teamLead || 'Hackathon Team',
+                            event_title: s.eventName || s.hackathonId || 'Hackathon Submission',
             total_judges: s.assignedJudgeId ? 1 : 0,
             judges_completed: s.status === 'Evaluated' ? 1 : 0,
             score: s.totalScore || 0,
@@ -369,7 +369,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                             <div className="space-y-4">
                                 {[
                                     { label: 'Shortlisted', val: submissions?.summary?.shortlisted || 0, color: 'bg-blue-500' },
-                                    { label: 'Authorized', val: submissions?.summary?.approved || 0, color: 'bg-emerald-500' }
+                                    { label: 'Accepted', val: submissions?.summary?.accepted || 0, color: 'bg-emerald-500' }
                                 ].map((m, i) => (
                                     <div key={i} className="space-y-2">
                                         <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
@@ -410,7 +410,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                 <>
                     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
                         <div className="flex items-center gap-10 border-b border-slate-100 px-6 w-full lg:w-auto">
-                            {['shortlisted', 'approved', 'pending', 'rejected'].map((tab) => (
+                            {['shortlisted', 'accepted', 'pending', 'rejected'].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -481,7 +481,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                                     {item.project_title || item.team_name}
                                                 </span>
                                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                                    {item.team_name} • Protocol Alpha
+                                                    {item.team_name || item.project_title}
                                                 </span>
                                             </div>
                                         </td>
@@ -555,7 +555,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                                                 </button>
                                                             ) : (
                                                                 <>
-                                                                    {status !== 'approved' && status !== 'rejected' && (
+                                                                    {status !== 'accepted' && status !== 'rejected' && (
                                                                         <button 
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
@@ -570,12 +570,12 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                                                     <button 
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            handleUpdateStatus(item.submission_id || item.team_id || item._id, 'Approved');
+                                                                            handleUpdateStatus(item.submission_id || item.team_id || item._id, 'Accepted');
                                                                         }}
                                                                         className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
-                                                                        title="Approve"
+                                                                        title="Accept"
                                                                     >
-                                                                        Approve
+                                                                        Accept
                                                                     </button>
                                                                     <button 
                                                                         onClick={(e) => {
@@ -747,10 +747,10 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                     </div>
                                     <div className="flex gap-3">
                                         <button 
-                                            onClick={() => handleUpdateStatus(selectedSubmission.submission_id || selectedSubmission.team_id, 'Approved')}
+                                            onClick={() => handleUpdateStatus(selectedSubmission.submission_id || selectedSubmission.team_id, 'Accepted')}
                                             className="px-8 py-4 bg-emerald-50 text-emerald-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all"
                                         >
-                                            Approve Bundle
+                                            Accept Bundle
                                         </button>
                                         <button 
                                             onClick={() => handleUpdateStatus(selectedSubmission.submission_id || selectedSubmission.team_id, 'Rejected')}

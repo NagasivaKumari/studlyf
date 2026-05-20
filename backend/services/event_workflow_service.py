@@ -1,44 +1,52 @@
-from datetime import datetime
 from bson import ObjectId
-from db import participants_col, quizzes_col, submissions_col, events_col
+from db import participants_col, events_col
 
 class EventWorkflowService:
     """
-    Handles the internal business logic for different event phases 
-    (Assessment, Open Source, Offline Sprint, etc.)
+    Handles the internal business logic for different event phases.
+    Rules are looked up from the event's stage config, not hardcoded names.
     """
 
     @staticmethod
     async def process_phase_transition(event_id: str, participant_ids: list, next_stage: str):
         """
         Enforces phase-specific rules before advancing participants.
+        Reads stage config from the event to determine what rules to apply.
         """
         event = await events_col.find_one({"_id": ObjectId(event_id)})
-        event_type = event.get("event_type", "Hackathon")
+        if not event:
+            return True
 
-        # 1. Internal Rule: Assessment Phase (JB Institute style)
-        if "Assessment" in next_stage:
-            # Check if they have a passing quiz score
-            quiz = await quizzes_col.find_one({"event_id": event_id})
-            if quiz:
-                # In a real app, we would verify their actual test results here
-                pass
+        # Look up the next stage config to check its type
+        stages = event.get("stages", [])
+        stage_config = None
+        if isinstance(stages, list):
+            stage_config = next((s for s in stages if s.get("name") == next_stage), None)
 
-        # 2. Internal Rule: Registration Phase (SIRT/NIT style)
-        if "Registration" in next_stage:
-            # Verify team size and payment gatekeeper
-            pass
+        stage_type = (stage_config or {}).get("type", "").upper() if stage_config else ""
 
-        # 3. Internal Rule: Open Source (JB Institute style)
-        if "Open Source" in next_stage:
-            # Verify that they have submitted a PR link
-            pass
+        # Check quiz pass mark if advancing to a QUIZ-type stage
+        if stage_type == "QUIZ":
+            quiz_id = (stage_config.get("config") or {}).get("quiz_id")
+            if quiz_id:
+                pass  # In a real app, verify quiz results here
 
-        # 4. Standard Advancement
-        await participants_col.update_many(
-            {"_id": {"$in": [ObjectId(pid) for pid in participant_ids]}, "event_id": event_id},
-            {"$set": {"current_stage": next_stage, "status": "Shortlisted", "last_updated": datetime.utcnow()}}
-        )
+        # Check team size if advancing from a TEAM_FORMATION-type stage
+        if stage_type == "TEAM_FORMATION":
+            for pid in participant_ids:
+                participant = await participants_col.find_one({"_id": ObjectId(pid)})
+                if participant and participant.get("team_id"):
+                    from db import teams_col
+                    team = await teams_col.find_one({"_id": ObjectId(participant["team_id"])})
+                    if team:
+                        members = team.get("members", [])
+                        min_size = stage_config.get("min_team_size", 1) or event.get("min_team_size", 1)
+                        max_size = stage_config.get("max_team_size", 5) or event.get("max_team_size", 5)
+                        if len(members) < min_size or len(members) > max_size:
+                            raise Exception(f"Team size ({len(members)}) out of range ({min_size}-{max_size})")
+
+        # Stage rules passed - the route handler manages per-participant
+        # current_stage update + completed_stages push
         return True
 
 workflow_service = EventWorkflowService()

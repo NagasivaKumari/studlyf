@@ -334,13 +334,14 @@ const EventHub: React.FC = () => {
     const tabs = [
         { id: 'timeline', label: 'Timeline', icon: <Clock size={14} /> },
         { id: 'submissions', label: 'Submissions', icon: <FileText size={14} /> },
-        { id: 'team', label: 'My Team', icon: <UsersRound size={14} /> }
+        { id: 'team', label: 'My Team', icon: <UsersRound size={14} /> },
+        { id: 'results', label: 'Results', icon: <Trophy size={14} /> }
     ];
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-20 font-sans">
+        <div className="min-h-screen bg-slate-50 pt-32 pb-20 font-sans">
             {/* Navigation Header */}
-            <header className="bg-white border-b border-slate-100 sticky top-0 z-30">
+            <header className="bg-white border-b border-slate-100 sticky top-32 z-30">
                 <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
                     <div className="flex items-center gap-6">
                         <Link to="/opportunities/my-applications" className="p-3 hover:bg-slate-50 rounded-2xl text-slate-400 hover:text-slate-900 transition-all">
@@ -504,10 +505,10 @@ const EventHub: React.FC = () => {
                             <div className="space-y-10 max-w-3xl">
                                 <div>
                                     <h2 className="text-3xl font-black text-slate-900 tracking-tight">
-                                        {submissionStage?.name || 'Submit Your Project'}
+                                        {submissionStage?.name || 'Submission'}
                                     </h2>
                                     <p className="text-slate-500 font-medium mt-2">
-                                        {submissionStage?.description || 'Fill in your project details below.'}
+                                        {submissionStage?.description || 'Submit your work for this stage.'}
                                     </p>
                                 </div>
 
@@ -713,203 +714,213 @@ const EventHub: React.FC = () => {
                         })()}
 
                         {activeTab === 'team' && (
-                            <div className="space-y-12">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                    <div>
-                                        <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3 tracking-tight">
-                                            <UsersRound className="text-purple-600" /> Team Hub
-                                        </h1>
-                                        <p className="text-slate-500 font-medium mt-2">
-                                            Manage your collaborative protocol. Create, invite, and sync with your team.
-                                        </p>
-                                    </div>
+                            <div className="space-y-10 max-w-3xl">
+                                <div>
+                                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">My Team</h2>
+                                    <p className="text-slate-500 font-medium mt-2">
+                                        {team
+                                            ? `You're part of "${team.team_name}"`
+                                            : 'Create a new team or join an existing one using an invite code.'}
+                                    </p>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div className="p-10 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">
-                                        <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">Team Status</h2>
-                                        {team ? (
-                                            <div className="space-y-6">
-                                                <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                                                    <p className="text-2xl font-black text-slate-900">{team.team_name}</p>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Active Unit • {(team.members || []).length} Members</p>
-                                                    
-                                                    {/* Team Members List */}
-                                                    {(team.members || []).length > 0 && (
-                                                        <div className="mt-4 space-y-2">
-                                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Team Members</p>
-                                                            <div className="flex flex-wrap gap-2">
-                                                                {(team.members || []).map((member: any, idx: number) => (
-                                                                    <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-100 rounded-xl">
-                                                                        <div className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xs font-bold">
-                                                                            {member.name?.charAt(0) || member.email?.charAt(0) || '?'}
-                                                                        </div>
-                                                                        <div className="flex flex-col">
-                                                                            <span className="text-xs font-bold text-slate-700">{member.name || member.email || 'Member'}</span>
-                                                                            {member.email && (
-                                                                                <span className="text-[9px] text-slate-400">{member.email}</span>
-                                                                            )}
-                                                                        </div>
-                                                                        {member.is_leader && (
-                                                                            <span className="ml-1 px-1.5 py-0.5 bg-purple-600 text-white rounded text-[8px] font-black uppercase tracking-widest">Lead</span>
-                                                                        )}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                                                {isLeader && (
-                                                    <div className="space-y-4">
-                                                        <button
-                                                            onClick={generateInvite}
-                                                            disabled={working}
-                                                            className="w-full py-4 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
-                                                        >
-                                                            {working ? 'Processing...' : generatedCode ? 'Share Team Invite' : 'Generate Invite Code'}
-                                                        </button>
-                                                    </div>
-                                                )}
-
-                                                {generatedCode && (
-                                                    <div className="space-y-4 mt-4">
-                                                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-purple-50 border border-purple-100 rounded-[2rem] text-center">
-                                                                <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-2">Team Invite Code</p>
-                                                                <p className="text-3xl font-black text-purple-700 tracking-tighter font-mono">{generatedCode}</p>
-                                                                <p className="text-[10px] text-purple-400 font-bold mt-2">Share this code to let teammates join</p>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        navigator.clipboard.writeText(generatedCode);
-                                                                        setCodeCopied(true);
-                                                                        setTimeout(() => setCodeCopied(false), 2000);
-                                                                    }}
-                                                                    className="mt-4 flex items-center gap-2 mx-auto text-[10px] font-black text-purple-600 uppercase tracking-widest hover:underline"
-                                                                >
-                                                                    {codeCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                                                                    {codeCopied ? 'Copied!' : 'Copy Code'}
-                                                                </button>
-                                                            </motion.div>
-                                                            
-                                                            <button 
-                                                                onClick={() => setShowInviteLink(!showInviteLink)}
-                                                                className="w-full flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-purple-600 transition-colors"
-                                                            >
-                                                                <Share2 size={12} /> {showInviteLink ? 'Hide Invite Link' : 'Show Shareable Join Link'}
-                                                            </button>
-
-                                                            <AnimatePresence>
-                                                                {showInviteLink && (
-                                                                    <motion.div 
-                                                                        initial={{ opacity: 0, height: 0 }}
-                                                                        animate={{ opacity: 1, height: 'auto' }}
-                                                                        exit={{ opacity: 0, height: 0 }}
-                                                                        className="overflow-hidden"
-                                                                    >
-                                                                        <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl space-y-3">
-                                                                            <p className="text-[10px] font-bold text-slate-500 leading-relaxed">
-                                                                                Share this direct link with your teammates.
-                                                                            </p>
-                                                                            <div className="flex gap-2">
-                                                                                <div className="flex-grow p-3 bg-white border border-slate-200 rounded-xl text-[10px] font-mono text-slate-500 truncate">
-                                                                                    {`${FRONTEND_URL}/#/events/${eventId}?join=${generatedCode}`}
-                                                                                </div>
-                                                                                <button 
-                                                                                    onClick={() => {
-                                                                                        navigator.clipboard.writeText(`${FRONTEND_URL}/#/events/${eventId}?join=${generatedCode}`);
-                                                                                        setLinkCopied(true);
-                                                                                        setTimeout(() => setLinkCopied(false), 2000);
-                                                                                    }}
-                                                                                    className="p-3 bg-slate-900 text-white rounded-xl hover:bg-purple-600 transition-colors"
-                                                                                >
-                                                                                    {linkCopied ? <Check size={14} /> : <Copy size={14} />}
-                                                                                </button>
-                                                                            </div>
-                                                                        </div>
-                                                                    </motion.div>
-                                                                )}
-                                                            </AnimatePresence>
-                                                    </div>
-                                                )}
-
-                                                {!isLeader && !generatedCode && (
-                                                    <div className="p-6 bg-slate-50 border border-slate-100 rounded-3xl">
-                                                        <p className="text-xs font-bold text-slate-500 text-center">Only the unit leader can generate new invite codes.</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            // Check if this is a solo-only event
-                                            (event as any)?.min_team_size === 1 && (event as any)?.max_team_size === 1 ? (
-                                                <div className="space-y-6">
-                                                    <div className="p-6 bg-emerald-50 border border-emerald-100 rounded-3xl">
-                                                        <div className="flex items-center gap-3 mb-3">
-                                                            <div className="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center">
-                                                                <Check size={16} />
-                                                            </div>
-                                                            <p className="text-lg font-black text-emerald-900">Solo Participation</p>
-                                                        </div>
-                                                        <p className="text-sm text-emerald-700 font-medium">
-                                                            This event is designed for individual participants only. You're all set to participate solo!
-                                                        </p>
-                                                    </div>
-                                                    <p className="text-xs text-slate-400 text-center">
-                                                        No team formation required for this event.
-                                                    </p>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-6">
-                                                    <p className="text-sm text-slate-500 font-medium">Initialize a new team to begin the collaborative phase.</p>
-                                                    <input
-                                                        value={teamName}
-                                                        onChange={(e) => setTeamName(e.target.value)}
-                                                        placeholder="Unit Designation (Team Name)"
-                                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
-                                                    />
-                                                    <button
-                                                        onClick={createTeam}
-                                                        disabled={working || !teamName.trim()}
-                                                        className="w-full py-4 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all"
-                                                    >
-                                                        Initialize Team
-                                                    </button>
-                                                </div>
-                                            )
-                                        )}
-                                    </div>
-
-                                    {(event as any)?.min_team_size === 1 && (event as any)?.max_team_size === 1 ? (
-                                        // Hide join section for solo-only events
-                                        <div className="p-10 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm">
-                                            <div className="text-center py-8">
-                                                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                                    <Check size={24} className="text-slate-400" />
-                                                </div>
-                                                <p className="text-sm text-slate-400 font-medium">Team joining not available for solo events</p>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="p-10 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">
-                                            <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">Join Existing</h2>
-                                            <div className="space-y-6">
-                                                <p className="text-sm text-slate-500 font-medium">Synchronize with an existing unit using a secure invite code.</p>
+                                {!team ? (
+                                    <>
+                                        {/* Create Team */}
+                                        <div className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-xl shadow-slate-900/5 space-y-6">
+                                            <h3 className="text-xl font-black text-slate-900">Create a Team</h3>
+                                            <p className="text-slate-500 text-sm font-medium">Start a new team and invite your classmates to join.</p>
+                                            <div className="flex gap-4">
                                                 <input
-                                                    value={inviteCode}
-                                                    onChange={(e) => setInviteCode(e.target.value)}
-                                                    disabled={Boolean(team)}
-                                                    placeholder="Invite Code"
-                                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
+                                                    type="text"
+                                                    placeholder="Enter your team name"
+                                                    value={teamName}
+                                                    onChange={(e) => setTeamName(e.target.value)}
+                                                    className="flex-1 px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
                                                 />
                                                 <button
-                                                    onClick={joinByCode}
-                                                    disabled={working || !inviteCode.trim() || Boolean(team)}
-                                                    className="w-full py-4 rounded-2xl bg-purple-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-purple-900/10 disabled:opacity-50"
+                                                    onClick={createTeam}
+                                                    disabled={working || !teamName.trim()}
+                                                    className="px-8 py-4 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl disabled:opacity-50"
                                                 >
-                                                    Sync with Team
+                                                    {working ? 'Creating...' : 'Create'}
                                                 </button>
                                             </div>
                                         </div>
-                                    )}
+
+                                        {/* Join Team */}
+                                        <div className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-xl shadow-slate-900/5 space-y-6">
+                                            <h3 className="text-xl font-black text-slate-900">Join a Team</h3>
+                                            <p className="text-slate-500 text-sm font-medium">Ask your team lead for the invite code.</p>
+                                            <div className="flex gap-4">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Enter invite code"
+                                                    value={inviteCode}
+                                                    onChange={(e) => setInviteCode(e.target.value)}
+                                                    className="flex-1 px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
+                                                />
+                                                <button
+                                                    onClick={joinByCode}
+                                                    disabled={working || !inviteCode.trim()}
+                                                    className="px-8 py-4 rounded-2xl bg-purple-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-purple-900/10 disabled:opacity-50"
+                                                >
+                                                    Join
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Team Info Card */}
+                                        <div className="p-10 bg-gradient-to-br from-slate-900 to-purple-900 rounded-[3rem] text-white shadow-2xl shadow-purple-900/20 space-y-6">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-purple-300">Your Team</p>
+                                                    <h3 className="text-3xl font-black mt-2">{team.team_name}</h3>
+                                                </div>
+                                                <div className="px-4 py-2 bg-white/10 rounded-full text-[10px] font-black uppercase tracking-widest">
+                                                    {team.members?.length || 1} member{(team.members?.length || 1) !== 1 ? 's' : ''}
+                                                </div>
+                                            </div>
+
+                                            {/* Members List */}
+                                            <div className="space-y-3">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-purple-300">Members</p>
+                                                {team.members?.map((m: any, i: number) => (
+                                                    <div key={i} className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl backdrop-blur-sm">
+                                                        <div className="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-sm font-black">
+                                                            {(m.name || m.email || '?').charAt(0).toUpperCase()}
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <p className="font-black text-sm">{m.name || 'Unknown'}</p>
+                                                            <p className="text-xs text-purple-300 font-medium">{m.email}</p>
+                                                        </div>
+                                                        {m.is_leader && (
+                                                            <span className="px-3 py-1 bg-yellow-400 text-slate-900 rounded-full text-[10px] font-black uppercase tracking-widest">
+                                                                Leader
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Invite Section (Leader only) */}
+                                        {isLeader && (
+                                            <div className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-xl shadow-slate-900/5 space-y-6">
+                                                <h3 className="text-xl font-black text-slate-900">Invite Teammates</h3>
+                                                <p className="text-slate-500 text-sm font-medium">Generate an invite code for others to join your team.</p>
+                                                
+                                                {!generatedCode ? (
+                                                    <button
+                                                        onClick={generateInvite}
+                                                        disabled={working}
+                                                        className="px-8 py-4 rounded-2xl bg-[#6C3BFF] text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-purple-900/10"
+                                                    >
+                                                        {working ? 'Generating...' : 'Generate Invite Code'}
+                                                    </button>
+                                                ) : (
+                                                    <div className="space-y-4">
+                                                        <div className="flex items-center gap-4 p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                                                            <code className="flex-1 text-lg font-black text-purple-700 tracking-wider">{generatedCode}</code>
+                                                            <button
+                                                                onClick={() => { navigator.clipboard.writeText(generatedCode); setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }}
+                                                                className="p-3 bg-white rounded-xl text-purple-600 hover:bg-purple-100 transition-all"
+                                                            >
+                                                                {codeCopied ? <Check size={18} /> : <Copy size={18} />}
+                                                            </button>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => {
+                                                                const link = `${window.location.origin}${window.location.pathname}?join=${generatedCode}`;
+                                                                navigator.clipboard.writeText(link);
+                                                                setLinkCopied(true);
+                                                                setTimeout(() => setLinkCopied(false), 2000);
+                                                            }}
+                                                            className="flex items-center gap-3 px-6 py-4 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl"
+                                                        >
+                                                            <Share2 size={14} />
+                                                            {linkCopied ? 'Copied!' : 'Copy Invite Link'}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Not leader — show join code input */}
+                                        {!isLeader && (
+                                            <div className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-xl shadow-slate-900/5 space-y-6">
+                                                <h3 className="text-xl font-black text-slate-900">Sync with Team</h3>
+                                                <p className="text-slate-500 text-sm font-medium">Enter the invite code shared by your team lead to sync.</p>
+                                                <div className="flex gap-4">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Invite Code"
+                                                        value={inviteCode}
+                                                        onChange={(e) => setInviteCode(e.target.value)}
+                                                        className="flex-1 px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
+                                                    />
+                                                    <button
+                                                        onClick={joinByCode}
+                                                        disabled={working || !inviteCode.trim() || Boolean(team)}
+                                                        className="w-full py-4 rounded-2xl bg-purple-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-purple-900/10 disabled:opacity-50"
+                                                    >
+                                                        Sync with Team
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'results' && (
+                            <div className="p-8">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <Trophy size={24} className="text-yellow-500" />
+                                    <h3 className="text-xl font-black text-slate-900">Results & Feedback</h3>
                                 </div>
+
+                                {isEvaluated && evaluation ? (
+                                    <div className="space-y-6">
+                                        <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-[2rem] p-8 border border-yellow-100">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <Award size={20} className="text-yellow-600" />
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-yellow-600">Your Score</p>
+                                            </div>
+                                            <p className="text-5xl font-black text-slate-900 mb-2">
+                                                {evaluation.score}<span className="text-2xl text-slate-400">/100</span>
+                                            </p>
+                                            {evaluation.evaluated_at && (
+                                                <p className="text-xs font-bold text-slate-400">
+                                                    Evaluated {new Date(evaluation.evaluated_at).toLocaleDateString()}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {evaluation.feedback && (
+                                            <div className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <FileText size={18} className="text-purple-600" />
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Judge Feedback</p>
+                                                </div>
+                                                <p className="text-sm font-bold text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                                    {evaluation.feedback}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="bg-white rounded-[2rem] p-12 border border-slate-100 shadow-sm text-center">
+                                        <Trophy size={48} className="mx-auto mb-4 text-slate-200" />
+                                        <p className="text-lg font-black text-slate-400">No results yet</p>
+                                        <p className="text-sm font-bold text-slate-400 mt-2">
+                                            Results will appear here once the judges complete their evaluation.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

@@ -63,6 +63,7 @@ const DashboardHome: React.FC = () => {
   const [opportunities, setOpportunities] = useState<any[]>([]);
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
   const [overview, setOverview] = useState<{ upcoming: any[]; timeline: any[] } | null>(null);
+  const [myEvents, setMyEvents] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchOpps = async () => {
@@ -84,6 +85,24 @@ const DashboardHome: React.FC = () => {
       }
     };
     fetchOpps();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchEvents = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/events/my-registrations`, {
+          headers: { ...authHeaders() },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setMyEvents(data);
+        }
+      } catch (err) {
+        console.error("Error fetching my events:", err);
+      }
+    };
+    fetchEvents();
   }, [user]);
 
   const statusChip = (s: string | undefined) => {
@@ -272,7 +291,7 @@ const DashboardHome: React.FC = () => {
             <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-white/20" />
           </div>
 
-          <div className="max-w-[1600px] mx-auto px-4 sm:px-8 lg:px-12 relative z-10 pt-24">
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-8 lg:px-12 relative z-10 pt-32">
             <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -450,7 +469,7 @@ const DashboardHome: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 relative z-10 pb-20">
         {/* Learner widgets: upcoming deadlines + applications */}
         {user ? (
-          <section className="mb-16 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <><section className="mb-16 grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 bg-white border border-purple-100 rounded-[2rem] p-6 sm:p-8 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#7C3AED] to-[#A78BFA]" />
               <div className="flex items-end justify-between gap-6">
@@ -541,7 +560,73 @@ const DashboardHome: React.FC = () => {
               </Link>
             </div>
           </section>
-        ) : null}
+
+          {myEvents.length > 0 && (
+            <section className="mb-16">
+              <div className="bg-white border border-purple-100 rounded-[2rem] p-6 sm:p-8 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#7C3AED] to-[#A78BFA]" />
+                <div className="flex items-end justify-between gap-6">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Your activities</p>
+                    <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 mt-2">My events & opportunities</h3>
+                    <p className="text-sm font-medium text-slate-500 mt-2">
+                      Track your stage progress across events and opportunities.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 space-y-4">
+                  {myEvents.map((ev: any) => (
+                    <div
+                      key={ev.event_id}
+                      onClick={() => {
+                        const path = ev.source === 'opportunity'
+                          ? `/opportunities/${ev.event_id}`
+                          : `/events/${ev.event_id}/hub`;
+                        navigate(path);
+                      }}
+                      className="p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-purple-200 hover:bg-white transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between gap-4 mb-3">
+                        <div className="min-w-0">
+                          <p className="font-black text-slate-900 truncate">{ev.event_title}</p>
+                          <p className="text-xs font-bold text-slate-500 mt-1">
+                            {ev.source === 'opportunity'
+                              ? `${ev.type} · ${ev.status}`
+                              : `${ev.current_stage || 'Registered'} · ${ev.stages_cleared}/${ev.total_stages} stages`}
+                          </p>
+                        </div>
+                        {ev.source === 'event' && (
+                          <span className="shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-purple-50 text-purple-700 border-purple-200">
+                            {ev.progress_pct}%
+                          </span>
+                        )}
+                        {ev.source === 'opportunity' && (
+                          <span className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                            ev.status === 'accepted' || ev.status === 'shortlisted'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : ev.status === 'rejected'
+                              ? 'bg-red-50 text-red-700 border-red-200'
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}>
+                            {ev.status}
+                          </span>
+                        )}
+                      </div>
+                      {ev.source === 'event' && (
+                        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full transition-all duration-500"
+                            style={{ width: `${ev.progress_pct}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+          </>) : null}
 
         {/* Infinite Scrolling Logo (Left to Right) */}
         <div className="mb-24 relative flex w-full flex-col items-center justify-center overflow-hidden py-10 border-b border-black/5 bg-white">

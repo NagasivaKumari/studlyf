@@ -168,36 +168,74 @@ const Courses: React.FC = () => {
   // Fetch courses and user state
   useEffect(() => {
     const fetchData = async () => {
+      console.log('🔵 Starting course fetch from:', `${API_BASE_URL}/api/courses`);
       try {
         setLoading(true);
-        // Get all courses
-        const coursesRes = await fetch(`${API_BASE_URL}/api/courses`);
+        // Get all courses - REQUIRED
+        console.log('📡 Fetching courses...');
+        const coursesRes = await fetch(`${API_BASE_URL}/api/courses`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        console.log('📥 Response status:', coursesRes.status);
+        
+        if (!coursesRes.ok) {
+          console.error('❌ Courses API error:', coursesRes.status, coursesRes.statusText);
+          const errText = await coursesRes.text();
+          console.error('Error body:', errText);
+          setCourses([]);
+          return;
+        }
+        
         const coursesData = await coursesRes.json();
-        setCourses(coursesData && coursesData.length > 0 ? coursesData : []);
+        console.log('✅ Courses data received:', coursesData);
+        console.log('📊 Total courses:', coursesData?.length || 0);
+        
+        if (coursesData && Array.isArray(coursesData) && coursesData.length > 0) {
+          setCourses(coursesData);
+          console.log('✓ Courses set in state');
+        } else {
+          console.warn('⚠️ No courses in response or invalid format');
+          setCourses([]);
+        }
+      } catch (err) {
+        console.error('💥 Error fetching courses:', err);
+        setCourses([]);
+      } finally {
+        setLoading(false);
+        console.log('🏁 Loading finished');
+      }
 
-        // Get user course states
-        if (userId) {
+      // Get user course states - OPTIONAL (doesn't block course display)
+      if (userId) {
+        try {
           const stateRes = await fetch(`${API_BASE_URL}/api/user-courses/${userId}`);
+          if (!stateRes.ok) {
+            console.warn('User-courses API error:', stateRes.status);
+            return;
+          }
           const stateData = await stateRes.json();
 
           const states: { [key: string]: string } = {};
-          stateData.enrolled.forEach((c: Course) => {
+          stateData.enrolled?.forEach((c: Course) => {
             states[c._id] = 'ENROLLED';
           });
-          stateData.in_cart.forEach((c: Course) => {
+          stateData.in_cart?.forEach((c: Course) => {
             states[c._id] = 'IN_CART';
           });
-          stateData.available.forEach((c: Course) => {
+          stateData.available?.forEach((c: Course) => {
             states[c._id] = 'NOT_PURCHASED';
           });
 
           setUserStates(states);
+          console.log('User states fetched');
+        } catch (err) {
+          console.warn('Error fetching user-courses:', err);
+          // Silently fail - don't break course display
         }
-      } catch (err) {
-        console.error('Error fetching courses:', err);
-        setCourses([]);
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -271,20 +309,45 @@ const Courses: React.FC = () => {
           ))}
         </div>
 
-        {/* Course Grid */}
-        <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-          <AnimatePresence>
-            {filteredCourses.map((course) => (
-              <motion.div key={course._id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <CourseCard
-                  {...course}
-                  user_state={(userStates[course._id] || 'NOT_PURCHASED') as any}
-                  onCardClick={handleCourseClick}
-                />
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </motion.div>
+        {/* Debug Info */}
+        <div className="mb-8 text-xs text-gray-500 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200">
+          <div>API: {API_BASE_URL}/api/courses</div>
+          <div>Total courses: {courses.length}</div>
+          <div>Filtered courses: {filteredCourses.length}</div>
+          <div>User ID: {userId}</div>
+          <div>Category: {activeCategory}</div>
+        </div>
+
+        {/* Course Grid or Empty State */}
+        {filteredCourses.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="text-2xl font-black text-gray-400 mb-4">No Courses Found</div>
+            {courses.length === 0 && (
+              <div className="text-sm text-gray-500">
+                Courses not loading from API. Check browser console for errors.
+              </div>
+            )}
+            {courses.length > 0 && activeCategory !== 'All' && (
+              <div className="text-sm text-gray-500">
+                No courses in {activeCategory} category.
+              </div>
+            )}
+          </div>
+        ) : (
+          <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
+            <AnimatePresence>
+              {filteredCourses.map((course) => (
+                <motion.div key={course._id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <CourseCard
+                    {...course}
+                    user_state={(userStates[course._id] || 'NOT_PURCHASED') as any}
+                    onCardClick={handleCourseClick}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        )}
       </div>
     </div>
   );

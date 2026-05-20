@@ -82,27 +82,26 @@ async def add_security_headers(request: Request, call_next):
 @app.on_event("startup")
 async def startup_event():
     """Handle startup tasks including database connection and scheduler."""
+    # Attempt database connection; allow failures to propagate so the
+    # process fails fast when no real MongoDB is available.
+    await db.connect()
+    logger.info("Application startup completed successfully")
+
+    # Start background scheduler for reminders (non-fatal)
     try:
-        # Attempt database connection
-        await db.connect()
-        logger.info("Application startup completed successfully")
-        
-        # Start background scheduler for reminders
-        try:
-            from apscheduler.schedulers.asyncio import AsyncIOScheduler
-            from services.reminder_service import reminder_service
-            
-            scheduler = AsyncIOScheduler()
-            scheduler.add_job(reminder_service.send_judge_reminders, 'interval', hours=12)
-            scheduler.add_job(reminder_service.send_participant_reminders, 'interval', hours=6)
-            scheduler.start()
-            logger.info("Background reminder scheduler started")
-        except ImportError as e:
-            logger.warning(f"Scheduler not available - {e}")
-            logger.info("Application running without background reminders")
-        
-    except Exception as e:
-        logger.error(f"Startup error: {e}")
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from services.reminder_service import reminder_service
+
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(reminder_service.send_judge_reminders, 'interval', hours=12)
+        scheduler.add_job(reminder_service.send_participant_reminders, 'interval', hours=6)
+        scheduler.add_job(reminder_service.send_24h_participant_reminders, 'interval', hours=2)
+        scheduler.add_job(reminder_service.send_1h_participant_reminders, 'interval', minutes=30)
+        scheduler.start()
+        logger.info("Background reminder scheduler started")
+    except ImportError as e:
+        logger.warning(f"Scheduler not available - {e}")
+        logger.info("Application running without background reminders")
 
 @app.get("/")
 async def root():
@@ -115,6 +114,9 @@ async def health_check():
         "status": "ok",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+# Debug endpoint removed: career-assessment templates are served from the templates collection.
 
 @app.get("/debug/db-test")
 async def debug_database():
@@ -365,7 +367,7 @@ from routes import submission_routes, judge_routes, event_routes, dashboard_rout
 from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from routes import stage_navigation_routes, team_join_request_routes
-from routes import student_features_routes
+from routes import student_features_routes, enhanced_features_routes, websocket_routes
 from rate_limiter import rate_limit, check_rate_limit
 
 
@@ -373,6 +375,35 @@ from rate_limiter import rate_limit, check_rate_limit
 async def startup_db_client():
     from db import db
     await db.connect()
+    # Ensure career assessment templates exist (seed defaults if empty)
+    try:
+        from db import career_assessment_templates_col
+        count = await career_assessment_templates_col.count_documents({})
+        if count == 0:
+            default_templates = [
+                {"step": 1, "title": "Problem Space", "question": "Which engineering context excites you most?", "options": [
+                    {"label": "Distributed Systems", "value": "distributed"},
+                    {"label": "Data Orchestration", "value": "data"},
+                    {"label": "User Interaction", "value": "frontend"},
+                    {"label": "ML Lifecycle", "value": "ml"}
+                ]},
+                {"step": 2, "title": "Mental Model", "question": "How do you approach problem-solving?", "options": [
+                    {"label": "First Principles", "value": "first_principles"},
+                    {"label": "Pattern Recognition", "value": "patterns"},
+                    {"label": "Iterative Experimentation", "value": "iterative"},
+                    {"label": "Design Thinking", "value": "design"}
+                ]},
+                {"step": 3, "title": "Tool Preference", "question": "What defines your ideal development loop?", "options": [
+                    {"label": "Go / Rust / Kafka / k8s", "value": "infra"},
+                    {"label": "Python / SQL / Spark", "value": "data"},
+                    {"label": "TypeScript / React", "value": "frontend"},
+                    {"label": "Python / PyTorch / LangChain", "value": "ai"}
+                ]}
+            ]
+            await career_assessment_templates_col.insert_many(default_templates)
+            logger.info("Seeded default career assessment templates")
+    except Exception as e:
+        logger.warning(f"Could not seed career assessment templates: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
@@ -405,6 +436,8 @@ app.include_router(hackathon_submission_routes.router)
 app.include_router(stage_navigation_routes.router)
 app.include_router(team_join_request_routes.router)
 app.include_router(student_features_routes.router)
+app.include_router(enhanced_features_routes.router)
+app.include_router(websocket_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -3299,25 +3332,38 @@ async def get_admin_students():
 async def register_student(data: dict, x_admin_email: str = Header(...)):
     """Manually register a student into MongoDB"""
     try:
-        email = data.get("email")
+        email = data.get("email", "").strip().lower()
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+            
         name = data.get("name")
         college = data.get("college", "")
         role = data.get("role", "student")
         
-        await users_col.update_one(
-            {"email": email},
-            {"$set": {
-                "email": email,
-                "full_name": name,
-                "college": college,
-                "role": role,
-                "created_at": datetime.utcnow().isoformat(),
-                "status": "active"
-            }},
-            upsert=True
-        )
+        # Check if user already exists
+        existing = await users_col.find_one({"email": email})
+        if existing:
+            raise HTTPException(status_code=400, detail=f"User with email {email} already exists")
+        
+        from auth import get_password_hash
+        import uuid
+        temp_password = "Temp@123456"  # Forces password reset on first login
+        hashed = get_password_hash(temp_password)
+        
+        await users_col.insert_one({
+            "user_id": str(uuid.uuid4()),
+            "email": email,
+            "password": hashed,
+            "full_name": name,
+            "college": college,
+            "role": role,
+            "created_at": datetime.utcnow().isoformat(),
+            "status": "active"
+        })
         await log_admin_action(x_admin_email, "Registered Student", f"Email: {email}, Name: {name}")
-        return {"status": "success", "email": email}
+        return {"status": "success", "email": email, "message": "Temporary password: Temp@123456"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -5340,7 +5386,7 @@ async def login(credentials: UserLogin, request: Request):
         except Exception:
             inst = None
         if inst:
-            resolved_institution_id = str(inst.get("_id"))
+            resolved_institution_id = str(inst.get("institution_id") or "")
             try:
                 await users_col.update_one(
                     {"_id": user["_id"]},
@@ -5865,13 +5911,22 @@ async def create_or_update_institution(inst: Institution):
     INSTITUTION MANAGEMENT: Core system profile setup.
     """
     inst_doc = inst.dict(exclude={"id"})
+    
+    # Check for duplicate email when creating new institution
+    if not inst.id:
+        from db import institutions_col
+        existing_inst = await institutions_col.find_one({"email": inst.email.strip().lower()})
+        if existing_inst:
+            raise HTTPException(status_code=400, detail="An institution with this email already exists")
+    
+    inst_doc["updated_at"] = datetime.now(timezone.utc)
     if inst.id:
         from bson import ObjectId
-        inst_doc["updated_at"] = datetime.now(timezone.utc)
         await institutions_col.update_one({"_id": ObjectId(inst.id)}, {"$set": inst_doc})
         await log_admin_action(inst.email, "INSTITUTION_UPDATE", f"Institution {inst.name} updated")
         return {"status": "updated", "id": inst.id}
     else:
+        from db import institutions_col
         result = await institutions_col.insert_one(inst_doc)
         await log_admin_action(inst.email, "INSTITUTION_CREATE", f"New institution created: {inst.name}")
         return {"status": "created", "id": str(result.inserted_id)}
@@ -5915,6 +5970,15 @@ async def register_for_event(event_id: str, participant: Participant):
         p_doc["institution_id"] = inst_id
         p_doc["event_title"] = event.get("title")
         p_doc["registered_at"] = datetime.utcnow()
+
+        # Set current_stage to the first stage of the event
+        if not p_doc.get("current_stage"):
+            event_stages = event.get("stages", [])
+            if event_stages and isinstance(event_stages, list) and len(event_stages) > 0:
+                first_stage = event_stages[0]
+                p_doc["current_stage"] = first_stage.get("name") or first_stage.get("type")
+            else:
+                p_doc["current_stage"] = None
         
         # Check if this is from opportunity portal to avoid duplicate emails
         is_from_opportunity = p_doc.get("source") == "opportunity_portal"

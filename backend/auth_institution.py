@@ -7,7 +7,7 @@ import logging
 from fastapi import Depends, Header, HTTPException
 from auth_utils import decode_access_token
 from bson import ObjectId
-from db import users_col, events_col
+from db import users_col, events_col, opportunities_col
 
 logger = logging.getLogger("auth_institution")
 
@@ -70,7 +70,8 @@ def assert_institution_scope(institution_id: Optional[str], user: dict) -> None:
 
 
 async def assert_institution_owns_event(event_id: str, user: dict) -> dict:
-    """Return event doc if the caller may manage it. Handles both ObjectId and UUID-format event IDs."""
+    """Return event doc if the caller may manage it. Falls back to opportunities_col when the ID is
+    a standalone opportunity (not linked to an events_col document)."""
     from bson.errors import InvalidId
     
     # Build a resilient query that works for both ObjectId (24-char hex) and UUID/string IDs
@@ -83,13 +84,16 @@ async def assert_institution_owns_event(event_id: str, user: dict) -> dict:
     
     ev = await events_col.find_one({"$or": id_query})
     if not ev:
+        # Fallback: the ID might belong to a standalone opportunity
+        ev = await opportunities_col.find_one({"$or": id_query})
+    if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
     role = user.get("role") or ""
     if _is_admin(role):
         return ev
     if str(role).lower() != "institution":
         raise HTTPException(status_code=403, detail="Institution access required")
-    if str(user.get("institution_id") or "") != str(ev.get("institution_id") or ""):
+    if str(user.get("institution_id") or "") != str(ev.get("institution_id") or str(ev.get("createdBy") or "")):
         raise HTTPException(status_code=403, detail="Not authorized for this event")
     return ev
 

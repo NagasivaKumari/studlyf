@@ -74,6 +74,6 @@ class InstitutionalAnalyticsService:
             {"$sort": {"count": -1}}
         ]
         results = await participants_col.aggregate(pipeline).to_list(None)
-        return [{"label": r["_id"] or "General", "value": r["count"]} for r in results]
+        return [{"label": r["_id"] or "", "value": r["count"]} for r in results]
 
 analytics_service = InstitutionalAnalyticsService()

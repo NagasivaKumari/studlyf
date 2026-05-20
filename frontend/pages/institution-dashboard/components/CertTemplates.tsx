@@ -88,7 +88,7 @@ export const Template1: React.FC<{ data: CertData }> = ({ data }) => (
         </div>
       )}
       <div style={{ textAlign: 'center', fontSize: 13, color: '#334155', fontFamily: 'sans-serif', lineHeight: 1.7, maxWidth: 480, margin: '0 auto 8px' }}>
-        {data.bodyText} <strong>"{data.eventName || 'Hackathon'}"</strong>
+        {data.bodyText} <strong>"{data.eventName || 'Event'}"</strong>
         {data.duration && <span> during <strong>{data.duration}</strong></span>}
         {data.venue && <span> at {data.venue}</span>}.
       </div>
@@ -162,7 +162,7 @@ export const Template3: React.FC<{ data: CertData }> = ({ data }) => (
         <LogoBox src={data.eventLogo} label="EVENT" size={48} />
       </div>
       <div style={{ textAlign: 'center', marginBottom: 12 }}>
-        <div style={{ fontSize: 32, fontWeight: 900, color: '#0F172A', letterSpacing: 2 }}>{data.eventName || 'Hackathon'}</div>
+        <div style={{ fontSize: 32, fontWeight: 900, color: '#0F172A', letterSpacing: 2 }}>{data.eventName || 'Event'}</div>
         <div style={{ fontSize: 14, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 3 }}>{data.certType.toUpperCase()}</div>
         <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>This certificate is awarded to</div>
       </div>
@@ -280,7 +280,7 @@ export const Template5: React.FC<{ data: CertData }> = ({ data }) => (
         </div>
       )}
       <div style={{ fontSize: 13, color: '#334155', fontFamily: 'sans-serif', lineHeight: 1.75, maxWidth: 480, margin: '0 auto 8px', textAlign: 'center' }}>
-        {data.bodyText} <strong>"{data.eventName || 'Hackathon Name'}"</strong>
+        {data.bodyText} <strong>"{data.eventName || 'Event'}"</strong>
         {data.duration && <span> during <strong>{data.duration}</strong></span>}
         {data.venue && <span> at <strong>{data.venue}</strong></span>}.
       </div>

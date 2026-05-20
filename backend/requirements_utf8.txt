@@ -86,3 +86,4 @@ wrapt==2.1.2
 zopfli==0.4.1
 pdfplumber
 jinja2
+dotenv

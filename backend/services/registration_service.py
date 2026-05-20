@@ -171,7 +171,14 @@ async def complete_registration(
         event = await events_col.find_one({"_id": ObjectId(event_id)})
         if not event:
             return {"error": "Event not found"}
-        
+
+        # Determine first stage from event stages to set as current_stage
+        event_stages = event.get("stages", [])
+        first_stage_name = None
+        if event_stages and isinstance(event_stages, list) and len(event_stages) > 0:
+            first_stage = event_stages[0]
+            first_stage_name = first_stage.get("name") or first_stage.get("type")
+
         # Create/update participant
         participant_doc = {
             "event_id": str(event_id),
@@ -179,6 +186,7 @@ async def complete_registration(
             "institution_id": institution_id or event.get("createdBy") or event.get("institution_id"),
             "name": name,
             "email": email,
+            "current_stage": first_stage_name,
             "registration_data": merged_data,
             "registration_fields_filled": registration_data,
             "prefilled_fields_used": merge_result["prefilled_count"],
@@ -194,6 +202,7 @@ async def complete_registration(
         )
         
         # Store registration submission in submission_data for tracking
+        actual_stage_name = first_stage_name or event.get("title", "registration")
         await submission_data_col.update_one(
             {
                 "event_id": str(event_id),
@@ -205,7 +214,7 @@ async def complete_registration(
                     "event_id": str(event_id),
                     "user_id": str(user_id),
                     "stage_id": "registration",
-                    "stage_name": "Registration",
+                    "stage_name": actual_stage_name,
                     "data": merged_data,
                     "submitted_at": datetime.now(timezone.utc),
                     "status": "submitted",

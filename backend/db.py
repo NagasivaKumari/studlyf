@@ -3,52 +3,6 @@ import os
 import certifi
 import logging
 from dotenv import load_dotenv
-
-class MockCollection:
-    """Mock collection that returns empty results when database is not available."""
-    async def find_one(self, *args, **kwargs):
-        return None
-    
-    async def find(self, *args, **kwargs):
-        return MockCursor()
-    
-    async def insert_one(self, *args, **kwargs):
-        return MockResult()
-    
-    async def update_one(self, *args, **kwargs):
-        return MockResult()
-    
-    async def delete_one(self, *args, **kwargs):
-        return MockResult()
-    
-    async def count_documents(self, *args, **kwargs):
-        return 0
-    
-    def aggregate(self, *args, **kwargs):
-        return MockCursor()
-    
-    async def create_index(self, *args, **kwargs):
-        pass
-
-class MockCursor:
-    """Mock cursor that returns empty results."""
-    async def to_list(self, length=None):
-        return []
-    
-    def __aiter__(self):
-        return self
-    
-    async def __anext__(self):
-        raise StopAsyncIteration
-
-class MockResult:
-    """Mock result that returns default values."""
-    def __init__(self):
-        self.inserted_id = "mock_id"
-        self.matched_count = 0
-        self.modified_count = 0
-        self.deleted_count = 0
-
 # Setup production logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("db_service")
@@ -110,14 +64,94 @@ class DatabaseManager:
             logger.info("MongoDB connection closed.")
 
     async def ensure_indexes(self):
-        """Enforces performance and data integrity."""
+        """Enforces performance and data integrity for production scale (1M+ records)."""
         if self.db is None:
             return
         try:
+            # ── Users ──
             await self.db.users.create_index("user_id", unique=True)
             await self.db.users.create_index("email", unique=True)
+            
+            # ── Institutions ──
             await self.db.institutions.create_index("name", unique=True)
             await self.db.institutions.create_index("institution_id", unique=True)
+            await self.db.institutions.create_index("email", unique=True, sparse=True)
+            
+            # ── Events (supports institution dashboard queries) ──
+            await self.db.events.create_index([("institution_id", 1), ("status", 1)])
+            await self.db.events.create_index([("institution_id", 1), ("created_at", -1)])
+            await self.db.events.create_index("status")
+            
+            # ── Participants (critical for 1M+ scale: event+user lookup, stage filtering) ──
+            await self.db.participants.create_index(
+                [("event_id", 1), ("user_id", 1)], unique=True
+            )
+            await self.db.participants.create_index(
+                [("institution_id", 1), ("event_id", 1)]
+            )
+            await self.db.participants.create_index(
+                [("event_id", 1), ("current_stage", 1)])
+            await self.db.participants.create_index(
+                [("event_id", 1), ("status", 1)])
+            await self.db.participants.create_index(
+                [("user_id", 1), ("event_id", 1)])
+            
+            # ── Teams ──
+            await self.db.teams.create_index([("event_id", 1), ("team_name", 1)], unique=True)
+            await self.db.teams.create_index([("event_id", 1)])
+            await self.db.teams.create_index([("invite_code", 1)], sparse=True, unique=True)
+            
+            # ── Submissions (stage-level lookups) ──
+            await self.db.submission_data.create_index(
+                [("event_id", 1), ("stage_id", 1), ("user_id", 1)],
+                unique=True, sparse=True
+            )
+            await self.db.submission_data.create_index(
+                [("event_id", 1), ("stage_id", 1), ("team_id", 1)],
+                unique=True, sparse=True
+            )
+            await self.db.submission_data.create_index([("event_id", 1), ("stage_id", 1)])
+            
+            # ── Notifications ──
+            await self.db.notifications.create_index([("user_id", 1), ("is_read", 1)])
+            await self.db.notifications.create_index([("event_id", 1)])
+            
+            # ── Email Templates ──
+            await self.db.email_templates.create_index([("event_id", 1), ("type", 1)])
+            await self.db.email_templates.create_index([("institution_id", 1), ("type", 1)])
+            
+            # ── Leaderboard ──
+            await self.db.leaderboard.create_index([("event_id", 1), ("score", -1)])
+            
+            # ── Opportunities (student-facing dashboard) ──
+            await self.db.opportunities.create_index([("institution_id", 1), ("status", 1)])
+            await self.db.opportunities.create_index("status")
+            
+            # ── Messages ──
+            await self.db.messages.create_index([("user_id", 1), ("is_read", 1)])
+            await self.db.messages.create_index([("event_id", 1)])
+            
+            # ── Reports ──
+            await self.db.reports.create_index([("event_id", 1), ("type", 1)])
+            await self.db.reports.create_index([("institution_id", 1), ("type", 1)])
+            
+            # ── Achievements ──
+            await self.db.achievements.create_index([("user_id", 1), ("type", 1)])
+            await self.db.achievements.create_index([("event_id", 1), ("type", 1)])
+            
+            # ── Badges ──
+            await self.db.badges.create_index([("user_id", 1), ("type", 1)])
+            await self.db.badges.create_index([("event_id", 1), ("type", 1)])
+            
+            # ── Opportunity Emails Log ──
+            await self.db.opportunity_emails_log.create_index([("user_id", 1), ("event_id", 1)])
+            await self.db.opportunity_emails_log.create_index([("event_id", 1)])
+            
+            # ── Gamification & Simulations ──
+            await self.db.job_simulations.create_index([("user_id", 1), ("event_id", 1)])
+            await self.db.badges.create_index([("user_id", 1), ("type", 1)])
+            
+            logger.info("All production indexes ensured successfully")
         except Exception as e:
             logger.warning(f"Index creation warning: {e}")
 
@@ -159,6 +193,7 @@ skill_assessments_col = db["skill_assessments"]
 ads_col = db["advertisements"]
 payments_col = db["payments"]
 audit_logs_col = db["audit_logs"]
+reports_col = db["reports"]
 
 # System Deconstruction Lab (SDL)
 sdl_projects_col = db["sdl_projects"]
@@ -182,11 +217,13 @@ evaluation_criteria_col = db["evaluation_criteria"] # Evaluation System
 rubrics_col = db["rubrics"]             # Hackathon Rubrics
 submission_scores_col = db["submission_scores"] # Detailed rubric scores
 notifications_col = db["notifications"]
+messages_col = db["messages"]
 hackathon_submissions_col = db["hackathon_submissions"]
 leaderboard_col = db["leaderboard"]
 results_col = db["results"]
 event_judges_col = db["event_judges"]
 workflow_states_col = db["workflow_states"] # State Machine (Applied, Shortlisted, etc.)
+achievements_col = db["achievements"]
 
 # Career & Recruitment (High-Fidelity Tracking)
 jobs_col = db["jobs"]
@@ -199,6 +236,7 @@ opportunity_applications_col = db["opportunity_applications"]
 career_assessments_col = db["career_assessments"]
 career_goals_col = db["career_goals"]
 assessment_questions_col = db["assessment_questions"]
+career_assessment_templates_col = db["career_assessment_templates"]
 
 # Content & Community
 blogs_col = db["blogs"]
@@ -211,6 +249,11 @@ partner_talent_pool_col = db["partner_talent_pool"]
 
 # Gamification & Simulations
 job_simulations_col = db["job_simulations"]
+badges_col = db["badges"]
+
+# Email Templates (admin-configurable, event or institution level)
+email_templates_col = db["email_templates"]
+opportunity_emails_log_col = db["opportunity_emails_log"]
 gd_topics_col = db["gd_topics"]
 gamification_col = db["gamification"]
 user_gamification_col = db["user_gamification"]

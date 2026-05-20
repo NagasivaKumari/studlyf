@@ -166,7 +166,6 @@ const JudgeTeamAssignment: React.FC<JudgeTeamAssignmentProps> = ({
                         }
                     }
                 } else if (assignmentStrategy.type === 'expert_based') {
-                    // Expert-based assignment (mock expertise matching)
                     const relevantJudges = sortedJudges.filter(judge => 
                         judge.expertise.some(exp => 
                             team.projectTitle.toLowerCase().includes(exp.toLowerCase())

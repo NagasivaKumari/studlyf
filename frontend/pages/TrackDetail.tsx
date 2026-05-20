@@ -47,7 +47,7 @@ const TrackDetail: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-white">
+        <div className="min-h-screen bg-white pt-32">
             <section className="relative h-[80vh] min-h-[600px] flex items-center overflow-hidden">
                 <div className="absolute inset-0 z-0">
                     <img src={detail.heroImage || 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1200'} className="w-full h-full object-cover" alt="" />

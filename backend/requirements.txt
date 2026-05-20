@@ -85,3 +85,4 @@ razorpay==2.0.1
 pdfplumber
 groq
 jinja2
+dotenv
