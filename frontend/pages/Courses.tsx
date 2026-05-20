@@ -170,34 +170,50 @@ const Courses: React.FC = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Get all courses
+        // Get all courses - REQUIRED
         const coursesRes = await fetch(`${API_BASE_URL}/api/courses`);
-        const coursesData = await coursesRes.json();
-        setCourses(coursesData && coursesData.length > 0 ? coursesData : []);
-
-        // Get user course states
-        if (userId) {
-          const stateRes = await fetch(`${API_BASE_URL}/api/user-courses/${userId}`);
-          const stateData = await stateRes.json();
-
-          const states: { [key: string]: string } = {};
-          stateData.enrolled.forEach((c: Course) => {
-            states[c._id] = 'ENROLLED';
-          });
-          stateData.in_cart.forEach((c: Course) => {
-            states[c._id] = 'IN_CART';
-          });
-          stateData.available.forEach((c: Course) => {
-            states[c._id] = 'NOT_PURCHASED';
-          });
-
-          setUserStates(states);
+        if (!coursesRes.ok) {
+          console.error('Courses API error:', coursesRes.status);
+          setCourses([]);
+          return;
         }
+        const coursesData = await coursesRes.json();
+        console.log('Courses fetched:', coursesData?.length || 0);
+        setCourses(coursesData && Array.isArray(coursesData) && coursesData.length > 0 ? coursesData : []);
       } catch (err) {
         console.error('Error fetching courses:', err);
         setCourses([]);
       } finally {
         setLoading(false);
+      }
+
+      // Get user course states - OPTIONAL (doesn't block course display)
+      if (userId) {
+        try {
+          const stateRes = await fetch(`${API_BASE_URL}/api/user-courses/${userId}`);
+          if (!stateRes.ok) {
+            console.warn('User-courses API error:', stateRes.status);
+            return;
+          }
+          const stateData = await stateRes.json();
+
+          const states: { [key: string]: string } = {};
+          stateData.enrolled?.forEach((c: Course) => {
+            states[c._id] = 'ENROLLED';
+          });
+          stateData.in_cart?.forEach((c: Course) => {
+            states[c._id] = 'IN_CART';
+          });
+          stateData.available?.forEach((c: Course) => {
+            states[c._id] = 'NOT_PURCHASED';
+          });
+
+          setUserStates(states);
+          console.log('User states fetched');
+        } catch (err) {
+          console.warn('Error fetching user-courses:', err);
+          // Silently fail - don't break course display
+        }
       }
     };
 
