@@ -168,23 +168,45 @@ const Courses: React.FC = () => {
   // Fetch courses and user state
   useEffect(() => {
     const fetchData = async () => {
+      console.log('🔵 Starting course fetch from:', `${API_BASE_URL}/api/courses`);
       try {
         setLoading(true);
         // Get all courses - REQUIRED
-        const coursesRes = await fetch(`${API_BASE_URL}/api/courses`);
+        console.log('📡 Fetching courses...');
+        const coursesRes = await fetch(`${API_BASE_URL}/api/courses`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        console.log('📥 Response status:', coursesRes.status);
+        
         if (!coursesRes.ok) {
-          console.error('Courses API error:', coursesRes.status);
+          console.error('❌ Courses API error:', coursesRes.status, coursesRes.statusText);
+          const errText = await coursesRes.text();
+          console.error('Error body:', errText);
           setCourses([]);
           return;
         }
+        
         const coursesData = await coursesRes.json();
-        console.log('Courses fetched:', coursesData?.length || 0);
-        setCourses(coursesData && Array.isArray(coursesData) && coursesData.length > 0 ? coursesData : []);
+        console.log('✅ Courses data received:', coursesData);
+        console.log('📊 Total courses:', coursesData?.length || 0);
+        
+        if (coursesData && Array.isArray(coursesData) && coursesData.length > 0) {
+          setCourses(coursesData);
+          console.log('✓ Courses set in state');
+        } else {
+          console.warn('⚠️ No courses in response or invalid format');
+          setCourses([]);
+        }
       } catch (err) {
-        console.error('Error fetching courses:', err);
+        console.error('💥 Error fetching courses:', err);
         setCourses([]);
       } finally {
         setLoading(false);
+        console.log('🏁 Loading finished');
       }
 
       // Get user course states - OPTIONAL (doesn't block course display)
