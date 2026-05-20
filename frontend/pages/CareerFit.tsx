@@ -16,7 +16,7 @@ const CareerFit: React.FC = () => {
         const res = await fetch(`${API_BASE_URL}/api/student/career-assessment/questions`);
         if (res.ok) {
           const data = await res.json();
-          setQuestions(data);
+          if (data) setQuestions(data);
         }
       } catch {}
       setLoading(false);

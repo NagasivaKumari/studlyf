@@ -236,6 +236,12 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
                                     ))}
                                 </div>
                             )}
+                            <div className="mt-2 px-1 text-[9px] text-gray-400 font-medium leading-relaxed">
+                                <span className={password.length >= 8 ? 'text-green-500' : ''}>• 8+ characters</span>{' '}
+                                <span className={/[A-Z]/.test(password) ? 'text-green-500' : ''}>• Uppercase</span>{' '}
+                                <span className={/[0-9]/.test(password) ? 'text-green-500' : ''}>• Number</span>{' '}
+                                <span className={/[^A-Za-z0-9]/.test(password) ? 'text-green-500' : ''}>• Special char</span>
+                            </div>
                         </div>
 
 

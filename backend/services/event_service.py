@@ -17,26 +17,19 @@ async def _create_opportunity_for_event(event_data: dict, opportunities_col):
         # Check if opportunity already exists
         existing_opp = await opportunities_col.find_one({"event_link_id": event_id_str})
         
-        # Determine opportunity type
-        opp_type = event_data.get("opportunityType") or event_data.get("category", "Competition")
-        if "Hackathon" in str(opp_type):
-            opp_type = "Hackathon"
-        elif "Internship" in str(opp_type):
-            opp_type = "Internship"
-        elif "Job" in str(opp_type):
-            opp_type = "Job"
-        elif "Conference" in str(opp_type):
-            opp_type = "Competition"
-        else:
-            opp_type = "Competition"
+        # Use the admin-defined type verbatim — no normalization, no collapse
+        opp_type = event_data.get("opportunityType") or event_data.get("category") or ""
         
         # Build opportunity data
+        _city = event_data.get('city', '')
+        _mode = event_data.get('opportunityMode', '')
+        _loc_parts = [p for p in [_city, _mode] if p]
         opp_data = {
-            "title": event_data.get("title", "New Opportunity"),
-            "organization": event_data.get("organisation") or event_data.get("organization") or "Partner Institution",
+            "title": event_data.get("title", ""),
+            "organization": event_data.get("organisation") or event_data.get("organization") or "",
             "type": opp_type,
             "description": event_data.get("description", ""),
-            "location": f"{event_data.get('city', 'Remote')}, {event_data.get('opportunityMode', 'Online')}",
+            "location": ", ".join(_loc_parts),
             "deadline": event_data.get("registrationDeadline") or event_data.get("registration_deadline") or datetime.utcnow(),
             "applicantsCount": 0,
             "createdBy": str(event_data.get("institution_id", "")),
@@ -63,6 +56,18 @@ async def _create_opportunity_for_event(event_data: dict, opportunities_col):
         # Don't fail event creation if opportunity sync fails
         pass
 
+async def _seed_default_email_templates(event_data: dict):
+    """Helper: Seed default email templates for a new event."""
+    try:
+        from services.email_template_service import seed_default_templates
+        event_id = str(event_data.get("_id", ""))
+        institution_id = str(event_data.get("institution_id", ""))
+        if event_id and institution_id:
+            await seed_default_templates(event_id, institution_id)
+    except Exception as e:
+        print(f"[WARNING] Failed to seed email templates: {e}")
+        pass
+
 async def create_event(event_data: dict):
     """Create event and auto-sync to opportunities if status is LIVE."""
     from db import opportunities_col
@@ -80,6 +85,9 @@ async def create_event(event_data: dict):
     # Auto-create opportunity mirror if event is LIVE
     if str(event_data.get("status", "")).upper() in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
         asyncio.create_task(_create_opportunity_for_event(event_data, opportunities_col))
+    
+    # Seed default email templates in background
+    asyncio.create_task(_seed_default_email_templates(event_data))
     
     return event_data
 

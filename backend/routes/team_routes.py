@@ -158,11 +158,15 @@ async def create_team_secure(
     # If not registered, create a basic participant record
     if not p:
         print("DEBUG: Creating new participant record")
+        first_stage = None
+        st = ev.get("stages")
+        if isinstance(st, list) and st:
+            first_stage = st[0].get("name") or st[0].get("id")
         p = {
             "event_id": event_id,
             "user_id": uid,
             "status": "registered",
-            "current_stage": "registration",
+            "current_stage": first_stage,
             "team_id": None
         }
         result = await participants_col.insert_one(p)
@@ -172,9 +176,7 @@ async def create_team_secure(
         print("DEBUG: Using existing participant record")
 
     min_s, max_s = _team_size_limits(ev)
-    if min_s > 1:
-        # Allow creating team with leader only, but force invites before final submission elsewhere.
-        pass
+    # Team can be created with just the leader; min/max enforced at submission time
     if 1 > max_s:
         raise HTTPException(status_code=400, detail="Invalid team size config")
 
@@ -313,7 +315,7 @@ async def join_by_invite(
             "event_title": ev.get("title"),
             "registered_at": datetime.utcnow(),
             "status": "pending",
-            "current_stage": first_stage or "Registration",
+            "current_stage": first_stage,
             "source": "team_invite",
             "team_id": None
         }

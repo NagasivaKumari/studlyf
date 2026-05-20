@@ -1420,7 +1420,7 @@ const MyProfile: React.FC = () => {
               <button
                 onClick={() => setFormData(prev => ({
                   ...prev,
-                  achievements: [...prev.achievements, { title: '', organization: '', month: 'Jan', year: '2024', category: 'Hackathon', description: '', link: '', isFeatured: false }]
+                  achievements: [...prev.achievements, { title: '', organization: '', month: 'Jan', year: '2024', category: 'Competition', description: '', link: '', isFeatured: false }]
                 }))}
                 className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#7C3AED] transition-all"
               >
@@ -1447,7 +1447,7 @@ const MyProfile: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Achievement Title</label>
-                      <input type="text" value={ach.title} onChange={e => { const u = [...formData.achievements]; u[i] = { ...u[i], title: e.target.value }; setFormData(prev => ({ ...prev, achievements: u })); }} className="w-full px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="Hackathon Winner, AWS Certified" />
+                      <input type="text" value={ach.title} onChange={e => { const u = [...formData.achievements]; u[i] = { ...u[i], title: e.target.value }; setFormData(prev => ({ ...prev, achievements: u })); }} className="w-full px-6 py-3 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold text-gray-900 focus:bg-white outline-none transition-all" placeholder="e.g. Winner, AWS Certified" />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Organization / Event</label>

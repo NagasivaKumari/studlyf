@@ -109,16 +109,7 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
     const [showConfirm, setShowConfirm] = useState(false);
     const [eventToDelete, setEventToDelete] = useState<string | null>(null);
 
-    const categories = [
-        'All', 
-        'Competitions', 
-        'Quizzes', 
-        'Hackathons', 
-        'Scholarships', 
-        'Workshops', 
-        'Conferences', 
-        'Cultural Events'
-    ];
+    const categories = ['All', ...new Set(events.map(e => e.category || e.type || '').filter(Boolean))];
 
     const handleDeleteClick = (id: string) => {
         setEventToDelete(id);
@@ -210,7 +201,7 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
                         else lastSaved = 'Just now';
                     }
 
-                    const rawCat = (e.category || e.type || 'Hackathons') as string;
+                    const rawCat = (e.category || e.type || '') as string;
                     const typeLabel = /hackathon/i.test(rawCat) ? 'Hackathons' : rawCat;
                     const startRaw = e.start_date || e.startDate || e.festivalData?.startDate || e.registrationDeadline;
                     const endRaw = e.end_date || e.endDate || e.festivalData?.endDate;
@@ -218,7 +209,7 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
                     return {
                         id: e._id,
                         name: e.title,
-                        organisation: e.organisation || e.organization || e.organisation_name || 'Institution',
+                        organisation: e.organisation || e.organization || e.organisation_name || '',
                         status: displayStatus,
                         type: typeLabel,
                         startDate: startRaw ? new Date(startRaw).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : 'N/A',
@@ -227,8 +218,8 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
                         registrations: e.participant_count || 0,
                         candidate: (e.participant_count || 0) > 0 ? `${e.participant_count} registered` : '—',
                         image: e.image_url || '',
-                        visibility: e.visibility || 'Public',
-                        registrationStatus: e.registration_status || 'Open',
+                        visibility: e.visibility || 'Unknown',
+                        registrationStatus: e.registration_status || 'Unknown',
                         lastSaved
                     };
                 }));
@@ -380,7 +371,7 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
                                             <td className="px-6 py-8">
                                                 <div className="space-y-1">
                                                     <h4 className="text-[15px] font-black text-slate-800 leading-tight group-hover:text-blue-600 transition-all">{event.name}</h4>
-                                                    <p className="text-[11px] font-bold text-slate-400">{event.organisation || 'Institution'}</p>
+                                                    {event.organisation && <p className="text-[11px] font-bold text-slate-400">{event.organisation}</p>}
                                                     <div className="flex items-center gap-3 pt-1">
                                                         <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black rounded uppercase tracking-wider">{event.type}</span>
                                                         <span className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-wider">

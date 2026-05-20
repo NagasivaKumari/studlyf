@@ -49,6 +49,10 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
         [resolvedStage]
     );
     const teamRequired = Boolean(resolvedStage?.team_required || resolvedStage?.teamRequired || stage?.team_required || stage?.teamRequired);
+    const stageDescription = String(resolvedStage?.description || resolvedStage?.config?.description || stage?.description || stage?.config?.description || '').trim();
+    const stageStatusRaw = String(resolvedStage?.status || resolvedStage?.config?.status || '').trim();
+    const stageStatus = stageStatusRaw ? stageStatusRaw.toLowerCase() : '';
+    const isStageActive = stageStatus === 'active' || stageStatus === 'active';
 
     useEffect(() => {
         setResolvedStage(stage);
@@ -204,7 +208,20 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
 
     return (
         <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-2xl font-bold mb-4">Project Submission</h2>
+            <h2 className="text-2xl font-bold mb-2">Project Submission</h2>
+            {stageDescription ? (
+                <p className="text-sm text-gray-600 mb-4 whitespace-pre-wrap">{stageDescription}</p>
+            ) : null}
+            {/* Stage status messaging */}
+            {stageStatus && stageStatus !== 'active' && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-4 text-sm text-yellow-800">
+                    {stageStatus === 'upcoming' ? (
+                        <div>This stage has not started yet. You will be able to submit when it opens.</div>
+                    ) : (
+                        <div>This stage is closed. Submissions are no longer accepted for this stage.</div>
+                    )}
+                </div>
+            )}
             {error && (
                 <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
                     {error}
@@ -294,10 +311,10 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
                 <div className="flex justify-end">
                     <button
                         type="submit"
-                        disabled={saving}
-                        className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:bg-purple-300"
+                        disabled={saving || !isStageActive}
+                        className={`inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${isStageActive ? 'bg-purple-600 hover:bg-purple-700 focus:ring-purple-500' : 'bg-gray-300 cursor-not-allowed'} focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-80`}
                     >
-                        {saving ? 'Saving...' : 'Submit'}
+                        {saving ? 'Saving...' : (isStageActive ? 'Submit' : 'Stage Closed')}
                     </button>
                 </div>
             </form>

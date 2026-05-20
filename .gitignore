@@ -162,5 +162,13 @@ backend/update_draft_opportunities.py
 backend/STAGE_ACCESS_CONTROL_README.txt
 backend/STAGE_DEADLINE_README.txt
 
+# Debug and experimental routes
+backend/routes/debug_routes.py
+backend/routes/enhanced_features_routes.py
+backend/routes/websocket_routes.py
+
+# Test scripts
+backend/scripts/db_integration_test.py
+
 # Frontend build output (should never be committed)
 frontend/dist/

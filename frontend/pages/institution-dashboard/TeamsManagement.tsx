@@ -219,7 +219,7 @@ const TeamsManagement: React.FC<TeamsManagementProps> = ({ institutionId }) => {
                                                     team.status === 'disqualified' ? 'bg-red-100 text-red-800' :
                                                     'bg-gray-100 text-gray-800'
                                                 }`}>
-                                                    {team.status || 'Active'}
+                                                    {team.status || ''}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right">

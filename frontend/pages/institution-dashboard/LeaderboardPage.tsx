@@ -44,13 +44,8 @@ const LeaderboardPage: React.FC<LeaderboardPageProps> = ({ eventId, refreshCount
                     const data = await res.json();
                     const mapped = (Array.isArray(data) ? data : []).map((d: any) => ({
                         rank: d.rank,
-                        team_name: d.teamName || d.team_name || d.team_name || d.student_name || 'Anonymous',
-                        project_title:
-                            d.projectTitle ||
-                            d.project_title ||
-                            d.teamLead ||
-                            d.student_name ||
-                            (d.teamType ? String(d.teamType) : 'Individual'),
+                        team_name: d.teamName || d.team_name || d.student_name || '',
+                        project_title: d.projectTitle || d.project_title || d.teamLead || d.student_name || '',
                         total_score: Number(d.totalScore ?? d.total_score ?? 0),
                         college: d.college || d.institution || d.institution_name,
                         criteria_scores: d.rubricScores || d.rubric_scores || {}
@@ -133,7 +128,7 @@ const LeaderboardPage: React.FC<LeaderboardPageProps> = ({ eventId, refreshCount
                                     </div>
                                     <p className="text-sm font-bold text-gray-400 mt-4 uppercase">2nd Place</p>
                                     <h3 className="text-xl font-black text-gray-900 mt-1">{rankings[1].team_name}</h3>
-                                    <p className="text-xs text-gray-500 mb-6">{rankings[1].college || 'Institution Network'}</p>
+                                    {rankings[1].college && <p className="text-xs text-gray-500 mb-6">{rankings[1].college}</p>}
                                     <div className="text-3xl font-black text-blue-600">{rankings[1].total_score}</div>
                                 </div>
                             </div>
@@ -150,7 +145,7 @@ const LeaderboardPage: React.FC<LeaderboardPageProps> = ({ eventId, refreshCount
                                             <Star size={10} fill="currentColor" /> Champion <Star size={10} fill="currentColor" />
                                         </div>
                                         <h3 className="text-2xl font-black text-gray-900">{rankings[0].team_name}</h3>
-                                        <p className="text-xs text-gray-500 mb-6">{rankings[0].college || 'Institution Network'}</p>
+                                        {rankings[0].college && <p className="text-xs text-gray-500 mb-6">{rankings[0].college}</p>}
                                         <div className="text-5xl font-black text-blue-600 mb-2">{rankings[0].total_score}</div>
                                         <div className="text-[10px] font-bold text-green-600 uppercase tracking-tighter">Validated Performance</div>
                                     </div>
@@ -166,7 +161,7 @@ const LeaderboardPage: React.FC<LeaderboardPageProps> = ({ eventId, refreshCount
                                     </div>
                                     <p className="text-sm font-bold text-gray-400 mt-4 uppercase">3rd Place</p>
                                     <h3 className="text-xl font-black text-gray-900 mt-1">{rankings[2].team_name}</h3>
-                                    <p className="text-xs text-gray-500 mb-6">{rankings[2].college || 'Institution Network'}</p>
+                                    {rankings[2].college && <p className="text-xs text-gray-500 mb-6">{rankings[2].college}</p>}
                                     <div className="text-3xl font-black text-blue-600">{rankings[2].total_score}</div>
                                 </div>
                             </div>

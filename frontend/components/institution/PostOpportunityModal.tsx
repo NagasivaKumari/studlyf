@@ -800,7 +800,7 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                 <div className="grid grid-cols-2 gap-8">
                                                     <div>
                                                         <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-3">Festival Name *</label>
-                                                        <input type="text" placeholder="Hackathon" className="w-full px-6 py-4 bg-white border border-slate-200 rounded-xl outline-none" />
+                                                        <input type="text" placeholder="e.g. Innovation Summit" className="w-full px-6 py-4 bg-white border border-slate-200 rounded-xl outline-none" />
                                                     </div>
                                                     <div>
                                                         <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-3">Mode of Event</label>

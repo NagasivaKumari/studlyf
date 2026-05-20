@@ -95,8 +95,8 @@ const MyApplications: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-[#F8FAFC] pb-20 font-sans">
-            <div className="max-w-4xl mx-auto px-6 pt-12">
+        <div className="min-h-screen bg-[#F8FAFC] pt-32 pb-20 font-sans">
+            <div className="max-w-4xl mx-auto px-6">
                 <button
                     type="button"
                     onClick={() => navigate('/opportunities')}

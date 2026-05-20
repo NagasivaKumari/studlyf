@@ -26,6 +26,7 @@ from services.registration_service import (
     get_registration_fields_with_prefill,
     check_registration_status,
 )
+from stage_access_control import check_stage_deadline
 from typing import Optional
 from bson import ObjectId
 from datetime import datetime, timezone
@@ -106,6 +107,24 @@ async def register_for_event(
     custom_fields = data.get("custom_fields", {})
     institution_id = data.get("institution_id")
     
+    # Server-side: enforce registration stage window if a registration stage exists
+    try:
+        stages = await get_event_stages(event_id)
+        reg_stage_name = None
+        for s in stages:
+            stype = str(s.get("type") or "").upper()
+            sname = str(s.get("name") or "").upper()
+            if stype == "REGISTRATION" or "REGISTER" in sname:
+                reg_stage_name = s.get("name") or sname
+                break
+
+        if reg_stage_name:
+            # This will raise HTTPException(403) if outside window
+            await check_stage_deadline(event_id=event_id, stage_name=reg_stage_name)
+    except Exception:
+        # Preserve existing behavior on unexpected errors but surface deadline rejections
+        raise
+
     result = await complete_registration(
         event_id=event_id,
         user_id=user["user_id"],

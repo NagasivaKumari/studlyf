@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
+import EmailTemplatesManager from './components/EmailTemplatesManager';
 import { 
     ArrowLeft, 
     Save, 
@@ -32,7 +33,7 @@ import {
     Gavel, 
     Calendar, 
     RefreshCw, 
-    Eye, 
+    Eye, EyeOff,
     Star, 
     XCircle, 
     Users, 
@@ -62,6 +63,7 @@ import StageBuilder from './components/StageBuilder';
 import QuizDesignerModal from './components/QuizDesignerModal';
 import JudgeInviteModal from './components/JudgeInviteModal';
 import EvaluationMatrixView from './components/EvaluationMatrixView';
+import PipelineView from './components/PipelineView';
 import { IEvent, IParticipant, ITeam, IStage, ISubmission } from '../../types/event';
 import { useAuth } from '../../AuthContext';
 import { sanitizePresentationHtml } from '../../utils/text';
@@ -94,8 +96,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [saving, setSaving] = useState(false);
     const [criteria, setCriteria] = useState<any[]>([]);
     const [bundleData, setBundleData] = useState<any>(null);
-    const [threshold, setThreshold] = useState(90);
-    const [debouncedThreshold, setDebouncedThreshold] = useState(90);
+    const [threshold, setThreshold] = useState(0);
+    const [debouncedThreshold, setDebouncedThreshold] = useState(0);
     const [bundleTab, setBundleTab] = useState<string>('shortlisted');
     const [teams, setTeams] = useState<ITeam[]>([]);
     const [submissions, setSubmissions] = useState<ISubmission[]>([]);
@@ -123,7 +125,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([]);
     const [isBulkMode, setIsBulkMode] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
-    const [isHackathon, setIsHackathon] = useState(false);
+
     const [hackathonSubmissions, setHackathonSubmissions] = useState<any[]>([]);
     const [domainFilter, setDomainFilter] = useState('All Domains');
     const [judgeFilter, setJudgeFilter] = useState('All Judges');
@@ -131,7 +133,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [isBulkNotifyModalOpen, setIsBulkNotifyModalOpen] = useState(false);
     const [bulkNotifyMessage, setBulkNotifyMessage] = useState('');
     const [bulkNotifySubject, setBulkNotifySubject] = useState('');
-    const [bulkNotifyNextStage, setBulkNotifyNextStage] = useState('Next Round');
+    const [bulkNotifyNextStage, setBulkNotifyNextStage] = useState('');
+    const [bulkNotifyTemplates, setBulkNotifyTemplates] = useState<any[]>([]);
+    const [bulkNotifySelectedTemplate, setBulkNotifySelectedTemplate] = useState<string>('default');
+    const [bulkNotifyMinScore, setBulkNotifyMinScore] = useState<string>('');
+    const [showBulkPreview, setShowBulkPreview] = useState(false);
 
     const normalizeStageType = (rawType?: string) => {
         const cleaned = String(rawType || '').trim();
@@ -178,14 +184,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }));
     };
 
-    const DEFAULT_SHORTLIST_MESSAGE = `Congratulations {team_name}!
-
-Your project has officially qualified for the {next_stage} of {event_name}. 
-
-We were impressed with your submission and are excited to see your progress in the next round. Please check your dashboard for new requirements and updated deadlines.
-
-Best regards,
-{event_name} Organizing Team`;
+    const DEFAULT_SHORTLIST_MESSAGE = '';
 
     /** Fetch judges for this institution from the judges collection */
     const fetchJudges = async () => {
@@ -202,16 +201,6 @@ Best regards,
             console.error('Failed to fetch judges:', e);
         }
     };
-
-    useEffect(() => {
-        if (event) {
-            const cat = String(event.category || event.type || '').toLowerCase();
-            const name = String(event.name || event.title || '').toLowerCase();
-            if (cat.includes('hackathon') || name.includes('hackathon')) {
-                setIsHackathon(true);
-            }
-        }
-    }, [event]);
 
     // Fetch judges whenever refreshCounter changes or on mount
     useEffect(() => {
@@ -246,21 +235,23 @@ Best regards,
     }, [hasUnsavedChanges, stages, criteria]);
 
     useEffect(() => {
-        if (isHackathon && eventId) {
+        if (eventId) {
             const fetchHackathonSubs = async () => {
                 try {
                     const res = await fetch(`${API_BASE_URL}/api/hackathons/events/${eventId}/submissions`, {
                         headers: { ...authHeaders() }
                     });
-                    const data = await res.json();
-                    setHackathonSubmissions(Array.isArray(data) ? data : []);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setHackathonSubmissions(Array.isArray(data) ? data : []);
+                    }
                 } catch (err) {
-                    console.error("Failed to fetch hackathon submissions");
+                    // Not all events have hackathon submissions — that's fine
                 }
             };
             fetchHackathonSubs();
         }
-    }, [isHackathon, eventId, refreshCounter]);
+    }, [eventId, refreshCounter]);
     const portalRegistrationStatusLabel = (raw: string | undefined) => {
         const s = (raw || 'pending').toLowerCase();
         if (s === 'accepted' || s === 'shortlisted') return 'SHORTLISTED';
@@ -292,7 +283,7 @@ Best regards,
                         ...s,
                         // Critical: ensure stable id so edits don't apply to every row
                         id: s?.id || `${eventId}-${idx}-${Math.random().toString(36).slice(2, 9)}`,
-                        roundMode: s?.roundMode || s?.mode || s?.round_mode || 'Online',
+                        roundMode: s?.roundMode || s?.mode || s?.round_mode || '',
                     }))
                 );
 
@@ -420,7 +411,7 @@ Best regards,
     }, [activeTab, eventId, quizzes]);
 
     const evaluateCodingAttempt = async (quizId: string, participantUserId: string) => {
-        const scoreRaw = window.prompt('Manual score (%)', '75');
+        const scoreRaw = window.prompt('Manual score (%)');
         if (scoreRaw === null) return;
         const score = Number(scoreRaw);
         if (Number.isNaN(score) || score < 0 || score > 100) {
@@ -543,11 +534,14 @@ Best regards,
         setIsCreatingQuiz(true);
         try {
             const stage = stages.find((s) => s.id === quizStageId);
-            const passMark = Number(stage?.config?.pass_mark ?? 70);
+            const bodyPayload: Record<string, any> = { ...quizData, stage_id: quizStageId };
+            if (stage?.config?.pass_mark != null) {
+                bodyPayload.pass_mark = Number(stage.config.pass_mark);
+            }
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ ...quizData, pass_mark: passMark, stage_id: quizStageId }),
+                body: JSON.stringify(bodyPayload),
             });
             const j = await res.json().catch(() => ({}));
             if (!res.ok) {
@@ -571,11 +565,27 @@ Best regards,
         if (currentBundle.length === 0) return;
 
         const stageInfo = getCurrentStageInfo();
-        const nextStageName = stageInfo.next_stage_name || "Next Round";
+        if (!stageInfo.next_stage_name) {
+            alert('No next stage available for this event. Define stages first.');
+            return;
+        }
+        const nextStageName = stageInfo.next_stage_name;
         
         setBulkNotifyNextStage(nextStageName);
-        setBulkNotifySubject(`Congratulations! You've been shortlisted for ${event?.title || 'the event'}`);
+        setBulkNotifySubject(`Congratulations! You've been shortlisted for ${event?.title || ''}`);
         setBulkNotifyMessage(DEFAULT_SHORTLIST_MESSAGE.replace(/{next_stage}/g, nextStageName));
+        setBulkNotifySelectedTemplate('default');
+        setBulkNotifyMinScore('');
+        // Fetch available templates
+        try {
+            const tmplRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/email-templates`, {
+                headers: { ...authHeaders() }
+            });
+            if (tmplRes.ok) {
+                const tmplData = await tmplRes.json();
+                setBulkNotifyTemplates(tmplData.filter((t: any) => ['stage_advancement', 'announcement'].includes(t.type)));
+            }
+        } catch (e) {}
         setIsBulkNotifyModalOpen(true);
     };
 
@@ -592,7 +602,8 @@ Best regards,
                     team_ids: teamIds, 
                     next_stage: bulkNotifyNextStage,
                     custom_message: bulkNotifyMessage,
-                    subject: bulkNotifySubject
+                    subject: bulkNotifySubject,
+                    min_score: bulkNotifyMinScore ? Number(bulkNotifyMinScore) : undefined
                 })
             });
 
@@ -739,14 +750,14 @@ Best regards,
         }
         
         const stageNumber = activeStageIndex + 1; // 1-based
-        const stageName = sortedStages[activeStageIndex]?.name || `Stage ${stageNumber}`;
+        const stageName = sortedStages[activeStageIndex]?.name || '';
         const isFinalStage = stageNumber === totalStages && totalStages > 0;
         
         // Get next stage name if available (for "advance to" messages)
         const nextStageIndex = activeStageIndex + 1;
         const nextStageName = nextStageIndex < totalStages 
-            ? sortedStages[nextStageIndex]?.name || `Stage ${nextStageIndex + 1}`
-            : isFinalStage ? "Final Round" : "";
+            ? sortedStages[nextStageIndex]?.name || ''
+            : "";
         
         return {
             stage_number: stageNumber,
@@ -874,11 +885,11 @@ Best regards,
         try {
             const targetIds = isBulk ? selectedSubmissions : [String(judgeAssignmentModal.submissionId || '')].filter(Boolean);
             const hackathonIdSet = new Set((hackathonSubmissions || []).map((s: any) => String(s?._id || s?.id || s?.submissionId)));
-            const isHackathonTarget = targetIds.length > 0 && targetIds.every((id) => hackathonIdSet.has(String(id)));
+            const isHackathonSubmission = targetIds.length > 0 && targetIds.every((id) => hackathonIdSet.has(String(id)));
 
             // Hackathon submissions live in hackathon_submissions -> use hackathon assignment endpoint
             // Legacy submissions use /api/judges/assign (submission_data_col pipeline)
-            const res = isHackathonTarget
+            const res = isHackathonSubmission
                 ? await fetch(`${API_BASE_URL}/api/hackathons/submissions/assign-judge`, {
                       method: 'PATCH',
                       headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -1030,14 +1041,24 @@ Best regards,
         { id: 'criteria', label: 'Scoring Rubrics', icon: ShieldCheck },
         { id: 'evaluation-matrix', label: 'Evaluation Matrix', icon: TrendingUp },
         { id: 'leaderboard', label: 'Leaderboard', icon: BarChart3 },
+        { id: 'pipeline', label: 'Pipeline', icon: Zap },
         { id: 'judges', label: 'Judges', icon: Gavel },
+        { id: 'email-templates', label: 'Communications', icon: Mail },
     ];
 
     
     const renderTabContent_SubmissionManagement = () => {
-        const domains = ['All Domains', 'AI', 'FINTECH', 'EDTECH', 'MEDTECH', 'AGRITECH', 'BLOCK CHAIN', 'OTHERS'];
-        const filtered = hackathonSubmissions.filter(s => {
-            const matchesSearch = s.teamName.toLowerCase().includes(searchQuery.toLowerCase()) || (s.teamLead && s.teamLead.toLowerCase().includes(searchQuery.toLowerCase()));
+        // Merge hackathon + regular submissions for ALL event types
+        const allSubmissions = [
+            ...(hackathonSubmissions || []).map((s: any) => ({ ...s, _sourceType: 'hackathon' })),
+            ...(submissions || []).map((s: any) => ({ ...s, _sourceType: 'regular' })),
+        ];
+        const allDomains = [...new Set(allSubmissions.map(s => s.domain).filter(Boolean))];
+        const domains = ['All Domains', ...allDomains];
+        const filtered = allSubmissions.filter(s => {
+            const name = s.teamName || s.team_name || s.user_name || '';
+            const lead = s.teamLead || s.team_lead || '';
+            const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || lead.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesDomain = domainFilter === 'All Domains' || s.domain === domainFilter;
             const matchesJudge = judgeFilter === 'All Judges' || s.assignedJudgeId === judgeFilter;
             return matchesSearch && matchesDomain && matchesJudge;
@@ -1048,7 +1069,7 @@ Best regards,
                 <div className="p-12 bg-slate-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
                     <div className="relative z-10">
                         <h3 className="text-4xl font-black tracking-tight mb-4">Submission Management</h3>
-                        <p className="text-slate-400 font-bold max-w-xl leading-relaxed">Review hackathon ideas, assign judges, and evaluate submissions in real-time.</p>
+                        <p className="text-slate-400 font-bold max-w-xl leading-relaxed">Review submissions, assign judges, and evaluate in real-time.</p>
                     </div>
                     <div className="absolute -right-20 -top-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px]"></div>
                 </div>
@@ -1484,14 +1505,13 @@ Best regards,
                         {/* Metrics Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             {[
-                                { label: 'Registered Teams', val: isHackathon ? hackathonSubmissions.length : (teams?.length || 0), icon: Layers, color: 'text-[#6C3BFF]', bg: 'bg-purple-50', tab: 'teams' },
-                                { label: 'Total Participants', val: isHackathon ? hackathonSubmissions.reduce((acc: number, sub: any) => {
-                                    const members = typeof sub.teamMembers === 'string'
-                                        ? sub.teamMembers.split(',').map((m: string) => m.trim()).filter(Boolean)
-                                        : (Array.isArray(sub.teamMembers) ? sub.teamMembers : []);
-                                    return acc + (sub.teamLead ? 1 : 0) + members.filter((m: string) => m.toLowerCase() !== (sub.teamLead || '').toLowerCase()).length;
-                                }, 0) : (participants?.length || 0), icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', tab: 'teams' },
-                                { label: 'Submissions', val: isHackathon ? hackathonSubmissions.length : (submissions?.length || 0), icon: FileText, color: 'text-emerald-600', bg: 'bg-emerald-50', tab: 'submissions' },
+                                { label: 'Registered Teams', val: hackathonSubmissions.length > 0 ? hackathonSubmissions.length : (teams?.length || 0), icon: Layers, color: 'text-[#6C3BFF]', bg: 'bg-purple-50', tab: 'teams' },
+                                { label: 'Total Participants', val: hackathonSubmissions.length > 0 ? hackathonSubmissions.reduce((acc: number, sub: any) => {
+                                    // Count unique members across all submissions
+                                    const members = sub.teamMembers || sub.team_members || [];
+                                    return acc + (members.length > 0 ? members.length : 1);
+                                }, 0) : (participants?.length || 0), icon: Users, color: 'text-emerald-500', bg: 'bg-emerald-50', tab: 'participants' },
+                                { label: 'Submissions', val: Math.max(hackathonSubmissions?.length || 0, submissions?.length || 0), icon: FileText, color: 'text-emerald-600', bg: 'bg-emerald-50', tab: 'submissions' },
                                 { label: 'Judges Active', val: institutionJudges.length, icon: Gavel, color: 'text-amber-600', bg: 'bg-amber-50', tab: 'judges' }
                             ].map((m, i) => (
                                 <button 
@@ -1605,7 +1625,7 @@ Best regards,
                     </div>
                 );
             case 'teams':
-                if (isHackathon) return renderTabContent_HackathonTeams();
+                if (hackathonSubmissions.length > 0) return renderTabContent_HackathonTeams();
                 return (
                     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -1723,10 +1743,12 @@ Best regards,
                                     <p className="text-[15px] font-black text-slate-800 leading-tight capitalize">{event.opportunityMode || '—'}</p>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Assessed Skills</span>
-                                    <p className="text-[15px] font-black text-slate-800 leading-tight">{event.skills || 'None specified'}</p>
-                                </div>
+                                {event.skills && (
+                                    <div className="space-y-2">
+                                        <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Assessed Skills</span>
+                                        <p className="text-[15px] font-black text-slate-800 leading-tight">{event.skills}</p>
+                                    </div>
+                                )}
 
                                 {event.prize_pool && (
                                     <div className="space-y-2">
@@ -1742,7 +1764,7 @@ Best regards,
                                 <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2rem]">
                                     <div 
                                         className="opportunity-rich-text text-slate-600 font-medium leading-relaxed [&_p]:mb-4 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-2 [&_strong]:font-bold [&_em]:italic [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_a]:text-purple-600 [&_a]:underline outline-none"
-                                        dangerouslySetInnerHTML={{ __html: sanitizePresentationHtml(event.description || '<p>No description provided.</p>') }}
+                                        dangerouslySetInnerHTML={{ __html: sanitizePresentationHtml(event.description || '') }}
                                     />
                                 </div>
                             </div>
@@ -1751,7 +1773,7 @@ Best regards,
                 );
             case 'participants':
             case 'registrations':
-                if (isHackathon) return renderTabContent_HackathonParticipants();
+                if (hackathonSubmissions.length > 0) return renderTabContent_HackathonParticipants();
                 return (
                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
@@ -1893,7 +1915,7 @@ Best regards,
                                     <div className="space-y-2">
                                         <h3 className="text-5xl font-black tracking-tighter leading-tight">Selection Command Center</h3>
                                         <p className="text-slate-400 text-lg font-medium leading-relaxed opacity-90">
-                                            Dynamically aggregate and approve candidate bundles using {event?.name || 'this event'}'s scoring protocol. View deliverables or dispatch final authorizations.
+                                            Dynamically aggregate and approve candidate bundles using {event?.name || ''}'s scoring protocol. View deliverables or dispatch final authorizations.
                                         </p>
                                     </div>
                                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
@@ -2059,7 +2081,7 @@ Best regards,
                                                         </td>
                                                         <td className="px-10 py-8 text-center">
                                                             {(() => {
-                                                                const status = item.status || 'Pending';
+                                                                const status = item.status || '';
                                                                 const s = status.toLowerCase();
                                                                 let colors = "bg-slate-50 text-slate-400 border-slate-100";
                                                                 if (s === 'approved' || s === 'accepted') colors = "bg-emerald-50 text-emerald-600 border-emerald-100";
@@ -2229,11 +2251,15 @@ Best regards,
                                                     </div>
                                                 </td>
                                                 <td className="px-10 py-8 text-center">
-                                                    <div className={`inline-flex items-center px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${
-                                                        (sub.status || '').toLowerCase() === 'submitted' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'
-                                                    }`}>
-                                                        {sub.status || 'Received'}
-                                                    </div>
+                                                    {sub.status ? (
+                                                        <div className={`inline-flex items-center px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${
+                                                            sub.status.toLowerCase() === 'submitted' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'
+                                                        }`}>
+                                                            {sub.status}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-300 text-[9px] font-black uppercase tracking-widest">—</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-10 py-8 text-right">
                                                     <div className="text-xs font-bold text-slate-500">{new Date(sub.submitted_at).toLocaleString()}</div>
@@ -2370,6 +2396,10 @@ Best regards,
                 return eventId ? <EvaluationMatrixView eventId={eventId} criteria={criteria} refreshCounter={refreshCounter} /> : null;
             case 'leaderboard':
                 return <LeaderboardPage eventId={eventId} refreshCounter={refreshCounter} />;
+            case 'pipeline':
+                return <PipelineView eventId={eventId} stages={stages} />;
+            case 'email-templates':
+                return <EmailTemplatesManager eventId={eventId} institutionId={institutionIdProp || ''} />;
             default:
                 return <div className="py-32 text-center text-slate-300 font-black text-xs uppercase tracking-[0.3em] opacity-40">Section Initializing...</div>;
         }
@@ -2746,6 +2776,35 @@ Best regards,
                             </div>
                             
                             <div className="flex-1 p-8 space-y-6 overflow-y-auto max-h-[70vh]">
+                                {/* Template selector */}
+                                {bulkNotifyTemplates.length > 0 && (
+                                    <div className="space-y-3">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Email Template</label>
+                                        <select
+                                            value={bulkNotifySelectedTemplate}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setBulkNotifySelectedTemplate(val);
+                                                if (val !== 'default') {
+                                                    const t = bulkNotifyTemplates.find((tm: any) => tm._id === val);
+                                                    if (t) {
+                                                        setBulkNotifySubject(t.subject);
+                                                        setBulkNotifyMessage(t.body_html);
+                                                    }
+                                                }
+                                            }}
+                                            className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all outline-none"
+                                        >
+                                            <option value="default">Default Template (System)</option>
+                                            {bulkNotifyTemplates.map((t: any) => (
+                                                <option key={t._id} value={t._id}>
+                                                    {t.name}{t.is_active ? ' (Active)' : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
                                 <div className="space-y-3">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Email Subject</label>
                                     <input 
@@ -2764,20 +2823,91 @@ Best regards,
                                     <textarea 
                                         value={bulkNotifyMessage}
                                         onChange={(e) => setBulkNotifyMessage(e.target.value)}
-                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all h-64 resize-none outline-none"
+                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all h-64 resize-none outline-none font-mono text-xs"
                                         placeholder="Compose your custom message..."
                                     />
-                                    <div className="flex flex-wrap gap-2 px-2">
-                                        {['{team_name}', '{event_name}'].map(tag => (
-                                            <button 
-                                                key={tag}
-                                                onClick={() => setBulkNotifyMessage(prev => prev + ' ' + tag)}
-                                                className="px-3 py-1.5 bg-purple-50 text-[#6C3BFF] rounded-lg text-[10px] font-black tracking-wider border border-purple-100 hover:bg-purple-600 hover:text-white transition-all"
-                                            >
-                                                + {tag}
-                                            </button>
-                                        ))}
-                                    </div>
+                                                    <div className="flex flex-wrap gap-2 px-2">
+                                                        {['{team_name}', '{event_name}', '{stage_name}', '{participant_name}'].map(tag => (
+                                                            <button 
+                                                                key={tag}
+                                                                onClick={() => setBulkNotifyMessage(prev => prev + ' ' + tag)}
+                                                                className="px-3 py-1.5 bg-purple-50 text-[#6C3BFF] rounded-lg text-[10px] font-black tracking-wider border border-purple-100 hover:bg-purple-600 hover:text-white transition-all"
+                                                            >
+                                                                + {tag}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Email Preview Toggle */}
+                                                <div className="flex items-center gap-3 px-2">
+                                                    <button
+                                                        onClick={() => setShowBulkPreview(!showBulkPreview)}
+                                                        className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                                                            showBulkPreview ? 'bg-[#6C3BFF] text-white' : 'bg-slate-100 text-slate-600'
+                                                        }`}
+                                                    >
+                                                        {showBulkPreview ? <EyeOff size={14} /> : <Eye size={14} />}
+                                                        {showBulkPreview ? 'Hide Preview' : 'Preview Email'}
+                                                    </button>
+                                                    <span className="text-[10px] text-slate-400 font-bold">
+                                                        Placeholders shown with sample data
+                                                    </span>
+                                                </div>
+
+                                                {/* Live Preview */}
+                                                {showBulkPreview && (
+                                                    <div className="border border-slate-100 rounded-2xl overflow-hidden bg-white">
+                                                        <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
+                                                            <Mail size={16} className="text-slate-400" />
+                                                            <span className="text-xs font-bold text-slate-600">
+                                                                To: <span className="text-slate-400">[recipient email]</span>
+                                                            </span>
+                                                            <span className="text-xs font-bold text-slate-500 ml-auto">
+                                                                Subject:{' '}
+                                                                <span className="text-slate-900">
+                                                                    {bulkNotifySubject
+                                                                        .replace(/\{team_name\}/g, '[Team Name]')
+                                                                        .replace(/\{event_name\}/g, event?.title || '[Event Name]')
+                                                                        .replace(/\{stage_name\}/g, bulkNotifyNextStage || '[Stage Name]')
+                                                                        .replace(/\{participant_name\}/g, '[Participant Name]')
+                                                                        .replace(/\{custom_message\}/g, '[Custom Message]')
+                                                                    }
+                                                                </span>
+                                                            </span>
+                                                        </div>
+                                                        <div
+                                                            className="p-6 max-h-[400px] overflow-y-auto"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html: bulkNotifyMessage
+                                                                    .replace(/\{team_name\}/g, '[Team Name]')
+                                                                    .replace(/\{event_name\}/g, event?.title || '[Event Name]')
+                                                                    .replace(/\{stage_name\}/g, bulkNotifyNextStage || '[Stage Name]')
+                                                                    .replace(/\{participant_name\}/g, '[Participant Name]')
+                                                                    .replace(/\{custom_message\}/g, '[Custom Message]')
+                                                                    .replace(/\{deadline\}/g, '[Deadline Date]')
+                                                                    .replace(/\{new_deadline\}/g, '[Extended Deadline]')
+                                                                    .replace(/\{score\}/g, '[Score]')
+                                                                    .replace(/\{frontend_url\}/g, '[App URL]')
+                                                            }}
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                {/* Score threshold */}
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">
+                                        Minimum Score Filter <span className="text-slate-300 font-normal">(optional)</span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        value={bulkNotifyMinScore}
+                                        onChange={(e) => setBulkNotifyMinScore(e.target.value)}
+                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all outline-none"
+                                        placeholder="e.g. 80 — only send to teams with score >= this value"
+                                    />
                                 </div>
 
                                 <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
@@ -2788,7 +2918,7 @@ Best regards,
                                         <div>
                                             <p className="text-[11px] font-black text-slate-900 uppercase tracking-tight">Professional Dispatch Protocol</p>
                                             <p className="text-[10px] font-bold text-slate-400 leading-relaxed mt-1">
-                                                This message will be wrapped in the premium Studlyf Achievement Template automatically. 
+                                                This message will be wrapped in the selected template automatically.
                                                 The round will be set to: <strong className="text-[#6C3BFF]">{bulkNotifyNextStage}</strong>.
                                             </p>
                                         </div>

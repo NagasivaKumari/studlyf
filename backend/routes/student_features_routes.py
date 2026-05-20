@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from auth_institution import get_auth_user, get_auth_user_optional
 
 from db import (
-    career_assessments_col, career_goals_col, assessment_questions_col,
+    career_assessments_col, career_assessment_templates_col, career_goals_col, assessment_questions_col,
     blogs_col, learning_tracks_col,
     company_questions_col, partners_col, partner_talent_pool_col,
     job_simulations_col, gd_topics_col,
@@ -15,9 +15,7 @@ from db import (
 
 router = APIRouter(prefix="/api/student", tags=["Student Features"])
 
-def fix_id(doc):
-    doc["_id"] = str(doc["_id"])
-    return doc
+from utils.db_helpers import fix_id
 
 # ─── CAREER GOALS ──────────────────────────────────────────────────────────────
 
@@ -47,9 +45,11 @@ async def get_career_goal(user: dict = Depends(get_auth_user)):
 
 @router.get("/career-assessment/questions")
 async def get_career_assessment_questions():
-    cursor = career_assessments_col.find({}).sort("order", 1)
+    # Read templates from dedicated templates collection to avoid returning user result documents
+    cursor = career_assessment_templates_col.find({}).sort("order", 1)
     questions = [fix_id(q) async for q in cursor]
     if not questions:
+        # Fallback default templates
         questions = [
             {
                 "step": 1,

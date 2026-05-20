@@ -34,6 +34,26 @@ STAGE_TYPES = {
         "allow_multiple_attempts": True,  # Can re-submit before deadline
         "dynamic_fields": True,  # Admin defines fields
     },
+    "REVIEW": {
+        "label": "Review",
+        "icon": "⚖️",
+        "description": "Judge evaluation stage",
+        "allow_multiple_attempts": False,
+        "review_stage": True,
+    },
+    "QUIZ": {
+        "label": "Quiz",
+        "icon": "📝",
+        "description": "Assessment/Quiz stage",
+        "allow_multiple_attempts": False,
+        "has_quiz": True,
+    },
+    "CUSTOM": {
+        "label": "Custom",
+        "icon": "⚙️",
+        "description": "Custom stage",
+        "allow_multiple_attempts": False,
+    },
     "FINAL": {
         "label": "Final Stage",
         "icon": "🏁",
@@ -88,25 +108,47 @@ async def get_event_stages(event_id: str) -> List[dict]:
         if not isinstance(stages, list):
             return []
         
-        # Enrich stages with type info
+        def _parse_dt(value):
+            if isinstance(value, str):
+                try:
+                    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+                except Exception:
+                    return None
+            if isinstance(value, datetime):
+                return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+            return None
+
+        # Enrich stages with type info and a computed live status
         enriched = []
+        now = datetime.now(timezone.utc)
         for idx, stage in enumerate(stages):
             if not isinstance(stage, dict):
                 continue
             
             stage_type = str(stage.get("type", "SUBMISSION")).upper()
             stage_info = STAGE_TYPES.get(stage_type, {})
+            start_date = _parse_dt(stage.get("start_date") or stage.get("startDate"))
+            end_date = _parse_dt(stage.get("end_date") or stage.get("endDate") or stage.get("deadline"))
+
+            if start_date and now < start_date:
+                computed_status = "Upcoming"
+            elif end_date and now > end_date:
+                computed_status = "Completed"
+            else:
+                computed_status = "Active"
             
             enriched.append({
                 "id": stage.get("id") or f"stage_{idx}",
                 "name": stage.get("name", stage_info.get("label", "Stage")),
                 "type": stage_type,
-                "description": stage_info.get("description", ""),
+                "description": stage.get("description") or (stage.get("config") or {}).get("description") or stage_info.get("description", ""),
                 "icon": stage_info.get("icon", ""),
                 "start_date": stage.get("start_date") or stage.get("startDate"),
                 "end_date": stage.get("end_date") or stage.get("endDate") or stage.get("deadline"),
-                "status": stage.get("status", "upcoming"),
-                "fields": stage.get("fields", []),  # For SUBMISSION stages
+                "status": computed_status,
+                "fields": stage.get("fields") or (stage.get("config") or {}).get("fields", []),  # For SUBMISSION stages
+                "config": stage.get("config") or {},
                 "team_required": stage_info.get("requires_team", False),
                 "view_only": stage_info.get("view_only", False),
                 "order": idx,
@@ -118,7 +160,13 @@ async def get_event_stages(event_id: str) -> List[dict]:
         return []
 
 async def get_participant_stage_progress(event_id: str, user_id: str) -> dict:
-    """Get current stage, submissions, and next actions for a participant."""
+    """Get current stage, submissions, and next actions for a participant.
+    
+    Production-ready logic:
+    1. First checks participant's stored `current_stage` (set by admin advance-stage or registration)
+    2. Falls back to date-based computation if no stored stage
+    3. Validates the stored stage against the event's actual stage list
+    """
     try:
         # Get participant
         participant = await participants_col.find_one({
@@ -134,7 +182,9 @@ async def get_participant_stage_progress(event_id: str, user_id: str) -> dict:
         if not stages:
             return {"status": "no_stages"}
         
-        # Determine current stage (first uncompleted stage)
+        stored_current_stage = participant.get("current_stage")
+        
+        # Determine current stage: prefer stored value, fallback to date-based
         current_stage_idx = 0
         current_time = datetime.now(timezone.utc)
         
@@ -142,6 +192,17 @@ async def get_participant_stage_progress(event_id: str, user_id: str) -> dict:
         upcoming_stages = []
         completed_stages = []
         
+        # Try to find the stored stage in the event's stage list
+        if stored_current_stage:
+            for idx, stage in enumerate(stages):
+                stage_name = stage.get("name", "")
+                stage_type = stage.get("type", "")
+                if stage_name == stored_current_stage or stage_type == stored_current_stage:
+                    current_stage = stage
+                    current_stage_idx = idx
+                    break
+        
+        # Classify stages based on stored_current_stage or date computation
         for stage in stages:
             end_date = stage.get("end_date")
             if isinstance(end_date, str):
@@ -154,17 +215,36 @@ async def get_participant_stage_progress(event_id: str, user_id: str) -> dict:
             elif isinstance(end_date, datetime) and end_date.tzinfo is None:
                 end_date = end_date.replace(tzinfo=timezone.utc)
             
-            # Check if stage deadline passed
-            stage_passed = end_date and current_time > end_date
-            stage_started = True  # Simplified - in production check start_date too
+            start_date = stage.get("start_date")
+            if isinstance(start_date, str):
+                try:
+                    start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                    if start_date.tzinfo is None:
+                        start_date = start_date.replace(tzinfo=timezone.utc)
+                except:
+                    start_date = None
+            elif isinstance(start_date, datetime) and start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
             
-            if current_stage is None and not stage_passed and stage_started:
-                current_stage = stage
-                current_stage_idx = stage["order"]
-            elif stage_passed:
-                completed_stages.append(stage)
+            # If we found a stored current_stage match, use ordering for classification
+            if current_stage:
+                if stage["order"] < current_stage_idx:
+                    completed_stages.append(stage)
+                elif stage["order"] > current_stage_idx:
+                    upcoming_stages.append(stage)
+                # stage at current_stage_idx stays as current_stage
             else:
-                upcoming_stages.append(stage)
+                # Fallback: date-based computation
+                stage_started = not start_date or current_time >= start_date
+                stage_passed = end_date and current_time > end_date
+                
+                if current_stage is None and not stage_passed and stage_started:
+                    current_stage = stage
+                    current_stage_idx = stage["order"]
+                elif stage_passed:
+                    completed_stages.append(stage)
+                else:
+                    upcoming_stages.append(stage)
         
         # Get submissions for current participant
         submissions = {}
@@ -237,6 +317,18 @@ async def get_stage_action_required(event_id: str, user_id: str, stage_id: str) 
         # ─── FINAL STAGE ───
         elif stage_type == "FINAL":
             return await _handle_final_stage(event_id, user_id, target_stage)
+        
+        # ─── REVIEW STAGE ───
+        elif stage_type == "REVIEW":
+            return {"stage_type": "REVIEW", "action": "view", "message": "Review stage — waiting for judge evaluation"}
+        
+        # ─── QUIZ STAGE ───
+        elif stage_type == "QUIZ":
+            return {"stage_type": "QUIZ", "action": "take_quiz", "message": "Quiz stage — assessment required"}
+        
+        # ─── CUSTOM STAGE ───
+        elif stage_type == "CUSTOM":
+            return {"stage_type": "CUSTOM", "action": "custom", "message": "Custom stage"}
         
         else:
             return {"error": f"Unknown stage type: {stage_type}"}
@@ -368,8 +460,8 @@ async def _handle_submission_stage(event_id: str, user_id: str, stage: dict) -> 
         if not participant:
             return {"error": "You must register first"}
         
-        # Get dynamic fields for this stage
-        fields = stage.get("fields", [])
+        # Get dynamic fields for this stage (check both direct fields and config.fields)
+        fields = stage.get("fields") or (stage.get("config") or {}).get("fields", [])
         
         # Build form schema
         form_fields = []

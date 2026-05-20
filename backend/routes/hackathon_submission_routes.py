@@ -9,48 +9,88 @@ from stage_access_control import check_stage_submission_access, check_stage_dead
 
 router = APIRouter(prefix="/api/hackathons", tags=["Hackathon Submissions"])
 
-def fix_id(doc):
-    if doc and "_id" in doc:
-        doc["_id"] = str(doc["_id"])
-        doc["submissionId"] = doc["_id"]
-    return doc
+from utils.db_helpers import fix_id
 
 @router.post("/submissions")
 async def create_hackathon_submission(submission: HackathonSubmission, current_user: dict = Depends(get_current_user)):
     """Create a new hackathon submission and auto-register participant/team.
     
     STAGE ACCESS CONTROL:
-    - Only shortlisted participants can submit
-    - Submission must be within stage time window (e.g., 18:00-19:00)
+    - Stage type is derived dynamically from the event's current active stage
+    - Registration stages skip the shortlist check (new registrations welcome)
+    - Submission/final stages require shortlisted status
+    - Submission must be within stage time window
     """
     try:
         user_id = current_user.get("user_id")
         
         # 0. Resolve target Event ID first
-        target_event_id = submission.hackathonId
+        target_event_id = submission.eventId or submission.hackathonId
         try:
             from db import opportunities_col
-            opp = await opportunities_col.find_one({"_id": ObjectId(submission.hackathonId)})
+            lookup_id = submission.eventId or submission.hackathonId
+            opp = await opportunities_col.find_one({"_id": ObjectId(lookup_id)})
             if opp and opp.get("event_link_id"):
                 target_event_id = str(opp["event_link_id"])
         except:
             pass
         
-        # Check stage access control - only shortlisted participants can submit
-        await check_stage_submission_access(
-            event_id=target_event_id,
-            user_id=user_id,
-            stage_type="submission"
-        )
-        
-        # Check stage deadline - submission must be within stage window (e.g., 18:00-19:00)
+        # Derive current stage type from event stages
+        current_stage_type = None
+        current_stage_name = ""
+        try:
+            ev = await events_col.find_one({"_id": ObjectId(target_event_id)})
+            if not ev:
+                ev = await opportunities_col.find_one({"_id": ObjectId(target_event_id)})
+            if ev and isinstance(ev.get("stages"), list):
+                now = datetime.now(timezone.utc)
+                for stage in ev["stages"]:
+                    start = stage.get("start_date") or stage.get("startDate")
+                    end = stage.get("end_date") or stage.get("endDate") or stage.get("deadline")
+                    if isinstance(start, str):
+                        try:
+                            start = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                        except:
+                            start = None
+                    if isinstance(end, str):
+                        try:
+                            end = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                        except:
+                            end = None
+                    if isinstance(start, datetime) and start.tzinfo is None:
+                        start = start.replace(tzinfo=timezone.utc)
+                    if isinstance(end, datetime) and end.tzinfo is None:
+                        end = end.replace(tzinfo=timezone.utc)
+                    if start and end and start <= now <= end:
+                        current_stage_type = stage.get("type")
+                        current_stage_name = stage.get("name", "")
+                        break
+                else:
+                    # No active stage — use first stage type
+                    if ev["stages"]:
+                        current_stage_type = ev["stages"][0].get("type")
+                        current_stage_name = ev["stages"][0].get("name", "")
+        except:
+            pass
+
+        # Access control: skip participant existence check for registration stages
+        stage_type_lower = (current_stage_type or "").lower()
+        if stage_type_lower != "registration":
+            await check_stage_submission_access(
+                event_id=target_event_id,
+                user_id=user_id,
+                stage_type=current_stage_type or "SUBMISSION"
+            )
+
+        # Check stage deadline
+        stage_name_for_deadline = current_stage_name or current_stage_type or "current stage"
         await check_stage_deadline(
             event_id=target_event_id,
-            stage_name="Submission"
+            stage_name=stage_name_for_deadline
         )
         
         # 1. Check if submission already exists for this team/user
-        dup_query = {"hackathonId": submission.hackathonId}
+        dup_query = {"hackathonId": submission.eventId or submission.hackathonId}
         if submission.teamType == "Team":
             dup_query["teamName"] = submission.teamName
         else:
@@ -63,6 +103,8 @@ async def create_hackathon_submission(submission: HackathonSubmission, current_u
 
         submission_dict = submission.dict(exclude={"id", "submissionId"})
         submission_dict["submittedBy"] = user_id
+        submission_dict["hackathonId"] = target_event_id
+        submission_dict["eventId"] = target_event_id
         submission_dict["createdAt"] = datetime.utcnow()
         submission_dict["updatedAt"] = datetime.utcnow()
         submission_dict["status"] = "Pending"
@@ -141,7 +183,7 @@ async def get_event_submissions(
     search: Optional[str] = None,
     sort: Optional[str] = "latest"
 ):
-    """List all submissions for a hackathon with filters."""
+    """List all submissions for an event with filters."""
     from bson import ObjectId
     from db import opportunities_col
     
@@ -297,8 +339,28 @@ async def get_hackathon_leaderboard(event_id: str, include_all: bool = Query(Fal
 @router.get("/events/{event_id}/stats")
 async def get_hackathon_stats(event_id: str):
     """Get live counters for the event page."""
-    # Participants: total unique users (including team members)
-    submissions = await hackathon_submissions_col.find({"hackathonId": event_id}).to_list(length=None)
+    from bson import ObjectId
+    from db import opportunities_col
+    
+    # Use same robust variant matching as get_event_submissions
+    ev_variants = [event_id, str(event_id)]
+    try:
+        if len(str(event_id)) == 24:
+            ev_variants.append(ObjectId(event_id))
+    except:
+        pass
+    
+    linked_opp = await opportunities_col.find_one({"event_link_id": {"$in": ev_variants}})
+    hack_ids = list(ev_variants)
+    if linked_opp:
+        opp_id_str = str(linked_opp["_id"])
+        hack_ids.append(opp_id_str)
+        try:
+            hack_ids.append(ObjectId(opp_id_str))
+        except:
+            pass
+    
+    submissions = await hackathon_submissions_col.find({"hackathonId": {"$in": hack_ids}}).to_list(length=None)
     
     unique_users = set()
     for s in submissions:
