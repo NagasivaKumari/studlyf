@@ -666,6 +666,33 @@ async def get_event_teams(event_id: str, user: dict = Depends(get_auth_user)):
 
     return teams
 
+@router.delete("/events/{event_id}/teams/{team_id}")
+async def delete_event_team(
+    event_id: str,
+    team_id: str,
+    user: dict = Depends(get_auth_user),
+):
+    """Delete a team and remove all members from it (institution admin only)."""
+    await assert_institution_owns_event(event_id, user)
+
+    try:
+        team = await teams_col.find_one({"_id": ObjectId(team_id), "event_id": {"$in": [event_id, str(event_id)]}})
+    except Exception:
+        team = None
+
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    for member in team.get("members", []):
+        await participants_col.update_one(
+            {"event_id": {"$in": [event_id, str(event_id)]}, "user_id": member.get("user_id")},
+            {"$unset": {"team_id": ""}}
+        )
+
+    await teams_col.delete_one({"_id": ObjectId(team_id)})
+
+    return {"status": "success", "message": f"Team '{team.get('team_name')}' deleted"}
+
 
 @router.post("/tools/backfill-portal-participants/{institution_id}")
 async def backfill_portal_participants_route(institution_id: str, user: dict = Depends(get_auth_user)):

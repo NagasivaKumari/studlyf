@@ -183,7 +183,10 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
 
     const handleLeaveTeam = async () => {
         if (!eventId || !team) return;
-        if (!window.confirm('Are you sure you want to leave this team?')) return;
+        const msg = isLeader
+            ? 'Are you sure you want to delete this team? All members will be removed from the team.'
+            : 'Are you sure you want to leave this team?';
+        if (!window.confirm(msg)) return;
         setError(null);
         setActionLoading(true);
         try {
@@ -505,7 +508,7 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                         disabled={actionLoading}
                         className="w-full py-3 border border-red-200 text-red-600 rounded-xl text-sm font-black hover:bg-red-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
-                        <LogOut size={16} /> {isLeader ? 'Disband Team' : 'Leave Team'}
+                        <LogOut size={16} /> {isLeader ? 'Delete Team' : 'Leave Team'}
                     </button>
                 </div>
             ) : team && !isTeamMember ? (

@@ -365,6 +365,7 @@ from routes import submission_routes, judge_routes, event_routes, dashboard_rout
 from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from routes import stage_navigation_routes, team_join_request_routes
+from routes import student_features_routes
 from rate_limiter import rate_limit, check_rate_limit
 
 
@@ -403,6 +404,7 @@ app.include_router(hackathon_judging_routes.router)
 app.include_router(hackathon_submission_routes.router)
 app.include_router(stage_navigation_routes.router)
 app.include_router(team_join_request_routes.router)
+app.include_router(student_features_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
