@@ -26,7 +26,7 @@ interface Course {
   title: string;
   description: string;
   role_tag: string;
-  difficulty?: string;
+  difficulty: string;
   skills?: string[];
   duration?: string;
   image?: string;
@@ -39,18 +39,98 @@ interface Course {
   key_topics?: string[];
   last_updated?: string;
   instructor?: string;
-  instructor_name?: string;
-  instructor_image?: string;
-  instructor_description?: string;
   is_bestseller?: boolean;
   is_premium?: boolean;
-  school?: string;
   user_state?: 'NOT_PURCHASED' | 'IN_CART' | 'ENROLLED';
 }
 
 /* ─────────────────────────── mock fallback data ─────────────────────────── */
-const MOCK_COURSES: Course[] = [];
-
+const MOCK_COURSES: Course[] = [
+  {
+    _id: 'm1',
+    title: 'Transformer Architectures',
+    description: 'Deep dive into the architecture that powered the AI revolution. Build GPT-like models from scratch.',
+    role_tag: 'AI',
+    difficulty: 'Advanced',
+    skills: ['PyTorch', 'LLMs', 'Neural Networks'],
+    duration: '6 Weeks',
+    image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=800&auto=format&fit=crop',
+    standard: 'AI_PROTOCOL_01',
+    price: 49.99,
+    rating: 4.9,
+    total_reviews: 1250,
+  },
+  {
+    _id: 'm2',
+    title: 'Distributed System Design',
+    description: 'Master the art of building systems that handle millions of requests. CAP theorem, consensus, and sharding.',
+    role_tag: 'Software Engineering',
+    difficulty: 'Advanced',
+    skills: ['Microservices', 'System Design', 'Redis'],
+    duration: '8 Weeks',
+    image: 'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=800&auto=format&fit=crop',
+    standard: 'SWE_PROTOCOL_04',
+    price: 59.99,
+    rating: 4.8,
+    total_reviews: 850,
+  },
+  {
+    _id: 'm3',
+    title: 'Data Engineering Pipelines',
+    description: 'Build production-grade ETL pipelines using Spark, Airflow, and Snowflake.',
+    role_tag: 'Data',
+    difficulty: 'Intermediate',
+    skills: ['Spark', 'Airflow', 'SQL'],
+    duration: '5 Weeks',
+    image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&auto=format&fit=crop',
+    standard: 'DATA_PROTOCOL_02',
+    price: 39.99,
+    rating: 4.7,
+    total_reviews: 620,
+  },
+  {
+    _id: 'm4',
+    title: 'Product Discovery Protocols',
+    description: 'Learn to find product-market fit using data-driven discovery techniques and user research.',
+    role_tag: 'PM',
+    difficulty: 'Beginner',
+    skills: ['Discovery', 'Strategy', 'Analytics'],
+    duration: '4 Weeks',
+    image: 'https://images.unsplash.com/photo-1542626991-cbc4e32524cc?w=800&auto=format&fit=crop',
+    standard: 'PM_PROTOCOL_01',
+    price: 29.99,
+    rating: 4.9,
+    total_reviews: 430,
+  },
+  {
+    _id: 'm5',
+    title: 'Offensive Security Ops',
+    description: 'Become a certified defender by mastering offensive tactics, penetration testing, and vulnerability research.',
+    role_tag: 'Cyber',
+    difficulty: 'Advanced',
+    skills: ['Pentesting', 'Metasploit', 'Linux'],
+    duration: '10 Weeks',
+    image: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=800&auto=format&fit=crop',
+    standard: 'CYBER_PROTOCOL_09',
+    price: 69.99,
+    rating: 4.9,
+    total_reviews: 890,
+  },
+  {
+    _id: 'm6',
+    title: 'React Performance Mastery',
+    description: 'Go beyond basic hooks. Master fiber architectue, concurrent rendering, and high-entropy UI optimization.',
+    role_tag: 'Frontend',
+    difficulty: 'Intermediate',
+    skills: ['React', 'Performance', 'WASM'],
+    duration: '4 Weeks',
+    image: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=800&auto=format&fit=crop',
+    standard: 'FE_PROTOCOL_03',
+    price: 34.99,
+    rating: 4.8,
+    total_reviews: 740,
+  }
+];
 
 const CourseDetail: React.FC = () => {
   const { courseId } = useParams<{ courseId: string }>();
@@ -189,9 +269,7 @@ const CourseDetail: React.FC = () => {
   const totalHours = course.total_hours || course.duration || '12 weeks';
   const level = course.level || course.difficulty || 'Intermediate';
   const topics = course.key_topics || course.skills || ['System Design', 'Architecture', 'Performance'];
-  const instructorName = course.instructor_name || course.instructor || 'Eshwar G';
-  const instructorRole = course.instructor_description || `Expert ${course.role_tag} Engineer`;
-  const instructorImg = course.instructor_image || '/images/Eshwar.jpg';
+  const instructor = course.instructor || course.role_tag || 'Engineering Expert';
   const displayImage = course.image || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=1200';
 
   return (
@@ -397,14 +475,12 @@ const CourseDetail: React.FC = () => {
             >
               <h2 className="text-2xl font-black text-[#111827] mb-6 uppercase tracking-tight">Instructor</h2>
               <div className="flex items-start gap-6">
-                <div className="w-20 h-20 rounded-full bg-[#7C3AED] flex items-center justify-center text-white text-2xl font-black overflow-hidden flex-shrink-0">
-                  <img src={instructorImg} alt={instructorName} className="w-full h-full object-cover" onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(instructorName)}&background=7C3AED&color=fff`;
-                  }} />
+                <div className="w-20 h-20 rounded-full bg-[#7C3AED] flex items-center justify-center text-white text-2xl font-black flex-shrink-0">
+                  {instructor.charAt(0)}
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">{instructorName}</h3>
-                  <p className="text-gray-600 mb-4">{instructorRole}</p>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">{instructor}</h3>
+                  <p className="text-gray-600 mb-4">Expert {course.role_tag} Engineer</p>
                   <div className="flex flex-wrap gap-4 text-sm text-gray-700">
                     <div className="flex items-center gap-2">
                       <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
@@ -416,7 +492,7 @@ const CourseDetail: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       <PlayCircle className="w-4 h-4" />
-                      <span>Multiple Courses</span>
+                      <span>5 Courses</span>
                     </div>
                   </div>
                 </div>
@@ -445,38 +521,31 @@ const CourseDetail: React.FC = () => {
 
                 <div className="p-6">
                   {/* Price */}
-                    <div className="mb-6">
-                      <div className="text-4xl font-black text-[#111827] mb-1">
-                        {course.price && Number(course.price) > 0 ? `₹${Number(course.price).toLocaleString('en-IN')}` : 'FREE'}
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        {course.price && Number(course.price) > 0 ? 'One-time Payment' : 'Free Enrollment'}
-                      </div>
+                  <div className="mb-6">
+                    <div className="text-4xl font-black text-[#111827] mb-1">
+                      ${price.toFixed(2)}
                     </div>
+                    <div className="text-sm text-gray-600 line-through">$199.99</div>
+                  </div>
 
                   {/* Action Buttons */}
                   <div className="space-y-3 mb-6">
                     {userState === 'NOT_PURCHASED' && (
                       <button
                         onClick={handleEnrollNow}
-                        className="glow-btn glow-btn-purple w-full py-4 text-sm uppercase tracking-[0.2em] rounded-xl"
+                        className="w-full py-4 bg-[#7C3AED] text-white font-black text-sm uppercase tracking-[0.2em] rounded-xl hover:bg-[#6D28D9] active:scale-[0.98] transition-all shadow-lg shadow-[#7C3AED]/30 flex items-center justify-center gap-2"
                       >
-                        <span className="glow-orb glow-orb-1" />
-                        <span className="glow-orb glow-orb-2" />
-                        <span className="glow-orb glow-orb-3" />
-                        <span className="glow-label flex items-center gap-2"><Zap className="w-5 h-5" /> Enroll Now</span>
+                        <Zap className="w-5 h-5" />
+                        Enroll Now
                       </button>
                     )}
 
                     {userState === 'IN_CART' && (
                       <button
                         onClick={handleEnrollNow}
-                        className="glow-btn glow-btn-purple w-full py-4 text-sm uppercase tracking-[0.2em] rounded-xl"
+                        className="w-full py-4 bg-[#111827] text-white font-black text-sm uppercase tracking-[0.2em] rounded-xl hover:bg-[#1F2937] active:scale-[0.98] transition-all shadow-lg shadow-black/20"
                       >
-                        <span className="glow-orb glow-orb-1" />
-                        <span className="glow-orb glow-orb-2" />
-                        <span className="glow-orb glow-orb-3" />
-                        <span className="glow-label">Complete Enrollment</span>
+                        Complete Enrollment
                       </button>
                     )}
 
@@ -484,13 +553,10 @@ const CourseDetail: React.FC = () => {
                       <button
                         onClick={handleGoToCourse}
                         disabled={actionLoading}
-                        className="glow-btn glow-btn-purple w-full py-4 text-sm uppercase tracking-[0.2em] rounded-xl"
-                        style={{background:'#16a34a'}}
+                        className="w-full py-4 bg-green-600 text-white font-black text-sm uppercase tracking-[0.2em] rounded-xl hover:bg-green-700 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-600/30 flex items-center justify-center gap-2"
                       >
-                        <span className="glow-orb glow-orb-1" style={{background:'radial-gradient(circle,rgba(134,239,172,0.9),transparent 70%)'}} />
-                        <span className="glow-orb glow-orb-2" />
-                        <span className="glow-orb glow-orb-3" style={{background:'radial-gradient(circle,rgba(74,222,128,0.9),transparent 70%)'}} />
-                        <span className="glow-label flex items-center gap-2"><BookOpen className="w-5 h-5" /> Go to Course</span>
+                        <BookOpen className="w-5 h-5" />
+                        Go to Course
                       </button>
                     )}
                   </div>
