@@ -287,20 +287,45 @@ const Courses: React.FC = () => {
           ))}
         </div>
 
-        {/* Course Grid */}
-        <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-          <AnimatePresence>
-            {filteredCourses.map((course) => (
-              <motion.div key={course._id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <CourseCard
-                  {...course}
-                  user_state={(userStates[course._id] || 'NOT_PURCHASED') as any}
-                  onCardClick={handleCourseClick}
-                />
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </motion.div>
+        {/* Debug Info */}
+        <div className="mb-8 text-xs text-gray-500 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200">
+          <div>API: {API_BASE_URL}/api/courses</div>
+          <div>Total courses: {courses.length}</div>
+          <div>Filtered courses: {filteredCourses.length}</div>
+          <div>User ID: {userId}</div>
+          <div>Category: {activeCategory}</div>
+        </div>
+
+        {/* Course Grid or Empty State */}
+        {filteredCourses.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="text-2xl font-black text-gray-400 mb-4">No Courses Found</div>
+            {courses.length === 0 && (
+              <div className="text-sm text-gray-500">
+                Courses not loading from API. Check browser console for errors.
+              </div>
+            )}
+            {courses.length > 0 && activeCategory !== 'All' && (
+              <div className="text-sm text-gray-500">
+                No courses in {activeCategory} category.
+              </div>
+            )}
+          </div>
+        ) : (
+          <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
+            <AnimatePresence>
+              {filteredCourses.map((course) => (
+                <motion.div key={course._id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <CourseCard
+                    {...course}
+                    user_state={(userStates[course._id] || 'NOT_PURCHASED') as any}
+                    onCardClick={handleCourseClick}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        )}
       </div>
     </div>
   );
