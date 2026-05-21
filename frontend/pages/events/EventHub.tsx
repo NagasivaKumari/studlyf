@@ -514,7 +514,7 @@ const EventHub: React.FC = () => {
 
                                 {submissionStage && (
                                     <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-600">Submission stage brief</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-600">Stage brief</p>
                                         <h3 className="mt-2 text-xl font-black text-slate-900">{submissionStage.name || 'Submission'}</h3>
                                         <p className="mt-2 text-sm font-medium text-slate-600 whitespace-pre-wrap">
                                             {submissionStage.description || submissionStage?.config?.description || 'Follow the host instructions carefully before submitting.'}

@@ -152,6 +152,8 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                     stages.map((stage, index) => {
                         const stageTypeId = normalizeStageTypeId(stage.type);
                         const stageMeta = getStageMeta(stage.type);
+                        const showStageBrief = stageTypeId !== 'REGISTRATION' && stageTypeId !== 'TEAM_FORMATION';
+                        const showFieldBuilder = stageTypeId === 'SUBMISSION';
                         return (
                         <div 
                             key={stage.id}
@@ -304,34 +306,44 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                 </div>
                                             </div>
 
-                                            {stageTypeId === 'SUBMISSION' && (
+                                            {showStageBrief && (
                                                 <div className="md:col-span-2 p-8 bg-emerald-50/30 rounded-[2rem] border border-emerald-100/50">
                                                     <div className="flex items-center gap-3 mb-6">
                                                         <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600">
                                                             <Plus size={20} />
                                                         </div>
                                                         <div>
-                                                            <h5 className="text-sm font-black text-slate-900 uppercase tracking-tight">Submission Field Builder</h5>
-                                                            <p className="text-[10px] text-slate-500 font-medium">Define what participants need to provide for this stage</p>
+                                                            <h5 className="text-sm font-black text-slate-900 uppercase tracking-tight">Stage Instructions</h5>
+                                                            <p className="text-[10px] text-slate-500 font-medium">Add clear instructions that participants will see in the UI for this stage</p>
                                                         </div>
                                                     </div>
 
                                                     <div className="space-y-2 mb-6">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Submission instructions</label>
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Stage instructions</label>
                                                         <textarea
                                                             value={stage.description || ''}
                                                             onChange={(e) => updateStage(stage.id, { description: e.target.value })}
-                                                            placeholder="Tell participants exactly what to submit, expected format, and any rules."
+                                                            placeholder={
+                                                                stageTypeId === 'SUBMISSION'
+                                                                    ? 'Tell participants exactly what to submit, expected format, and any rules.'
+                                                                    : 'Tell participants what they should know, do, or follow for this stage.'
+                                                            }
                                                             className="w-full min-h-28 px-5 py-4 bg-white border border-emerald-100 rounded-2xl focus:ring-2 focus:ring-emerald-200 outline-none font-medium text-slate-700"
                                                         />
                                                     </div>
-                                                    
-                                                    <FieldBuilder 
-                                                        fields={stage.config?.fields || []} 
-                                                        onUpdate={(newFields) => updateStage(stage.id, { 
-                                                            config: { ...(stage.config || {}), fields: newFields } 
-                                                        })} 
-                                                    />
+
+                                                    {showFieldBuilder ? (
+                                                        <FieldBuilder 
+                                                            fields={stage.config?.fields || []} 
+                                                            onUpdate={(newFields) => updateStage(stage.id, { 
+                                                                config: { ...(stage.config || {}), fields: newFields } 
+                                                            })} 
+                                                        />
+                                                    ) : (
+                                                        <div className="p-4 bg-white border border-emerald-100 rounded-2xl text-xs text-slate-500 font-medium">
+                                                            This stage uses the instruction box only. Student-input fields are available for submission stages.
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
 
