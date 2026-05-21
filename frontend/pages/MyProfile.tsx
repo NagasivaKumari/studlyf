@@ -99,26 +99,6 @@ const MyProfile: React.FC = () => {
     return score;
   };
 
-  const profileCompletion = calculateStrength();
-
-  const profileTasks = [
-    {
-      label: 'Skills',
-      detail: formData.skills.length > 0 ? `${formData.skills.length} added` : 'Add skills',
-      done: formData.skills.length > 0,
-    },
-    {
-      label: 'Experience',
-      detail: formData.experienceList.length > 0 || formData.experience.company ? `${formData.experienceList.length + (formData.experience.company ? 1 : 0)} entries` : 'Add experience',
-      done: formData.experienceList.length > 0 || Boolean(formData.experience.company),
-    },
-    {
-      label: 'Resume',
-      detail: formData.resume.fileName !== 'No resume uploaded' ? formData.resume.fileName : 'Upload resume',
-      done: formData.resume.fileName !== 'No resume uploaded',
-    },
-  ];
-
   const [isExtracting, setIsExtracting] = useState(false);
 
   // ─── REAL: Add / Remove individual skills ───
@@ -1785,49 +1765,6 @@ const MyProfile: React.FC = () => {
               <p className="text-sm text-purple-100 font-medium leading-relaxed">Generate a professional resume with your profile details and download it as a clean PDF.</p>
             </div>
           </motion.div>
-
-          {/* Completion Card */}
-          <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-[0_10px_30px_rgba(0,0,0,0.02)]">
-            <h3 className="font-black uppercase text-xs tracking-widest text-gray-900 mb-6 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#7C3AED]" />
-              Profile Strength
-            </h3>
-            <div className="space-y-4">
-              <div className="relative h-4 bg-gray-50 rounded-full overflow-hidden p-1">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${profileCompletion}%` }}
-                  className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.3)]"
-                />
-              </div>
-              <div className="flex justify-between items-center px-1">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Complete your profile</p>
-                <span className="text-xl font-black text-[#111827]">{profileCompletion}%</span>
-              </div>
-
-              <div className="mt-6 space-y-3">
-                {profileTasks.map((task) => (
-                  <div key={task.label} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{task.label}</p>
-                      <p className="text-sm font-bold text-slate-900 mt-1">{task.detail}</p>
-                    </div>
-                    <span className={`text-[10px] font-black uppercase tracking-[0.18em] ${task.done ? 'text-emerald-700' : 'text-slate-500'}`}>
-                      {task.done ? 'Done' : 'Pending'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('skills')}
-                className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-[#5B21B6] transition-colors"
-              >
-                Complete profile actions
-              </button>
-            </div>
-          </div>
 
           {/* Tab Navigation */}
           <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-[0_10px_30px_rgba(0,0,0,0.02)] overflow-hidden py-6">
