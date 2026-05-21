@@ -512,6 +512,26 @@ const EventHub: React.FC = () => {
                                     </p>
                                 </div>
 
+                                {submissionStage && (
+                                    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-600">Submission stage brief</p>
+                                        <h3 className="mt-2 text-xl font-black text-slate-900">{submissionStage.name || 'Submission'}</h3>
+                                        <p className="mt-2 text-sm font-medium text-slate-600 whitespace-pre-wrap">
+                                            {submissionStage.description || submissionStage?.config?.description || 'Follow the host instructions carefully before submitting.'}
+                                        </p>
+                                        {Array.isArray(submissionStage?.config?.fields) && submissionStage.config.fields.length > 0 ? (
+                                            <div className="mt-4 flex flex-wrap gap-2">
+                                                {submissionStage.config.fields.map((field: any) => (
+                                                    <span key={field.id || field.field_id || field.label} className="px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-black uppercase tracking-widest">
+                                                        {field.label}
+                                                        {field.required ? ' *' : ''}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                )}
+
                                 {/* Team Size Enforcement Block */}
                                 {needsTeam && !teamMeetsSize ? (
                                     <div className="p-10 bg-white border-2 border-amber-200 rounded-[3rem] shadow-xl shadow-amber-900/5 space-y-6">
