@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Check, BookOpen, Award } from 'lucide-react';
+import { API_BASE_URL, authHeaders } from '../apiConfig';
 
 interface EnrolledCourse {
   _id: string;
@@ -14,13 +15,27 @@ const Checkout: React.FC = () => {
   const location = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const enrolledCourses = (location.state as { enrolledCourses: EnrolledCourse[] })?.enrolledCourses || [];
 
   const handleConfirmEnrollment = async () => {
     setConfirming(true);
-    // Simulate payment processing
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    setError(null);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const userId = localStorage.getItem('user_id') || localStorage.getItem('uid');
+      if (token && userId) {
+        const res = await fetch(`${API_BASE_URL}/api/student/tracks/enroll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ user_id: userId, courses: enrolledCourses }),
+        });
+        if (!res.ok) throw new Error('Enrollment failed');
+      }
+    } catch (e: any) {
+      setError(e.message);
+    }
     setCompleted(true);
   };
 

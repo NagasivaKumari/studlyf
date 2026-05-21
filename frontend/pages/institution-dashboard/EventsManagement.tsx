@@ -149,13 +149,13 @@ const EventsManagement: React.FC<EventsManagementProps> = ({ institutionId, onVi
                 setEvents(data.map((e: any) => ({
                     id: e._id,
                     name: e.title,
-                    status: e.status || 'Live',
-                    type: e.category || 'Job',
-                    startDate: new Date(e.start_date).toLocaleDateString(),
-                    participants: e.participant_count || 0,
-                    image: e.image_url || 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=800&q=80',
-                    visibility: e.visibility || 'Public',
-                    registrationStatus: e.registration_status || 'Open'
+                    status: e.status || 'Unknown',
+                    type: e.category || 'Unknown',
+                    startDate: e.start_date ? new Date(e.start_date).toLocaleDateString() : 'N/A',
+                    participants: e.participant_count ?? 0,
+                    image: e.image_url || '',
+                    visibility: e.visibility || 'Unknown',
+                    registrationStatus: e.registration_status || 'Unknown'
                 })));
             } catch (err) {
                 console.error("Dynamic events fetch error:", err);
@@ -225,7 +225,7 @@ const EventsManagement: React.FC<EventsManagementProps> = ({ institutionId, onVi
                         />
                         <FilterDropdown 
                             label="Status" 
-                            options={['Live', 'Draft', 'Under Moderation', 'Rejected', 'Needs Review', 'Completed', 'Upcoming']} 
+                            options={['Live', 'Draft', 'Completed', 'Cancelled', 'Upcoming']} 
                             value={statusFilter} 
                             onChange={setStatusFilter} 
                             onClear={() => setStatusFilter('')}

@@ -53,18 +53,22 @@ const getStageMeta = (rawType: string | undefined) => {
 const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigureQuiz, availableJudges = [] }) => {
     const [expandedStage, setExpandedStage] = useState<string | null>(null);
 
-    const calculateStatus = (startDate: string, endDate: string): IStage['status'] => {
+    const computeStatus = (startDate?: string, endDate?: string): IStage['status'] => {
         const now = new Date();
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        
-        // Ensure end date includes the entire day (set to 23:59:59 UTC)
-        // This aligns with the backend enforcement
-        end.setUTCHours(23, 59, 59, 999);
-        
-        if (now < start) return 'Upcoming';
-        if (now > end) return 'Completed';
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
+
+        if (end && end.getHours() === 0 && end.getMinutes() === 0 && !String(endDate).includes('T')) {
+            end.setHours(23, 59, 59, 999);
+        }
+
+        if (start && now < start) return 'Upcoming';
+        if (end && now > end) return 'Completed';
         return 'Active';
+    };
+
+    const calculateStatus = (startDate: string, endDate: string): IStage['status'] => {
+        return computeStatus(startDate, endDate);
     };
 
     const addStage = () => {
@@ -72,14 +76,15 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
         const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         
         const newStage: IStage = {
-            id: Math.random().toString(36).substr(2, 9),
+            id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9) + Date.now().toString(36),
             name: 'New Stage',
             type: 'SUBMISSION',
             start_date: startDate,
             end_date: endDate,
-            status: calculateStatus(startDate, endDate),
+            status: computeStatus(startDate, endDate),
             visibility: 'Public',
             roundMode: 'Online',
+            description: 'Submit your project / abstract',
         };
         onUpdate([...stages, newStage]);
         setExpandedStage(newStage.id);
@@ -99,6 +104,11 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                         updates.start_date || s.start_date,
                         updates.end_date || s.end_date
                     );
+                }
+                // If type changed away from REVIEW, clear stale judgeIds
+                if (updates.type && updates.type !== s.type && updates.type !== 'REVIEW') {
+                    updated.config = { ...(updated.config || {}) };
+                    delete updated.config.judgeIds;
                 }
                 return updated;
             }
@@ -167,9 +177,9 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                     <div className="flex items-center gap-2">
                                         <h4 className="font-bold text-slate-900">{stage.name}</h4>
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                            stage.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                                            computeStatus(stage.start_date, stage.end_date) === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
                                         }`}>
-                                            {stage.status}
+                                            {computeStatus(stage.start_date, stage.end_date)}
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-3 mt-1">
@@ -304,6 +314,16 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                             <h5 className="text-sm font-black text-slate-900 uppercase tracking-tight">Submission Field Builder</h5>
                                                             <p className="text-[10px] text-slate-500 font-medium">Define what participants need to provide for this stage</p>
                                                         </div>
+                                                    </div>
+
+                                                    <div className="space-y-2 mb-6">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Submission instructions</label>
+                                                        <textarea
+                                                            value={stage.description || ''}
+                                                            onChange={(e) => updateStage(stage.id, { description: e.target.value })}
+                                                            placeholder="Tell participants exactly what to submit, expected format, and any rules."
+                                                            className="w-full min-h-28 px-5 py-4 bg-white border border-emerald-100 rounded-2xl focus:ring-2 focus:ring-emerald-200 outline-none font-medium text-slate-700"
+                                                        />
                                                     </div>
                                                     
                                                     <FieldBuilder 

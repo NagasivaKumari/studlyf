@@ -120,11 +120,11 @@ const OpportunityDetails: React.FC = () => {
     const submissionsRef = useRef<HTMLDivElement>(null);
     const leaderboardRef = useRef<HTMLDivElement>(null);
 
-    // Hackathon Special Mode States
-    const [isHackathon, setIsHackathon] = useState(false);
+    // Context derived from opportunity data — never type-based branching
+    const [stats, setStats] = useState({ participants: 0, teams: 0, submissions: 0 });
+    const [eventSubmissions, setEventSubmissions] = useState<any[]>([]);
+    const [eventLeaderboard, setEventLeaderboard] = useState<any[]>([]);
     const [showSubmissionModal, setShowSubmissionModal] = useState(false);
-    const [hackathonStats, setHackathonStats] = useState({ participants: 0, teams: 0, submissions: 0 });
-    const [hackathonLeaderboard, setHackathonLeaderboard] = useState<any[]>([]);
     const [isSubmittingHackathon, setIsSubmittingHackathon] = useState(false);
     const [hackathonSubmission, setHackathonSubmission] = useState({
         teamName: '',
@@ -144,45 +144,57 @@ const OpportunityDetails: React.FC = () => {
     const [loadingFields, setLoadingFields] = useState(false);
     const eventId = String(opportunity?.event_link_id || opportunity?.event_id || id || '');
 
-    useEffect(() => {
-        if (opportunity) {
-            const cat = String(opportunity.category || opportunity.type || '').toLowerCase();
-            if (cat.includes('hackathon')) {
-                setIsHackathon(true);
-            }
+    const computeStageStatus = (stage: any) => {
+        const now = new Date();
+        const startRaw = stage?.startDate || stage?.start_date;
+        const endRaw = stage?.endDate || stage?.end_date;
+        const start = startRaw ? new Date(startRaw) : null;
+        const end = endRaw ? new Date(endRaw) : null;
+
+        if (end && end.getHours() === 0 && end.getMinutes() === 0 && !String(endRaw).includes('T')) {
+            end.setHours(23, 59, 59, 999);
         }
-    }, [opportunity]);
+
+        if (start && now < start) return 'upcoming';
+        if (end && now > end) return 'completed';
+        return 'active';
+    };
 
     useEffect(() => {
-        if (isHackathon && id) {
-            // Fetch live stats
-            fetch(`${API_BASE_URL}/api/hackathons/events/${id}/stats`)
+        if (!id) return;
+        // Fetch live stats
+        fetch(`${API_BASE_URL}/api/hackathons/events/${id}/stats`)
+            .then(res => res.json())
+            .then(data => setStats(data))
+            .catch(err => console.error("Stats fetch error:", err));
+
+        // Fetch submissions
+        fetch(`${API_BASE_URL}/api/hackathons/events/${id}/submissions`)
+            .then(res => res.json())
+            .then(data => { if (Array.isArray(data)) setEventSubmissions(data); })
+            .catch(err => console.error("Submissions fetch error:", err));
+
+        // Fetch leaderboard
+        const title = String(
+            opportunity?.title ||
+            opportunity?.name ||
+            opportunity?.opportunity_title ||
+            opportunity?.opportunityName ||
+            ''
+        );
+        const loc = String(opportunity?.location || opportunity?.venue || '');
+        const hideLeaderboard =
+            /hyderabad/i.test(title) || /hyderabad/i.test(loc);
+
+        if (!hideLeaderboard) {
+            fetch(`${API_BASE_URL}/api/hackathons/events/${id}/leaderboard`)
                 .then(res => res.json())
-                .then(data => setHackathonStats(data))
-                .catch(err => console.error("Stats fetch error:", err));
-
-            // Fetch leaderboard
-            const title = String(
-                opportunity?.title ||
-                opportunity?.name ||
-                opportunity?.opportunity_title ||
-                opportunity?.opportunityName ||
-                ''
-            );
-            const loc = String(opportunity?.location || opportunity?.venue || '');
-            const hideLeaderboardForThisHackathon =
-                /hyderabad/i.test(title) || /hyderabad/i.test(loc);
-
-            if (!hideLeaderboardForThisHackathon) {
-                fetch(`${API_BASE_URL}/api/hackathons/events/${id}/leaderboard`)
-                    .then(res => res.json())
-                    .then(data => setHackathonLeaderboard(data))
-                    .catch(err => console.error("Leaderboard fetch error:", err));
-            } else {
-                setHackathonLeaderboard([]);
-            }
+                .then(data => setEventLeaderboard(data))
+                .catch(err => console.error("Leaderboard fetch error:", err));
+        } else {
+            setEventLeaderboard([]);
         }
-    }, [isHackathon, id, opportunity?.title, opportunity?.name, opportunity?.location, opportunity?.venue, opportunity?.opportunity_title, opportunity?.opportunityName]);
+    }, [id, opportunity?.title, opportunity?.name, opportunity?.location, opportunity?.venue, opportunity?.opportunity_title, opportunity?.opportunityName]);
 
     const FAV_KEY = 'studlyf_opp_favorites';
 
@@ -199,7 +211,7 @@ const OpportunityDetails: React.FC = () => {
 
     useEffect(() => {
         if (!opportunity?._id) return;
-        const t = opportunity.type || 'Hackathon';
+        const t = opportunity.type || 'General';
         fetch(`${API_BASE_URL}/api/opportunities?type=${encodeURIComponent(t)}`)
             .then((r) => r.json())
             .then((rows) => {
@@ -537,10 +549,11 @@ const OpportunityDetails: React.FC = () => {
                 setSubmitted(true);
                 setIsApplied(true);
                 alert("Submission successful!");
-                // Refresh stats
+                // Refresh stats and submissions
                 const statsRes = await fetch(`${API_BASE_URL}/api/hackathons/events/${id}/stats`);
-                const statsData = await statsRes.json();
-                setHackathonStats(statsData);
+                if (statsRes.ok) setStats(await statsRes.json());
+                const subsRes = await fetch(`${API_BASE_URL}/api/hackathons/events/${id}/submissions`);
+                if (subsRes.ok) { const data = await subsRes.json(); if (Array.isArray(data)) setEventSubmissions(data); }
             } else {
                 const err = await response.json();
                 const msg = Array.isArray(err.detail) 
@@ -823,8 +836,7 @@ const OpportunityDetails: React.FC = () => {
         (Array.isArray(opportunity.stages) &&
             opportunity.stages.some((s: any) => s?.startDate || s?.start_date || s?.endDate || s?.end_date || s?.deadline));
     const hasPrizesSection = Boolean(prizePoolLabel) || (Array.isArray(prizesList) && prizesList.length > 0);
-    const hideHackathonLeaderboard =
-        isHackathon &&
+    const hideLeaderboard =
         (() => {
             const title = String(
                 opportunity?.title ||
@@ -836,7 +848,7 @@ const OpportunityDetails: React.FC = () => {
             const loc = String(opportunity?.location || opportunity?.venue || '');
             return /hyderabad/i.test(title) || /hyderabad/i.test(loc);
         })();
-    const hideHackathonExtras = hideHackathonLeaderboard;
+    const hideExtras = hideLeaderboard;
 
     const richTextClass =
         'opportunity-rich-text text-slate-600 font-medium leading-relaxed [&_p]:mb-3 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_strong]:font-bold [&_em]:italic [&_a]:text-purple-600 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-purple-600 [&_blockquote]:pl-4 [&_blockquote]:my-4 [&_blockquote]:text-slate-700 [&_h1]:text-xl [&_h1]:font-black [&_h1]:mb-2 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-bold';
@@ -850,7 +862,7 @@ const OpportunityDetails: React.FC = () => {
             ) : null}
 
             {/* Sub navigation — reference: Details / Reviews / FAQs */}
-            <header className="sticky top-16 z-40 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
+            <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
                 <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
                     <nav className="flex items-center gap-1 sm:gap-6 text-sm font-bold text-slate-500">
                         <button
@@ -863,45 +875,40 @@ const OpportunityDetails: React.FC = () => {
                             <Home size={16} className="hidden sm:inline" />
                             Details
                         </button>
-                        {isHackathon ? (
-                            <>
-                                <button
-                                    type="button"
-                                    onClick={() => scrollToSection('submissions')}
-                                    className={`pb-0.5 border-b-2 transition-colors ${
-                                        activeSection === 'submissions' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
-                                    }`}
-                                >
-                                    Submissions
-                                </button>
-                                {!hideHackathonLeaderboard ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => scrollToSection('leaderboard')}
-                                        className={`pb-0.5 border-b-2 transition-colors ${
-                                            activeSection === 'leaderboard' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
-                                        }`}
-                                    >
-                                        Leaderboard
-                                    </button>
-                                ) : null}
-                            </>
-                        ) : (
-                            <>
-                                {hasDatesSection ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => scrollToSection('dates')}
-                                        className={`pb-0.5 border-b-2 transition-colors ${
-                                            activeSection === 'dates'
-                                                ? 'text-purple-600 border-purple-600'
-                                                : 'border-transparent hover:text-slate-800'
-                                        }`}
-                                    >
-                                        Dates &amp; Deadlines
-                                    </button>
-                                ) : null}
-                            </>
+                        {Boolean(submissionStage) && (
+                            <button
+                                type="button"
+                                onClick={() => scrollToSection('submissions')}
+                                className={`pb-0.5 border-b-2 transition-colors ${
+                                    activeSection === 'submissions' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
+                                }`}
+                            >
+                                Submissions
+                            </button>
+                        )}
+                        {!hideLeaderboard && (
+                            <button
+                                type="button"
+                                onClick={() => scrollToSection('leaderboard')}
+                                className={`pb-0.5 border-b-2 transition-colors ${
+                                    activeSection === 'leaderboard' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
+                                }`}
+                            >
+                                Leaderboard
+                            </button>
+                        )}
+                        {hasDatesSection && (
+                            <button
+                                type="button"
+                                onClick={() => scrollToSection('dates')}
+                                className={`pb-0.5 border-b-2 transition-colors ${
+                                    activeSection === 'dates'
+                                        ? 'text-purple-600 border-purple-600'
+                                        : 'border-transparent hover:text-slate-800'
+                                }`}
+                            >
+                                Dates &amp; Deadlines
+                            </button>
                         )}
                         {hasPrizesSection ? (
                             <button
@@ -916,38 +923,24 @@ const OpportunityDetails: React.FC = () => {
                                 Prizes
                             </button>
                         ) : null}
-                        {!isHackathon && (
-                            <button
-                                type="button"
-                                onClick={() => scrollToSection('reviews')}
-                                className={`pb-0.5 border-b-2 transition-colors ${
-                                    activeSection === 'reviews' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
-                                }`}
-                            >
-                                Reviews
-                            </button>
-                        )}
-                        {!isHackathon ? (
-                            <button
-                                type="button"
-                                onClick={() => scrollToSection('faq')}
-                                className={`pb-0.5 border-b-2 transition-colors ${
-                                    activeSection === 'faq' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
-                                }`}
-                            >
-                                FAQs &amp; Discussions
-                            </button>
-                        ) : !hideHackathonExtras ? (
-                            <button
-                                type="button"
-                                onClick={() => scrollToSection('faq')}
-                                className={`pb-0.5 border-b-2 transition-colors ${
-                                    activeSection === 'faq' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
-                                }`}
-                            >
-                                FAQs
-                            </button>
-                        ) : null}
+                        <button
+                            type="button"
+                            onClick={() => scrollToSection('reviews')}
+                            className={`pb-0.5 border-b-2 transition-colors ${
+                                activeSection === 'reviews' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
+                            }`}
+                        >
+                            Reviews
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => scrollToSection('faq')}
+                            className={`pb-0.5 border-b-2 transition-colors ${
+                                activeSection === 'faq' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
+                            }`}
+                        >
+                            FAQs &amp; Discussions
+                        </button>
                     </nav>
                     <div className="flex items-center gap-2">
                         <button
@@ -999,7 +992,26 @@ const OpportunityDetails: React.FC = () => {
                 ) : activeTab === 'submissions' && opportunity ? (
                     <div className="my-8">
                         {eventId && submissionStage ? (
-                            <SubmissionForm eventId={eventId} stage={submissionStage} />
+                            <div className="space-y-4">
+                                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-purple-600">Submission stage brief</p>
+                                    <h3 className="mt-2 text-xl font-black text-slate-900">{submissionStage.name || 'Submission'}</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-600 whitespace-pre-wrap">
+                                        {submissionStage.description || submissionStage?.config?.description || 'Follow the host instructions carefully before submitting.'}
+                                    </p>
+                                    {Array.isArray(submissionStage?.config?.fields) && submissionStage.config.fields.length > 0 ? (
+                                        <div className="mt-4 flex flex-wrap gap-2">
+                                            {submissionStage.config.fields.map((field: any) => (
+                                                <span key={field.id || field.field_id || field.label} className="px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-black uppercase tracking-widest">
+                                                    {field.label}
+                                                    {field.required ? ' *' : ''}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : null}
+                                </div>
+                                <SubmissionForm eventId={eventId} stage={submissionStage} />
+                            </div>
                         ) : (
                             <div className="bg-white p-6 rounded-lg shadow-md text-slate-600">
                                 Submission stage is not configured for this event yet.
@@ -1014,40 +1026,18 @@ const OpportunityDetails: React.FC = () => {
                         <h2 className="text-2xl font-black text-slate-800 mb-4">Event Timeline</h2>
                         <div className="flex items-center overflow-x-auto pb-4 -mb-4">
                             {opportunity.stages.map((stage: any, index: number) => {
-                                const now = new Date();
                                 const startDate = stage.startDate || stage.start_date ? new Date(stage.startDate || stage.start_date) : null;
                                 const endDate = stage.endDate || stage.end_date ? new Date(stage.endDate || stage.end_date) : null;
-                                
-                                let status: 'completed' | 'active' | 'upcoming' | 'locked' = 'locked';
-                                if (endDate && now > endDate) {
-                                    status = 'completed';
-                                } else if (startDate && now >= startDate) {
-                                    status = 'active';
-                                } else if (startDate && now < startDate) {
-                                    status = 'upcoming';
-                                }
-
-                                // The first stage is never locked if it's not completed
-                                if (index === 0 && status !== 'completed') {
-                                    status = 'active';
-                                }
-                                
-                                // A stage is locked if the previous one isn't complete (this is a simplification)
-                                // Real logic might depend on participant's progress
-                                if (index > 0 && status !== 'completed') {
-                                    const prevStage = opportunity.stages[index - 1];
-                                    const prevEndDate = prevStage.endDate || prevStage.end_date ? new Date(prevStage.endDate || prevStage.end_date) : null;
-                                    if (!prevEndDate || now < prevEndDate) {
-                                       // status = 'locked'; // This logic needs to be tied to actual user progress
-                                    }
-                                }
-
+                                const status = computeStageStatus(stage);
+                                const isRegistration = (String(stage.type || '').toUpperCase() === 'REGISTRATION') || (String(stage.name || '').toUpperCase().includes('REGISTER'));
+                                const canInteract = (status === 'active') && (isApplied || isRegistration);
 
                                 return (
                                     <React.Fragment key={stage.id || index}>
                                         <div 
-                                            className="flex flex-col items-center cursor-pointer group"
-                                            onClick={() => handleStageClick(stage)}
+                                            className={`flex flex-col items-center ${canInteract ? 'cursor-pointer group' : 'cursor-not-allowed opacity-60'}`}
+                                            onClick={canInteract ? () => handleStageClick(stage) : undefined}
+                                            aria-disabled={!canInteract}
                                         >
                                             <div className={`w-16 h-16 rounded-full flex items-center justify-center border-4 ${
                                                 status === 'active' ? 'bg-purple-100 border-purple-500' :
@@ -1072,7 +1062,7 @@ const OpportunityDetails: React.FC = () => {
                                             </p>
                                         </div>
                                         {index < opportunity.stages.length - 1 && (
-                                            <div className="flex-1 h-1 bg-slate-300 group-hover:bg-purple-300 transition-colors" style={{minWidth: '50px'}}></div>
+                                            <div className={`flex-1 h-1 ${canInteract ? 'bg-slate-300 group-hover:bg-purple-300' : 'bg-slate-200'} transition-colors`} style={{minWidth: '50px'}}></div>
                                         )}
                                     </React.Fragment>
                                 );
@@ -1339,11 +1329,16 @@ const OpportunityDetails: React.FC = () => {
                                                 actionLabel = 'View Stage';
                                             }
 
+                                            const stageStatus = computeStageStatus(s);
+                                            const isReg = (String(s.type || '').toUpperCase() === 'REGISTRATION') || (String(s.name || '').toUpperCase().includes('REGISTER'));
+                                            const canAct = (stageStatus === 'active') && (isApplied || isReg);
+
                                             return (
                                                 <li
                                                     key={s.id || i}
-                                                    onClick={() => handleStageClick(s)}
-                                                    className="flex items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-purple-300 hover:bg-purple-50/20 hover:scale-[1.01] hover:shadow-md transition-all cursor-pointer group animate-fade-in"
+                                                    onClick={canAct ? () => handleStageClick(s) : undefined}
+                                                    className={`flex items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-all group animate-fade-in ${canAct ? 'hover:border-purple-300 hover:bg-purple-50/20 hover:scale-[1.01] hover:shadow-md cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}
+                                                    aria-disabled={!canAct}
                                                 >
                                                     <div className="flex gap-4 min-w-0 flex-grow">
                                                         <span className="flex-shrink-0 w-9 h-9 rounded-lg bg-purple-600/10 text-purple-600 font-black flex items-center justify-center text-sm group-hover:bg-purple-600 group-hover:text-white transition-all">
@@ -1757,9 +1752,9 @@ const OpportunityDetails: React.FC = () => {
                     ) : null}
                         </div>
 
-                        {isHackathon ? (
+                        {eventSubmissions.length > 0 || stats.submissions > 0 ? (
                             <>
-                                {!hideHackathonExtras ? (
+                                {!hideExtras ? (
                                     <div ref={submissionsRef}>
                                         <section className="bg-white rounded-3xl border border-slate-200 p-6 md:p-8 shadow-sm">
                                             <div className="flex items-center justify-between gap-4 mb-5">
@@ -1772,21 +1767,45 @@ const OpportunityDetails: React.FC = () => {
                                                 </span>
                                             </div>
 
+                                            <div className="flex flex-wrap gap-3 mb-5">
+                                                <span className="text-[10px] font-black uppercase tracking-widest bg-purple-100 text-purple-700 px-3 py-1.5 rounded-full">
+                                                    {stats.participants} Participants
+                                                </span>
+                                                <span className="text-[10px] font-black uppercase tracking-widest bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-full">
+                                                    {stats.teams} Teams
+                                                </span>
+                                                <span className="text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full">
+                                                    {stats.submissions} Submissions
+                                                </span>
+                                            </div>
                                             <div className="grid sm:grid-cols-2 gap-4">
-                                                <div className="p-4 rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white flex items-center gap-4">
-                                                    <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-purple-700 font-black">AI</div>
-                                                    <div className="min-w-0">
-                                                        <p className="font-black text-slate-900 truncate">Cyber Sentinel</p>
-                                                        <p className="text-xs text-slate-500 font-bold">5 minutes ago</p>
+                                                {eventSubmissions.length > 0 ? (
+                                                    eventSubmissions.slice(0, 6).map((sub: any, i: number) => (
+                                                        <div key={sub._id || i} className={`p-4 rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white flex items-center gap-4 ${i >= 4 ? 'hidden sm:flex' : ''} ${i >= 2 ? 'opacity-70' : ''}`}>
+                                                            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-purple-700 font-black text-sm">
+                                                                {(sub.teamName || sub.teamLead || '?').charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="font-black text-slate-900 truncate">{sub.teamName || sub.teamLead || 'Anonymous'}</p>
+                                                                <p className="text-xs text-slate-500 font-bold">
+                                                                    {sub.createdAt ? (() => {
+                                                                        const mins = Math.floor((Date.now() - new Date(sub.createdAt).getTime()) / 60000);
+                                                                        return mins < 1 ? 'Just now' : mins < 60 ? `${mins} minutes ago` : `${Math.floor(mins / 60)}h ago`;
+                                                                    })() : sub.domain || `${Array.isArray(sub.teamMembers) ? sub.teamMembers.length : 0} members`}
+                                                                </p>
+                                                            </div>
+                                                            {sub.totalScore > 0 && (
+                                                                <div className="ml-auto text-right shrink-0">
+                                                                    <p className="text-lg font-black text-purple-600">{Number(sub.totalScore).toFixed(1)}</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="col-span-2 py-12 text-center text-slate-400 font-bold text-sm">
+                                                        No submissions yet. Be the first to submit!
                                                     </div>
-                                                </div>
-                                                <div className="p-4 rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white flex items-center gap-4 opacity-60">
-                                                    <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-black">WS</div>
-                                                    <div className="min-w-0">
-                                                        <p className="font-black text-slate-900 truncate">Web Wizards</p>
-                                                        <p className="text-xs text-slate-500 font-bold">12 minutes ago</p>
-                                                    </div>
-                                                </div>
+                                                )}
                                             </div>
                                         </section>
                                     </div>
@@ -1794,7 +1813,7 @@ const OpportunityDetails: React.FC = () => {
                                     <div ref={submissionsRef} />
                                 )}
 
-                                {!hideHackathonLeaderboard ? (
+                                {!hideLeaderboard ? (
                                     <div ref={leaderboardRef} className="mt-8">
                                         <section className="bg-white rounded-3xl border border-slate-200 p-6 md:p-8 shadow-sm">
                                             <div className="flex items-center justify-between mb-6">
@@ -1806,8 +1825,8 @@ const OpportunityDetails: React.FC = () => {
                                             </div>
                                             
                                             <div className="space-y-2">
-                                                {hackathonLeaderboard.length > 0 ? (
-                                                    hackathonLeaderboard.map((entry, idx) => (
+                                                {eventLeaderboard.length > 0 ? (
+                                                    eventLeaderboard.map((entry, idx) => (
                                                         <div key={entry._id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-purple-200 transition-colors">
                                                             <div className="flex items-center gap-4">
                                                                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black ${
@@ -1841,29 +1860,29 @@ const OpportunityDetails: React.FC = () => {
                                     </div>
                                 ) : null}
                             </>
-                        ) : (
-                            <div ref={reviewsRef}>
-                                <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
-                                    <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-4">
-                                        <span className="w-1 h-7 bg-purple-600 rounded-full" />
-                                        Feedback &amp; rating
-                                    </h2>
-                                    <h3 className="text-sm font-black text-slate-800 mb-2">Write a review</h3>
-                                    {isApplied ? (
-                                        <p className="text-slate-600 text-sm font-medium">
-                                            Thanks for applying — you can share feedback with the host from your applications
-                                            dashboard when messaging is enabled.
-                                        </p>
-                                    ) : (
-                                        <p className="text-slate-600 text-sm font-medium">
-                                            Register for this opportunity to give your feedback and review.
-                                        </p>
-                                    )}
-                                </section>
-                            </div>
-                        )}
+                        ) : null}
 
-                        {!hideHackathonExtras ? (
+                        <div ref={reviewsRef}>
+                            <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
+                                <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-4">
+                                    <span className="w-1 h-7 bg-purple-600 rounded-full" />
+                                    Feedback &amp; rating
+                                </h2>
+                                <h3 className="text-sm font-black text-slate-800 mb-2">Write a review</h3>
+                                {isApplied ? (
+                                    <p className="text-slate-600 text-sm font-medium">
+                                        Thanks for applying — you can share feedback with the host from your applications
+                                        dashboard when messaging is enabled.
+                                    </p>
+                                ) : (
+                                    <p className="text-slate-600 text-sm font-medium">
+                                        Register for this opportunity to give your feedback and review.
+                                    </p>
+                                )}
+                            </section>
+                        </div>
+
+                        {!hideExtras ? (
                             <div ref={faqRef}>
                                 <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
                                     <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-4">
@@ -1938,7 +1957,6 @@ const OpportunityDetails: React.FC = () => {
                     {/* Right Column: Application Form */}
                     <div className="lg:col-span-1">
                         <div className="sticky top-32">
-                        {!isHackathon && (
                             <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
@@ -1969,7 +1987,6 @@ const OpportunityDetails: React.FC = () => {
                                     </div>
                                 ) : null}
                             </div>
-                        )}
                         <AnimatePresence mode="wait">
                             {submitted ? (
                                 <motion.div 
@@ -2038,15 +2055,15 @@ const OpportunityDetails: React.FC = () => {
                                     className="bg-white rounded-[40px] p-10 border border-slate-100 shadow-2xl shadow-purple-900/5 space-y-8"
                                 >
                                     <div className="space-y-2">
-                                        <h2 className="text-2xl font-black text-slate-900">{isHackathon ? 'Submit Your Idea' : 'Apply Now'}</h2>
+                                        <h2 className="text-2xl font-black text-slate-900">{submissionStage ? 'Submit Your Idea' : 'Apply Now'}</h2>
                                         <p className="text-slate-400 font-bold text-sm">
-                                            {isHackathon 
-                                                ? 'Share your solution and compete for prizes' 
+                                            {submissionStage
+                                                ? 'Share your solution and compete for prizes'
                                                 : `Join ${opportunity.organization} to start your journey`}
                                         </p>
                                     </div>
 
-                                    {isHackathon ? (
+                                    {submissionStage ? (
                                         <div className="space-y-4">
                                             <button 
                                                 onClick={() => setShowSubmissionModal(true)}

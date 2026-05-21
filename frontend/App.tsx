@@ -241,7 +241,8 @@ const App: React.FC = () => {
       */}
 
       {(() => {
-        const showNav = !isLoginPage && !isPlayer && !isCheckout && !isAdmin && !isHome && !isResume && !isVisualizer && !isCareerOnboarding && !pathname.startsWith('/evaluate/') && !pathname.startsWith('/institution-dashboard');
+        const isOpportunityDetail = pathname.startsWith('/opportunities/') && pathname !== '/opportunities' && pathname !== '/opportunities/my-applications';
+        const showNav = !isLoginPage && !isPlayer && !isCheckout && !isAdmin && !isHome && !isResume && !isVisualizer && !isCareerOnboarding && !isOpportunityDetail && !pathname.startsWith('/evaluate/') && !pathname.startsWith('/institution-dashboard');
         if (!showNav && pathname.startsWith('/institution-dashboard')) {
           console.log("[AuthDebug] Navigation hidden for Institution Dashboard");
         }

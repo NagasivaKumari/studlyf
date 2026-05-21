@@ -8,7 +8,9 @@ export interface IStageField {
 
 export interface IStageConfig {
     fields?: IStageField[];
+    judgeIds?: string[];
     quiz_id?: string;
+    pass_mark?: number;
 }
 
 export interface IStage {
@@ -18,6 +20,9 @@ export interface IStage {
     description: string;
     start_date: string;
     end_date: string;
+    status?: 'Active' | 'Upcoming' | 'Completed';
+    visibility?: 'Public' | 'Private' | 'Shortlisted Only';
+    roundMode?: 'Online' | 'Offline' | 'Hybrid';
     config?: IStageConfig;
 }
 

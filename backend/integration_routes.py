@@ -138,7 +138,7 @@ async def _dispatch_status_email(target_id: str, status: str, doc: dict):
 
     # Get event title
     event_title = "your event"
-    next_round_name = "Next Round"
+    next_round_name = ""
     if event_id:
         event = await events_col.find_one(_event_id_query(str(event_id)))
         if event:
@@ -344,8 +344,8 @@ async def test_email_configuration(user: dict = Depends(get_auth_user)):
 
 
 @router.post("/profile")
-async def create_institution_profile(profile: dict):
-    """Saves a new institution profile to MongoDB."""
+async def create_institution_profile(profile: dict, user: dict = Depends(get_auth_user)):
+    """Saves a new institution profile to MongoDB. Requires authentication."""
     from db import institutions_col
     inst_id = str(profile.get("institution_id", "unknown")).strip()
     
@@ -449,6 +449,26 @@ async def delete_institution_listing(event_id: str, user: dict = Depends(get_aut
         if event_result.deleted_count > 0:
             # Also clean up any associated opportunities mirrored from this event
             await opportunities_col.delete_many({"event_link_id": event_id})
+            # Cascade delete related data
+            from db import participants_col, teams_col, submissions_col, submission_data_col, hackathon_submissions_col, scores_col
+            try:
+                await participants_col.delete_many({"event_id": event_id})
+            except: pass
+            try:
+                await teams_col.delete_many({"event_id": event_id})
+            except: pass
+            try:
+                await submissions_col.delete_many({"event_id": event_id})
+            except: pass
+            try:
+                await submission_data_col.delete_many({"event_id": event_id})
+            except: pass
+            try:
+                await hackathon_submissions_col.delete_many({"hackathonId": event_id})
+            except: pass
+            try:
+                await scores_col.delete_many({"event_id": event_id})
+            except: pass
             return {"status": "success", "message": "Event deleted successfully"}
     except Exception:
         pass
@@ -500,6 +520,23 @@ async def get_event_participants(event_id: str, user: dict = Depends(get_auth_us
         u = student.get("user_id")
         if u:
             seen_user_ids.add(str(u))
+
+        # Enrich with team member data if participant belongs to a team
+        team_id = student.get("team_id")
+        if team_id:
+            try:
+                team_doc = await teams_col.find_one({"_id": ObjectId(str(team_id))})
+                if team_doc:
+                    student["team_name"] = team_doc.get("team_name", "")
+                    student["team_members"] = team_doc.get("members", [])
+                    student["team_leader_id"] = team_doc.get("team_leader_id")
+                else:
+                    student["team_name"] = None
+                    student["team_members"] = []
+            except Exception:
+                student["team_name"] = None
+                student["team_members"] = []
+
         students.append(student)
 
     # 2. Merge portal applicants not already represented in participants_col
@@ -665,6 +702,33 @@ async def get_event_teams(event_id: str, user: dict = Depends(get_auth_user)):
         logger.error(f"[TEAMS] Failed to fetch hackathon submission teams: {e}")
 
     return teams
+
+@router.delete("/events/{event_id}/teams/{team_id}")
+async def delete_event_team(
+    event_id: str,
+    team_id: str,
+    user: dict = Depends(get_auth_user),
+):
+    """Delete a team and remove all members from it (institution admin only)."""
+    await assert_institution_owns_event(event_id, user)
+
+    try:
+        team = await teams_col.find_one({"_id": ObjectId(team_id), "event_id": {"$in": [event_id, str(event_id)]}})
+    except Exception:
+        team = None
+
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    for member in team.get("members", []):
+        await participants_col.update_one(
+            {"event_id": {"$in": [event_id, str(event_id)]}, "user_id": member.get("user_id")},
+            {"$unset": {"team_id": ""}}
+        )
+
+    await teams_col.delete_one({"_id": ObjectId(team_id)})
+
+    return {"status": "success", "message": f"Team '{team.get('team_name')}' deleted"}
 
 
 @router.post("/tools/backfill-portal-participants/{institution_id}")
@@ -966,19 +1030,93 @@ async def get_qualified_bundle(event_id: str, threshold: float = 80.0, user: dic
         "pending": pending,
     }
 
+@router.post("/participants/add")
+async def admin_add_participant(data: dict = Body(...), user: dict = Depends(get_auth_user)):
+    """
+    Admin endpoint: Add a participant to an event manually.
+    Requires event_id, user_id (or email + name).
+    """
+    event_id = data.get("event_id")
+    user_id = data.get("user_id")
+    email = data.get("email")
+    name = data.get("name")
+    team_id = data.get("team_id")
+
+    if not event_id:
+        raise HTTPException(status_code=400, detail="event_id is required")
+    if not user_id and not email:
+        raise HTTPException(status_code=400, detail="user_id or email+name required")
+
+    await assert_institution_owns_event(event_id, user)
+
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # If only email provided, look up user
+    if not user_id and email:
+        u = await users_col.find_one({"email": email})
+        if not u:
+            raise HTTPException(status_code=404, detail="No user found with that email")
+        user_id = u.get("user_id")
+        name = name or u.get("full_name") or u.get("name") or email
+
+    # Check if already registered
+    existing = await participants_col.find_one({"event_id": event_id, "user_id": user_id})
+    if existing:
+        raise HTTPException(status_code=409, detail="User is already registered for this event")
+
+    first_stage = None
+    stages = event.get("stages", [])
+    if stages and len(stages) > 0:
+        first_stage = stages[0].get("name")
+
+    participant = {
+        "event_id": event_id,
+        "user_id": user_id,
+        "institution_id": event.get("institution_id"),
+        "name": name or "Participant",
+        "email": email or "",
+        "status": "registered",
+        "current_stage": first_stage,
+        "registered_at": datetime.utcnow(),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+    if team_id:
+        participant["team_id"] = team_id
+
+    result = await participants_col.insert_one(participant)
+    participant["_id"] = str(result.inserted_id)
+
+    await log_admin_action("admin@institution.com", "PARTICIPANT_ADDED",
+                           f"Added participant {user_id} to event {event_id}")
+    return {"status": "success", "participant": participant}
+
 @router.post("/events/{event_id}/bulk-notify")
 async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Depends(get_auth_user)):
     """
     Sends personalized emails to a 'bundle' of selected teams.
-    Injects dynamic team names.
+    Injects dynamic team names. Supports score-threshold filtering and DB-based templates.
     """
     await assert_institution_owns_event(event_id, user)
     team_ids = data.get("team_ids", [])
-    next_stage = data.get("next_stage", "Next Round")
+    next_stage = data.get("next_stage", "next stage")
+    min_score = data.get("min_score")  # Optional: only send to teams with avg score >= this
+    skip_stage_update = data.get("skip_stage_update", False)  # Opt-in: don't advance stage
     
     event = await events_col.find_one({"_id": ObjectId(event_id)})
+    event_title = event.get("title", "the event") if event else "the event"
+    institution_id = event.get("institution_id", "") if event else ""
+    
     from db import teams_col, users_col, notifications_col
     from datetime import datetime
+    from services.email_template_service import get_active_template, render_template
+    
+    # Determine template type based on whether there's a custom message
+    custom_msg = data.get("custom_message") or data.get("message")
+    tmpl_type = "announcement" if custom_msg else "stage_advancement"
+    tmpl = await get_active_template(event_id, institution_id, tmpl_type)
     
     success_count = 0
     for tid in team_ids:
@@ -990,16 +1128,36 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
                 recipient_email = sub.get("user_email") or sub.get("email")
                 if recipient_email:
                     name = sub.get("user_name") or sub.get("team_name") or "Participant"
-                    subject = f"Selection Alert: Your project is moving to {next_stage}!"
-                    body = get_shortlist_template(name, event.get("title", "the event"), next_stage)
+                    
+                    # Score filter
+                    score = sub.get("total_score") or sub.get("score") or 0
+                    if min_score is not None:
+                        try:
+                            if float(score) < float(min_score):
+                                continue
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    context = {
+                        "team_name": name,
+                        "event_name": event_title,
+                        "stage_name": next_stage,
+                        "participant_name": name,
+                        "custom_message": custom_msg or "",
+                    }
+                    if tmpl:
+                        subject, body = render_template(tmpl, context)
+                    else:
+                        subject = f"Selection Alert: Your project is moving to {next_stage}!"
+                        body = f"<p>Your team has qualified for <strong>{next_stage}</strong> in <strong>{event_title}</strong>.</p>"
+                    
                     asyncio.create_task(send_notification_email(recipient_email, subject, body))
                     
-                    # Also create a dynamic in-app notification record
                     user_id_to_notif = sub.get("user_id") or str(sub.get("_id"))
                     asyncio.create_task(notifications_col.insert_one({
                         "user_id": str(user_id_to_notif),
                         "title": subject,
-                        "message": f"Congratulations! You've been selected for {next_stage} in {event.get('title')}.",
+                        "message": f"Congratulations! You've been selected for {next_stage} in {event_title}.",
                         "type": "selection_alert",
                         "is_read": False,
                         "created_at": datetime.utcnow()
@@ -1007,45 +1165,63 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
                     success_count += 1
             continue
 
+        # Fetch team document for member details
+        team = None
+        try:
+            team = await teams_col.find_one({"_id": ObjectId(tid)})
+        except Exception:
+            pass
+
         if team:
-            # Send to all members of the team
             members = team.get("members", [])
             team_name = team.get("name") or team.get("team_name") or "Your team"
             
-            # Check for custom message from admin
-            custom_msg = data.get("custom_message") or data.get("message")
+            # Score filter for teams
+            if min_score is not None:
+                team_score = team.get("total_score") or team.get("score") or 0
+                try:
+                    if float(team_score) < float(min_score):
+                        continue
+                except (ValueError, TypeError):
+                    pass
             
-            # Robust member hydration
             member_emails = []
             for m in members:
                 email = m.get("email") if isinstance(m, dict) else m
                 if email and "@" in str(email):
                     member_emails.append(email)
                 elif isinstance(m, dict) and m.get("user_id"):
-                    # Look up user to get email
                     user_rec = await users_col.find_one({"user_id": str(m["user_id"])})
                     if user_rec and user_rec.get("email"):
                         member_emails.append(user_rec["email"])
             
             for member_email in set(member_emails):
-                if custom_msg:
-                    subject = data.get("subject") or f"Important Update: {event.get('title')}"
-                    body = get_announcement_template(team_name, event.get("title", "the event"), custom_msg, next_stage)
+                context = {
+                    "team_name": team_name,
+                    "event_name": event_title,
+                    "stage_name": next_stage,
+                    "participant_name": team_name,
+                    "custom_message": custom_msg or "",
+                }
+                if tmpl:
+                    subject, body = render_template(tmpl, context)
                 else:
-                    subject = f"Selection Alert: {team_name} is moving to {next_stage}!"
-                    body = get_shortlist_template(team_name, event.get("title", "the event"), next_stage)
+                    if custom_msg:
+                        subject = data.get("subject") or f"Important Update: {event_title}"
+                        body = f"<p>{custom_msg}</p>"
+                    else:
+                        subject = f"Selection Alert: {team_name} is moving to {next_stage}!"
+                        body = f"<p>Team <strong>'{team_name}'</strong> has qualified for <strong>{next_stage}</strong> in <strong>{event_title}</strong>.</p>"
                 
                 asyncio.create_task(send_notification_email(member_email, subject, body))
                 
-                # Also create a dynamic in-app notification record for each team member
-                # Find member user_id if we have email
                 try:
                     m_user = await users_col.find_one({"email": member_email})
                     if m_user:
                         asyncio.create_task(notifications_col.insert_one({
                             "user_id": str(m_user["user_id"]),
                             "title": subject,
-                            "message": f"Your team '{team_name}' has been moved to {next_stage} in {event.get('title')}.",
+                            "message": f"Your team '{team_name}' has been moved to {next_stage} in {event_title}.",
                             "type": "selection_alert" if not custom_msg else "announcement",
                             "is_read": False,
                             "created_at": datetime.utcnow()
@@ -1053,11 +1229,11 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
                 except Exception as e:
                     logger.error(f"Failed to create DB notification for {member_email}: {e}")
             
-            # Update team status in participants_col if needed
-            await participants_col.update_many(
-                {"event_id": event_id, "team_id": tid},
-                {"$set": {"current_stage": next_stage}}
-            )
+            if not skip_stage_update:
+                await participants_col.update_many(
+                    {"event_id": event_id, "team_id": tid},
+                    {"$set": {"current_stage": next_stage}}
+                )
             success_count += 1
             
     return {"status": "success", "sent_to": success_count}
@@ -1401,7 +1577,7 @@ async def generate_event_certificates(event_id: str, rankings: list):
     import uuid
     
     event = await events_col.find_one({"_id": ObjectId(event_id)})
-    event_type = event.get("event_type", "Hackathon")
+    event_type = event.get("event_type", "")
     
     cert_entries = []
     for rank_data in rankings:
@@ -1418,7 +1594,7 @@ async def generate_event_certificates(event_id: str, rankings: list):
                 "event_type": event_type,
                 "recipient_name": member.get("full_name", "Participant"),
                 "team_name": rank_data["team_name"],
-                "rank": rank_data["rank"] if event_type in ["Hackathon", "Competition"] else None,
+                "rank": rank_data["rank"],
                 "category": "Winner" if rank_data["rank"] <= 3 else "Participant",
                 "issued_date": datetime.utcnow().isoformat(),
                 "verification_url": f"/verify/cert/{uuid.uuid4().hex[:10]}",
@@ -1533,7 +1709,7 @@ async def get_my_institution_notifications(user: dict = Depends(get_auth_user)):
             if not inst:
                 inst = await institutions_col.find_one({"admin_email": str(user.get("email") or "").strip().lower()})
             if inst:
-                institution_id = str(inst.get("_id") or "")
+                institution_id = str(inst.get("institution_id") or "")
                 await users_col.update_one(
                     {"user_id": str(user.get("user_id") or "")},
                     {"$set": {"institution_id": institution_id}},
@@ -1581,7 +1757,7 @@ async def mark_my_notifications_read(user: dict = Depends(get_auth_user)):
                 inst = await institutions_col.find_one({"name": user.get("institution_name")})
             if not inst:
                 inst = await institutions_col.find_one({"admin_email": str(user.get("email") or "").strip().lower()})
-            institution_id = str((inst or {}).get("_id") or "")
+            institution_id = str((inst or {}).get("institution_id") or "")
         except Exception:
             institution_id = ""
     if not institution_id:
@@ -2126,8 +2302,15 @@ async def update_submission_status(submission_id: str, status_update: dict, user
         await assert_institution_owns_event(eid, user)
     else:
         assert_institution_scope(str(sub.get("institution_id") or ""), user)
+    
+    # Validate status value
+    valid_statuses = ["Pending", "Under Review", "Evaluated", "Shortlisted", "Accepted", "Rejected", "Assigned"]
+    new_status = status_update.get("status", "")
+    if new_status and new_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status '{new_status}'. Must be one of: {', '.join(valid_statuses)}")
+    
     update_fields = {
-        "status": status_update["status"],
+        "status": new_status,
         "internal_notes": status_update.get("notes", status_update.get("internal_notes", "")),
         "pr_links": status_update.get("pr_links", []),
         "processed_at": datetime.utcnow().isoformat()
@@ -2317,23 +2500,120 @@ async def get_complex_event_details(event_id: str, user: dict = Depends(get_auth
             await events_col.update_one(_event_id_query(event_id), {"$set": {"stages": event["stages"]}})
     return event
 
+async def _notify_deadline_extensions(event_id: str, changed_deadlines: list):
+    """Send deadline extension notifications to all participants."""
+    from services.email_template_service import get_active_template, render_template
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        return
+    event_title = event.get("title", "")
+    institution_id = event.get("institution_id", "")
+    tmpl = await get_active_template(event_id, institution_id, "deadline_extension")
+    async for p in participants_col.find({"event_id": event_id}):
+        uid = p.get("user_id")
+        p_name = p.get("name") or p.get("full_name") or ""
+        p_email = p.get("email")
+        if not p_email and uid:
+            u_doc = await users_col.find_one({"user_id": uid})
+            if u_doc:
+                p_email = u_doc.get("email")
+        team_name = p_name
+        team_id = p.get("team_id")
+        if team_id:
+            try:
+                from db import teams_col
+                team_doc = await teams_col.find_one({"_id": ObjectId(str(team_id))})
+                if team_doc:
+                    team_name = team_doc.get("team_name") or p_name
+            except Exception:
+                pass
+        for cd in changed_deadlines:
+            context = {
+                "team_name": team_name,
+                "event_name": event_title,
+                "stage_name": cd["stage_name"],
+                "participant_name": p_name,
+                "new_deadline": cd["new_deadline"],
+            }
+            if tmpl:
+                subject, body = render_template(tmpl, context)
+            else:
+                subject = f"Deadline Extended: {event_title} - {cd['stage_name']}"
+                body = f"<p>The deadline for <strong>{cd['stage_name']}</strong> in <strong>{event_title}</strong> has been extended to <strong>{cd['new_deadline']}</strong>.</p>"
+            await notifications_col.insert_one({
+                "user_id": uid or p_email,
+                "type": "deadline_extension",
+                "title": subject,
+                "message": f"Deadline for '{cd['stage_name']}' extended to {cd['new_deadline']}",
+                "is_read": False,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "meta": {"event_id": event_id, "stage_name": cd["stage_name"]}
+            })
+            if p_email:
+                asyncio.create_task(send_notification_email(p_email, subject, body))
+
+
+async def _notify_new_opportunity(event_id: str):
+    """Send new opportunity alert to opted-in users."""
+    from db import opportunities_col
+    opp = await opportunities_col.find_one({"event_link_id": event_id})
+    if not opp:
+        return
+    from services.opportunity_notification_service import send_new_opportunity_email
+    await send_new_opportunity_email(opp)
+
+
 @router.patch("/events/{event_id}")
 async def update_event_details(event_id: str, update_data: dict, user: dict = Depends(get_auth_user)):
     """Updates general event information."""
     await assert_institution_owns_event(event_id, user)
     from db import events_col
+
+    # ── Detect changes before applying update ──
+    changed_deadlines = []
+    old_event = await events_col.find_one({"_id": ObjectId(event_id)})
+    old_status = (old_event or {}).get("status", "")
+    if isinstance(update_data.get("stages"), list) and old_event:
+        old_stages = {}
+        for s in (old_event.get("stages") or []):
+            if isinstance(s, dict) and s.get("id"):
+                old_stages[s["id"]] = s
+        for new_s in update_data["stages"]:
+            if not isinstance(new_s, dict):
+                continue
+            sid = new_s.get("id")
+            if not sid:
+                continue
+            old_s = old_stages.get(sid, {})
+            old_dl = str(old_s.get("end_date") or old_s.get("endDate") or old_s.get("deadline") or "")
+            new_dl = str(new_s.get("end_date") or new_s.get("endDate") or new_s.get("deadline") or "")
+            if old_dl and new_dl and old_dl != new_dl:
+                changed_deadlines.append({
+                    "stage_name": new_s.get("name") or old_s.get("name") or "",
+                    "new_deadline": new_dl,
+                    "old_deadline": old_dl,
+                })
+    new_status = update_data.get("status", old_status)
+    just_published = old_status != "LIVE" and new_status == "LIVE"
+
     if "_id" in update_data: del update_data["_id"]
     # Normalize stages: ensure stable ids are persisted.
     if isinstance(update_data.get("stages"), list):
         for s in update_data["stages"]:
-            if isinstance(s, dict) and not s.get("id"):
-                s["id"] = str(uuid.uuid4())
-            
-            # Synchronize registration deadline from stages
-            if isinstance(s, dict) and str(s.get("type", "")).upper() == "REGISTRATION":
-                reg_end = s.get("end_date") or s.get("endDate") or s.get("deadline")
-                if reg_end:
-                    update_data["registrationDeadline"] = reg_end
+            if isinstance(s, dict):
+                if not s.get("id"):
+                    s["id"] = str(uuid.uuid4())
+                
+                # Strip judgeIds from non-REVIEW stages (defense-in-depth)
+                if str(s.get("type", "")).upper() != "REVIEW":
+                    if isinstance(s.get("config"), dict) and "judgeIds" in s["config"]:
+                        del s["config"]["judgeIds"]
+                
+                # Synchronize registration deadline from stages
+                if str(s.get("type", "")).upper() == "REGISTRATION":
+                    reg_end = s.get("end_date") or s.get("endDate") or s.get("deadline")
+                    if reg_end:
+                        update_data["registrationDeadline"] = reg_end
 
     await events_col.update_one(_event_id_query(event_id), {"$set": update_data})
     
@@ -2354,6 +2634,12 @@ async def update_event_details(event_id: str, update_data: dict, user: dict = De
             await opportunities_col.update_many({"event_link_id": str(event_id)}, {"$set": opp_update})
     except Exception as e:
         print(f"[ERROR] Failed to sync opportunity: {e}")
+
+    # ── Trigger notifications for changes ──
+    if changed_deadlines:
+        asyncio.create_task(_notify_deadline_extensions(event_id, changed_deadlines))
+    if just_published:
+        asyncio.create_task(_notify_new_opportunity(event_id))
 
     return {"status": "success"}
 
@@ -2507,8 +2793,17 @@ async def delete_event_stage(event_id: str, stage_id: str, user: dict = Depends(
     }
 
 @router.patch("/events/{event_id}/advance-stage")
-async def advance_participants(event_id: str, participant_ids: list, next_stage: str, user: dict = Depends(get_auth_user)):
-    """Internal Process: Advances participants and triggers phase-specific notifications."""
+async def advance_participants(
+    event_id: str,
+    data: dict = Body(...),
+    user: dict = Depends(get_auth_user)
+):
+    """Advances participants to next stage and triggers notifications."""
+    participant_ids = data.get("participant_ids", [])
+    next_stage = data.get("next_stage", "")
+    if not participant_ids or not next_stage:
+        raise HTTPException(status_code=400, detail="participant_ids and next_stage are required")
+    
     await assert_institution_owns_event(event_id, user)
     from db import notifications_col, events_col
     from services.event_workflow_service import workflow_service
@@ -2517,33 +2812,140 @@ async def advance_participants(event_id: str, participant_ids: list, next_stage:
     event_title = event.get("title", "Event")
 
     # 1. Run internal business rules for this specific phase
-    from services.event_workflow_service import workflow_service
     await workflow_service.process_phase_transition(event_id, participant_ids, next_stage)
 
-    # 2. Update database (Restored explicit visibility)
+    # 2. Update database - push previous stage to completed_stages, set new stage
     from db import participants_col
-    await participants_col.update_many(
-        {"_id": {"$in": [ObjectId(pid) for pid in participant_ids]}, "event_id": event_id},
-        {"$set": {"current_stage": next_stage, "status": "Shortlisted"}}
-    )
-
-    # 2. Trigger Dynamic Notifications/Emails for each participant
-    notifs = []
     for pid in participant_ids:
+        try:
+            p_obj = ObjectId(pid)
+        except Exception:
+            continue
+        p_doc = await participants_col.find_one({"_id": p_obj, "event_id": event_id})
+        if not p_doc:
+            continue
+        prev_stage = p_doc.get("current_stage")
+        update = {"current_stage": next_stage, "last_updated": datetime.utcnow()}
+        if prev_stage:
+            update["last_stage_submitted"] = prev_stage
+            await participants_col.update_one(
+                {"_id": p_obj},
+                {
+                    "$set": update,
+                    "$push": {"completed_stages": prev_stage}
+                }
+            )
+        else:
+            await participants_col.update_one(
+                {"_id": p_obj},
+                {"$set": update}
+            )
+
+    # 3. Trigger Dynamic Notifications/Emails for each participant
+    from services.email_service import send_notification_email
+    from services.email_template_service import get_active_template, render_template
+    from db import users_col, teams_col
+
+    # Load the active stage_advancement template
+    institution_id = event.get("institution_id", "")
+    tmpl = await get_active_template(event_id, institution_id, "stage_advancement")
+
+    notifs = []
+    notified_count = 0
+    for pid in participant_ids:
+        try:
+            p_obj = ObjectId(pid)
+        except Exception:
+            continue
+        p_doc = await participants_col.find_one({"_id": p_obj, "event_id": event_id})
+        if not p_doc:
+            continue
+
+        uid = p_doc.get("user_id")
+        p_name = p_doc.get("name") or p_doc.get("full_name") or "Participant"
+        p_email = p_doc.get("email")
+
+        # Look up user email if not on participant doc
+        if not p_email and uid:
+            u_doc = await users_col.find_one({"user_id": uid})
+            if u_doc:
+                p_email = u_doc.get("email")
+
+        # Look up team info for personalized messaging
+        team_name = None
+        team_members = []
+        team_id = p_doc.get("team_id")
+        if team_id:
+            try:
+                team_doc = await teams_col.find_one({"_id": ObjectId(str(team_id))})
+                if team_doc:
+                    team_name = team_doc.get("team_name")
+                    team_members = team_doc.get("members", [])
+            except Exception:
+                pass
+
+        recipient_name = team_name or p_name
+
+        # Render template with context
+        context = {
+            "team_name": recipient_name,
+            "event_name": event_title,
+            "stage_name": next_stage,
+            "participant_name": p_name,
+        }
+        if tmpl:
+            subject, html_body = render_template(tmpl, context)
+        else:
+            subject = f"Congratulations! You've advanced to {next_stage} in {event_title}"
+            html_body = f"<p>Team <strong>'{recipient_name}'</strong> has qualified for <strong>{next_stage}</strong> in <strong>{event_title}</strong>.</p>"
+
+        # Send email to participant
+        if p_email:
+            try:
+                asyncio.create_task(send_notification_email(p_email, subject, html_body))
+            except Exception as e:
+                print(f"[ADVANCE-STAGE] Failed to send email to {p_email}: {e}")
+
+        # Also send to all team members (if any)
+        for member in team_members:
+            m_uid = member.get("user_id")
+            m_email = member.get("email")
+            if not m_email and m_uid:
+                m_doc = await users_col.find_one({"user_id": m_uid})
+                if m_doc:
+                    m_email = m_doc.get("email")
+            if m_email and m_email != p_email:
+                try:
+                    m_context = {**context, "participant_name": member.get("name") or "Team Member"}
+                    if tmpl:
+                        _, m_html = render_template(tmpl, m_context)
+                    else:
+                        m_html = html_body
+                    asyncio.create_task(send_notification_email(m_email, subject, m_html))
+                except Exception as e:
+                    print(f"[ADVANCE-STAGE] Failed to send email to {m_email}: {e}")
+
+        # Create in-app notification
+        notif_user_id = uid or pid
+        notif_msg = f"Congratulations! You've advanced to the '{next_stage}' stage of {event_title}."
+        if team_name:
+            notif_msg = f"Team '{team_name}' has advanced to the '{next_stage}' stage of {event_title}."
+
         notifs.append({
-            "user_id": pid,
+            "user_id": notif_user_id,
             "event_id": event_id,
-            "message": f"Congratulations! You've advanced to the '{next_stage}' stage of {event_title}.",
+            "message": notif_msg,
             "type": "PHASE_ADVANCEMENT",
             "timestamp": datetime.utcnow().isoformat(),
             "is_read": False
         })
-    
+        notified_count += 1
+
     if notifs:
         await notifications_col.insert_many(notifs)
 
     await log_admin_action("admin@institution.com", "STAGE_ADVANCED", f"Advanced {len(participant_ids)} users to {next_stage} in {event_title}")
-    return {"status": "success", "notified_count": len(participant_ids)}
+    return {"status": "success", "notified_count": notified_count, "emails_sent": notified_count}
 
 @router.post("/events/{event_id}/judges")
 async def add_event_judge(event_id: str, judge_data: dict, user: dict = Depends(get_auth_user)):
@@ -3021,12 +3423,8 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
     # Mirror high-level event metadata to the centralized 'opportunities' collection 
     # for student dashboard integration.
     try:
-        # Determine opportunity type from category/opportunityType
-        opp_type = event_data.get("opportunityType", "Competition")
-        if "Hackathon" in opp_type: opp_type = "Hackathon"
-        elif "Job" in opp_type: opp_type = "Job"
-        elif "Internship" in opp_type: opp_type = "Internship"
-        else: opp_type = "Competition"
+        # Use admin-defined type verbatim — no normalization
+        opp_type = event_data.get("opportunityType") or event_data.get("category") or ""
 
         reg_fields = event_data.get("registrationFields") or []
         if isinstance(reg_fields, str):
@@ -3040,11 +3438,11 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
         if _city:
             _location = f"{_city}, {_mode}"
         else:
-            _location = _mode or "online"
+            _location = _mode or ""
 
         opp_data = {
-            "title": event_data.get("title", "New Opportunity"),
-            "organization": event_data.get("organisation", "Partner Institution"),
+            "title": event_data.get("title", ""),
+            "organization": event_data.get("organisation", ""),
             "type": opp_type,
             "description": event_data.get("description", ""),
             "skills": event_data.get("skills", ""),
@@ -3072,6 +3470,17 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
         logger.info(f"[SYNC] Event {result.inserted_id} mirrored to opportunities collection.")
     except Exception as e:
         logger.error(f"[SYNC ERROR] Failed to mirror event to opportunities: {str(e)}")
+
+    # Seed default email templates in background
+    try:
+        from services.email_template_service import seed_default_templates
+        asyncio.create_task(seed_default_templates(str(result.inserted_id), str(iid)))
+    except Exception as e:
+        logger.error(f"[TEMPLATE SEED] Failed: {str(e)}")
+
+    # Notify opted-in users if event is immediately live
+    if event_data.get("status") == "LIVE":
+        asyncio.create_task(_notify_new_opportunity(str(result.inserted_id)))
 
     return {"event_id": str(result.inserted_id), "status": "success"}
 
@@ -3194,11 +3603,7 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
     if updated_event:
         # [SYNC] Centralized Opportunity Pipeline
         try:
-            opp_type = updated_event.get("opportunityType", "Competition")
-            if "Hackathon" in opp_type: opp_type = "Hackathon"
-            elif "Job" in opp_type: opp_type = "Job"
-            elif "Internship" in opp_type: opp_type = "Internship"
-            else: opp_type = "Competition"
+            opp_type = updated_event.get("opportunityType") or updated_event.get("category") or ""
 
             reg_fields = updated_event.get("registrationFields") or []
             if isinstance(reg_fields, str):
@@ -3215,8 +3620,8 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
                 _location = _mode or "online"
 
             opp_data = {
-                "title": updated_event.get("title", "New Opportunity"),
-                "organization": updated_event.get("organisation", "Partner Institution"),
+                "title": updated_event.get("title", ""),
+                "organization": updated_event.get("organisation", ""),
                 "type": opp_type,
                 "description": updated_event.get("description", ""),
                 "skills": updated_event.get("skills", ""),
@@ -3852,6 +4257,130 @@ async def get_institution_stats(institution_id: str, user: dict = Depends(get_au
     except Exception as e:
         print(f"Stats API Error: {str(e)}")
         return {"error": str(e)}, 500
+
+@router.get("/events/{event_id}/email-templates")
+async def list_email_templates(
+    event_id: str,
+    template_type: Optional[str] = Query(None),
+    user: dict = Depends(get_auth_user)
+):
+    """List all email templates for an event (including institution and defaults fallback)."""
+    await assert_institution_owns_event(event_id, user)
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    institution_id = event.get("institution_id", "")
+    from services.email_template_service import get_templates_for_event
+    templates = await get_templates_for_event(event_id, institution_id, template_type)
+    return templates
+
+@router.post("/events/{event_id}/email-templates")
+async def create_email_template(
+    event_id: str,
+    data: dict = Body(...),
+    user: dict = Depends(get_auth_user)
+):
+    """Create or update an email template for an event."""
+    await assert_institution_owns_event(event_id, user)
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    data["event_id"] = event_id
+    data["institution_id"] = event.get("institution_id", "")
+
+    from services.email_template_service import upsert_template
+    result = await upsert_template(data)
+    await log_admin_action("admin@institution.com", "EMAIL_TEMPLATE_UPSERT",
+                           f"Updated email template {data.get('type')} for event {event_id}")
+    return result
+
+@router.delete("/events/{event_id}/email-templates/{template_id}")
+async def delete_email_template(
+    event_id: str,
+    template_id: str,
+    user: dict = Depends(get_auth_user)
+):
+    """Delete an email template."""
+    await assert_institution_owns_event(event_id, user)
+    from services.email_template_service import delete_template
+    deleted = await delete_template(template_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Template not found")
+    await log_admin_action("admin@institution.com", "EMAIL_TEMPLATE_DELETE",
+                           f"Deleted email template {template_id}")
+    return {"status": "success"}
+
+@router.get("/events/{event_id}/email-templates/active/{template_type}")
+async def get_active_email_template(
+    event_id: str,
+    template_type: str,
+    user: dict = Depends(get_auth_user)
+):
+    """Get the active template for a specific type (event-level, institution, or default)."""
+    await assert_institution_owns_event(event_id, user)
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    institution_id = event.get("institution_id", "")
+    from services.email_template_service import get_active_template
+    template = await get_active_template(event_id, institution_id, template_type)
+    if not template:
+        raise HTTPException(status_code=404, detail="No active template found for this type")
+    return template
+
+@router.patch("/events/{event_id}/email-templates/{template_id}/activate")
+async def activate_email_template(
+    event_id: str,
+    template_id: str,
+    user: dict = Depends(get_auth_user)
+):
+    """Set a specific template as the active one for its type (deactivates others)."""
+    await assert_institution_owns_event(event_id, user)
+    from db import email_templates_col
+
+    template = await email_templates_col.find_one({"_id": ObjectId(template_id)})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    template_type = template.get("type")
+
+    # Deactivate all templates of this type for this event
+    await email_templates_col.update_many(
+        {"event_id": event_id, "type": template_type},
+        {"$set": {"is_active": False}}
+    )
+
+    # Activate the selected one
+    await email_templates_col.update_one(
+        {"_id": ObjectId(template_id)},
+        {"$set": {"is_active": True, "updated_at": datetime.utcnow()}}
+    )
+
+    await log_admin_action("admin@institution.com", "EMAIL_TEMPLATE_ACTIVATE",
+                           f"Activated template {template_id} for {template_type} in event {event_id}")
+    return {"status": "success", "template_id": template_id}
+
+@router.post("/events/{event_id}/email-templates/reset-defaults")
+async def reset_email_templates_to_default(
+    event_id: str,
+    user: dict = Depends(get_auth_user)
+):
+    """Reset all email templates to default for an event."""
+    await assert_institution_owns_event(event_id, user)
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    from db import email_templates_col
+    await email_templates_col.delete_many({"event_id": event_id})
+
+    from services.email_template_service import seed_default_templates
+    await seed_default_templates(event_id, event.get("institution_id", ""))
+
+    await log_admin_action("admin@institution.com", "EMAIL_TEMPLATES_RESET",
+                           f"Reset templates to defaults for event {event_id}")
+    return {"status": "success", "message": "Templates reset to defaults"}
 
 @router.get("/events-db-only/{institution_id}")
 async def get_institution_events_db_only(institution_id: str, user: dict = Depends(get_auth_user)):

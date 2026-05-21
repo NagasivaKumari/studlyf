@@ -15,7 +15,7 @@ const OpportunitiesList: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
 
-    const types = ['All', 'My Events', 'Hackathon', 'Internship', 'Job', 'Competition'];
+    const types = ['All', 'My Events', 'Hackathon', 'Competition', 'Challenge', 'Conference', 'Workshop', 'Case Study', 'Webinar', 'Internship', 'Job'];
 
     useEffect(() => {
         const fetchData = async () => {

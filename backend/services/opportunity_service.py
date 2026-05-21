@@ -79,7 +79,7 @@ async def _notify_portal_review(app: dict, opp: dict, new_status: str) -> None:
     if email:
         if st == "shortlisted":
             subj = f"CONGRATULATIONS: You've been shortlisted for {title}!"
-            body = get_shortlist_template(user.get("full_name", "Participant"), title, "Next Stage")
+            body = get_shortlist_template(user.get("full_name", "Participant"), title, "")
         else:
             subj = f"Application update: {title}"
             body = f"""<html><body style="font-family:system-ui,sans-serif;color:#111827"><p>{msg}</p>
@@ -181,15 +181,7 @@ def _apply_event_snapshot_to_opportunity(doc: dict, ev: dict) -> None:
         doc["registrationFields"] = rf
     ot = ev.get("opportunityType") or ev.get("category")
     if ot:
-        s = str(ot)
-        if "Hackathon" in s:
-            doc["type"] = "Hackathon"
-        elif "Internship" in s:
-            doc["type"] = "Internship"
-        elif "Job" in s:
-            doc["type"] = "Job"
-        elif doc.get("type") in (None, "", "Competition"):
-            doc["type"] = "Competition"
+        doc["type"] = str(ot)  # Use admin-defined type verbatim — no normalization
 
     # Learner-facing extras (logos, venue line, team rules, eligibility) from the source event
     va = (ev.get("venueAddress") or "").strip()
@@ -322,15 +314,11 @@ async def get_all_opportunities(filters: dict = None) -> List[dict]:
             inst = event.get("institution_id")
             if not inst:
                 continue
-            opp_type = event.get("opportunityType", "Competition")
-            if "Hackathon" in opp_type: opp_type = "Hackathon"
-            elif "Job" in opp_type: opp_type = "Job"
-            elif "Internship" in opp_type: opp_type = "Internship"
-            else: opp_type = "Competition"
+            opp_type = event.get("opportunityType") or event.get("category") or ""
 
             opp_data = {
-                "title": event.get("title", "New Opportunity"),
-                "organization": event.get("organisation", event.get("institution_name", "Partner Institution")),
+                "title": event.get("title") or "",
+                "organization": event.get("organisation") or event.get("institution_name") or "",
                 "type": opp_type,
                 "description": event.get("description", ""),
                 "location": f"{event.get('city', 'Remote')}, {event.get('opportunityMode', 'Online')}",
@@ -524,7 +512,7 @@ async def apply_for_opportunity(application_data: dict) -> dict:
                             "event_title": ev.get("title"),
                             "registered_at": application_data["applied_at"],
                             "status": "pending",
-                            "current_stage": first_stage or "Registration",
+                            "current_stage": first_stage,
                             "resume_url": application_data.get("resume_url"),
                             "source": "opportunity_portal",
                             "opportunity_application_id": app_id_str,

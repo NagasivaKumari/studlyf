@@ -5,7 +5,7 @@ Also enforces time-based stage deadlines (e.g., registration 18:00-19:00)
 """
 
 from fastapi import HTTPException
-from db import participants_col, opportunities_col
+from db import participants_col, opportunities_col, events_col
 from datetime import datetime, timezone
 from bson import ObjectId
 
@@ -137,7 +137,25 @@ async def check_stage_deadline(event_id: str, stage_index: int = None, stage_nam
     except:
         opp_id = event_id
     
-    opportunity = await opportunities_col.find_one({"_id": opp_id})
+    # Prefer the canonical `events` collection where stages are persisted by admins.
+    opportunity = None
+    try:
+        # Try by ObjectId first if possible
+        try:
+            obj_id = ObjectId(event_id) if len(str(event_id)) == 24 else None
+        except:
+            obj_id = None
+
+        if obj_id:
+            opportunity = await events_col.find_one({"_id": obj_id})
+        if not opportunity:
+            opportunity = await events_col.find_one({"event_link_id": str(event_id)})
+    except Exception:
+        opportunity = None
+
+    # Fallback to legacy `opportunities` collection for backward compatibility
+    if not opportunity:
+        opportunity = await opportunities_col.find_one({"_id": opp_id})
     if not opportunity:
         opportunity = await opportunities_col.find_one({"event_link_id": str(event_id)})
     

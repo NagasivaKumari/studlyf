@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { API_BASE_URL } from '../apiConfig';
 import {
   ShieldCheck,
   ChevronRight,
@@ -17,9 +18,10 @@ import {
   Play,
   Bot,
   MessageSquare,
+  FileText,
+  Zap,
   BarChart3,
   BookOpen,
-  Zap,
   Info,
   ChevronDown,
   Globe,
@@ -571,6 +573,14 @@ const CompanyModules: React.FC = () => {
   const location = useLocation();
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'roadmap' | 'dsa' | 'tech' | 'hr' | 'ai'>('overview');
+  const [apiData, setApiData] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/student/company-questions`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setApiData(data))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const state = location.state as { companyId?: string } | null;

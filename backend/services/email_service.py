@@ -209,7 +209,7 @@ def get_team_join_template(new_member_name: str, team_name: str, event_name: str
     </html>
     """
 
-def get_shortlist_template(team_name: str, event_name: str, stage_name: str = "Next Round"):
+def get_shortlist_template(team_name: str, event_name: str, stage_name: str = "next stage"):
     return f"""
     <html>
         <body style="font-family: 'Segoe UI', sans-serif; color: #1f2937; line-height: 1.6;">
@@ -306,7 +306,7 @@ def get_certificate_template(user_name: str, event_name: str, rank: str = None, 
     </html>
     """
 
-def get_announcement_template(user_name: str, event_name: str, message: str, next_stage: str = "Next Round"):
+def get_announcement_template(user_name: str, event_name: str, message: str, next_stage: str = "next stage"):
     """Flexible template for custom admin messages with placeholder support."""
     # Support dynamic placeholders in the message
     final_message = str(message)\

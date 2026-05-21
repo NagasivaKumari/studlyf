@@ -307,6 +307,9 @@ class Participant(BaseModel):
     department: Optional[str] = None
     skills: List[str] = []
     registration_status: str = "Registered"
+    current_stage: Optional[str] = None
+    last_stage_submitted: Optional[str] = None
+    completed_stages: List[str] = []
     team_id: Optional[str] = None
     registered_at: datetime = Field(default_factory=datetime.utcnow)
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -350,7 +353,8 @@ class Submission(BaseModel):
 class HackathonSubmission(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     submissionId: Optional[str] = None # Will use _id
-    hackathonId: str
+    hackathonId: str = ""
+    eventId: Optional[str] = None
     institutionId: str
     teamName: str
     teamType: str # Solo, Team
