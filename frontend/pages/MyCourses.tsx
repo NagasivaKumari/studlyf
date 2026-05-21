@@ -38,14 +38,21 @@ const MyCourses: React.FC = () => {
 
   const userId = user?.uid || 'test-user';
 
+  const filterAwsCourses = (courses: Course[]) => {
+    return courses.filter((course) => {
+      const combined = `${course.title || ''} ${course.description || ''} ${course.role_tag || ''}`.toLowerCase();
+      return !combined.includes('aws');
+    });
+  };
+
   useEffect(() => {
     const fetchCourses = async () => {
       try {
         setLoading(true);
         const res = await fetch(`${API_BASE_URL}/api/user-courses/${userId}`);
         const data = await res.json();
-        setEnrolledCourses(data.enrolled || []);
-        setAvailableCourses(data.available || []);
+        setEnrolledCourses(filterAwsCourses(data.enrolled || []));
+        setAvailableCourses(filterAwsCourses(data.available || []));
       } catch (err) {
         console.error('Error fetching courses:', err);
       } finally {

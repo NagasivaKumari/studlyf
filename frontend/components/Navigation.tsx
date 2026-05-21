@@ -231,10 +231,10 @@ const Navigation: React.FC = () => {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
                           transition={{ duration: 0.2 }}
-                          className="absolute right-0 mt-4 w-72 bg-[#0B0B0F]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-4 z-[150] shadow-purple-500/5 text-left"
+                          className="absolute right-0 mt-4 w-72 bg-white/95 backdrop-blur-2xl border border-slate-200 rounded-2xl shadow-2xl p-4 z-[150] text-left"
                         >
-                          <div className="flex flex-col gap-2.5 pb-3.5 border-b border-white/5">
-                            <span className="text-[9px] font-black uppercase tracking-[0.25em] text-[#A78BFA]">
+                          <div className="flex flex-col gap-2.5 pb-3.5 border-b border-slate-200">
+                            <span className="text-[9px] font-black uppercase tracking-[0.25em] text-[#7C3AED]">
                               AUTHENTICATED MEMBER
                             </span>
                             <div className="flex items-center gap-3">
@@ -242,8 +242,8 @@ const Navigation: React.FC = () => {
                                 {user?.full_name?.split(' ').map((n: string) => n[0]).join('') || user?.displayName?.charAt(0) || 'U'}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-xs font-black text-white truncate">{user?.full_name || user?.displayName || 'User'}</p>
-                                <p className="text-[10px] font-medium text-white/50 truncate mt-0.5">{user?.email}</p>
+                                <p className="text-xs font-black text-slate-900 truncate">{user?.full_name || user?.displayName || 'User'}</p>
+                                <p className="text-[10px] font-medium text-slate-500 truncate mt-0.5">{user?.email}</p>
                               </div>
                             </div>
                           </div>
@@ -251,7 +251,7 @@ const Navigation: React.FC = () => {
                             <Link
                               to="/dashboard/profile"
                               onClick={() => setIsUserDropdownOpen(false)}
-                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest group"
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all text-xs font-bold uppercase tracking-widest group"
                             >
                               <span className="text-sm group-hover:scale-110 transition-transform">👤</span>
                               My Profile
@@ -259,7 +259,7 @@ const Navigation: React.FC = () => {
                             <Link
                               to="/dashboard/my-courses"
                               onClick={() => setIsUserDropdownOpen(false)}
-                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest group"
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all text-xs font-bold uppercase tracking-widest group"
                             >
                               <span className="text-sm group-hover:scale-110 transition-transform">📖</span>
                               My Courses
@@ -267,12 +267,12 @@ const Navigation: React.FC = () => {
                             <Link
                               to="/opportunities/my-applications"
                               onClick={() => setIsUserDropdownOpen(false)}
-                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest group"
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all text-xs font-bold uppercase tracking-widest group"
                             >
                               <span className="text-sm group-hover:scale-110 transition-transform">🛒</span>
                               My Applications
                             </Link>
-                            <div className="h-px bg-white/5 my-2" />
+                            <div className="h-px bg-slate-200 my-2" />
                             <button
                               onClick={() => {
                                 setIsUserDropdownOpen(false);

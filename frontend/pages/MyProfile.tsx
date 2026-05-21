@@ -101,6 +101,29 @@ const MyProfile: React.FC = () => {
 
   const profileCompletion = calculateStrength();
 
+  const profileTasks = [
+    {
+      label: 'Skills',
+      detail: formData.skills.length > 0 ? `${formData.skills.length} added` : 'Add skills',
+      done: formData.skills.length > 0,
+    },
+    {
+      label: 'Experience',
+      detail: formData.experienceList.length > 0 || formData.experience.company ? `${formData.experienceList.length + (formData.experience.company ? 1 : 0)} entries` : 'Add experience',
+      done: formData.experienceList.length > 0 || Boolean(formData.experience.company),
+    },
+    {
+      label: 'Resume',
+      detail: formData.resume.fileName !== 'No resume uploaded' ? formData.resume.fileName : 'Upload resume',
+      done: formData.resume.fileName !== 'No resume uploaded',
+    },
+    {
+      label: 'Profile photo',
+      detail: formData.profilePhoto ? 'Uploaded' : 'Add photo',
+      done: Boolean(formData.profilePhoto),
+    },
+  ];
+
   const [isExtracting, setIsExtracting] = useState(false);
 
   // ─── REAL: Add / Remove individual skills ───
@@ -1753,20 +1776,20 @@ const MyProfile: React.FC = () => {
           <motion.div 
             whileHover={{ y: -5 }}
             onClick={() => navigate('/job-prep/resume-builder')}
-            className="bg-gradient-to-br from-[#7C3AED] to-[#5B21B6] rounded-[2.5rem] p-8 text-white flex flex-col gap-6 shadow-2xl shadow-purple-900/20 relative overflow-hidden group cursor-pointer"
+            className="bg-[#7C3AED] rounded-[2.5rem] p-8 text-white flex flex-col gap-6 shadow-2xl shadow-purple-900/20 relative overflow-hidden group cursor-pointer"
           >
             <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-125 transition-transform duration-700">
                <FileText className="w-24 h-24" />
             </div>
             <div className="flex items-center justify-between relative z-10">
               <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md">
-                <FileText className="w-6 h-6" />
+                <FileText className="w-6 h-6 text-white" />
               </div>
-              <Plus className="w-6 h-6 opacity-60" />
+              <Plus className="w-6 h-6 opacity-90 text-white" />
             </div>
             <div className="relative z-10">
               <h3 className="text-xl font-black uppercase tracking-tight mb-2">Create your Resume</h3>
-              <p className="text-xs text-purple-100/70 font-medium leading-relaxed">Generate a professional PDF resume in seconds using your profile data.</p>
+              <p className="text-sm text-purple-100 font-medium leading-relaxed">Generate a professional resume with your profile details and download it as a clean PDF.</p>
             </div>
           </motion.div>
 
@@ -1788,6 +1811,28 @@ const MyProfile: React.FC = () => {
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Complete your profile</p>
                 <span className="text-xl font-black text-[#111827]">{profileCompletion}%</span>
               </div>
+
+              <div className="mt-6 space-y-3">
+                {profileTasks.map((task) => (
+                  <div key={task.label} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{task.label}</p>
+                      <p className="text-sm font-bold text-slate-900 mt-1">{task.detail}</p>
+                    </div>
+                    <span className={`text-[10px] font-black uppercase tracking-[0.18em] ${task.done ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      {task.done ? 'Done' : 'Pending'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('skills')}
+                className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-[#5B21B6] transition-colors"
+              >
+                Complete profile actions
+              </button>
             </div>
           </div>
 

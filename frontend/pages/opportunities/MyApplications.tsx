@@ -74,6 +74,16 @@ const MyApplications: React.FC = () => {
         return { text: 'Pending review', cls: 'bg-slate-100 text-slate-700 border-slate-200' };
     };
 
+    const formatTimestamp = (timestamp?: string) => {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    };
+
+    const applicationKind = (application: ApplicationRow) => (
+        application.event_id ? 'Team opportunity' : 'Opportunity application'
+    );
+
     const markRead = async (id: string) => {
         try {
             await fetch(`${API_BASE_URL}/api/opportunities/me/notifications/${id}/read`, {
@@ -108,6 +118,9 @@ const MyApplications: React.FC = () => {
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
                     <div>
                         <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">My <span className="text-[#7C3AED]">applications</span></h1>
+                        <p className="text-sm text-slate-500 mt-2">
+                            You have {applications.length} active applications. Track status, navigate to listings, and keep your next action clear.
+                        </p>
                     </div>
                 </div>
 
@@ -162,7 +175,9 @@ const MyApplications: React.FC = () => {
                                             </p>
                                             <p className="text-sm text-slate-500 font-medium mt-1">
                                                 {a.institution_name ? `${a.institution_name}` : 'Host institution'}
-                                                {a.applied_at ? ` · Applied ${new Date(a.applied_at).toLocaleString()}` : ''}
+                                            </p>
+                                            <p className="text-[11px] uppercase tracking-[0.24em] font-black text-slate-400 mt-2">
+                                                {applicationKind(a)} · {formatTimestamp(a.applied_at)}
                                             </p>
                                         </div>
                                         <span
@@ -183,9 +198,9 @@ const MyApplications: React.FC = () => {
                                         {oid ? (
                                             <Link
                                                 to={`/opportunities/${oid}`}
-                                                className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest hover:bg-purple-700 transition-colors shrink-0"
+                                                className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-[#7C3AED] text-white text-xs font-black uppercase tracking-widest hover:bg-[#5B21B6] transition-colors shrink-0"
                                             >
-                                                Open <ExternalLink size={14} />
+                                                View listing <ExternalLink size={14} />
                                             </Link>
                                         ) : null}
                                     </li>
