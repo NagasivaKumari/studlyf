@@ -27,10 +27,13 @@ const CoursesOverview: React.FC = () => {
 
                 if (data && Array.isArray(data)) {
                     console.log('📊 Total courses received:', data.length);
-                    // Filter out AWS course
+                    // Filter out AWS courses only (match whole word in title/role/provider)
+                    const awsRegex = /\baws\b/;
                     const filteredCourses = data.filter((c: any) => {
-                        const str = JSON.stringify(c).toLowerCase();
-                        return !str.includes('aws');
+                        const title = (c.title || '').toLowerCase();
+                        const role = (c.role_tag || '').toLowerCase();
+                        const provider = (c.provider || c.organization || '').toLowerCase();
+                        return !(awsRegex.test(title) || awsRegex.test(role) || awsRegex.test(provider));
                     });
                     setCourses(filteredCourses);
                     console.log('✓ Filtered courses set in state');

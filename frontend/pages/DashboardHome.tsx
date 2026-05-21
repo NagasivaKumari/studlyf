@@ -46,9 +46,12 @@ const DashboardHome: React.FC = () => {
         const res = await fetch(`${API_BASE_URL}/api/courses`);
         const data = await res.json();
         if (data && data.length > 0) {
+          const awsRegex = /\baws\b/;
           const filteredCourses = data.filter((c: any) => {
-            const str = JSON.stringify(c).toLowerCase();
-            return !str.includes('aws');
+            const title = (c.title || '').toLowerCase();
+            const role = (c.role_tag || '').toLowerCase();
+            const provider = (c.provider || c.organization || '').toLowerCase();
+            return !(awsRegex.test(title) || awsRegex.test(role) || awsRegex.test(provider));
           });
           setCourses(filteredCourses);
         }
