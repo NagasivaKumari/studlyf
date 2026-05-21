@@ -39,9 +39,12 @@ const MyCourses: React.FC = () => {
   const userId = user?.uid || 'test-user';
 
   const filterAwsCourses = (courses: Course[]) => {
+    const awsRegex = /\baws\b/;
     return courses.filter((course) => {
-      const combined = `${course.title || ''} ${course.description || ''} ${course.role_tag || ''}`.toLowerCase();
-      return !combined.includes('aws');
+      const title = (course.title || '').toLowerCase();
+      const role = (course.role_tag || '').toLowerCase();
+      const description = (course.description || '').toLowerCase();
+      return !(awsRegex.test(title) || awsRegex.test(role) || awsRegex.test(description));
     });
   };
 

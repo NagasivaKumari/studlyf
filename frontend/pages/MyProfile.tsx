@@ -117,11 +117,6 @@ const MyProfile: React.FC = () => {
       detail: formData.resume.fileName !== 'No resume uploaded' ? formData.resume.fileName : 'Upload resume',
       done: formData.resume.fileName !== 'No resume uploaded',
     },
-    {
-      label: 'Profile photo',
-      detail: formData.profilePhoto ? 'Uploaded' : 'Add photo',
-      done: Boolean(formData.profilePhoto),
-    },
   ];
 
   const [isExtracting, setIsExtracting] = useState(false);
@@ -456,11 +451,9 @@ const MyProfile: React.FC = () => {
                     onClick={() => fileInputRef.current?.click()}
                     className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10"
                   >
-                    {formData.profilePhoto ? (
-                      <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-white">
                       <User className="w-12 h-12 text-gray-200" />
-                    )}
+                    </div>
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-black uppercase tracking-widest text-center px-4">
                       Update Photo
                     </div>
