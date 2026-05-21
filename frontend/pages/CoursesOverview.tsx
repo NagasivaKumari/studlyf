@@ -189,14 +189,6 @@ const CoursesOverview: React.FC = () => {
 
                 </div>
 
-                {/* Debug Info */}
-                <div className="mb-8 text-xs text-gray-500 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200">
-                    <div>API: {API_BASE_URL}/api/courses</div>
-                    <div>Total courses: {courses.length}</div>
-                    <div>Filtered courses: {filteredCourses.length}</div>
-                    <div>Category: {activeCategory}</div>
-                </div>
-
                 {filteredCourses.length === 0 ? (
                     <div className="text-center py-16">
                         <div className="text-2xl font-black text-gray-400 mb-4">No Courses Found</div>
