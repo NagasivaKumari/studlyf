@@ -368,6 +368,8 @@ from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from routes import stage_navigation_routes, team_join_request_routes
 from routes import student_features_routes
+import hackathon_integration_routes
+import participant_card_routes
 from rate_limiter import rate_limit, check_rate_limit
 
 
@@ -436,6 +438,8 @@ app.include_router(hackathon_submission_routes.router)
 app.include_router(stage_navigation_routes.router)
 app.include_router(team_join_request_routes.router)
 app.include_router(student_features_routes.router)
+app.include_router(hackathon_integration_routes.router)
+app.include_router(participant_card_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -5156,12 +5160,24 @@ async def forgot_password(data: dict = Body(...)):
         # For security, don't reveal if user exists. Just say "If email exists, reset link sent"
         return {"status": "success", "message": "If this email is registered, a reset link has been sent."}
     
-    # Generate secure token
+    # Generate secure token and persist to DB so it survives restarts
     token = secrets.token_urlsafe(32)
-    reset_tokens[token] = {"email": email, "expiry": time.time() + 3600} # 1 hour expiry
-    
+    expiry_ts = int(time.time() + 3600)  # 1 hour expiry (unix ts)
+    try:
+        # Use a dedicated collection for password resets
+        await db.password_resets.insert_one({
+            "token": token,
+            "email": email,
+            "expiry": expiry_ts,
+            "created_at": datetime.now(timezone.utc)
+        })
+    except Exception as e:
+        logger.error(f"Failed to persist reset token: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate reset link")
+
     # Send email
     from services.email_service import send_notification_email
+    # Use hash routing link (app uses HashRouter) so include #/ path
     reset_link = f"{frontend_url}/#/reset-password?token={token}"
     body = f"""
     <html>
@@ -5187,29 +5203,42 @@ async def reset_password(data: dict = Body(...)):
     
     if not token or not new_password:
         raise HTTPException(status_code=400, detail="Token and new password are required")
-    
-    if token not in reset_tokens:
+
+    # Lookup token in persistent collection
+    try:
+        token_doc = await db.password_resets.find_one({"token": token})
+    except Exception as e:
+        logger.error(f"Error reading reset token: {e}")
+        raise HTTPException(status_code=500, detail="Internal error")
+
+    if not token_doc:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
-    
-    token_data = reset_tokens[token]
-    if time.time() > token_data["expiry"]:
-        del reset_tokens[token]
+
+    if int(time.time()) > int(token_doc.get("expiry", 0)):
+        # remove expired token
+        try:
+            await db.password_resets.delete_one({"token": token})
+        except Exception:
+            pass
         raise HTTPException(status_code=400, detail="Token has expired")
-    
-    email = token_data["email"]
-    
+
+    email = token_doc.get("email")
+
     # Update password in MongoDB
     from auth_utils import get_password_hash
     hashed_password = get_password_hash(new_password)
-    
+
     await users_col.update_one(
         {"email": email},
         {"$set": {"password": hashed_password}}
     )
-    
+
     # Clean up token
-    del reset_tokens[token]
-    
+    try:
+        await db.password_resets.delete_one({"token": token})
+    except Exception:
+        pass
+
     return {"status": "success", "message": "Password has been reset successfully"}
 
 # --- AUTH ENDPOINTS ---
