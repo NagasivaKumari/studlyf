@@ -397,8 +397,8 @@ const MyProfile: React.FC = () => {
     { id: 'skills', label: 'Skills', icon: Terminal, required: true },
     { id: 'education', label: 'Education', icon: GraduationCap, required: true },
     { id: 'experience', label: 'Work Experience', icon: Briefcase, required: false },
-    { id: 'projects', label: 'Projects', icon: Settings, required: false },
-    { id: 'certifications', label: 'ShieldCheck', icon: ShieldCheck, required: false },
+    { id: 'projects', label: 'Projects', icon: Book, required: false },
+    { id: 'certifications', label: 'Certifications', icon: ShieldCheck, required: false },
     { id: 'achievements', label: 'Accomplishments', icon: Award, required: false },
     { id: 'social', label: 'Social Links', icon: Share2, required: false },
     { id: 'preferences', label: 'Preferences', icon: Settings, required: false },
@@ -1218,7 +1218,7 @@ const MyProfile: React.FC = () => {
             <div className="flex items-center justify-between border-b border-gray-100 pb-6">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500">
-                  <Settings className="w-6 h-6" />
+                  <Book className="w-6 h-6" />
                 </div>
                 <div>
                   <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Personal Projects</h2>
@@ -1238,7 +1238,7 @@ const MyProfile: React.FC = () => {
 
             {formData.projects.length === 0 && (
               <div className="text-center py-12 text-gray-300">
-                <Settings className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <Book className="w-10 h-10 mx-auto mb-3 opacity-30" />
                 <p className="text-xs font-bold uppercase tracking-widest">No projects yet. Click "New Project" above to add one.</p>
               </div>
             )}
@@ -1753,7 +1753,7 @@ const MyProfile: React.FC = () => {
           <motion.div 
             whileHover={{ y: -5 }}
             onClick={() => navigate('/job-prep/resume-builder')}
-            className="bg-gradient-to-br from-[#0052CC] to-[#0747A6] rounded-[2.5rem] p-8 text-white flex flex-col gap-6 shadow-2xl shadow-blue-900/20 relative overflow-hidden group cursor-pointer"
+            className="bg-gradient-to-br from-[#7C3AED] to-[#5B21B6] rounded-[2.5rem] p-8 text-white flex flex-col gap-6 shadow-2xl shadow-purple-900/20 relative overflow-hidden group cursor-pointer"
           >
             <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-125 transition-transform duration-700">
                <FileText className="w-24 h-24" />
@@ -1766,7 +1766,7 @@ const MyProfile: React.FC = () => {
             </div>
             <div className="relative z-10">
               <h3 className="text-xl font-black uppercase tracking-tight mb-2">Create your Resume</h3>
-              <p className="text-xs text-blue-100/70 font-medium leading-relaxed">Generate a professional PDF resume in seconds using your profile data.</p>
+              <p className="text-xs text-purple-100/70 font-medium leading-relaxed">Generate a professional PDF resume in seconds using your profile data.</p>
             </div>
           </motion.div>
 

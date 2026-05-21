@@ -270,7 +270,7 @@ const Navigation: React.FC = () => {
                               className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:text-white hover:bg-white/5 transition-all text-xs font-bold uppercase tracking-widest group"
                             >
                               <span className="text-sm group-hover:scale-110 transition-transform">🛒</span>
-                              Applications
+                              My Applications
                             </Link>
                             <div className="h-px bg-white/5 my-2" />
                             <button
@@ -498,7 +498,7 @@ const Navigation: React.FC = () => {
                               onClick={() => setMobileMenuOpen(false)}
                               className="block w-full text-left px-5 py-4 bg-white/5 rounded-xl text-xs font-bold text-white uppercase tracking-widest hover:bg-white/10"
                             >
-                              Applications
+                              My Applications
                             </Link>
                             <button
                               onClick={() => { logout(); setMobileMenuOpen(false); }}

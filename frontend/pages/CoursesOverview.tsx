@@ -27,9 +27,13 @@ const CoursesOverview: React.FC = () => {
 
                 if (data && Array.isArray(data)) {
                     console.log('📊 Total courses received:', data.length);
-                    // Display ALL courses - removed AWS filter
-                    setCourses(data);
-                    console.log('✓ All courses set in state');
+                    // Filter out AWS course
+                    const filteredCourses = data.filter((c: any) => {
+                        const str = JSON.stringify(c).toLowerCase();
+                        return !str.includes('aws');
+                    });
+                    setCourses(filteredCourses);
+                    console.log('✓ Filtered courses set in state');
                 } else {
                     console.warn('⚠️ Data is not an array');
                     setCourses([]);

@@ -107,10 +107,7 @@ const MyApplications: React.FC = () => {
 
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
                     <div>
-                        <h1 className="text-3xl font-black text-slate-900 tracking-tight">My applications</h1>
-                        <p className="text-slate-500 font-medium mt-2 max-w-xl">
-                            Portal applications only. Hackathon team scoring and judge workflows are separate — your registration status for each listing appears here.
-                        </p>
+                        <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">My <span className="text-[#7C3AED]">applications</span></h1>
                     </div>
                 </div>
 
