@@ -948,7 +948,7 @@ const OpportunityDetails: React.FC = () => {
                     <div className="my-8">
                         {eventId && submissionStage ? (
                             <div className="space-y-4">
-                                <SubmissionForm eventId={eventId} stage={submissionStage} />
+                                <SubmissionForm eventId={eventId} stage={submissionStage} participationType={opportunity?.participationType} />
                             </div>
                         ) : (
                             <div className="bg-white p-6 rounded-lg shadow-md text-slate-600">

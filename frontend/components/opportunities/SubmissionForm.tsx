@@ -16,6 +16,7 @@ type StageField = {
 type SubmissionFormProps = {
     eventId: string;
     stage: any;
+    participationType?: string;
 };
 
 const normalizeFields = (rawFields: any[]): StageField[] => {
@@ -33,7 +34,7 @@ const normalizeFields = (rawFields: any[]): StageField[] => {
     }));
 };
 
-const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
+const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage, participationType }) => {
     const [formValues, setFormValues] = useState<Record<string, any>>({});
     const [fileNames, setFileNames] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
@@ -52,7 +53,9 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
         () => normalizeFields(resolvedStage?.fields || resolvedStage?.config?.fields || []),
         [resolvedStage]
     );
-    const teamRequired = Boolean(resolvedStage?.team_required || resolvedStage?.teamRequired || stage?.team_required || stage?.teamRequired);
+    const isSolo = participationType === 'individual';
+    const isTeamOnly = participationType === 'team';
+    const teamRequired = isTeamOnly || Boolean(resolvedStage?.team_required || resolvedStage?.teamRequired || stage?.team_required || stage?.teamRequired);
     const stageDescription = String(resolvedStage?.description || resolvedStage?.config?.description || stage?.description || stage?.config?.description || '').trim();
     const stageVisibility = String(resolvedStage?.visibility || stage?.visibility || '').toLowerCase();
     const isPublicStage = stageVisibility === 'public';
@@ -248,7 +251,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
         );
     }
 
-    if (teamRequired && !teamId) {
+    if (!isSolo && teamRequired && !teamId) {
         return (
             <div className="bg-white p-6 rounded-lg shadow-md">
                 <h2 className="text-2xl font-bold mb-2">{stageTitle}</h2>

@@ -332,10 +332,11 @@ const EventHub: React.FC = () => {
     const event_id_as_opp = event?.opportunity_id || eventId;
     const isLeader = team && (String(team.leader_id || team.team_leader_id) === String(user?.user_id));
 
+    const isSoloEvent = event?.participationType === 'individual';
     const tabs = [
         { id: 'timeline', label: 'Timeline', icon: <Clock size={14} /> },
         { id: 'submissions', label: 'Submissions', icon: <FileText size={14} /> },
-        { id: 'team', label: 'My Team', icon: <UsersRound size={14} /> },
+        ...(isSoloEvent ? [] : [{ id: 'team' as const, label: 'My Team', icon: <UsersRound size={14} /> }]),
         { id: 'results', label: 'Results', icon: <Trophy size={14} /> }
     ];
 
