@@ -191,10 +191,21 @@ const Navigation: React.FC = () => {
                 >
                   OPPORTUNITIES
                 </Link>
+              </div>
+            </div>
 
-                
-                {user ? (
-                  <>
+            <div className="flex items-center lg:w-[250px] justify-end shrink-0 gap-8">
+              {user ? (
+                <div className="flex items-center gap-5">
+                  <Link
+                    to="/learn/cart"
+                    className="relative p-2 hover:bg-white/10 rounded-lg transition-colors group"
+                    title="View Cart"
+                  >
+                    <ShoppingCart className="w-5 h-5 text-white" />
+                  </Link>
+
+                  {(role === 'admin' || role === 'super_admin') && (
                     <Link
                       to="/admin"
                       className="hidden sm:flex px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl items-center gap-2 group/admin transition-all"
