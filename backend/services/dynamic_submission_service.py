@@ -3,6 +3,7 @@ Dynamic Submission Service - Handle stage submissions with admin-defined fields
 """
 
 from db import submission_data_col, participants_col, events_col, users_col, opportunities_col, opportunity_applications_col
+from notification_service import notification_service
 from bson import ObjectId
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
@@ -123,6 +124,13 @@ async def submit_stage_data(
         event = await events_col.find_one({"_id": ObjectId(event_id)})
         if not event:
             return {"error": "Event not found"}
+        
+        # Enforce participation type
+        ptype = str(event.get("participationType") or "").lower().strip()
+        if ptype == "individual" and team_id:
+            return {"error": "This event is for individual participation only. Team submissions are not allowed.", "status": "restricted"}
+        if ptype == "team" and not team_id:
+            return {"error": "This event requires team participation. Please form or join a team before submitting.", "status": "restricted"}
         
         # Find target stage
         target_stage = None
@@ -262,6 +270,22 @@ async def submit_stage_data(
                 )
         except Exception as e:
             print(f"[WARN] Failed to sync opportunity application: {e}")
+            # Create notification for user and institution admins (if any)
+            try:
+                # Notify submitting user
+                title = f"Submission received: {target_stage.get('name')}"
+                message = f"Your submission for '{target_stage.get('name')}' has been received. You can view it in My Applications or on the Event page."
+                await notification_service.create_notification(
+                    user_id=str(user_id),
+                    notification_type="submission",
+                    title=title,
+                    message=message,
+                    metadata={"stage_id": stage_id, "event_id": str(event_id)},
+                    institution_id=str(event.get("institution_id")) if event else None,
+                    event_id=str(event_id)
+                )
+            except Exception as e:
+                print(f"[WARN] Could not create submission notification: {e}")
         
         return {
             "status": "success",

@@ -746,21 +746,31 @@ async def learner_submit_stage_data(
     if not p:
         raise HTTPException(status_code=403, detail="You must register/apply for this event first")
 
-    # Enforce team size requirement
-    min_team = ev.get("min_team_size", ev.get("minTeamSize", 1))
-    if isinstance(min_team, int) and min_team > 1:
+    # Enforce participation type
+    ptype = str(ev.get("participationType") or "").lower().strip()
+    if ptype == "individual":
+        if p.get("team_id"):
+            raise HTTPException(
+                status_code=403,
+                detail="This event is for individual participation only. You cannot submit as part of a team."
+            )
+    elif ptype == "team":
         if not p.get("team_id"):
             raise HTTPException(
                 status_code=403,
-                detail=f"This event requires a team of at least {min_team} members. Please form or join a team first."
+                detail="This event requires team participation. Please form or join a team before submitting."
             )
-        from db import teams_col as _t_col
-        _team = await _t_col.find_one({"_id": ObjectId(p["team_id"])})
-        if _team and len(_team.get("members", [])) < min_team:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Your team has {len(_team.get('members', []))} member(s) but needs at least {min_team}."
-            )
+    # Enforce team size requirement (applies for 'team' and 'both')
+    min_team = ev.get("min_team_size", ev.get("minTeamSize", 1))
+    if isinstance(min_team, int) and min_team > 1:
+        if p.get("team_id"):
+            from db import teams_col as _t_col
+            _team = await _t_col.find_one({"_id": ObjectId(p["team_id"])})
+            if _team and len(_team.get("members", [])) < min_team:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Your team has {len(_team.get('members', []))} member(s) but needs at least {min_team}."
+                )
 
     # If in a team, ONLY team leader can submit
     if p.get("team_id"):
@@ -914,6 +924,18 @@ async def hackathon_project_submit(
     # Enforce team size requirement
     ev = await events_col.find_one({"_id": ObjectId(str(event_id))})
     if ev:
+        # Enforce participation type
+        ptype = str(ev.get("participationType") or "").lower().strip()
+        if ptype == "individual" and p.get("team_id"):
+            raise HTTPException(
+                status_code=403,
+                detail="This event is for individual participation only. You cannot submit as part of a team."
+            )
+        if ptype == "team" and not p.get("team_id"):
+            raise HTTPException(
+                status_code=403,
+                detail="This event requires team participation. Please form or join a team before submitting."
+            )
         min_team = ev.get("min_team_size", ev.get("minTeamSize", 1))
         if isinstance(min_team, int) and min_team > 1:
             if not p.get("team_id"):
