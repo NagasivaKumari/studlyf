@@ -46,9 +46,12 @@ const DashboardHome: React.FC = () => {
         const res = await fetch(`${API_BASE_URL}/api/courses`);
         const data = await res.json();
         if (data && data.length > 0) {
+          const awsRegex = /\baws\b/;
           const filteredCourses = data.filter((c: any) => {
-            const str = JSON.stringify(c).toLowerCase();
-            return !str.includes('aws');
+            const title = (c.title || '').toLowerCase();
+            const role = (c.role_tag || '').toLowerCase();
+            const provider = (c.provider || c.organization || '').toLowerCase();
+            return !(awsRegex.test(title) || awsRegex.test(role) || awsRegex.test(provider));
           });
           setCourses(filteredCourses);
         }
@@ -524,7 +527,7 @@ const DashboardHome: React.FC = () => {
               <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Progress</p>
               <h3 className="text-xl font-black tracking-tight text-slate-900 mt-2">My applications</h3>
               <p className="text-sm font-medium text-slate-500 mt-2">
-                Quick status view — detailed updates are in My applications.
+                Track your latest application progress and stage deadlines in one place.
               </p>
 
               <div className="mt-5 space-y-3">
@@ -554,7 +557,7 @@ const DashboardHome: React.FC = () => {
 
               <Link
                 to="/opportunities/my-applications"
-                className="mt-6 inline-flex w-full justify-center items-center gap-2 px-5 py-3 rounded-2xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest hover:bg-purple-700 transition-colors"
+                className="mt-6 inline-flex w-full justify-center items-center gap-2 px-5 py-3 rounded-2xl bg-[#7C3AED] text-white text-xs font-black uppercase tracking-widest hover:bg-[#5B21B6] transition-colors"
               >
                 Open My applications <ExternalLink size={14} />
               </Link>
