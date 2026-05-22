@@ -60,6 +60,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
     const stageStatus = stageStatusRaw ? stageStatusRaw.toLowerCase() : '';
     const isStageActive = stageStatus === 'active' || stageStatus === 'active';
     const stageDeadlineRaw = resolvedStage?.end_date || resolvedStage?.endDate || resolvedStage?.deadline;
+    const [deadlineLabel, setDeadlineLabel] = useState<string | null>(null);
 
     useEffect(() => {
         if (!stageDeadlineRaw) return;
@@ -81,6 +82,11 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
         };
 
         updateLockState();
+        // Update human-readable deadline label
+        const dl = parseDeadline();
+        if (dl) {
+            setDeadlineLabel(dl.toLocaleString());
+        }
         const timer = window.setInterval(updateLockState, 30000);
         return () => window.clearInterval(timer);
     }, [stageDeadlineRaw]);
@@ -267,7 +273,20 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
 
     return (
         <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-2xl font-bold mb-2">{stageTitle}</h2>
+            <div className="flex items-center justify-between gap-4">
+                <h2 className="text-2xl font-bold mb-2">{stageTitle}</h2>
+                <div>
+                    {submitted && !canEditSubmission ? (
+                        <span className="inline-block text-sm font-black text-red-700 bg-red-50 border border-red-100 px-3 py-1 rounded-lg">
+                            Editing closed — deadline passed
+                        </span>
+                    ) : canEditSubmission && deadlineLabel ? (
+                        <span className="inline-block text-sm font-black text-emerald-800 bg-emerald-50 border border-emerald-100 px-3 py-1 rounded-lg">
+                            Editable until {deadlineLabel}
+                        </span>
+                    ) : null}
+                </div>
+            </div>
             {submitted && canEditSubmission ? (
                 <div className="mb-4 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                     Your submission is saved. You can still edit it until the deadline.
