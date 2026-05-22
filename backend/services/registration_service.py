@@ -8,6 +8,25 @@ from bson import ObjectId
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 import re
+import json
+
+def _ensure_list(val):
+    """Normalize a field value to a list, handling JSON-encoded strings."""
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        # Try JSON decode for array-like strings
+        if val.startswith("[") and val.endswith("]"):
+            try:
+                parsed = json.loads(val)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                pass
+        return [val]
+    return [str(val)]
 
 async def validate_event_restrictions(
     event: Dict[str, Any],
@@ -25,9 +44,9 @@ async def validate_event_restrictions(
         # --- participationType is NOT checked here (affects submission/team, not registration) ---
 
         # --- candidateTypes ---
-        candidate_types = event.get("candidateTypes")
-        if candidate_types and isinstance(candidate_types, (list, str)):
-            allowed = [c.lower().strip() for c in (candidate_types if isinstance(candidate_types, list) else [candidate_types])]
+        candidate_types = _ensure_list(event.get("candidateTypes"))
+        if candidate_types:
+            allowed = [c.lower().strip() for c in candidate_types]
             if "everyone can apply" not in allowed:
                 user_college = str(user.get("college") or user.get("institution") or "").strip()
                 user_role = str(user.get("role") or "").lower().strip()
@@ -57,16 +76,19 @@ async def validate_event_restrictions(
                         break
 
                 if not matched and not any("everyone" in t for t in allowed):
-                    return "You are not eligible for this event based on the candidate type restrictions. Only the following types can register: " + ", ".join(candidate_types if isinstance(candidate_types, list) else [candidate_types])
+                    return "You are not eligible for this event based on the candidate type restrictions. Only the following types can register: " + ", ".join(allowed)
 
         # --- College / Organization restriction ---
-        eligible_orgs = event.get("eligibleOrganizations")
-        if eligible_orgs and isinstance(eligible_orgs, list) and len(eligible_orgs) > 0:
-            user_college = str(user.get("college") or user.get("institution") or "").strip().lower()
-            if user_college:
-                matched_org = any(org.lower().strip() in user_college or user_college in org.lower().strip() for org in eligible_orgs if org)
-                if not matched_org:
-                    return f"Only applicants from specific colleges/organizations can register for this event."
+        eligible_orgs = _ensure_list(event.get("eligibleOrganizations"))
+        if eligible_orgs:
+            # "Allow All" means no restriction
+            orgs_clean = [o.lower().strip() for o in eligible_orgs if o]
+            if "allow all" not in orgs_clean:
+                user_college = str(user.get("college") or user.get("institution") or "").strip().lower()
+                if user_college:
+                    matched_org = any(org in user_college or user_college in org for org in orgs_clean)
+                    if not matched_org:
+                        return f"Only applicants from specific colleges/organizations can register for this event."
         else:
             legacy_restriction = event.get("collegeRestriction")
             if legacy_restriction and str(legacy_restriction).lower() not in ("", "everyone can apply", "everyone"):
@@ -75,14 +97,17 @@ async def validate_event_restrictions(
                     pass  # Legacy field is vague; we don't strictly block on it
 
         # --- Gender restriction ---
-        eligible_genders = event.get("eligibleGenders")
-        if eligible_genders and isinstance(eligible_genders, list) and len(eligible_genders) > 0:
-            user_gender = str(user.get("gender") or "").strip().lower()
-            if user_gender:
-                matched_gender = any(g.lower().strip() == user_gender for g in eligible_genders if g)
-                if not matched_gender:
-                    allowed = [g for g in eligible_genders if g]
-                    return f"This event is restricted to: {', '.join(allowed)}"
+        eligible_genders = _ensure_list(event.get("eligibleGenders"))
+        if eligible_genders:
+            # "Allow All" means no restriction
+            genders_clean = [g.lower().strip() for g in eligible_genders if g]
+            if "allow all" not in genders_clean:
+                user_gender = str(user.get("gender") or "").strip().lower()
+                if user_gender:
+                    matched_gender = any(g == user_gender for g in genders_clean)
+                    if not matched_gender:
+                        allowed = [g for g in eligible_genders if g]
+                        return f"This event is restricted to: {', '.join(allowed)}"
         else:
             legacy_gender = event.get("genderRestriction")
             if legacy_gender and str(legacy_gender).lower() not in ("", "everyone can apply", "everyone", "allow all"):
