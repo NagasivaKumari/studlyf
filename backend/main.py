@@ -5655,8 +5655,8 @@ async def login(credentials: UserLogin, request: Request):
         logger.warning(f"Invalid password attempt for user: {email_clean}")
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if not bool(user.get("email_verified")):
-        raise HTTPException(status_code=403, detail="Please verify your email before signing in")
+    # if not bool(user.get("email_verified")):
+    #     raise HTTPException(status_code=403, detail="Please verify your email before signing in")
     
     # Record Login Timestamp (Required by Spec)
     login_time = datetime.now(timezone.utc).isoformat()
