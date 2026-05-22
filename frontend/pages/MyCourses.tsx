@@ -38,14 +38,24 @@ const MyCourses: React.FC = () => {
 
   const userId = user?.uid || 'test-user';
 
+  const filterAwsCourses = (courses: Course[]) => {
+    const awsRegex = /\baws\b/;
+    return courses.filter((course) => {
+      const title = (course.title || '').toLowerCase();
+      const role = (course.role_tag || '').toLowerCase();
+      const description = (course.description || '').toLowerCase();
+      return !(awsRegex.test(title) || awsRegex.test(role) || awsRegex.test(description));
+    });
+  };
+
   useEffect(() => {
     const fetchCourses = async () => {
       try {
         setLoading(true);
         const res = await fetch(`${API_BASE_URL}/api/user-courses/${userId}`);
         const data = await res.json();
-        setEnrolledCourses(data.enrolled || []);
-        setAvailableCourses(data.available || []);
+        setEnrolledCourses(filterAwsCourses(data.enrolled || []));
+        setAvailableCourses(filterAwsCourses(data.available || []));
       } catch (err) {
         console.error('Error fetching courses:', err);
       } finally {
@@ -102,7 +112,7 @@ const MyCourses: React.FC = () => {
           <button
             onClick={() => setActiveTab('applied')}
             className={`flex-1 sm:flex-none px-4 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border relative ${activeTab === 'applied'
-              ? 'bg-[#111827] text-white border-[#111827] shadow-xl shadow-black/10'
+              ? 'bg-[#7C3AED] text-white border-[#7C3AED] shadow-xl shadow-[#7C3AED]/20'
               : 'bg-white text-gray-400 border-gray-100 hover:border-[#7C3AED]/30'
               }`}
           >
@@ -120,7 +130,7 @@ const MyCourses: React.FC = () => {
           <button
             onClick={() => setActiveTab('available')}
             className={`flex-1 sm:flex-none px-4 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border relative ${activeTab === 'available'
-              ? 'bg-[#111827] text-white border-[#111827] shadow-xl shadow-black/10'
+              ? 'bg-[#7C3AED] text-white border-[#7C3AED] shadow-xl shadow-[#7C3AED]/20'
               : 'bg-white text-gray-400 border-gray-100 hover:border-[#7C3AED]/30'
               }`}
           >
@@ -129,7 +139,7 @@ const MyCourses: React.FC = () => {
               Available
             </span>
             {availableCourses.length > 0 && (
-              <span className="absolute -top-2 -right-2 inline-flex items-center justify-center w-5 h-5 bg-blue-500 text-white text-[8px] font-black rounded-full shadow-lg">
+              <span className="absolute -top-2 -right-2 inline-flex items-center justify-center w-5 h-5 bg-[#7C3AED] text-white text-[8px] font-black rounded-full shadow-lg">
                 {availableCourses.length}
               </span>
             )}

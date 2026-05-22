@@ -99,8 +99,6 @@ const MyProfile: React.FC = () => {
     return score;
   };
 
-  const profileCompletion = calculateStrength();
-
   const [isExtracting, setIsExtracting] = useState(false);
 
   // ─── REAL: Add / Remove individual skills ───
@@ -397,8 +395,8 @@ const MyProfile: React.FC = () => {
     { id: 'skills', label: 'Skills', icon: Terminal, required: true },
     { id: 'education', label: 'Education', icon: GraduationCap, required: true },
     { id: 'experience', label: 'Work Experience', icon: Briefcase, required: false },
-    { id: 'projects', label: 'Projects', icon: Settings, required: false },
-    { id: 'certifications', label: 'ShieldCheck', icon: ShieldCheck, required: false },
+    { id: 'projects', label: 'Projects', icon: Book, required: false },
+    { id: 'certifications', label: 'Certifications', icon: ShieldCheck, required: false },
     { id: 'achievements', label: 'Accomplishments', icon: Award, required: false },
     { id: 'social', label: 'Social Links', icon: Share2, required: false },
     { id: 'preferences', label: 'Preferences', icon: Settings, required: false },
@@ -433,11 +431,9 @@ const MyProfile: React.FC = () => {
                     onClick={() => fileInputRef.current?.click()}
                     className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10"
                   >
-                    {formData.profilePhoto ? (
-                      <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-white">
                       <User className="w-12 h-12 text-gray-200" />
-                    )}
+                    </div>
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-black uppercase tracking-widest text-center px-4">
                       Update Photo
                     </div>
@@ -1218,7 +1214,7 @@ const MyProfile: React.FC = () => {
             <div className="flex items-center justify-between border-b border-gray-100 pb-6">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500">
-                  <Settings className="w-6 h-6" />
+                  <Book className="w-6 h-6" />
                 </div>
                 <div>
                   <h2 className="text-xl font-black uppercase text-gray-900 tracking-tight">Personal Projects</h2>
@@ -1238,7 +1234,7 @@ const MyProfile: React.FC = () => {
 
             {formData.projects.length === 0 && (
               <div className="text-center py-12 text-gray-300">
-                <Settings className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <Book className="w-10 h-10 mx-auto mb-3 opacity-30" />
                 <p className="text-xs font-bold uppercase tracking-widest">No projects yet. Click "New Project" above to add one.</p>
               </div>
             )}
@@ -1753,43 +1749,22 @@ const MyProfile: React.FC = () => {
           <motion.div 
             whileHover={{ y: -5 }}
             onClick={() => navigate('/job-prep/resume-builder')}
-            className="bg-gradient-to-br from-[#0052CC] to-[#0747A6] rounded-[2.5rem] p-8 text-white flex flex-col gap-6 shadow-2xl shadow-blue-900/20 relative overflow-hidden group cursor-pointer"
+            className="bg-[#7C3AED] rounded-[2.5rem] p-8 text-white flex flex-col gap-6 shadow-2xl shadow-purple-900/20 relative overflow-hidden group cursor-pointer"
           >
             <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-125 transition-transform duration-700">
                <FileText className="w-24 h-24" />
             </div>
             <div className="flex items-center justify-between relative z-10">
               <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md">
-                <FileText className="w-6 h-6" />
+                <FileText className="w-6 h-6 text-white" />
               </div>
-              <Plus className="w-6 h-6 opacity-60" />
+              <Plus className="w-6 h-6 opacity-90 text-white" />
             </div>
             <div className="relative z-10">
               <h3 className="text-xl font-black uppercase tracking-tight mb-2">Create your Resume</h3>
-              <p className="text-xs text-blue-100/70 font-medium leading-relaxed">Generate a professional PDF resume in seconds using your profile data.</p>
+              <p className="text-sm text-purple-100 font-medium leading-relaxed">Generate a professional resume with your profile details and download it as a clean PDF.</p>
             </div>
           </motion.div>
-
-          {/* Completion Card */}
-          <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-[0_10px_30px_rgba(0,0,0,0.02)]">
-            <h3 className="font-black uppercase text-xs tracking-widest text-gray-900 mb-6 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#7C3AED]" />
-              Profile Strength
-            </h3>
-            <div className="space-y-4">
-              <div className="relative h-4 bg-gray-50 rounded-full overflow-hidden p-1">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${profileCompletion}%` }}
-                  className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.3)]"
-                />
-              </div>
-              <div className="flex justify-between items-center px-1">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Complete your profile</p>
-                <span className="text-xl font-black text-[#111827]">{profileCompletion}%</span>
-              </div>
-            </div>
-          </div>
 
           {/* Tab Navigation */}
           <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-[0_10px_30px_rgba(0,0,0,0.02)] overflow-hidden py-6">

@@ -27,9 +27,16 @@ const CoursesOverview: React.FC = () => {
 
                 if (data && Array.isArray(data)) {
                     console.log('📊 Total courses received:', data.length);
-                    // Display ALL courses - removed AWS filter
-                    setCourses(data);
-                    console.log('✓ All courses set in state');
+                    // Filter out AWS courses only (match whole word in title/role/provider)
+                    const awsRegex = /\baws\b/;
+                    const filteredCourses = data.filter((c: any) => {
+                        const title = (c.title || '').toLowerCase();
+                        const role = (c.role_tag || '').toLowerCase();
+                        const provider = (c.provider || c.organization || '').toLowerCase();
+                        return !(awsRegex.test(title) || awsRegex.test(role) || awsRegex.test(provider));
+                    });
+                    setCourses(filteredCourses);
+                    console.log('✓ Filtered courses set in state');
                 } else {
                     console.warn('⚠️ Data is not an array');
                     setCourses([]);
@@ -180,14 +187,6 @@ const CoursesOverview: React.FC = () => {
 
                     </div>
 
-                </div>
-
-                {/* Debug Info */}
-                <div className="mb-8 text-xs text-gray-500 font-mono bg-gray-50 p-4 rounded-lg border border-gray-200">
-                    <div>API: {API_BASE_URL}/api/courses</div>
-                    <div>Total courses: {courses.length}</div>
-                    <div>Filtered courses: {filteredCourses.length}</div>
-                    <div>Category: {activeCategory}</div>
                 </div>
 
                 {filteredCourses.length === 0 ? (
