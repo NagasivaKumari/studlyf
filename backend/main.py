@@ -5665,46 +5665,6 @@ async def login(credentials: UserLogin, request: Request):
         {"$set": {"last_login_at": login_time}}
     )
 
-
-@app.post("/api/auth/resend-verification")
-async def resend_verification(data: dict = Body(...)):
-    email = str(data.get("email") or "").strip().lower()
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
-
-    user = await users_col.find_one({"email": email})
-    if not user:
-        return {"status": "success", "message": "If this email is registered, a verification link has been sent."}
-
-    if bool(user.get("email_verified")):
-        return {"status": "success", "message": "Email is already verified."}
-
-    token = secrets.token_urlsafe(32)
-    expiry = int(time() + 86400)
-    await db.email_verifications.update_one(
-        {"email": email},
-        {
-            "$set": {
-                "token": token,
-                "email": email,
-                "user_id": user.get("user_id"),
-                "expiry": expiry,
-                "created_at": datetime.now(timezone.utc),
-            }
-        },
-        upsert=True,
-    )
-
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    verification_link = f"{frontend_url}/#/verify-email?token={token}"
-    participant_name = user.get("full_name") or user.get("name") or "Participant"
-    await send_notification_email(
-        email,
-        "Verify your Studlyf account",
-        get_email_verification_template(participant_name, verification_link),
-    )
-    return {"status": "success", "message": "Verification link sent"}
-    
     resolved_institution_id = user.get("institution_id")
     if user.get("role") == "institution" and not resolved_institution_id:
         inst = None
@@ -5744,6 +5704,46 @@ async def resend_verification(data: dict = Body(...)):
             "last_login": login_time
         }
     }
+
+
+@app.post("/api/auth/resend-verification")
+async def resend_verification(data: dict = Body(...)):
+    email = str(data.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    user = await users_col.find_one({"email": email})
+    if not user:
+        return {"status": "success", "message": "If this email is registered, a verification link has been sent."}
+
+    if bool(user.get("email_verified")):
+        return {"status": "success", "message": "Email is already verified."}
+
+    token = secrets.token_urlsafe(32)
+    expiry = int(time() + 86400)
+    await db.email_verifications.update_one(
+        {"email": email},
+        {
+            "$set": {
+                "token": token,
+                "email": email,
+                "user_id": user.get("user_id"),
+                "expiry": expiry,
+                "created_at": datetime.now(timezone.utc),
+            }
+        },
+        upsert=True,
+    )
+
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    verification_link = f"{frontend_url}/#/verify-email?token={token}"
+    participant_name = user.get("full_name") or user.get("name") or "Participant"
+    await send_notification_email(
+        email,
+        "Verify your Studlyf account",
+        get_email_verification_template(participant_name, verification_link),
+    )
+    return {"status": "success", "message": "Verification link sent"}
 
 @app.get("/api/auth/me")
 async def get_me(user_payload: dict = Depends(get_current_user)):
