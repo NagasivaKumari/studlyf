@@ -571,7 +571,7 @@ from routes import submission_routes, judge_routes, event_routes, dashboard_rout
 from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
-from routes import student_features_routes, enhanced_features_routes, websocket_routes
+from routes import student_features_routes
 from routes import event_certificate_routes
 import hackathon_integration_routes
 import participant_card_routes
@@ -643,8 +643,6 @@ app.include_router(hackathon_submission_routes.router)
 app.include_router(stage_navigation_routes.router)
 app.include_router(team_join_request_routes.router)
 app.include_router(student_features_routes.router)
-app.include_router(enhanced_features_routes.router)
-app.include_router(websocket_routes.router)
 app.include_router(hackathon_integration_routes.router)
 app.include_router(hackathon_public_routes.router)
 app.include_router(participant_card_routes.router)
