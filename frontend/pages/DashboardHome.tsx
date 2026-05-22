@@ -470,99 +470,9 @@ const DashboardHome: React.FC = () => {
 
       {/* SECTION 4: REST OF CONTENT */}
       <div className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 relative z-10 pb-20">
-        {/* Learner widgets: upcoming deadlines + applications */}
+        {/* Learner widgets */}
         {user ? (
-          <><section className="mb-16 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white border border-purple-100 rounded-[2rem] p-6 sm:p-8 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#7C3AED] to-[#A78BFA]" />
-              <div className="flex items-end justify-between gap-6">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Next up</p>
-                  <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 mt-2">Upcoming deadlines</h3>
-                  <p className="text-sm font-medium text-slate-500 mt-2">
-                    Stage deadlines and registration cutoffs from your applied listings.
-                  </p>
-                </div>
-                <Link
-                  to="/opportunities/my-applications"
-                  className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-50 border border-purple-100 text-purple-700 text-xs font-black uppercase tracking-widest hover:bg-purple-100"
-                >
-                  View all <ExternalLink size={14} />
-                </Link>
-              </div>
-
-              <div className="mt-6 space-y-3">
-                {(overview?.upcoming || []).length === 0 ? (
-                  <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 font-bold text-sm">
-                    No upcoming deadlines yet. Apply to a hackathon to see your timeline here.
-                  </div>
-                ) : (
-                  (overview?.upcoming || []).map((row: any) => (
-                    <Link
-                      key={String(row.opportunity_id)}
-                      to={`/opportunities/${row.opportunity_id}`}
-                      className="group flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-purple-200 hover:bg-white transition-all"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-black text-slate-900 truncate">{row.title}</p>
-                        <p className="text-xs font-bold text-slate-500 mt-1 truncate">
-                          {row.organization || 'Host'} · {row.next_label}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-black uppercase tracking-widest">
-                          <Clock size={14} className="text-purple-600" /> {row.days_left}d
-                        </span>
-                        <span className="text-purple-700 font-black text-xs uppercase tracking-widest hidden sm:inline-flex">
-                          Open →
-                        </span>
-                      </div>
-                    </Link>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white border border-slate-100 rounded-[2rem] p-6 sm:p-8 shadow-sm">
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Progress</p>
-              <h3 className="text-xl font-black tracking-tight text-slate-900 mt-2">My applications</h3>
-              <p className="text-sm font-medium text-slate-500 mt-2">
-                Track your latest application progress and stage deadlines in one place.
-              </p>
-
-              <div className="mt-5 space-y-3">
-                {(overview?.timeline || []).slice(0, 5).map((a: any) => {
-                  const st = statusChip(a.status);
-                  return (
-                    <Link
-                      key={String(a._id || a.opportunity_id)}
-                      to={a.opportunity_id ? `/opportunities/${a.opportunity_id}` : '/opportunities/my-applications'}
-                      className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-white hover:border-purple-200 transition-all"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-black text-slate-900 truncate">
-                          {a.opportunity_title || 'Opportunity'}
-                        </p>
-                        <p className="text-[11px] text-slate-500 font-semibold mt-0.5 truncate">
-                          {a.institution_name || 'Host institution'}
-                        </p>
-                      </div>
-                      <span className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${st.cls}`}>
-                        {st.text}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-
-              <Link
-                to="/opportunities/my-applications"
-                className="mt-6 inline-flex w-full justify-center items-center gap-2 px-5 py-3 rounded-2xl bg-[#7C3AED] text-white text-xs font-black uppercase tracking-widest hover:bg-[#5B21B6] transition-colors"
-              >
-                Open My applications <ExternalLink size={14} />
-              </Link>
-            </div>
-          </section>
+          <>
 
           {myEvents.length > 0 && (
             <section className="mb-16">
@@ -702,19 +612,7 @@ const DashboardHome: React.FC = () => {
 
 
 
-        {/* Opportunities Section */}
-        <section className="mb-24 px-4 sm:px-0">
-          <OpportunitySlider opportunities={opportunities} appliedIds={appliedIds} />
-          <div className="flex justify-center mt-12">
-            <button 
-              onClick={() => navigate('/opportunities')}
-              className="group relative px-8 py-4 bg-white border border-purple-100 rounded-2xl text-sm font-black uppercase tracking-[0.2em] text-purple-600 hover:bg-purple-600 hover:text-white transition-all shadow-xl shadow-purple-900/5 flex items-center gap-3"
-            >
-              View More Opportunities
-              <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
-            </button>
-          </div>
-        </section>
+
 
         {/* Product Brief Section */}
         <section className="mb-16 mt-12 px-4 sm:px-0 relative overflow-hidden py-16 bg-[#FAFAFA] rounded-[3rem] border border-black/5" >
