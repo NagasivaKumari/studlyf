@@ -31,7 +31,7 @@ class EventWorkflowService:
             if quiz_id:
                 pass  # In a real app, verify quiz results here
 
-        # Check team size if advancing from a TEAM_FORMATION-type stage
+        # Check team size if advancing to a TEAM_FORMATION-type stage
         if stage_type == "TEAM_FORMATION":
             for pid in participant_ids:
                 participant = await participants_col.find_one({"_id": ObjectId(pid)})
@@ -44,6 +44,24 @@ class EventWorkflowService:
                         max_size = stage_config.get("max_team_size", 5) or event.get("max_team_size", 5)
                         if len(members) < min_size or len(members) > max_size:
                             raise Exception(f"Team size ({len(members)}) out of range ({min_size}-{max_size})")
+
+        # Check team requirement if advancing FROM a TEAM_FORMATION-type stage
+        for pid in participant_ids:
+            participant = await participants_col.find_one({"_id": ObjectId(pid)})
+            if not participant:
+                continue
+            current_stage_name = participant.get("current_stage")
+            if not current_stage_name:
+                continue
+            current_stage_config = next((s for s in stages if s.get("name") == current_stage_name), None)
+            current_type = (current_stage_config or {}).get("type", "").upper() if current_stage_config else ""
+            if current_type == "TEAM_FORMATION":
+                if not participant.get("team_id"):
+                    p_name = participant.get("name", "Unknown")
+                    raise Exception(
+                        f"{p_name} must be in a team before advancing from {current_stage_name}. "
+                        f"Please ensure they have created or joined a team."
+                    )
 
         # Stage rules passed - the route handler manages per-participant
         # current_stage update + completed_stages push

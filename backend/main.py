@@ -16,15 +16,38 @@ from groq import Groq
 import requests
 from services.ai_tools_scraper import fetch_ai_tools
 from jinja2 import Environment, FileSystemLoader, Template
+from fastapi.responses import HTMLResponse
+import json
+from time import time
 import asyncio
 from services.email_service import send_notification_email
 from datetime import datetime, timezone
 import secrets
-import time
+ 
 
 app = FastAPI()
 
 load_dotenv()
+
+# Jinja2 templates environment (templates are placed in backend/templates)
+templates_env = Environment(loader=FileSystemLoader('templates'))
+
+# Simple in-memory HTML cache for rendered pages (key -> (html, expiry))
+_html_cache: dict = {}
+
+def cache_get(key: str):
+    item = _html_cache.get(key)
+    if not item:
+        return None
+    html, expiry = item
+    if expiry and expiry < time():
+        _html_cache.pop(key, None)
+        return None
+    return html
+
+def cache_set(key: str, html: str, ttl: int = 60):
+    expiry = time() + ttl if ttl and ttl > 0 else None
+    _html_cache[key] = (html, expiry)
 
 
 def _super_admin_email_set() -> set:
@@ -86,6 +109,39 @@ async def startup_event():
     # process fails fast when no real MongoDB is available.
     await db.connect()
     logger.info("Application startup completed successfully")
+
+    # DB diagnostics dump
+    try:
+        from db import events_col, opportunities_col
+        events_cursor = events_col.find({})
+        events = await events_cursor.to_list(length=100)
+        opps_cursor = opportunities_col.find({})
+        opps = await opps_cursor.to_list(length=100)
+        
+        diag_path = os.path.join(os.path.dirname(__file__), "db_diagnostics.txt")
+        with open(diag_path, "w", encoding="utf-8") as f:
+            f.write(f"=== DB DIAGNOSTICS ===\n")
+            f.write(f"Timestamp: {datetime.now().isoformat()}\n\n")
+            f.write(f"--- EVENTS ({len(events)}) ---\n")
+            for e in events:
+                f.write(f"ID: {e.get('_id')}\n")
+                f.write(f"Title: {e.get('title')}\n")
+                f.write(f"Logo URL: {e.get('logo_url')}\n")
+                f.write(f"Banner URL: {e.get('banner_url')}\n")
+                f.write(f"Status: {e.get('status')}\n")
+                f.write("-" * 20 + "\n")
+                
+            f.write(f"\n--- OPPORTUNITIES ({len(opps)}) ---\n")
+            for o in opps:
+                f.write(f"ID: {o.get('_id')}\n")
+                f.write(f"Title: {o.get('title')}\n")
+                f.write(f"Logo URL: {o.get('logo_url')}\n")
+                f.write(f"Banner URL: {o.get('banner_url')}\n")
+                f.write(f"Event Link ID: {o.get('event_link_id')}\n")
+                f.write("-" * 20 + "\n")
+        logger.info(f"DB diagnostics written to {diag_path}")
+    except Exception as e:
+        logger.error(f"Failed to write DB diagnostics: {e}")
 
     # Start background scheduler for reminders (non-fatal)
     try:
@@ -189,6 +245,133 @@ async def admin_required(x_admin_email: str = Header(None)):
         )
     return x_admin_email
 from db import db, courses_col, modules_col, theories_col, videos_col, quizzes_col, projects_col, progress_col, cart_col, enrollments_col, interviews_col, certificates_col, sdl_projects_col, sdl_members_col, sdl_tasks_col, sdl_comments_col, sdl_join_requests_col, users_col, ads_col, mentors_col, companies_col, payments_col, audit_logs_col, resumes_col, institutions_col, events_col, participants_col, teams_col, submissions_col, judges_col, scores_col, notifications_col, leaderboard_col
+
+@app.get('/portal/{event_id}', response_class=HTMLResponse)
+async def serve_portal(event_id: str):
+    """Public event portal page (standalone) with SSR branding."""
+    from db import events_col, institution_event_packages_col, hackathon_event_config_col
+    # Resolve event document
+    ev = None
+    try:
+        from bson import ObjectId
+        ev = await events_col.find_one({"_id": ObjectId(event_id)})
+    except Exception:
+        ev = await events_col.find_one({"event_id": event_id})
+
+    branding = {}
+    if ev:
+        # If event has package, load its branding
+        pkg_id = ev.get('package_id')
+        if pkg_id:
+            try:
+                pkg_obj = ObjectId(pkg_id)
+            except Exception:
+                pkg_obj = pkg_id
+            pkg = await institution_event_packages_col.find_one({"_id": pkg_obj})
+            if pkg:
+                branding.update({
+                    'title': pkg.get('title'),
+                    'description': pkg.get('description'),
+                    'logo': pkg.get('thumbnail') or pkg.get('hero_url'),
+                    'hero_url': pkg.get('hero_url')
+                })
+        # Load any institution-level config such as countdown_target
+        inst_id = ev.get('institution_id')
+        if inst_id:
+            conf = await hackathon_event_config_col.find_one({"institution_id": inst_id, "key": "countdown_target"})
+            if conf:
+                branding['countdown_target'] = conf.get('value')
+
+    cache_key = f"portal:{event_id}"
+    cached = cache_get(cache_key)
+    if cached:
+        return HTMLResponse(content=cached)
+
+    html = templates_env.get_template('portal.html').render(
+        event_id=event_id,
+        backend_url=os.getenv('RENDER_EXTERNAL_URL', 'http://127.0.0.1:8000'),
+        branding_json=json.dumps(branding),
+        title=(branding.get('title') or (ev or {}).get('title')),
+        description=(branding.get('description') or (ev or {}).get('description')),
+        logo=branding.get('logo')
+    )
+    # Cache rendered portal for short duration to reduce DB hits
+    cache_set(cache_key, html, int(os.getenv('SSR_CACHE_TTL', '30')))
+    return HTMLResponse(content=html)
+
+
+@app.get('/card/{event_id}', response_class=HTMLResponse)
+async def serve_card(event_id: str):
+    """Public participant card page (standalone) with SSR branding."""
+    from db import events_col, institution_event_packages_col, hackathon_event_config_col
+    ev = None
+    try:
+        from bson import ObjectId
+        ev = await events_col.find_one({"_id": ObjectId(event_id)})
+    except Exception:
+        ev = await events_col.find_one({"event_id": event_id})
+
+    branding = {}
+    if ev:
+        pkg_id = ev.get('package_id')
+        if pkg_id:
+            try:
+                pkg_obj = ObjectId(pkg_id)
+            except Exception:
+                pkg_obj = pkg_id
+            pkg = await institution_event_packages_col.find_one({"_id": pkg_obj})
+            if pkg:
+                branding.update({
+                    'title': pkg.get('title'),
+                    'description': pkg.get('description'),
+                    'logo': pkg.get('thumbnail') or pkg.get('hero_url')
+                })
+
+    cache_key = f"card:{event_id}"
+    cached = cache_get(cache_key)
+    if cached:
+        return HTMLResponse(content=cached)
+
+    html = templates_env.get_template('card.html').render(
+        event_id=event_id,
+        backend_url=os.getenv('RENDER_EXTERNAL_URL', 'http://127.0.0.1:8000'),
+        branding_json=json.dumps(branding),
+        title=(branding.get('title') or (ev or {}).get('title')),
+        logo=branding.get('logo')
+    )
+    cache_set(cache_key, html, int(os.getenv('SSR_CACHE_TTL', '30')))
+    return HTMLResponse(content=html)
+
+
+@app.get('/card.html', response_class=HTMLResponse)
+async def serve_card_html(event: str = None):
+    """Compatibility route for card.html links — accepts ?event=<id>."""
+    if not event:
+        # Render a simple selector page
+        html = '<!doctype html><html><body><h3>Missing event id. Use ?event=&lt;eventId&gt;</h3></body></html>'
+        return HTMLResponse(content=html)
+    return await serve_card(event)
+
+
+@app.get('/auth/example')
+async def auth_example():
+    """Return a small JSON explaining how to call protected admin route with Bearer token."""
+    example = {
+        "curl": "curl -H 'Authorization: Bearer <TOKEN>' https://<your-host>/admin",
+        "note": "Replace <TOKEN> with a valid access token obtained from your auth provider. Use the /api/v1/auth/login endpoint in the app to get tokens."
+    }
+    return example
+
+
+@app.get('/admin', response_class=HTMLResponse)
+async def serve_admin(user: dict = Depends(get_current_user)):
+    """Protected admin standalone page. Requires authentication."""
+    # Only allow institution admins or global admins
+    role = (user.get('role') or '').lower()
+    if role not in ('admin', 'super_admin', 'institution'):
+        raise HTTPException(status_code=403, detail='Admin access required')
+    html = templates_env.get_template('admin.html').render()
+    return HTMLResponse(content=html)
 
 @app.post("/api/v1/auth/promote-to-institution")
 async def promote_to_institution(data: dict):
@@ -366,8 +549,10 @@ def fix_progress(prog, default_status="locked"):
 from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes
 from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
-from routes import stage_navigation_routes, team_join_request_routes
-from routes import student_features_routes
+from routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
+from routes import student_features_routes, enhanced_features_routes, websocket_routes
+import hackathon_integration_routes
+import participant_card_routes
 from rate_limiter import rate_limit, check_rate_limit
 
 
@@ -436,6 +621,11 @@ app.include_router(hackathon_submission_routes.router)
 app.include_router(stage_navigation_routes.router)
 app.include_router(team_join_request_routes.router)
 app.include_router(student_features_routes.router)
+app.include_router(enhanced_features_routes.router)
+app.include_router(websocket_routes.router)
+app.include_router(hackathon_integration_routes.router)
+app.include_router(hackathon_public_routes.router)
+app.include_router(participant_card_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -5156,12 +5346,24 @@ async def forgot_password(data: dict = Body(...)):
         # For security, don't reveal if user exists. Just say "If email exists, reset link sent"
         return {"status": "success", "message": "If this email is registered, a reset link has been sent."}
     
-    # Generate secure token
+    # Generate secure token and persist to DB so it survives restarts
     token = secrets.token_urlsafe(32)
-    reset_tokens[token] = {"email": email, "expiry": time.time() + 3600} # 1 hour expiry
-    
+    expiry_ts = int(time.time() + 3600)  # 1 hour expiry (unix ts)
+    try:
+        # Use a dedicated collection for password resets
+        await db.password_resets.insert_one({
+            "token": token,
+            "email": email,
+            "expiry": expiry_ts,
+            "created_at": datetime.now(timezone.utc)
+        })
+    except Exception as e:
+        logger.error(f"Failed to persist reset token: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate reset link")
+
     # Send email
     from services.email_service import send_notification_email
+    # Use hash routing link (app uses HashRouter) so include #/ path
     reset_link = f"{frontend_url}/#/reset-password?token={token}"
     body = f"""
     <html>
@@ -5187,29 +5389,42 @@ async def reset_password(data: dict = Body(...)):
     
     if not token or not new_password:
         raise HTTPException(status_code=400, detail="Token and new password are required")
-    
-    if token not in reset_tokens:
+
+    # Lookup token in persistent collection
+    try:
+        token_doc = await db.password_resets.find_one({"token": token})
+    except Exception as e:
+        logger.error(f"Error reading reset token: {e}")
+        raise HTTPException(status_code=500, detail="Internal error")
+
+    if not token_doc:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
-    
-    token_data = reset_tokens[token]
-    if time.time() > token_data["expiry"]:
-        del reset_tokens[token]
+
+    if int(time.time()) > int(token_doc.get("expiry", 0)):
+        # remove expired token
+        try:
+            await db.password_resets.delete_one({"token": token})
+        except Exception:
+            pass
         raise HTTPException(status_code=400, detail="Token has expired")
-    
-    email = token_data["email"]
-    
+
+    email = token_doc.get("email")
+
     # Update password in MongoDB
     from auth_utils import get_password_hash
     hashed_password = get_password_hash(new_password)
-    
+
     await users_col.update_one(
         {"email": email},
         {"$set": {"password": hashed_password}}
     )
-    
+
     # Clean up token
-    del reset_tokens[token]
-    
+    try:
+        await db.password_resets.delete_one({"token": token})
+    except Exception:
+        pass
+
     return {"status": "success", "message": "Password has been reset successfully"}
 
 # --- AUTH ENDPOINTS ---

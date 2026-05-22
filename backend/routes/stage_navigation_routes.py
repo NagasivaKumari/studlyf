@@ -78,7 +78,7 @@ async def get_registration_fields(
     """
     result = await get_registration_fields_with_prefill(event_id, user["user_id"])
     if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
+        return {"status": "success", "custom_fields": [], "prefilled_fields": [], "event_id": event_id}
     return result
 
 @router.get("/events/{event_id}/registration-status")

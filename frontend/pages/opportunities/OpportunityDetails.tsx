@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { 
     Calendar, 
@@ -85,12 +86,26 @@ function applicationDecisionCopy(status: string | undefined) {
     };
 }
 
+const getImageUrl = (url: string | undefined) => {
+    if (!url) return '';
+    if (url.includes('/uploads/')) {
+        const path = url.substring(url.indexOf('/uploads/'));
+        return `${API_BASE_URL}${path}`;
+    }
+    if (url.includes('uploads/')) {
+        const path = url.substring(url.indexOf('uploads/'));
+        return `${API_BASE_URL}/${path}`;
+    }
+    return url;
+};
+
 const OpportunityDetails: React.FC = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
     const [searchParams] = useSearchParams();
     const activeTab = searchParams.get('tab');
+    const location = useLocation();
     
     const [opportunity, setOpportunity] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -124,20 +139,7 @@ const OpportunityDetails: React.FC = () => {
     const [stats, setStats] = useState({ participants: 0, teams: 0, submissions: 0 });
     const [eventSubmissions, setEventSubmissions] = useState<any[]>([]);
     const [eventLeaderboard, setEventLeaderboard] = useState<any[]>([]);
-    const [showSubmissionModal, setShowSubmissionModal] = useState(false);
-    const [isSubmittingHackathon, setIsSubmittingHackathon] = useState(false);
-    const [hackathonSubmission, setHackathonSubmission] = useState({
-        teamName: '',
-        teamType: 'Solo',
-        teamLead: user?.full_name || user?.name || '',
-        teamMembers: '',
-        problemStatement: '',
-        solution: '',
-        pptLink: '',
-        domain: 'Artificial Intelligence',
-        githubLink: '',
-        deployedLink: ''
-    });
+
 
     const [stageRegistrationFields, setStageRegistrationFields] = useState<any>(null);
     const [prefilledFields, setPrefilledFields] = useState<Record<string, any>>({});
@@ -289,6 +291,17 @@ const OpportunityDetails: React.FC = () => {
         return () => clearInterval(refreshInterval);
     }, [id, user?.user_id]);
 
+    // Keep the visible tab in sync with the `tab` URL parameter so Back/Forward preserves tab state
+    useEffect(() => {
+        const sp = new URLSearchParams(location.search);
+        const t = sp.get('tab');
+        if (t && t !== activeSection) {
+            // Only set if it's a recognized section
+            const allowed = ['details', 'dates', 'prizes', 'reviews', 'faq', 'submissions', 'leaderboard'];
+            if (allowed.includes(t)) setActiveSection(t as any);
+        }
+    }, [location.search]);
+
         useEffect(() => {
                 if (!user || !eventId || isApplied) return;
         
@@ -296,20 +309,23 @@ const OpportunityDetails: React.FC = () => {
                 fetch(`${API_BASE_URL}/api/v1/stages/events/${eventId}/registration-fields`, {
                     headers: authHeaders()
                 })
-        .then(res => res.json())
-        .then(data => {
-          if (data.status === 'success') {
-            setStageRegistrationFields(data);
-            // Extract prefilled values
-            const prefilled = {};
-            data.prefilled_fields?.forEach(field => {
-              if (field.prefilled_value) {
-                prefilled[field.id] = field.prefilled_value;
-              }
-            });
-            setPrefilledFields(prefilled);
-          }
-        })
+                .then(res => {
+                    if (!res.ok) return null;
+                    return res.json().catch(() => null);
+                })
+                .then(data => {
+                    if (data?.status === 'success') {
+                        setStageRegistrationFields(data);
+                        const prefilled = {};
+                        data.prefilled_fields?.forEach((field: any) => {
+                            if (field.prefilled_value) {
+                                prefilled[field.id] = field.prefilled_value;
+                            }
+                        });
+                        setPrefilledFields(prefilled);
+                    }
+                })
+                .catch(() => { /* no registration stage — direct submission flow */ })
                 .finally(() => setLoadingFields(false));
             }, [user, eventId, isApplied]);
 
@@ -496,79 +512,6 @@ const OpportunityDetails: React.FC = () => {
         }
     };
 
-    const handleHackathonSubmit = async () => {
-        if (!user) {
-            navigate('/login');
-            return;
-        }
-
-        if (!hackathonSubmission.teamName || !hackathonSubmission.teamLead || !hackathonSubmission.problemStatement || !hackathonSubmission.solution || !hackathonSubmission.pptLink) {
-            alert("Please fill all required fields");
-            return;
-        }
-
-        // Simple word count validation
-        const problemWords = hackathonSubmission.problemStatement.trim().split(/\s+/).length;
-        const solutionWords = hackathonSubmission.solution.trim().split(/\s+/).length;
-
-        if (problemWords > 50) {
-            alert("Problem Statement exceeds 50 words");
-            return;
-        }
-        if (solutionWords > 100) {
-            alert("Solution exceeds 100 words");
-            return;
-        }
-
-        if (!hackathonSubmission.pptLink.includes("drive.google.com")) {
-            alert("PPT Link must be a Google Drive link");
-            return;
-        }
-
-        setIsSubmittingHackathon(true);
-        try {
-            const payload = {
-                ...hackathonSubmission,
-                hackathonId: id,
-                institutionId: opportunity.createdBy || opportunity.institution_id,
-                submittedBy: user.user_id,
-                teamMembers: hackathonSubmission.teamMembers ? hackathonSubmission.teamMembers.split(",").map(m => m.trim()) : []
-            };
-
-            const response = await fetch(`${API_BASE_URL}/api/hackathons/submissions`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    ...authHeaders()
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (response.ok) {
-                setShowSubmissionModal(false);
-                setSubmitted(true);
-                setIsApplied(true);
-                alert("Submission successful!");
-                // Refresh stats and submissions
-                const statsRes = await fetch(`${API_BASE_URL}/api/hackathons/events/${id}/stats`);
-                if (statsRes.ok) setStats(await statsRes.json());
-                const subsRes = await fetch(`${API_BASE_URL}/api/hackathons/events/${id}/submissions`);
-                if (subsRes.ok) { const data = await subsRes.json(); if (Array.isArray(data)) setEventSubmissions(data); }
-            } else {
-                const err = await response.json();
-                const msg = Array.isArray(err.detail) 
-                    ? err.detail.map((e: any) => `${e.loc.join('.')}: ${e.msg}`).join('\n')
-                    : err.detail || "Submission failed";
-                alert(msg);
-            }
-        } catch (err) {
-            console.error("Hackathon submit error:", err);
-            alert("An error occurred during submission");
-        } finally {
-            setIsSubmittingHackathon(false);
-        }
-    };
-
     const toggleFavorite = () => {
         if (!id) return;
         try {
@@ -704,6 +647,8 @@ const OpportunityDetails: React.FC = () => {
         const stype = s.type?.toUpperCase();
         const sname = s.name?.toUpperCase() || '';
         const event_hub_id = String(opportunity.event_link_id || opportunity.event_id || id);
+        const oppPath = id ? `/opportunities/${encodeURIComponent(String(id))}` : '';
+        const isSubmissionStage = stype === 'SUBMISSION' || sname.includes('SUBMISSION');
 
         if (stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION')) {
             // Scroll to the registration / apply form
@@ -716,7 +661,13 @@ const OpportunityDetails: React.FC = () => {
             return;
         }
 
-        // For all other stages, they require registration first!
+        // Submission stages should open the portal directly so participants can submit.
+        if (isSubmissionStage) {
+            navigate(`${oppPath}?tab=submissions`);
+            return;
+        }
+
+        // Other stages still require registration first.
         if (!isApplied) {
             alert(`Please register/apply for "${opportunity.title}" first to participate in this stage!`);
             const formElement = document.querySelector('form') || document.querySelector('.sticky');
@@ -752,9 +703,6 @@ const OpportunityDetails: React.FC = () => {
             }
         }
 
-        // If already applied:
-        const oppPath = id ? `/opportunities/${encodeURIComponent(String(id))}` : '';
-
         if ((stype === 'TEAM_FORMATION' || sname.includes('TEAM')) && oppPath) {
             navigate(`${oppPath}?tab=team`);
         } else if ((stype === 'SUBMISSION' || sname.includes('SUBMISSION')) && oppPath) {
@@ -776,7 +724,7 @@ const OpportunityDetails: React.FC = () => {
     const venueLine = buildVenueLine(opportunity);
     const teamSize = teamSizeLabel(opportunity);
     const elig = eligibilityList(opportunity);
-    const logoSrc = opportunity.logo_url || opportunity.institution_logo_url || '';
+    const logoSrc = getImageUrl(opportunity.logo_url || opportunity.institution_logo_url || '');
     const orgDisplay = opportunity.organization || opportunity.institution_profile_name || 'Host institution';
     const registeredCount = Number(opportunity.applicantsCount ?? opportunity.registeredCount ?? 0);
     const deadlineDate = (() => {
@@ -803,6 +751,10 @@ const OpportunityDetails: React.FC = () => {
                   return type === 'SUBMISSION' || name.includes('SUBMISSION');
               })
             : null;
+    const submissionStageTitle = String(submissionStage?.name || submissionStage?.config?.label || 'Submission Stage').trim();
+    const submissionStageSubtitle = String(
+        submissionStage?.description || submissionStage?.config?.description || 'Share your solution and complete the stage requirements.'
+    ).trim();
 
     const prizePoolLabel =
         String(opportunity.prize_pool ?? opportunity.prizePool ?? opportunity.prizePoolLabel ?? '').trim() || '';
@@ -951,12 +903,15 @@ const OpportunityDetails: React.FC = () => {
                             <ChevronLeft size={18} /> Back
                         </button>
                         {user ? (
-                            <Link
-                                to="/dashboard/learner"
-                                className="text-sm font-bold text-slate-600 hover:text-purple-600"
-                            >
-                                Dashboard
-                            </Link>
+                            // Hide the Dashboard link when viewing the submissions tab — keep only Back
+                            activeTab !== 'submissions' ? (
+                                <Link
+                                    to="/dashboard/learner"
+                                    className="text-sm font-bold text-slate-600 hover:text-purple-600"
+                                >
+                                    Dashboard
+                                </Link>
+                            ) : null
                         ) : (
                             <Link
                                 to={`/login?next=${encodeURIComponent(window.location.pathname)}`}
@@ -993,23 +948,6 @@ const OpportunityDetails: React.FC = () => {
                     <div className="my-8">
                         {eventId && submissionStage ? (
                             <div className="space-y-4">
-                                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-purple-600">Submission stage brief</p>
-                                    <h3 className="mt-2 text-xl font-black text-slate-900">{submissionStage.name || 'Submission'}</h3>
-                                    <p className="mt-2 text-sm font-medium text-slate-600 whitespace-pre-wrap">
-                                        {submissionStage.description || submissionStage?.config?.description || 'Follow the host instructions carefully before submitting.'}
-                                    </p>
-                                    {Array.isArray(submissionStage?.config?.fields) && submissionStage.config.fields.length > 0 ? (
-                                        <div className="mt-4 flex flex-wrap gap-2">
-                                            {submissionStage.config.fields.map((field: any) => (
-                                                <span key={field.id || field.field_id || field.label} className="px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-black uppercase tracking-widest">
-                                                    {field.label}
-                                                    {field.required ? ' *' : ''}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    ) : null}
-                                </div>
                                 <SubmissionForm eventId={eventId} stage={submissionStage} />
                             </div>
                         ) : (
@@ -1030,7 +968,8 @@ const OpportunityDetails: React.FC = () => {
                                 const endDate = stage.endDate || stage.end_date ? new Date(stage.endDate || stage.end_date) : null;
                                 const status = computeStageStatus(stage);
                                 const isRegistration = (String(stage.type || '').toUpperCase() === 'REGISTRATION') || (String(stage.name || '').toUpperCase().includes('REGISTER'));
-                                const canInteract = (status === 'active') && (isApplied || isRegistration);
+                                const isSubmissionStage = (String(stage.type || '').toUpperCase() === 'SUBMISSION') || (String(stage.name || '').toUpperCase().includes('SUBMISSION'));
+                                const canInteract = (status === 'active') && (isApplied || isRegistration || isSubmissionStage);
 
                                 return (
                                     <React.Fragment key={stage.id || index}>
@@ -1322,7 +1261,7 @@ const OpportunityDetails: React.FC = () => {
                                             } else if (stype === 'TEAM_FORMATION' || sname.includes('TEAM')) {
                                                 actionLabel = 'Manage Team';
                                             } else if (stype === 'SUBMISSION' || sname.includes('SUBMISSION')) {
-                                                actionLabel = 'Submit Portal';
+                                                actionLabel = 'Open Submission Portal';
                                             } else if (stype === 'QUIZ' || stype === 'ASSESSMENT' || sname.includes('QUIZ') || sname.includes('ASSESSMENT')) {
                                                 actionLabel = 'Take Assessment';
                                             } else {
@@ -1331,7 +1270,8 @@ const OpportunityDetails: React.FC = () => {
 
                                             const stageStatus = computeStageStatus(s);
                                             const isReg = (String(s.type || '').toUpperCase() === 'REGISTRATION') || (String(s.name || '').toUpperCase().includes('REGISTER'));
-                                            const canAct = (stageStatus === 'active') && (isApplied || isReg);
+                                            const isSubmissionStage = (String(s.type || '').toUpperCase() === 'SUBMISSION') || (String(s.name || '').toUpperCase().includes('SUBMISSION'));
+                                            const canAct = (stageStatus === 'active') && (isApplied || isReg || isSubmissionStage);
 
                                             return (
                                                 <li
@@ -1405,9 +1345,9 @@ const OpportunityDetails: React.FC = () => {
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center shrink-0 ml-2">
-                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-purple-600 transition-colors flex items-center gap-1 bg-white border border-slate-150 px-3 py-1.5 rounded-xl shadow-sm">
+                                                        <button type="button" className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-purple-600 transition-colors flex items-center gap-1 bg-white border border-slate-150 px-3 py-1.5 rounded-xl shadow-sm hover:border-purple-200 hover:bg-purple-50/30">
                                                             {actionLabel} <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform text-slate-400 group-hover:text-purple-600" />
-                                                        </span>
+                                                        </button>
                                                     </div>
                                                 </li>
                                             );
@@ -1954,616 +1894,13 @@ const OpportunityDetails: React.FC = () => {
                         </footer>
                     </div>
 
-                    {/* Right Column: Application Form */}
-                    <div className="lg:col-span-1">
-                        <div className="sticky top-32">
-                            <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1">
-                                            <Clock size={12} /> Days left
-                                        </p>
-                                        <p className="mt-1 text-xl font-black text-slate-900">
-                                            {daysLeft != null ? daysLeft : '—'}
-                                        </p>
-                                    </div>
-                                    <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1">
-                                            <Users size={12} /> Registered
-                                        </p>
-                                        <p className="mt-1 text-xl font-black text-slate-900">{registeredCount}</p>
-                                    </div>
-                                </div>
-                                {processStats ? (
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Shortlisted</p>
-                                            <p className="mt-1 text-xl font-black text-slate-900">{shortlistedCount}</p>
-                                        </div>
-                                        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Eliminated</p>
-                                            <p className="mt-1 text-xl font-black text-slate-900">{rejectedCount}</p>
-                                        </div>
-                                    </div>
-                                ) : null}
-                            </div>
-                        <AnimatePresence mode="wait">
-                            {submitted ? (
-                                <motion.div 
-                                    initial={{ opacity: 0, scale: 0.9 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    className="bg-white rounded-[40px] p-10 border border-green-100 shadow-2xl shadow-green-900/5 text-center space-y-6"
-                                >
-                                    <div className="w-20 h-20 bg-green-500 rounded-3xl flex items-center justify-center text-white mx-auto shadow-xl shadow-green-500/20 rotate-12">
-                                        <CheckCircle2 size={40} />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <h2 className="text-2xl font-black text-slate-900">Application Sent!</h2>
-                                        <p className="text-slate-400 font-bold">Great job! The team at {opportunity.organization} will review your profile soon.</p>
-                                    </div>
-                                    <button 
-                                        onClick={() => navigate('/dashboard/learner')}
-                                        className="w-full bg-slate-900 text-white py-4 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20"
-                                    >
-                                        Go to Dashboard
-                                    </button>
-                                </motion.div>
-                            ) : isApplied ? (
-                                <motion.div
-                                    initial={{ opacity: 0, y: 12 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="bg-white rounded-[40px] p-10 border border-emerald-100 shadow-2xl shadow-emerald-900/5 space-y-6"
-                                >
-                                    {(() => {
-                                        const dec = applicationDecisionCopy(myApplication?.status);
-                                        const isPositive =
-                                            (myApplication?.status || '').toLowerCase() === 'accepted' ||
-                                            (myApplication?.status || '').toLowerCase() === 'shortlisted';
-                                        const isNegative = (myApplication?.status || '').toLowerCase() === 'rejected';
-                                        const ring = isNegative
-                                            ? 'bg-red-50 border-red-100'
-                                            : isPositive
-                                              ? 'bg-emerald-50 border-emerald-100'
-                                              : 'bg-green-50 border-green-100';
-                                        const iconBg = isNegative ? 'bg-red-500' : isPositive ? 'bg-emerald-500' : 'bg-green-600';
-                                        return (
-                                            <>
-                                                <div className={`rounded-3xl border p-6 ${ring}`}>
-                                                    <div className={`w-14 h-14 rounded-2xl ${iconBg} flex items-center justify-center text-white shadow-lg mb-4`}>
-                                                        <CheckCircle2 size={28} />
-                                                    </div>
-                                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{dec.headline}</p>
-                                                    <h2 className="text-xl font-black text-slate-900 mt-1">{dec.title}</h2>
-                                                    <p className="text-slate-600 text-sm font-medium mt-3 leading-relaxed">{dec.sub}</p>
-                                                </div>
-                                                <p className="text-[11px] text-slate-400 font-bold text-center">
-                                                    You cannot submit again for this listing. Status updates when the host reviews your application.
-                                                </p>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => navigate('/opportunities/my-applications')}
-                                                    className="w-full bg-slate-900 text-white py-4 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-slate-800 transition-all"
-                                                >
-                                                    My applications
-                                                </button>
-                                            </>
-                                        );
-                                    })()}
-                                </motion.div>
-                            ) : (
-                                <motion.div 
-                                    className="bg-white rounded-[40px] p-10 border border-slate-100 shadow-2xl shadow-purple-900/5 space-y-8"
-                                >
-                                    <div className="space-y-2">
-                                        <h2 className="text-2xl font-black text-slate-900">{submissionStage ? 'Submit Your Idea' : 'Apply Now'}</h2>
-                                        <p className="text-slate-400 font-bold text-sm">
-                                            {submissionStage
-                                                ? 'Share your solution and compete for prizes'
-                                                : `Join ${opportunity.organization} to start your journey`}
-                                        </p>
-                                    </div>
-
-                                    {submissionStage ? (
-                                        <div className="space-y-4">
-                                            <button 
-                                                onClick={() => setShowSubmissionModal(true)}
-                                                className="w-full py-5 rounded-2xl text-sm font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3 shadow-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 shadow-purple-600/30 active:scale-95"
-                                            >
-                                                Submit Your Idea <Send size={18} />
-                                            </button>
-                                            <p className="text-[11px] text-slate-400 font-bold text-center">
-                                                By submitting, you agree to the hackathon rules and guidelines.
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <form onSubmit={handleSubmit} className="space-y-6">
-                                        <div className="space-y-4">
-                                            {useInstitutionForm ? (
-                                                registrationFields.map((f) => {
-                                                    const t = (f.type || 'text').toLowerCase();
-                                                    const commonLabel = (
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">
-                                                            {f.label}
-                                                            {f.required ? ' *' : ''}
-                                                        </label>
-                                                    );
-                                                    const inputClass =
-                                                        'w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all';
-
-                                                    if (t === 'textarea') {
-                                                        return (
-                                                            <div key={f.id} className="space-y-1.5">
-                                                                {commonLabel}
-                                                                <textarea
-                                                                    required={!!f.required}
-                                                                    disabled={isApplied}
-                                                                    placeholder={f.hint || ''}
-                                                                    className={`${inputClass} resize-none h-32 text-slate-600`}
-                                                                    value={regAnswers[f.id] || ''}
-                                                                    onChange={(e) =>
-                                                                        setRegAnswers((prev) => ({ ...prev, [f.id]: e.target.value }))
-                                                                    }
-                                                                />
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    if (t === 'file' || t === 'upload') {
-                                                        return (
-                                                            <div key={f.id} className="space-y-1.5">
-                                                                {commonLabel}
-                                                                <div
-                                                                    onClick={() =>
-                                                                        !isApplied &&
-                                                                        document.getElementById(`reg-file-${f.id}`)?.click()
-                                                                    }
-                                                                    className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
-                                                                        isApplied || regFiles[f.id]
-                                                                            ? 'bg-emerald-50/30 border-emerald-200'
-                                                                            : 'bg-purple-50/30 border-purple-100 hover:border-purple-300'
-                                                                    }`}
-                                                                >
-                                                                    {regFiles[f.id] ? (
-                                                                        <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-500" />
-                                                                    ) : (
-                                                                        <Upload size={24} className="mx-auto mb-2 text-purple-400" />
-                                                                    )}
-                                                                    <p
-                                                                        className={`text-xs font-black uppercase tracking-widest ${
-                                                                            regFiles[f.id] ? 'text-emerald-600' : 'text-purple-600'
-                                                                        }`}
-                                                                    >
-                                                                        {regFiles[f.id]?.name || (isApplied ? 'Uploaded' : 'Choose file')}
-                                                                    </p>
-                                                                    {!isApplied && (
-                                                                        <input
-                                                                            id={`reg-file-${f.id}`}
-                                                                            type="file"
-                                                                            className="hidden"
-                                                                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                                                                            onChange={(e) => {
-                                                                                const file = e.target.files?.[0] || null;
-                                                                                setRegFiles((prev) => ({ ...prev, [f.id]: file }));
-                                                                            }}
-                                                                        />
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    if (t === 'dropdown' && f.options && f.options.length > 0) {
-                                                        return (
-                                                            <div key={f.id} className="space-y-1.5">
-                                                                {commonLabel}
-                                                                <select
-                                                                    required={!!f.required}
-                                                                    disabled={isApplied}
-                                                                    className={inputClass}
-                                                                    value={regAnswers[f.id] || ''}
-                                                                    onChange={(e) =>
-                                                                        setRegAnswers((prev) => ({ ...prev, [f.id]: e.target.value }))
-                                                                    }
-                                                                >
-                                                                    <option value="">Select…</option>
-                                                                    {f.options.map((opt) => (
-                                                                        <option key={opt} value={opt}>
-                                                                            {opt}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    if (t === 'radio' && f.options && f.options.length > 0) {
-                                                        return (
-                                                            <div key={f.id} className="space-y-2">
-                                                                {commonLabel}
-                                                                <div className="space-y-2 pl-2">
-                                                                    {f.options.map((opt) => (
-                                                                        <label key={opt} className="flex items-center gap-2 text-sm font-bold text-slate-600">
-                                                                            <input
-                                                                                type="radio"
-                                                                                name={`reg-${f.id}`}
-                                                                                disabled={isApplied}
-                                                                                checked={regAnswers[f.id] === opt}
-                                                                                onChange={() =>
-                                                                                    setRegAnswers((prev) => ({ ...prev, [f.id]: opt }))
-                                                                                }
-                                                                            />
-                                                                            {opt}
-                                                                        </label>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    if (t === 'checkbox' && f.options && f.options.length > 0) {
-                                                        return (
-                                                            <div key={f.id} className="space-y-2">
-                                                                {commonLabel}
-                                                                <div className="space-y-2 pl-2">
-                                                                    {f.options.map((opt) => (
-                                                                        <label key={opt} className="flex items-center gap-2 text-sm font-bold text-slate-600">
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                disabled={isApplied}
-                                                                                checked={(regAnswers[`${f.id}:${opt}`] || '') === 'on'}
-                                                                                onChange={(e) =>
-                                                                                    setRegAnswers((prev) => ({
-                                                                                        ...prev,
-                                                                                        [`${f.id}:${opt}`]: e.target.checked ? 'on' : '',
-                                                                                    }))
-                                                                                }
-                                                                            />
-                                                                            {opt}
-                                                                        </label>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    if (t === 'accept') {
-                                                        return (
-                                                            <label
-                                                                key={f.id}
-                                                                className="flex items-start gap-3 text-sm font-bold text-slate-600 cursor-pointer"
-                                                            >
-                                                                <input
-                                                                    type="checkbox"
-                                                                    disabled={isApplied}
-                                                                    checked={regAnswers[f.id] === 'on'}
-                                                                    onChange={(e) =>
-                                                                        setRegAnswers((prev) => ({
-                                                                            ...prev,
-                                                                            [f.id]: e.target.checked ? 'on' : '',
-                                                                        }))
-                                                                    }
-                                                                    className="mt-1"
-                                                                />
-                                                                <span>{f.label}</span>
-                                                            </label>
-                                                        );
-                                                    }
-
-                                                    const inputType =
-                                                        t === 'email' ? 'email' : t === 'tel' ? 'tel' : 'text';
-
-                                                    return (
-                                                        <div key={f.id} className="space-y-1.5">
-                                                            {commonLabel}
-                                                            <input
-                                                                type={inputType}
-                                                                required={!!f.required}
-                                                                disabled={isApplied}
-                                                                placeholder={f.hint || ''}
-                                                                className={inputClass}
-                                                                value={regAnswers[f.id] || ''}
-                                                                onChange={(e) =>
-                                                                    setRegAnswers((prev) => ({ ...prev, [f.id]: e.target.value }))
-                                                                }
-                                                            />
-                                                        </div>
-                                                    );
-                                                })
-                                            ) : (
-                                                <>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Full Name</label>
-                                                        <input
-                                                            type="text"
-                                                            value={formData.name}
-                                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                                            placeholder="Enter your full name"
-                                                            className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Email Address</label>
-                                                        <input
-                                                            type="email"
-                                                            value={formData.email}
-                                                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                                            placeholder="Enter your email"
-                                                            className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Why are you interested? (optional)</label>
-                                                        <textarea
-                                                            placeholder="Share your motivation and relevant skills..."
-                                                            className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-600 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all resize-none h-32"
-                                                            value={formData.interest}
-                                                            onChange={(e) => setFormData({ ...formData, interest: e.target.value })}
-                                                            disabled={isApplied}
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Resume / CV (optional)</label>
-                                                        <div
-                                                            onClick={() => !isApplied && document.getElementById('resume-upload')?.click()}
-                                                            className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
-                                                                isApplied || formData.resume ? 'bg-emerald-50/30 border-emerald-200' : 'bg-purple-50/30 border-purple-100 hover:border-purple-300'
-                                                            }`}
-                                                        >
-                                                            {formData.resume ? (
-                                                                <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-500" />
-                                                            ) : (
-                                                                <Upload size={24} className="mx-auto mb-2 text-purple-400" />
-                                                            )}
-                                                            <p className={`text-xs font-black uppercase tracking-widest ${formData.resume ? 'text-emerald-600' : 'text-purple-600'}`}>
-                                                                {formData.resume ? formData.resume.name : isApplied ? 'Resume Uploaded' : 'Upload Resume'}
-                                                            </p>
-                                                            <p className="text-[10px] font-bold text-slate-400 mt-1">
-                                                                {formData.resume ? `${(formData.resume.size / 1024 / 1024).toFixed(2)} MB` : 'PDF, DOC (Max 5MB)'}
-                                                            </p>
-                                                            {!isApplied && (
-                                                                <input
-                                                                    id="resume-upload"
-                                                                    type="file"
-                                                                    className="hidden"
-                                                                    accept=".pdf,.doc,.docx"
-                                                                    onChange={(e) => {
-                                                                        const file = e.target.files?.[0];
-                                                                        if (file) setFormData({ ...formData, resume: file });
-                                                                    }}
-                                                                />
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-
-                                        <button 
-                                            type="submit"
-                                            disabled={isApplied || submitting}
-                                            className={`w-full py-5 rounded-2xl text-sm font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3 shadow-xl ${
-                                                isApplied 
-                                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' 
-                                                : 'bg-purple-600 text-white hover:bg-purple-700 shadow-purple-600/30 active:scale-95'
-                                            }`}
-                                        >
-                                            {submitting ? (
-                                                <Loader2 size={20} className="animate-spin" />
-                                            ) : isApplied ? (
-                                                'Application Submitted'
-                                            ) : (
-                                                <>Submit Application <Send size={18} /></>
-                                            )}
-                                        </button>
-                                    </form>
-                                )}
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                        {isApplied && String(opportunity.participationType || '').toLowerCase() !== 'individual' ? (
-                            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-                                <h3 className="text-sm font-black text-slate-900">Team formation</h3>
-                                <p className="text-xs text-slate-600 font-medium">
-                                    This hackathon supports team participation. Teams must follow the host’s team size limits.
-                                </p>
-                                <p className="text-[11px] text-slate-400 font-semibold">
-                                    I can add “Create team / Join team by ID” directly here next (backend APIs already exist).
-                                </p>
-                            </div>
-                        ) : null}
-                        </div>
-                    </div>
+                    {/* Right column removed: submission CTA moved to the 'Submissions' tab */}
                 </div>
                 </>
                 )}
 
             {/* Hackathon Submission Modal */}
-        <AnimatePresence>
-            {showSubmissionModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4">
-                    <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={() => setShowSubmissionModal(false)}
-                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-                    />
-                    <motion.div 
-                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                        className="relative w-full max-w-3xl bg-white rounded-3xl sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
-                    >
-                        <div className="p-5 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-purple-50 to-white">
-                            <div>
-                                <h2 className="text-xl sm:text-2xl font-black text-slate-900">Submit Your Idea</h2>
-                                <p className="text-slate-500 font-bold text-xs sm:text-sm">Tell us about your project</p>
-                            </div>
-                            <button 
-                                onClick={() => setShowSubmissionModal(false)}
-                                className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors"
-                            >
-                                <ChevronLeft className="rotate-180" size={24} />
-                            </button>
-                        </div>
 
-                        <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-8 space-y-5 sm:space-y-6">
-                            <div className="grid sm:grid-cols-2 gap-6">
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Name</label>
-                                    <input 
-                                        type="text" 
-                                        maxLength={40}
-                                        value={hackathonSubmission.teamName}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, teamName: e.target.value})}
-                                        placeholder="Enter team name"
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Type</label>
-                                    <div className="flex p-1 bg-slate-100 rounded-2xl">
-                                        {['Solo', 'Team'].map((type) => (
-                                            <button
-                                                key={type}
-                                                onClick={() => setHackathonSubmission({...hackathonSubmission, teamType: type})}
-                                                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                                                    hackathonSubmission.teamType === type ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                                                }`}
-                                            >
-                                                {type}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="grid sm:grid-cols-2 gap-6">
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Lead Name</label>
-                                    <input 
-                                        type="text" 
-                                        value={hackathonSubmission.teamLead}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, teamLead: e.target.value})}
-                                        placeholder="Lead name"
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Domain</label>
-                                    <select 
-                                        value={hackathonSubmission.domain}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, domain: e.target.value})}
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all appearance-none"
-                                    >
-                                        <option value="AI">AI</option>
-                                        <option value="FINTECH">FINTECH</option>
-                                        <option value="EDTECH">EDTECH</option>
-                                        <option value="MEDTECH">MEDTECH</option>
-                                        <option value="AGRITECH">AGRITECH</option>
-                                        <option value="BLOCK CHAIN">BLOCK CHAIN</option>
-                                        <option value="OTHERS">OTHERS</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            {hackathonSubmission.teamType === 'Team' && (
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Members (Comma separated names)</label>
-                                    <input 
-                                        type="text" 
-                                        value={hackathonSubmission.teamMembers}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, teamMembers: e.target.value})}
-                                        placeholder="Member 1, Member 2, ..."
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                    />
-                                </div>
-                            )}
-
-                            <div className="space-y-1.5">
-                                <div className="flex items-center justify-between ml-4">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Problem Statement</label>
-                                    <span className={`text-[10px] font-black ${hackathonSubmission.problemStatement.trim().split(/\s+/).filter(Boolean).length > 50 ? 'text-red-500' : 'text-purple-600'}`}>
-                                        {hackathonSubmission.problemStatement.trim().split(/\s+/).filter(Boolean).length} / 50 words
-                                    </span>
-                                </div>
-                                <textarea 
-                                    value={hackathonSubmission.problemStatement}
-                                    onChange={(e) => setHackathonSubmission({...hackathonSubmission, problemStatement: e.target.value})}
-                                    placeholder="What problem are you solving?"
-                                    className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all h-28 sm:h-32 resize-none"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <div className="flex items-center justify-between ml-4">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Your Solution</label>
-                                    <span className={`text-[10px] font-black ${hackathonSubmission.solution.trim().split(/\s+/).filter(Boolean).length > 100 ? 'text-red-500' : 'text-purple-600'}`}>
-                                        {hackathonSubmission.solution.trim().split(/\s+/).filter(Boolean).length} / 100 words
-                                    </span>
-                                </div>
-                                <textarea 
-                                    value={hackathonSubmission.solution}
-                                    onChange={(e) => setHackathonSubmission({...hackathonSubmission, solution: e.target.value})}
-                                    placeholder="Describe your solution..."
-                                    className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all h-36 sm:h-40 resize-none"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">PPT Link (Google Drive)</label>
-                                <input 
-                                    type="url" 
-                                    value={hackathonSubmission.pptLink}
-                                    onChange={(e) => setHackathonSubmission({...hackathonSubmission, pptLink: e.target.value})}
-                                    placeholder="https://drive.google.com/..."
-                                    className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                />
-                            </div>
-
-                            <div className="grid sm:grid-cols-2 gap-6">
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">GitHub Link (Optional)</label>
-                                    <input 
-                                        type="url" 
-                                        value={hackathonSubmission.githubLink}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, githubLink: e.target.value})}
-                                        placeholder="https://github.com/..."
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Deployed Link (Optional)</label>
-                                    <input 
-                                        type="url" 
-                                        value={hackathonSubmission.deployedLink}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, deployedLink: e.target.value})}
-                                        placeholder="https://..."
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-5 sm:p-8 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3 sm:gap-4">
-                            <button 
-                                onClick={() => setShowSubmissionModal(false)}
-                                className="px-6 sm:px-8 py-3.5 sm:py-4 rounded-2xl text-sm font-black text-slate-500 hover:bg-slate-100 transition-all"
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                onClick={handleHackathonSubmit}
-                                disabled={isSubmittingHackathon}
-                                className="px-7 sm:px-10 py-3.5 sm:py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-black uppercase tracking-widest hover:from-purple-700 hover:to-indigo-700 shadow-xl shadow-purple-600/20 transition-all active:scale-95 disabled:opacity-50"
-                            >
-                                {isSubmittingHackathon ? 'Submitting...' : 'Submit Idea'}
-                            </button>
-                        </div>
-                    </motion.div>
-                </div>
-            )}
-        </AnimatePresence>
         </div>
         </div>
     );

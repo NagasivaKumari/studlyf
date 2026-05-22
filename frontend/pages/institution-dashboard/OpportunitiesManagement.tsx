@@ -374,9 +374,11 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
                                                     {event.organisation && <p className="text-[11px] font-bold text-slate-400">{event.organisation}</p>}
                                                     <div className="flex items-center gap-3 pt-1">
                                                         <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black rounded uppercase tracking-wider">{event.type}</span>
-                                                        <span className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-wider">
-                                                            <Globe size={10} /> {event.visibility}
-                                                        </span>
+                                                        {event.visibility && event.visibility !== 'Unknown' && (
+                                                            <span className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                                                                <Globe size={10} /> {event.visibility}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <p className="text-[10px] text-slate-300 font-bold pt-1">Last Saved {event.lastSaved}</p>
                                                 </div>

@@ -13,6 +13,7 @@ from services.opportunity_service import (
     get_user_applications,
     get_learner_opportunity_overview,
 )
+from services.subscription_service import validate_new_listing_against_plan
 from db import notifications_col
 from db import quizzes_col, events_col, participants_col, opportunities_col, opportunity_applications_col
 from services.email_service import send_notification_email
@@ -32,6 +33,16 @@ async def post_opportunity(data: dict = Body(...), user: dict = Depends(get_auth
                 raise HTTPException(status_code=403, detail="Institution profile is not linked")
             data["institution_id"] = institution_id
             data["createdBy"] = institution_id
+            status_val = str(data.get("status") or "active").strip().lower()
+            if status_val != "draft":
+                try:
+                    await validate_new_listing_against_plan(
+                        str(institution_id),
+                        deadline_value=data.get("deadline"),
+                        deadline_label="application deadline",
+                    )
+                except ValueError as ve:
+                    raise HTTPException(status_code=400, detail=str(ve))
         return await create_opportunity(data)
     except HTTPException:
         raise
@@ -835,6 +846,27 @@ async def learner_submit_stage_data(
         {"_id": p["_id"]},
         {"$set": {"last_stage_submitted": stage_id, "updated_at": datetime.utcnow()}}
     )
+    
+    # 5. Upsert opportunity_applications record so it appears in "My Applications"
+    from db import opportunities_col, opportunity_applications_col
+    try:
+        opp = await opportunities_col.find_one({"event_link_id": str(event_id)})
+        if opp:
+            await opportunity_applications_col.update_one(
+                {"opportunity_id": str(opp["_id"]), "user_id": uid},
+                {"$set": {
+                    "user_id": uid,
+                    "opportunity_id": str(opp["_id"]),
+                    "status": "submitted",
+                    "submitted_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow(),
+                    "team_id": p.get("team_id"),
+                    "stage_id": stage_id,
+                }},
+                upsert=True
+            )
+    except Exception as e:
+        logger.warning(f"[OPPORTUNITY_APPLICATIONS] Failed to upsert submission record: {e}")
     
     return {"status": "success", "message": "Stage data submitted successfully"}
 

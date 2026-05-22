@@ -293,7 +293,7 @@ async def create_opportunity(data: dict) -> dict:
     # Ensure applicantsCount is 0 for new opportunities
     data["applicantsCount"] = 0
     data["createdAt"] = datetime.utcnow()
-    data["status"] = "active"
+    data["status"] = str(data.get("status") or "active").strip().lower()
     
     # Handle deadline if it's a string
     if isinstance(data.get("deadline"), str):

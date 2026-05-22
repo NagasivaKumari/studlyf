@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useLocation } from 'react-router-dom';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authHeaders, FRONTEND_URL } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
-import { ChevronLeft, UsersRound, Link as LinkIcon, Loader2, Upload, FileText, CheckCircle2, Clock, Trophy, Share2, Copy, Check } from 'lucide-react';
+import { ChevronLeft, UsersRound, Link as LinkIcon, Loader2, Upload, FileText, CheckCircle2, Clock, Trophy, Share2, Copy, Check, LayoutGrid, IdCard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { IEvent, IParticipant, ITeam } from '../../types/event';
-import HackathonSubmissionForm from './HackathonSubmissionForm';
+
 
 type HubResp = { participant?: IParticipant; team?: ITeam };
 
 const EventHub: React.FC = () => {
     const { eventId } = useParams();
     const { user } = useAuth();
+    const navigate = useNavigate();
     const location = useLocation();
     const [loading, setLoading] = useState(true);
     const [event, setEvent] = useState<IEvent | null>(null);
@@ -170,7 +171,7 @@ const EventHub: React.FC = () => {
     const generateInvite = async () => {
         setWorking(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/stages/teams/${team?._id}/invite`, {
+            const res = await fetch(`${API_BASE_URL}/api/teams/${team?._id}/invites`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({ ttl_hours: 720 })
@@ -354,6 +355,12 @@ const EventHub: React.FC = () => {
                     </div>
                     
                     <div className="flex items-center gap-3">
+                        <button onClick={() => navigate(`/events/${eventId}/package`)} className="px-4 py-2 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                            <LayoutGrid size={14} /> Problem Board
+                        </button>
+                        <button onClick={() => navigate(`/events/${eventId}/package/card`)} className="px-4 py-2 bg-white border border-slate-200 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                            <IdCard size={14} /> Participant Card
+                        </button>
                         <div className="px-4 py-2 bg-purple-50 text-purple-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-purple-100">
                             {participant.status || 'Active'}
                         </div>
@@ -511,6 +518,26 @@ const EventHub: React.FC = () => {
                                         {submissionStage?.description || 'Submit your work for this stage.'}
                                     </p>
                                 </div>
+
+                                {submissionStage && (
+                                    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-600">Stage brief</p>
+                                        <h3 className="mt-2 text-xl font-black text-slate-900">{submissionStage.name || 'Submission'}</h3>
+                                        <p className="mt-2 text-sm font-medium text-slate-600 whitespace-pre-wrap">
+                                            {submissionStage.description || submissionStage?.config?.description || 'Follow the host instructions carefully before submitting.'}
+                                        </p>
+                                        {Array.isArray(submissionStage?.config?.fields) && submissionStage.config.fields.length > 0 ? (
+                                            <div className="mt-4 flex flex-wrap gap-2">
+                                                {submissionStage.config.fields.map((field: any) => (
+                                                    <span key={field.id || field.field_id || field.label} className="px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-black uppercase tracking-widest">
+                                                        {field.label}
+                                                        {field.required ? ' *' : ''}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                )}
 
                                 {/* Team Size Enforcement Block */}
                                 {needsTeam && !teamMeetsSize ? (
@@ -686,12 +713,11 @@ const EventHub: React.FC = () => {
                                                     </button>
                                                 </form>
                                             ) : (
-                                                /* Fallback: hardcoded form for events without dynamic stage config */
-                                                <HackathonSubmissionForm
-                                                    eventId={eventId!}
-                                                    opportunityId={event_id_as_opp}
-                                                    onSuccess={fetchData}
-                                                />
+                                                <div className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-xl shadow-slate-900/5 text-center space-y-4">
+                                                    <FileText size={40} className="mx-auto text-slate-300" />
+                                                    <p className="text-lg font-bold text-slate-500">No submission fields have been configured for this stage yet.</p>
+                                                    <p className="text-sm text-slate-400 font-medium">The institution admin needs to set up the submission form fields.</p>
+                                                </div>
                                             )}
                                         </div>
 

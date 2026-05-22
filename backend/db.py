@@ -259,6 +259,13 @@ gamification_col = db["gamification"]
 user_gamification_col = db["user_gamification"]
 user_stats_col = db["user_stats"]
 
+# Hackathon Management (Problem Statements & Team Selection)
+hackathon_problems_col = db["hackathon_problems"]
+hackathon_selections_col = db["hackathon_selections"]
+hackathon_event_config_col = db["hackathon_event_config"]
+# Institution Event Packages (dynamic event-package feature)
+institution_event_packages_col = db["institution_event_packages"]
+
 # ─── GRIDFS BUCKET (persistent file storage, survives Render restarts) ────────
 # Usage: await gridfs_bucket.upload_from_stream(filename, data) → ObjectId
 #        await gridfs_bucket.open_download_stream(file_id) → stream

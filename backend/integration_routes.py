@@ -17,6 +17,7 @@ from bson import ObjectId
 from services.audit_service import log_admin_action
 from notification_helpers import notify_institution
 from quiz_visibility_service import quiz_visibility_service, _check_quiz_visibility
+from services.subscription_service import validate_new_listing_against_plan
 import logging
 
 # Ensure upload directory exists
@@ -26,6 +27,10 @@ os.makedirs(EVENTS_UPLOAD_DIR, exist_ok=True)
 BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
 
 logger = logging.getLogger(__name__)
+
+
+def _is_live_like_status(value: str) -> bool:
+    return str(value or "").strip().upper() in {"LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"}
 
 
 def _event_id_query(event_id: str) -> dict:
@@ -396,7 +401,7 @@ async def get_all_events(institution_id: str, user: dict = Depends(get_auth_user
     events_list = []
     event_ids = set()
 
-    e_cursor = events_col.find({"institution_id": institution_id})
+    e_cursor = events_col.find({"institution_id": institution_id, "status": {"$ne": "DELETED"}})
     async for event in e_cursor:
         eid = str(event["_id"])
         event_ids.add(eid)
@@ -2498,6 +2503,26 @@ async def get_complex_event_details(event_id: str, user: dict = Depends(get_auth
                 mutated = True
         if mutated:
             await events_col.update_one(_event_id_query(event_id), {"$set": {"stages": event["stages"]}})
+
+    # Backfill image fields from the mirrored opportunity row when the event record does not carry them.
+    try:
+        if not event.get("logo_url") or not event.get("banner_url"):
+            from db import opportunities_col
+            opp = await opportunities_col.find_one({"event_link_id": str(event_id)})
+            if opp:
+                if not event.get("logo_url"):
+                    event["logo_url"] = opp.get("logo_url") or opp.get("image_url") or opp.get("logoUrl") or ""
+                if not event.get("banner_url"):
+                    event["banner_url"] = opp.get("banner_url") or opp.get("bannerUrl") or ""
+        # Normalize common aliases for frontend consumers that still read legacy keys.
+        if event.get("logo_url"):
+            event["logoUrl"] = event.get("logo_url")
+            event["image_url"] = event.get("image_url") or event.get("logo_url")
+        if event.get("banner_url"):
+            event["bannerUrl"] = event.get("banner_url")
+    except Exception:
+        logger.exception("Failed to backfill event image URLs")
+
     return event
 
 async def _notify_deadline_extensions(event_id: str, changed_deadlines: list):
@@ -2554,13 +2579,48 @@ async def _notify_deadline_extensions(event_id: str, changed_deadlines: list):
 
 
 async def _notify_new_opportunity(event_id: str):
-    """Send new opportunity alert to opted-in users."""
+    """Send new opportunity alert to students and notify institution admin."""
     from db import opportunities_col
+
+    # Notify all students
     opp = await opportunities_col.find_one({"event_link_id": event_id})
     if not opp:
         return
     from services.opportunity_notification_service import send_new_opportunity_email
     await send_new_opportunity_email(opp)
+
+    # Also notify institution admin
+    try:
+        from db import events_col, users_col
+        event = await events_col.find_one({"_id": ObjectId(event_id)})
+        if event:
+            iid = event.get("institution_id")
+            if iid:
+                admins = await users_col.find({
+                    "institution_id": str(iid),
+                    "role": {"$in": ["admin", "institution", "super_admin"]}
+                }).to_list(length=None)
+                from services.email_service import send_notification_email
+                title = event.get("title", "New Event")
+                for admin in admins:
+                    email = admin.get("email", "").strip()
+                    if not email:
+                        continue
+                    asyncio.create_task(send_notification_email(
+                        email,
+                        f"📢 Event Published: {title}",
+                        f"""
+                        <html><body style="font-family: system-ui, sans-serif; padding: 20px;">
+                            <h2>✅ Event Published</h2>
+                            <p>Your event <strong>{title}</strong> is now live on the portal.</p>
+                            <p>All registered students have been notified via email.</p>
+                            <hr>
+                            <p style="color: #64748b; font-size: 12px;">Studlyf Admin Notification</p>
+                        </body></html>
+                        """
+                    ))
+    except Exception as e:
+        logger.error(f"[ADMIN NOTIFY] Failed: {str(e)}")
 
 
 @router.patch("/events/{event_id}")
@@ -2812,7 +2872,10 @@ async def advance_participants(
     event_title = event.get("title", "Event")
 
     # 1. Run internal business rules for this specific phase
-    await workflow_service.process_phase_transition(event_id, participant_ids, next_stage)
+    try:
+        await workflow_service.process_phase_transition(event_id, participant_ids, next_stage)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # 2. Update database - push previous stage to completed_stages, set new stage
     from db import participants_col
@@ -3402,7 +3465,22 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
     if not iid:
         raise HTTPException(status_code=400, detail="institution_id is required")
     assert_institution_scope(str(iid), user)
+
+    if _is_live_like_status(event_data.get("status")):
+        try:
+            await validate_new_listing_against_plan(
+                str(iid),
+                deadline_value=event_data.get("registrationDeadline"),
+                deadline_label="registration window",
+            )
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
         
+    print("=== FINAL EVENT DATA ===")
+    print("logo_url in event_data:", event_data.get("logo_url", "MISSING"))
+    print("banner_url in event_data:", event_data.get("banner_url", "MISSING"))
+    print("festivalData keys:", list(event_data.get("festivalData", {}).keys()) if isinstance(event_data.get("festivalData"), dict) else "N/A")
+    
     result = await events_col.insert_one(event_data)
     
     # 4. Production Trigger: Create a notification record
@@ -3452,7 +3530,7 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
             "createdAt": datetime.utcnow(),
             "createdBy": str(iid),
             "institution_id": str(iid),
-            "status": "active",
+            "status": "active" if _is_live_like_status(event_data.get("status")) else "draft",
             "event_link_id": str(result.inserted_id),  # link back to full event
             "registrationFields": reg_fields,
             "logo_url": event_data.get("logo_url", ""),
@@ -3595,6 +3673,23 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
                 if reg_end:
                     event_data["registrationDeadline"] = reg_end
 
+    existing_event = await events_col.find_one({"_id": ObjectId(event_id)})
+    existing_opp = await opportunities_col.find_one({"event_link_id": str(event_id)})
+    existing_iid = str((existing_event or {}).get("institution_id") or user.get("institution_id") or "")
+
+    target_status = str(event_data.get("status") or (existing_event or {}).get("status") or "DRAFT").upper()
+    if _is_live_like_status(target_status):
+        should_count_as_new_active = not existing_opp or str(existing_opp.get("status") or "").lower() != "active"
+        if should_count_as_new_active:
+            try:
+                await validate_new_listing_against_plan(
+                    existing_iid,
+                    deadline_value=event_data.get("registrationDeadline") or (existing_event or {}).get("registrationDeadline"),
+                    deadline_label="registration window",
+                )
+            except ValueError as ve:
+                raise HTTPException(status_code=400, detail=str(ve))
+
     # Perform update in events collection
     await events_col.update_one({"_id": ObjectId(event_id)}, {"$set": event_data})
     
@@ -3632,8 +3727,7 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
                 "banner_url": updated_event.get("banner_url", ""),
             }
 
-            if updated_event.get("status"):
-                opp_data["status"] = "active"
+            opp_data["status"] = "active" if _is_live_like_status(updated_event.get("status")) else "draft"
             
             # Ensure deadline is datetime
             if isinstance(opp_data["deadline"], str):
@@ -3646,6 +3740,12 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
             logger.info(f"[SYNC] Event {event_id} updates mirrored to opportunities collection.")
         except Exception as e:
             logger.error(f"[SYNC ERROR] Failed to mirror event update to opportunities: {str(e)}")
+
+    # Notify students if event was just published (DRAFT → LIVE)
+    old_status = (existing_event or {}).get("status", "DRAFT").upper() if existing_event else "DRAFT"
+    new_status = target_status
+    if old_status != "LIVE" and new_status == "LIVE":
+        asyncio.create_task(_notify_new_opportunity(event_id))
 
     return {"status": "success"}
 

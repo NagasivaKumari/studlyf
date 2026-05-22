@@ -191,7 +191,6 @@ const Navigation: React.FC = () => {
                 >
                   OPPORTUNITIES
                 </Link>
-
               </div>
             </div>
 
