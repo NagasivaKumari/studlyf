@@ -20,7 +20,7 @@ from fastapi.responses import HTMLResponse
 import json
 from time import time
 import asyncio
-from services.email_service import send_notification_email
+from services.email_service import send_notification_email, get_registration_template, get_announcement_template
 from datetime import datetime, timezone
 import secrets
  
@@ -63,14 +63,14 @@ logger = logging.getLogger("main_service")
 
 # Configure CORS - Restricted to specific domains for security
 # Load allowed origins from environment or use defaults
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-backend_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
-additional_origins = os.getenv("ADDITIONAL_CORS_ORIGINS", "").split(",") if os.getenv("ADDITIONAL_CORS_ORIGINS") else []
+frontend_url = os.getenv("FRONTEND_URL", "")
+backend_url = os.getenv("RENDER_EXTERNAL_URL", "")
+additional_origins = [origin.strip() for origin in os.getenv("ADDITIONAL_CORS_ORIGINS", "").split(",") if origin.strip()]
 
 origins = list(set([
     frontend_url,
     backend_url
-] + [origin.strip() for origin in additional_origins if origin.strip()]))
+] + additional_origins))
 
 # Add localhost origins for development
 if os.getenv("ENVIRONMENT", "development").lower() == "development":
@@ -83,6 +83,8 @@ if os.getenv("ENVIRONMENT", "development").lower() == "development":
         "http://127.0.0.1:5173",
         "http://localhost:8000"
     ])
+
+origins = [origin for origin in origins if origin]
 
 # Remove duplicates
 origins = list(set(origins))
@@ -158,6 +160,25 @@ async def startup_event():
     except ImportError as e:
         logger.warning(f"Scheduler not available - {e}")
         logger.info("Application running without background reminders")
+
+    # Launch certificate background worker
+    try:
+        import asyncio
+        from services.institutional_certificate_service import process_certificate_jobs
+        asyncio.create_task(process_certificate_jobs())
+        logger.info("Certificate generation background worker started")
+    except Exception as e:
+        logger.warning(f"Could not start certificate worker: {e}")
+
+    # Mount artifacts/certs as static for PDF downloads
+    try:
+        from fastapi.staticfiles import StaticFiles
+        certs_dir = os.path.join(os.path.dirname(__file__), "artifacts", "certs")
+        os.makedirs(certs_dir, exist_ok=True)
+        app.mount("/certificates", StaticFiles(directory=certs_dir), name="certificates")
+        logger.info(f"Mounted certificates directory at {certs_dir}")
+    except Exception as e:
+        logger.warning(f"Could not mount certificates directory: {e}")
 
 @app.get("/")
 async def root():
@@ -386,7 +407,7 @@ async def promote_to_institution(data: dict):
     return {"status": "success"}
 
 from models import Institution, Event, Participant, Team, Submission, Judge, Score, Notification, LeaderboardEntry, Certificate
-from services.email_service import send_notification_email, get_registration_template
+from services.email_service import send_notification_email, get_registration_template, get_email_verification_template
 from auth_utils import get_password_hash, verify_password, create_access_token, decode_access_token
 import upgrade_routes
 import integration_routes
@@ -551,6 +572,7 @@ from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
 from routes import student_features_routes, enhanced_features_routes, websocket_routes
+from routes import event_certificate_routes
 import hackathon_integration_routes
 import participant_card_routes
 from rate_limiter import rate_limit, check_rate_limit
@@ -626,6 +648,8 @@ app.include_router(websocket_routes.router)
 app.include_router(hackathon_integration_routes.router)
 app.include_router(hackathon_public_routes.router)
 app.include_router(participant_card_routes.router)
+app.include_router(event_certificate_routes.router)
+app.include_router(event_certificate_routes.verification_router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -5348,7 +5372,7 @@ async def forgot_password(data: dict = Body(...)):
     
     # Generate secure token and persist to DB so it survives restarts
     token = secrets.token_urlsafe(32)
-    expiry_ts = int(time.time() + 3600)  # 1 hour expiry (unix ts)
+    expiry_ts = int(time() + 3600)  # 1 hour expiry (unix ts)
     try:
         # Use a dedicated collection for password resets
         await db.password_resets.insert_one({
@@ -5361,24 +5385,17 @@ async def forgot_password(data: dict = Body(...)):
         logger.error(f"Failed to persist reset token: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate reset link")
 
-    # Send email
-    from services.email_service import send_notification_email
-    # Use hash routing link (app uses HashRouter) so include #/ path
+    # Send email via template system
+    from services.platform_notification_service import notify_password_reset
     reset_link = f"{frontend_url}/#/reset-password?token={token}"
-    body = f"""
-    <html>
-        <body style="font-family: sans-serif; padding: 20px;">
-            <h2 style="color: #7C3AED;">Password Reset Request</h2>
-            <p>You requested a password reset for your Studlyf account.</p>
-            <p>Click the button below to set a new password. This link expires in 1 hour.</p>
-            <div style="margin: 30px 0;">
-                <a href="{reset_link}" style="background: #7C3AED; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold;">Reset Password</a>
-            </div>
-            <p>If you didn't request this, you can safely ignore this email.</p>
-        </body>
-    </html>
-    """
-    await send_notification_email(email, "Password Reset - Studlyf", body)
+    user_doc = await users_col.find_one({"email": email})
+    participant_name = (user_doc or {}).get("full_name") or (user_doc or {}).get("name") or "Participant"
+    await notify_password_reset(
+        recipient_email=email,
+        participant_name=participant_name,
+        reset_link=reset_link,
+        expiry_duration="1 hour",
+    )
     
     return {"status": "success", "message": "Reset link sent"}
 
@@ -5400,7 +5417,7 @@ async def reset_password(data: dict = Body(...)):
     if not token_doc:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
 
-    if int(time.time()) > int(token_doc.get("expiry", 0)):
+    if int(time()) > int(token_doc.get("expiry", 0)):
         # remove expired token
         try:
             await db.password_resets.delete_one({"token": token})
@@ -5521,12 +5538,67 @@ async def signup(user_data: UserSignup, request: Request):
             "graduation_year": user_data.graduation_year,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-    await users_col.insert_one(user_doc)
+    await users_col.insert_one({**user_doc, "email_verified": False})
+
+    verification_token = secrets.token_urlsafe(32)
+    verification_expiry = int(time() + 86400)
+    try:
+        await db.email_verifications.insert_one({
+            "token": verification_token,
+            "email": email_clean,
+            "user_id": user_id,
+            "expiry": verification_expiry,
+            "created_at": datetime.now(timezone.utc),
+        })
+    except Exception as e:
+        logger.error(f"Failed to persist verification token: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create verification link")
+
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    verification_link = f"{frontend_url}/#/verify-email?token={verification_token}"
+    signup_name = user_data.full_name or "Participant"
+    from services.platform_notification_service import notify_email_verification
+    await notify_email_verification(
+        recipient_email=email_clean,
+        participant_name=signup_name,
+        verification_link=verification_link,
+    )
     
     # Audit Log
     await log_admin_action(email_clean, "USER_SIGNUP", f"New user created with role: {user_data.role}")
     
-    return {"status": "success", "message": "User created successfully"}
+    return {"status": "success", "message": "User created successfully. Please verify your email."}
+
+
+@app.post("/api/auth/verify-email")
+async def verify_email(data: dict = Body(...)):
+    token = str(data.get("token") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Verification token is required")
+
+    token_doc = await db.email_verifications.find_one({"token": token})
+    if not token_doc:
+        raise HTTPException(status_code=404, detail="Invalid or expired verification token")
+
+    try:
+        expiry = int(token_doc.get("expiry") or 0)
+    except Exception:
+        expiry = 0
+    if expiry and int(time()) > expiry:
+        await db.email_verifications.delete_one({"token": token})
+        raise HTTPException(status_code=400, detail="Verification link has expired")
+
+    email = token_doc.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Verification record is invalid")
+
+    # Normalize verification across legacy records that may differ only by email casing.
+    await users_col.update_many(
+        {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}},
+        {"$set": {"email_verified": True, "verified_at": datetime.now(timezone.utc)}}
+    )
+    await db.email_verifications.delete_one({"token": token})
+    return {"status": "success", "message": "Email verified successfully"}
 
 @app.post("/api/auth/login")
 async def login(credentials: UserLogin, request: Request):
@@ -5547,7 +5619,11 @@ async def login(credentials: UserLogin, request: Request):
     
     # Use an optimized, indexable case-insensitive search
     try:
-        user = await users_col.find_one({"email": {"$regex": f"^{re.escape(email_clean)}$", "$options": "i"}})
+        matching_users = await users_col.find({"email": {"$regex": f"^{re.escape(email_clean)}$", "$options": "i"}}).to_list(length=10)
+        user = None
+        if matching_users:
+            verified_users = [u for u in matching_users if bool(u.get("email_verified"))]
+            user = verified_users[0] if verified_users else matching_users[0]
         
         if not user:
             logger.warning(f"Login attempt with non-existent email: {email_clean}")
@@ -5580,6 +5656,9 @@ async def login(credentials: UserLogin, request: Request):
     if not password_valid:
         logger.warning(f"Invalid password attempt for user: {email_clean}")
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not bool(user.get("email_verified")):
+        raise HTTPException(status_code=403, detail="Please verify your email before signing in")
     
     # Record Login Timestamp (Required by Spec)
     login_time = datetime.now(timezone.utc).isoformat()
@@ -5587,6 +5666,46 @@ async def login(credentials: UserLogin, request: Request):
         {"user_id": user["user_id"]},
         {"$set": {"last_login_at": login_time}}
     )
+
+
+@app.post("/api/auth/resend-verification")
+async def resend_verification(data: dict = Body(...)):
+    email = str(data.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    user = await users_col.find_one({"email": email})
+    if not user:
+        return {"status": "success", "message": "If this email is registered, a verification link has been sent."}
+
+    if bool(user.get("email_verified")):
+        return {"status": "success", "message": "Email is already verified."}
+
+    token = secrets.token_urlsafe(32)
+    expiry = int(time() + 86400)
+    await db.email_verifications.update_one(
+        {"email": email},
+        {
+            "$set": {
+                "token": token,
+                "email": email,
+                "user_id": user.get("user_id"),
+                "expiry": expiry,
+                "created_at": datetime.now(timezone.utc),
+            }
+        },
+        upsert=True,
+    )
+
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    verification_link = f"{frontend_url}/#/verify-email?token={token}"
+    participant_name = user.get("full_name") or user.get("name") or "Participant"
+    await send_notification_email(
+        email,
+        "Verify your Studlyf account",
+        get_email_verification_template(participant_name, verification_link),
+    )
+    return {"status": "success", "message": "Verification link sent"}
     
     resolved_institution_id = user.get("institution_id")
     if user.get("role") == "institution" and not resolved_institution_id:
@@ -6199,53 +6318,69 @@ async def register_for_event(event_id: str, participant: Participant):
         result = await participants_col.insert_one(p_doc)
         
         # 6. TRIGGER EMAIL (skip if from opportunity portal to avoid duplicates)
-        if not is_from_opportunity:
-            inst_id = event.get("institution_id")
-            custom_msg = ""
-            institution = None
-            if inst_id:
-                institution = await institutions_col.find_one({"institution_id": inst_id})
-                if institution:
-                    custom_msg = institution.get("email_custom_message", "")
+        user_record = await users_col.find_one({"user_id": participant.user_id})
+        user_name = participant.college_name or "Participant"
+        target_email = None
+        if user_record:
+            user_name = user_record.get("full_name") or user_record.get("name") or user_name
+            target_email = user_record.get("email") or participant.user_id
 
-            user_record = await users_col.find_one({"user_id": participant.user_id})
-            user_name = participant.college_name or "Participant"
-            if user_record:
-                user_name = user_record.get("full_name") or user_record.get("name") or user_name
-            
-            subject = f"Registration Confirmed: {event['title']}"
-            body = get_registration_template(user_name, event['title'], custom_msg)
-            
-            target_email = user_record["email"] if user_record and "email" in user_record else participant.user_id
+        if not is_from_opportunity and target_email:
+            from services.email_template_service import send_template_email
+            await send_template_email(
+                template_type="registration_confirmation",
+                recipient=target_email,
+                context={
+                    "participant_name": user_name,
+                    "event_name": event["title"],
+                },
+                subject_override=f"Registration Confirmed: {event['title']}",
+            )
 
-            asyncio.create_task(send_notification_email(target_email, subject, body))
-            
-            # Create In-App Notification
-            asyncio.create_task(notifications_col.insert_one({
+            await notifications_col.insert_one({
                 "user_id": participant.user_id,
                 "title": "Registration Successful",
                 "message": f"You have successfully registered for {event['title']}.",
                 "type": "event_alert",
                 "is_read": False,
                 "created_at": datetime.utcnow()
-            }))
+            })
 
-        # 7. DASHBOARD UPDATE (Implicit via real-time fetch)
-        # Note: We removed admin email notifications for registrations as per 'Dashboard-First' policy.
-        
         # Audit Log
-        await log_admin_action(target_email, "EVENT_REGISTRATION", f"Registered for event: {event_id}")
+        await log_admin_action(target_email or participant.user_id, "EVENT_REGISTRATION", f"Registered for event: {event_id}")
 
-        # Recalculate stats in background
+        # Recalculate stats and notify institution
+        inst_id = event.get("institution_id")
         if inst_id:
             asyncio.create_task(recalculate_institution_stats(inst_id))
-            # Notify Institution
             asyncio.create_task(notify_institution(
                 institution_id=inst_id,
                 title="New Registration",
                 message=f"A new participant has registered for {event['title']}.",
                 ntype="success"
             ))
+
+            try:
+                from services.platform_notification_service import notify_new_registration
+                admins = await users_col.find({
+                    "institution_id": str(inst_id),
+                    "role": {"$in": ["admin", "institution", "super_admin"]}
+                }).to_list(length=None)
+                dashboard_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/#/institution-dashboard"
+                for admin in admins:
+                    admin_email = (admin.get("email") or "").strip()
+                    if not admin_email:
+                        continue
+                    await notify_new_registration(
+                        recipient_email=admin_email,
+                        organizer_name=admin.get("full_name") or admin.get("name") or "Organizer",
+                        event_title=event["title"],
+                        participant_name=user_name,
+                        registration_count=await participants_col.count_documents({"event_id": event_id}),
+                        dashboard_link=dashboard_link,
+                    )
+            except Exception as email_error:
+                logger.warning(f"Failed to send organizer registration email: {email_error}")
 
         return {"status": "success", "registration_id": str(result.inserted_id)}
     except Exception as e:
@@ -6358,10 +6493,19 @@ async def notify_event_participants(event_id: str, message: str, current_user: d
             user_record = await users_col.find_one({"user_id": user_id})
             if user_record and "email" in user_record:
                 try:
-                    # Add timeout to prevent hanging
                     await asyncio.wait_for(
-                        asyncio.create_task(send_notification_email(user_record["email"], f"Important Update: {event['title']}", f"Hello,\n\nThere is an update regarding '{event['title']}':\n\n{message}\n\nBest regards,\nInstitution Team")),
-                        timeout=10.0  # 10 second timeout
+                        asyncio.create_task(
+                            send_notification_email(
+                                user_record["email"],
+                                f"Important Update: {event['title']}",
+                                get_announcement_template(
+                                    user_name=user_record.get("full_name") or user_record.get("name") or "Participant",
+                                    event_name=event["title"],
+                                    message=message,
+                                ),
+                            )
+                        ),
+                        timeout=10.0
                     )
                     print(f"DEBUG: Email notification sent for {user_record['email']}")
                 except asyncio.TimeoutError:

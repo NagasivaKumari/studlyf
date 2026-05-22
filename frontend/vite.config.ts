@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       proxy: {
         '^/api/.*': {
-          target: 'http://localhost:8000',
+          target: env.RENDER_EXTERNAL_URL || '',
           changeOrigin: true,
           secure: false,
         }
@@ -20,7 +20,10 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'import.meta.env.FRONTEND_URL': JSON.stringify(env.FRONTEND_URL || ''),
+      'import.meta.env.RENDER_EXTERNAL_URL': JSON.stringify(env.RENDER_EXTERNAL_URL || ''),
+      'import.meta.env.ADDITIONAL_CORS_ORIGINS': JSON.stringify(env.ADDITIONAL_CORS_ORIGINS || '')
     },
     resolve: {
       alias: {

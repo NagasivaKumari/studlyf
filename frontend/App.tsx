@@ -54,6 +54,7 @@ import InstitutionDashboard from './pages/institution-dashboard/InstitutionDashb
 import RoleFixer from './RoleFixer';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import VerifyEmail from './pages/VerifyEmail';
 import OpportunitiesList from './pages/opportunities/OpportunitiesList';
 import OpportunityDetails from './pages/opportunities/OpportunityDetails';
 import MyApplications from './pages/opportunities/MyApplications';
@@ -309,6 +310,7 @@ const App: React.FC = () => {
             <Route path="/fix-role" element={<RoleFixer />} />
             <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
             <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+            <Route path="/verify-email" element={<PublicRoute><VerifyEmail /></PublicRoute>} />
 
             <Route path="/dashboard" element={
               <ProtectedRoute>

@@ -1,7 +1,7 @@
 import uuid
 import logging
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -60,34 +60,58 @@ async def ensure_package_enabled(institution_id: str):
 
 async def _send_activation_email(institution_id: str, plan_id: str, provider: str, payment_status: str, actor_email: Optional[str] = None, amount: int = 0, currency: str = 'INR'):
     try:
+        from services.email_template_service import send_template_email
+
         inst = await institutions_col.find_one({"institution_id": institution_id})
         recipient = None
-        inst_name = "Your Institution"
-        # try to find actor name from users collection if available
+        user_name = "Your Institution"
         if actor_email:
             try:
                 user_rec = await users_col.find_one({"email": actor_email})
                 if user_rec:
-                    inst_name = user_rec.get('name') or user_rec.get('full_name') or inst_name
+                    user_name = user_rec.get('name') or user_rec.get('full_name') or user_name
             except Exception:
                 pass
         if inst:
             recipient = inst.get("admin_email") or inst.get("email") or inst.get("contact_email")
-            # prefer explicit admin_name if present, otherwise keep inst_name resolved above
-            inst_name = inst.get("admin_name") or inst.get("name") or inst_name
-        if recipient:
-            subject = f"Hackathon Package Activated ({plan_id})"
-            amount_label = f"{currency} {amount}" if amount is not None else ''
-            body_html = (
-                f"<p>Hi {inst_name},</p>"
-                f"<p>Your hackathon package is now <strong>active</strong>.</p>"
-                f"<p><strong>Plan:</strong> {plan_id}<br/>"
-                f"<strong>Payment Provider:</strong> {provider}<br/>"
-                f"<strong>Payment Status:</strong> {payment_status}<br/>"
-                f"<strong>Amount:</strong> {amount_label}</p>"
-                "<p>You can now use problem statements, team selections, participant portal, and participant card features.</p>"
+            user_name = inst.get("admin_name") or inst.get("name") or user_name
+        if not recipient:
+            return
+
+        PLAN_NAMES = {
+            'basic': 'Basic Plan',
+            'pack3': 'Pack of 3',
+            'pack7': 'Pack of 7',
+            'enterprise': 'Enterprise'
+        }
+        plan_name = PLAN_NAMES.get(plan_id, str(plan_id))
+
+        plan_expiry = None
+        try:
+            end_row = await hackathon_event_config_col.find_one(
+                {"institution_id": institution_id, "key": "subscription_end"}
             )
-            await send_notification_email(recipient, subject, body_html)
+            if end_row and end_row.get("value"):
+                plan_expiry = datetime.fromisoformat(str(end_row["value"]).replace("Z", "+00:00"))
+        except Exception:
+            pass
+
+        frontend_url = os.getenv('FRONTEND_URL') or os.getenv('BASE_URL') or '#'
+
+        await send_template_email(
+            template_type="plan_activation",
+            recipient=recipient,
+            context={
+                "user_name": user_name,
+                "plan_name": plan_name,
+                "start_date": datetime.now(timezone.utc).strftime("%B %d, %Y"),
+                "expiry_date": plan_expiry.strftime("%B %d, %Y") if plan_expiry else "Unlimited",
+                "billing_cycle": f"{provider} / {payment_status}",
+                "manage_subscription_url": f"{frontend_url}/institution/settings?tab=plan",
+                "frontend_url": frontend_url,
+            },
+            subject_override=f"Your {plan_name} Subscription is Now Active",
+        )
     except Exception:
         logger.exception("Failed to send activation email")
 
@@ -148,6 +172,38 @@ async def _activate_subscription(
         "description": f"Hackathon package activation ({plan_id})",
         "created_at": now_iso,
     })
+
+    # Set subscription start/end dates based on plan durations
+    # Duration mapping in days for each plan id
+    DURATION_DAYS = {
+        "basic": 30,
+        "pack3": 30,
+        "pack7": 90,
+        "enterprise": None,
+    }
+    try:
+        start_dt = datetime.now(timezone.utc)
+        end_dt = None
+        dur = DURATION_DAYS.get(plan_id)
+        if dur is not None:
+            end_dt = (start_dt + timedelta(days=int(dur)))
+
+        await hackathon_event_config_col.update_one(
+            {"institution_id": institution_id, "key": "subscription_start"},
+            {"$set": {"value": start_dt.isoformat(), "updated_at": now_iso}},
+            upsert=True,
+        )
+        if end_dt:
+            await hackathon_event_config_col.update_one(
+                {"institution_id": institution_id, "key": "subscription_end"},
+                {"$set": {"value": end_dt.isoformat(), "updated_at": now_iso}},
+                upsert=True,
+            )
+        else:
+            # Remove any existing end date for unlimited plans
+            await hackathon_event_config_col.delete_one({"institution_id": institution_id, "key": "subscription_end"})
+    except Exception:
+        logger.exception("Failed to set subscription dates")
 
     await _send_activation_email(institution_id, plan_id, provider, payment_status, actor_email=actor_email, amount=amount, currency=currency)
 
@@ -453,6 +509,11 @@ async def get_hackathon_package_status(user: dict = Depends(get_auth_user)):
     payment_status = str((payment_row or {}).get("value") or "pending")
     payment_provider = str((provider_row or {}).get("value") or "none")
     current_plan_id = str((plan_row or {}).get("value") or "basic")
+    # subscription dates
+    start_row = await hackathon_event_config_col.find_one({"institution_id": institution_id, "key": "subscription_start"})
+    end_row = await hackathon_event_config_col.find_one({"institution_id": institution_id, "key": "subscription_end"})
+    subscription_start = start_row.get("value") if start_row else None
+    subscription_end = end_row.get("value") if end_row else None
     # Fetch last payment if any
     last_payments = await payments_col.find({"institution_id": institution_id, "type": "hackathon_package_subscription"}).sort("created_at", -1).to_list(length=1)
     last_payment = last_payments[0] if last_payments else None
@@ -473,6 +534,16 @@ async def get_hackathon_package_status(user: dict = Depends(get_auth_user)):
             "Poster download for participants"
         ]
     }
+    # compute remaining days if end present
+    days_remaining = None
+    if subscription_end:
+        try:
+            end_dt = datetime.fromisoformat(subscription_end)
+            now = datetime.now(timezone.utc)
+            delta = (end_dt - now).total_seconds() / 86400.0
+            days_remaining = int(delta) if delta >= 0 else 0
+        except Exception:
+            days_remaining = None
 
     return {
         "enabled": enabled,
@@ -481,6 +552,9 @@ async def get_hackathon_package_status(user: dict = Depends(get_auth_user)):
         "payment_status": payment_status,
         "payment_provider": payment_provider,
         "current_plan_id": current_plan_id,
+        "subscription_start": subscription_start,
+        "subscription_end": subscription_end,
+        "days_remaining": days_remaining,
         "last_payment": {
             "amount": int(last_payment.get('amount', 0)) if last_payment else 0,
             "currency": last_payment.get('currency', '₹') if last_payment else '₹',
@@ -651,21 +725,45 @@ async def get_plans(user: dict = Depends(get_auth_user)):
         "institution_id": institution_id,
         "key": "subscription_plan_id"
     })
-    current_plan_id = str((stored_plan or {}).get("value") or "basic")
+
+    # Normalize stored_plan value. Some installations may have stored the value
+    # as a string, list, or small dict — coerce to a single plan id safely.
+    raw_val = (stored_plan or {}).get("value")
+    current_plan_id = "basic"
+    try:
+        if isinstance(raw_val, list) and raw_val:
+            # If a list was accidentally stored, prefer the last selected value
+            current_plan_id = str(raw_val[-1])
+        elif isinstance(raw_val, dict):
+            # If a dict was stored, look for common keys
+            current_plan_id = str(raw_val.get("id") or raw_val.get("plan_id") or raw_val.get("value") or "basic")
+        elif raw_val:
+            current_plan_id = str(raw_val)
+    except Exception:
+        current_plan_id = "basic"
+
+    # Ensure returned id is one of the allowed plans
     if current_plan_id not in allowed_ids:
         current_plan_id = "basic"
 
+    # Only the plan whose id matches current_plan_id is marked current
     for p in plans:
         p["isCurrent"] = p["id"] == current_plan_id
+        p["cta"] = "Select Plan"
         if p["isCurrent"]:
             p["cta"] = "Current Plan"
 
+    from services.subscription_service import get_plan_expiry_status, get_pending_plan
+    expiry = await get_plan_expiry_status(institution_id)
+    pending_plan = await get_pending_plan(institution_id)
+
     return {
         "plans": plans,
+        "pendingPlan": pending_plan,
         "faqs": [
             {
-                "q": "What is the difference between the Free and Paid Plans?",
-                "a": "All plans are currently free. The Basic Plan offers standard features while higher-tier plans provide additional listings, longer windows, and more credits."
+                "q": "What is the difference between the plans?",
+                "a": "The Basic Plan offers standard features (2 listings, 7-day registration window, 30 application views). Higher-tier plans provide additional listings, longer windows, unlimited application views, and more credits."
             },
             {
                 "q": "How do I upgrade to a higher plan?",
@@ -676,7 +774,8 @@ async def get_plans(user: dict = Depends(get_auth_user)):
                 "a": "Yes, you can switch between plans at any time."
             }
         ],
-        "currentPlanId": current_plan_id
+        "currentPlanId": current_plan_id,
+        "expiry": expiry,
     }
 
 
@@ -688,24 +787,44 @@ async def select_plan(body: dict, user: dict = Depends(get_auth_user)):
     if plan_id not in allowed_ids:
         raise HTTPException(400, "Invalid plan_id")
 
-    # All plans are currently zero-cost. Selecting a plan activates and unlocks immediately.
-    await _activate_subscription(
-        institution_id=institution_id,
-        plan_id=plan_id,
-        payment_status="free",
-        provider="manual",
-        payment_id=f"free_plan_{uuid.uuid4().hex[:10]}",
-        amount=0,
-        currency="INR",
-        actor_email=user.get("email"),
-    )
+    from services.subscription_service import get_current_plan_id, set_pending_plan
+
+    current = await get_current_plan_id(institution_id)
+    if plan_id == current:
+        raise HTTPException(400, "This plan is already active.")
+
+    # Store as pending — requires confirmation before activation
+    pending = await set_pending_plan(institution_id, plan_id)
+
+    # Return pending plan info — frontend shows confirmation modal
     return {
         "success": True,
-        "currentPlanId": plan_id,
-        "enabled": True,
-        "subscription_status": "active",
-        "payment_status": "free",
+        "status": "pending",
+        "pending": pending,
+        "is_demo_mode": True,
+        "message": "Plan change initiated. Please confirm to activate.",
     }
+
+
+@router.post("/plans/confirm")
+async def confirm_plan_change(body: dict, user: dict = Depends(get_auth_user)):
+    """Confirm pending plan change and activate the new plan."""
+    institution_id = await _get_institution_id(user)
+    from services.subscription_service import confirm_plan_change as _confirm
+    try:
+        result = await _confirm(institution_id, actor_email=user.get("email"))
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post("/plans/cancel-pending")
+async def cancel_pending_plan_change(body: dict, user: dict = Depends(get_auth_user)):
+    """Cancel a pending plan change without activating it."""
+    institution_id = await _get_institution_id(user)
+    from services.subscription_service import cancel_pending_plan as _cancel
+    await _cancel(institution_id)
+    return {"success": True, "message": "Plan change cancelled."}
 
 
 @router.post("/plans/activate")
@@ -1002,3 +1121,25 @@ async def stripe_webhook(request: Request):
     )
 
     return {"success": True}
+
+
+@router.post("/check-expiring-plans")
+async def check_expiring_plans(user: dict = Depends(get_auth_user)):
+    """Admin endpoint to check all institutions with expiring plans and send notifications."""
+    from services.subscription_service import get_stored_plan_end_date, check_and_notify_expiring_plan
+
+    affected = []
+    cursor = hackathon_event_config_col.find({"key": "subscription_end", "value": {"$exists": True}})
+    seen = set()
+    async for row in cursor:
+        iid = row.get("institution_id")
+        if iid and iid not in seen:
+            seen.add(iid)
+            end_date = await get_stored_plan_end_date(iid)
+            if end_date:
+                remaining = (end_date - datetime.now(timezone.utc)).total_seconds() / 86400.0
+                if remaining <= 7:
+                    await check_and_notify_expiring_plan(iid)
+                    affected.append({"institution_id": iid, "days_remaining": round(remaining, 1)})
+
+    return {"checked": len(seen), "notified": len(affected), "details": affected}

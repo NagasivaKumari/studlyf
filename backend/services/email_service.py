@@ -3,6 +3,7 @@ import os
 import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from html import escape
 from dotenv import load_dotenv
 
 # Load env from root - Force override to ensure .env updates are picked up without restart
@@ -45,7 +46,8 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
         resend_key = os.getenv("RESEND_API_KEY")
         if resend_key:
             try:
-                import resend
+                import importlib
+                resend = importlib.import_module("resend")
                 resend.api_key = resend_key
                 
                 params = {
@@ -145,51 +147,196 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
     return await asyncio.to_thread(send_sync_email)
 
 def get_registration_template(user_name: str, event_name: str, custom_message: str = ""):
-    message_html = f"<p>{custom_message}</p><br>" if custom_message else ""
-    return f"""
-    <html>
-        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1f2937; line-height: 1.6;">
-            <div style="max-width: 600px; margin: auto; padding: 40px; border: 1px solid #f3f4f6; border-radius: 24px; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);">
-                <div style="text-align: center; margin-bottom: 30px;">
-                    <div style="background: #7C3AED; width: 60px; height: 60px; border-radius: 18px; display: inline-block; line-height: 60px; color: white; font-size: 30px; font-weight: bold;">S</div>
-                </div>
-                <h1 style="color: #111827; font-size: 24px; font-weight: 800; text-align: center; margin-bottom: 10px; text-transform: uppercase; tracking: 0.1em;">Registration Confirmed!</h1>
-                <p style="text-align: center; color: #6b7280; margin-bottom: 30px;">You are officially in for the journey.</p>
-                <div style="background-color: #f9fafb; border-radius: 16px; padding: 25px; margin-bottom: 30px;">
-                    <p style="margin: 0; font-size: 14px; color: #4b5563;">Hello <strong>{user_name}</strong>,</p>
-                    <p style="margin: 15px 0 0 0; font-size: 16px; color: #111827;">You have successfully registered for <strong>{event_name}</strong>.</p>
-                    {message_html}
-                </div>
-                <p style="font-size: 14px; color: #4b5563;">Get ready to showcase your skills. Stay tuned for further updates regarding the schedule and submission guidelines.</p>
-                <div style="margin-top: 40px; padding-top: 25px; border-top: 1px solid #f3f4f6; text-align: center;">
-                    <p style="margin: 0; font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.2em; font-weight: bold;">Studlyf Engineering Ecosystem</p>
-                </div>
-            </div>
-        </body>
-    </html>
-    """
+    message_html = f"<p style=\"margin:0 0 14px 0;color:#475569;line-height:1.7;\">{escape(custom_message)}</p>" if custom_message else ""
+    return _email_shell(
+        f"Registration Confirmed: {_safe_text(event_name)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(user_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Your registration for <strong>{_safe_text(event_name)}</strong> has been successfully confirmed on Studlyf.</p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <p style="margin:0;color:#111827;font-size:15px;font-weight:800;">Event registration complete</p>
+            <p style="margin:6px 0 0 0;color:#64748b;font-size:13px;">You’ll receive reminders, round updates, and next-step notifications here.</p>
+        </div>
+        {message_html}
+        <p style="margin:0;color:#475569;line-height:1.7;">Please keep your profile and contact details updated so you don’t miss any important announcements.</p>
+        <p style="margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">Team Studlyf &middot; On behalf of the organizing institution</p>
+        """,
+        subtitle="Your place is confirmed",
+    )
 
-def get_team_invite_template(leader_name: str, team_name: str, event_name: str, invite_code: str):
+
+def get_status_update_template(user_name: str, event_name: str, status: str, status_message: str = "") -> str:
+    status_norm = _safe_text(status)
+    color = {"approved": "#10B981", "rejected": "#EF4444", "shortlisted": "#6C3BFF"}.get(status_norm.lower(), "#6C3BFF")
+    message = escape(status_message) if status_message else (
+        "Congratulations! You have been shortlisted for the next stage." if status_norm.lower() in {"shortlisted", "approved"} else "Thank you for participating. Unfortunately, your application was not selected this time."
+    )
+    return _email_shell(
+        f"Status Update: {_safe_text(event_name)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(user_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Your application for <strong>{_safe_text(event_name)}</strong> has been updated.</p>
+        <div style="background:{color}10;border:1px solid {color}30;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <p style="margin:0;color:#64748b;font-size:12px;font-weight:800;text-transform:uppercase;">Current Status</p>
+            <p style="margin:8px 0 0 0;color:{color};font-size:28px;font-weight:900;text-transform:uppercase;">{status_norm}</p>
+        </div>
+        <p style="margin:0;color:#475569;line-height:1.7;">{message}</p>
+        """,
+        subtitle="Your application has been reviewed",
+        accent=color,
+    )
+
+
+def get_round_unlock_template(user_name: str, event_name: str, round_name: str, round_start_time: str, round_deadline: str, round_link: str) -> str:
+    return _email_shell(
+        f"Round Unlocked: {_safe_text(event_name)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(user_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">A new round has been unlocked for <strong>{_safe_text(event_name)}</strong>.</p>
+        <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <p style="margin:0 0 4px 0;color:#6d28d9;font-size:12px;font-weight:800;text-transform:uppercase;">Round Name</p>
+            <p style="margin:0;color:#111827;font-size:16px;font-weight:800;">{_safe_text(round_name)}</p>
+        </div>
+        <table width="100%" style="border-collapse:collapse;margin-bottom:18px;">
+            <tr>
+                <td style="padding:8px 0;color:#64748b;font-size:13px;width:50%;"><strong>Start:</strong> {_safe_text(round_start_time)}</td>
+                <td style="padding:8px 0;color:#64748b;font-size:13px;width:50%;"><strong>Deadline:</strong> {_safe_text(round_deadline)}</td>
+            </tr>
+        </table>
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(round_link)}" style="display:inline-block;padding:14px 28px;background:#6C3BFF;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Open Round</a>
+        </div>
+        """,
+        subtitle="The next stage is ready",
+    )
+
+
+def get_payment_receipt_template(participant_name: str, event_name: str, organization_name: str, payment_amount: str, transaction_id: str, payment_date: str, payment_method: str, event_link: str, billing_support_email: str) -> str:
+    return _email_shell(
+        f"Payment Receipt: {_safe_text(event_name)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Your payment for <strong>{_safe_text(event_name)}</strong> hosted by <strong>{_safe_text(organization_name)}</strong> has been successfully processed.</p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <table width="100%" style="border-collapse:collapse;">
+                <tr><td style="padding:6px 0;color:#64748b;">Amount Paid</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(payment_amount)}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Transaction ID</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(transaction_id)}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Payment Date</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(payment_date)}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Payment Method</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(payment_method)}</td></tr>
+            </table>
+        </div>
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(event_link)}" style="display:inline-block;padding:14px 28px;background:#10B981;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Access Event</a>
+        </div>
+        <p style="margin:14px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">Billing support: {_safe_text(billing_support_email)}</p>
+        """,
+        subtitle="Payment has been confirmed",
+        accent="#10B981",
+    )
+
+
+def get_certificate_issued_template(
+    participant_name: str,
+    event_title: str,
+    organization_name: str,
+    certificate_id: str,
+    issued_date: str,
+    certificate_download_link: str,
+    verification_url: str,
+) -> str:
+    return _email_shell(
+        f"Certificate Issued: {_safe_text(event_title)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Thank you for participating in <strong>{_safe_text(event_title)}</strong> hosted by <strong>{_safe_text(organization_name)}</strong> on Studlyf.</p>
+
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <p style="margin:0 0 4px 0;color:#64748b;font-size:12px;font-weight:800;text-transform:uppercase;">Certificate Details</p>
+            <table width="100%" style="border-collapse:collapse;">
+                <tr><td style="padding:6px 0;color:#64748b;">Event</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(event_title)}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Certificate ID</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(certificate_id)}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Issued On</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(issued_date)}</td></tr>
+            </table>
+        </div>
+
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(certificate_download_link)}" style="display:inline-block;padding:14px 28px;background:#6C3BFF;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;margin-right:8px;margin-bottom:8px;">Download Certificate</a>
+            <a href="{_safe_text(verification_url)}" style="display:inline-block;padding:14px 28px;background:#0f172a;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;margin-bottom:8px;">Verify Certificate</a>
+        </div>
+
+        <p style="margin:0;color:#475569;line-height:1.7;">We appreciate your participation and hope to see you in more opportunities on Studlyf.</p>
+        <p style="margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">Team Studlyf &middot; On behalf of {_safe_text(organization_name)}</p>
+        """,
+        subtitle="Your certificate is ready",
+        accent="#6C3BFF",
+    )
+
+def get_team_invite_template(
+    leader_name: str,
+    team_name: str,
+    event_name: str,
+    invite_code: str,
+    current_team_size: int | None = None,
+    max_team_size: int | None = None,
+    organization_name: str = "Studlyf",
+):
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     join_url = f"{frontend_url}/events/join-team?code={invite_code}"
-    return f"""
-    <html>
-        <body style="font-family: 'Segoe UI', sans-serif; color: #1f2937; line-height: 1.6;">
-            <div style="max-width: 600px; margin: auto; padding: 40px; border: 1px solid #f3f4f6; border-radius: 24px; background-color: #ffffff;">
-                <h1 style="color: #7C3AED; font-size: 22px; font-weight: 800; text-align: center;">TEAM INVITATION</h1>
-                <p style="text-align: center; color: #6b7280;">You've been handpicked to join a squad.</p>
-                <div style="background-color: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 16px; padding: 25px; margin: 30px 0; text-align: center;">
-                    <p style="margin: 0; font-size: 16px; color: #1e1b4b;"><strong>{leader_name}</strong> has invited you to join team <strong>"{team_name}"</strong> for <strong>{event_name}</strong>.</p>
-                </div>
-                <div style="text-align: center;">
-                    <a href="{join_url}" style="background-color: #7C3AED; color: white; padding: 16px 32px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block; text-transform: uppercase; letter-spacing: 0.1em; box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.2);">Join the Team</a>
-                    <p style="margin-top: 20px; font-size: 12px; color: #9ca3af;">Or use code: <strong style="color: #7C3AED;">{invite_code}</strong></p>
-                </div>
-                <p style="font-size: 13px; color: #6b7280; margin-top: 40px; text-align: center;">If you weren't expecting this invitation, you can safely ignore this email.</p>
-            </div>
-        </body>
-    </html>
-    """
+    return _email_shell(
+        f"Team Invitation: {_safe_text(event_name)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi there,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;"><strong>{_safe_text(leader_name)}</strong> has invited you to join the team <strong>"{_safe_text(team_name)}"</strong> for <strong>{_safe_text(event_name)}</strong>.</p>
+
+        <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <p style="margin:0 0 6px 0;color:#6d28d9;font-size:12px;font-weight:800;text-transform:uppercase;">Invitation</p>
+            <p style="margin:0;color:#111827;font-size:16px;font-weight:800;">Join the team and start collaborating.</p>
+        </div>
+
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(join_url)}" style="display:inline-block;padding:14px 28px;background:#6C3BFF;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Accept Invitation</a>
+        </div>
+
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <table width="100%" style="border-collapse:collapse;">
+                <tr><td style="padding:6px 0;color:#64748b;">Current Team Size</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(current_team_size if current_team_size is not None else '—')}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Max Team Size</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(max_team_size if max_team_size is not None else '—')}</td></tr>
+            </table>
+        </div>
+
+        <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;text-align:center;">Invite Code: <strong>{_safe_text(invite_code)}</strong></p>
+        <p style="margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">{_safe_text(organization_name)} &middot; If you were not expecting this invitation, you can safely ignore this email.</p>
+        """,
+        subtitle="A team is waiting for you",
+    )
+
+
+def get_team_join_request_approved_template(
+    participant_name: str,
+    team_name: str,
+    event_name: str,
+    organization_name: str,
+    team_link: str,
+) -> str:
+    return _email_shell(
+        f"Join Request Approved: {_safe_text(event_name)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Your request to join team <strong>"{_safe_text(team_name)}"</strong> for <strong>{_safe_text(event_name)}</strong> has been approved.</p>
+
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <p style="margin:0;color:#166534;font-size:15px;font-weight:800;">You can now participate as part of the team.</p>
+        </div>
+
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(team_link)}" style="display:inline-block;padding:14px 28px;background:#10B981;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">View Team</a>
+        </div>
+
+        <p style="margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">Team Studlyf &middot; On behalf of {_safe_text(organization_name)}</p>
+        """,
+        subtitle="Your request was approved",
+        accent="#10B981",
+    )
 
 def get_team_join_template(new_member_name: str, team_name: str, event_name: str):
     return f"""
@@ -363,6 +510,357 @@ def get_announcement_template(user_name: str, event_name: str, message: str, nex
     </body>
     </html>
     """
+
+
+def _safe_text(value: object) -> str:
+    return escape(str(value or "").strip())
+
+
+def _email_shell(title: str, body_html: str, subtitle: str = "", accent: str = "#6C3BFF") -> str:
+    title = _safe_text(title)
+    subtitle_html = f'<p style="margin:8px 0 0 0;color:#c7d2fe;font-size:14px;font-weight:500">{_safe_text(subtitle)}</p>' if subtitle else ""
+    return f"""
+    <html>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0;padding:0;background:#f8fafc;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background:#f8fafc; padding:24px 12px;">
+            <tr>
+                <td align="center">
+                    <table width="600" border="0" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #e2e8f0;">
+                        <tr>
+                            <td align="center" style="background:linear-gradient(135deg,{accent},#4f46e5);padding:28px 24px;">
+                                <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:-0.5px">{title}</h1>
+                                {subtitle_html}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:24px;">
+                                {body_html}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="background:#f8fafc;padding:18px;text-align:center;border-top:1px solid #e2e8f0;">
+                                <p style="margin:0;font-size:12px;color:#94a3b8;">Studlyf Communication Portal • 2026</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+
+
+def get_opportunity_announcement_template(
+    participant_name: str,
+    event_title: str,
+    organization_name: str,
+    event_type: str,
+    event_mode: str,
+    registration_deadline: str,
+    prize_pool: str,
+    eligibility: str,
+    short_description: str,
+    event_link: str,
+) -> str:
+    body_html = f"""
+    <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+    <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">A new opportunity matching your interests has been posted on Studlyf.</p>
+
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:18px;">
+        <p style="margin:0 0 4px 0;color:#0f172a;font-size:18px;font-weight:800;">{_safe_text(event_title)}</p>
+        <p style="margin:0;color:#64748b;font-size:13px;">Hosted by {_safe_text(organization_name)}</p>
+    </div>
+
+    <table width="100%" style="border-collapse:collapse;margin-bottom:18px;">
+        <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;width:34%;"><strong>Type:</strong> {_safe_text(event_type)}</td>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;width:33%;"><strong>Mode:</strong> {_safe_text(event_mode)}</td>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;width:33%;"><strong>Deadline:</strong> {_safe_text(registration_deadline)}</td>
+        </tr>
+        <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;"><strong>Prize Pool:</strong> {_safe_text(prize_pool)}</td>
+            <td colspan="2" style="padding:8px 0;color:#64748b;font-size:13px;"><strong>Eligibility:</strong> {_safe_text(eligibility)}</td>
+        </tr>
+    </table>
+
+    <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">{_safe_text(short_description)}</p>
+
+    <div style="text-align:center;margin:24px 0;">
+        <a href="{_safe_text(event_link)}" style="display:inline-block;padding:14px 28px;background:#6C3BFF;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Register Now</a>
+    </div>
+
+    <p style="margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">
+        You are receiving this because your profile matches the event audience on Studlyf.<br/>
+        Team Studlyf &middot; On behalf of {_safe_text(organization_name)}
+    </p>
+    """
+    return _email_shell(_safe_text(event_title), body_html, f"Hosted by {_safe_text(organization_name)}")
+
+
+def get_opportunity_reminder_template(
+    participant_name: str,
+    event_title: str,
+    organization_name: str,
+    event_date: str,
+    event_time: str,
+    event_mode: str,
+    event_link: str,
+    days_left: int,
+) -> str:
+    body_html = f"""
+    <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+    <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">This is a reminder that <strong>{_safe_text(event_title)}</strong> is coming up soon.</p>
+
+    <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:16px;padding:16px;margin-bottom:18px;">
+        <p style="margin:0 0 6px 0;color:#92400e;font-size:12px;font-weight:800;text-transform:uppercase;">Reminder</p>
+        <p style="margin:0;color:#111827;font-size:15px;line-height:1.7;">{_safe_text(days_left)} day{'s' if days_left != 1 else ''} left to participate.</p>
+    </div>
+
+    <table width="100%" style="border-collapse:collapse;margin-bottom:18px;">
+        <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;width:50%;"><strong>Date:</strong> {_safe_text(event_date)}</td>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;width:50%;"><strong>Time:</strong> {_safe_text(event_time)}</td>
+        </tr>
+        <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;"><strong>Mode:</strong> {_safe_text(event_mode)}</td>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;"><strong>Organizer:</strong> {_safe_text(organization_name)}</td>
+        </tr>
+    </table>
+
+    <div style="text-align:center;margin:24px 0;">
+        <a href="{_safe_text(event_link)}" style="display:inline-block;padding:14px 28px;background:#f59e0b;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Open Event</a>
+    </div>
+
+    <p style="margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">
+        Team Studlyf &middot; On behalf of {_safe_text(organization_name)}
+    </p>
+    """
+    return _email_shell(f"Reminder: {_safe_text(event_title)}", body_html, f"{_safe_text(days_left)} day{'s' if days_left != 1 else ''} left", accent="#f59e0b")
+
+
+def get_shortlisted_round_template(
+    participant_name: str,
+    event_title: str,
+    organization_name: str,
+    round_name: str,
+    round_date: str,
+    round_time: str,
+) -> str:
+    body_html = f"""
+    <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+    <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Congratulations! You have been shortlisted for the next round of <strong>{_safe_text(event_title)}</strong>.</p>
+
+    <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:16px;padding:16px;margin-bottom:18px;">
+        <p style="margin:0 0 6px 0;color:#6d28d9;font-size:12px;font-weight:800;text-transform:uppercase;">Next Round</p>
+        <p style="margin:0;color:#111827;font-size:16px;font-weight:800;">{_safe_text(round_name)}</p>
+    </div>
+
+    <table width="100%" style="border-collapse:collapse;margin-bottom:18px;">
+        <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;width:50%;"><strong>Date:</strong> {_safe_text(round_date)}</td>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;width:50%;"><strong>Time:</strong> {_safe_text(round_time)}</td>
+        </tr>
+        <tr>
+            <td colspan="2" style="padding:8px 0;color:#64748b;font-size:13px;"><strong>Organizer:</strong> {_safe_text(organization_name)}</td>
+        </tr>
+    </table>
+
+    <p style="margin:0;color:#475569;line-height:1.7;">Further instructions and access details will be shared soon.</p>
+    """
+    return _email_shell(f"Shortlisted: {_safe_text(event_title)}", body_html, f"On behalf of {_safe_text(organization_name)}")
+
+
+def get_winner_announcement_template(
+    participant_name: str,
+    event_title: str,
+    organization_name: str,
+    rank: str,
+    prize_details: str,
+    results_link: str,
+) -> str:
+    body_html = f"""
+    <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+    <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Congratulations! You have been selected as one of the winners of <strong>{_safe_text(event_title)}</strong>.</p>
+
+    <div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:16px;padding:16px;margin-bottom:18px;">
+        <p style="margin:0 0 4px 0;color:#0e7490;font-size:12px;font-weight:800;text-transform:uppercase;">Rank</p>
+        <p style="margin:0;color:#111827;font-size:18px;font-weight:900;">{_safe_text(rank)}</p>
+        <p style="margin:10px 0 0 0;color:#475569;font-size:14px;">{_safe_text(prize_details)}</p>
+    </div>
+
+    <div style="text-align:center;margin:24px 0;">
+        <a href="{_safe_text(results_link)}" style="display:inline-block;padding:14px 28px;background:#0f766e;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">View Results</a>
+    </div>
+    """
+    return _email_shell(f"Winner: {_safe_text(event_title)}", body_html, f"On behalf of {_safe_text(organization_name)}", accent="#0f766e")
+
+
+def get_feedback_request_template(
+    participant_name: str,
+    event_title: str,
+    organization_name: str,
+    feedback_link: str,
+) -> str:
+    body_html = f"""
+    <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+    <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Thank you for participating in <strong>{_safe_text(event_title)}</strong>.</p>
+
+    <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">We would appreciate a few minutes of your feedback to help us improve future events on Studlyf.</p>
+
+    <div style="text-align:center;margin:24px 0;">
+        <a href="{_safe_text(feedback_link)}" style="display:inline-block;padding:14px 28px;background:#7c3aed;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Submit Feedback</a>
+    </div>
+    """
+    return _email_shell(f"Feedback Request: {_safe_text(event_title)}", body_html, f"On behalf of {_safe_text(organization_name)}")
+
+
+def get_registration_deadline_reminder_template(
+    participant_name: str,
+    event_title: str,
+    organization_name: str,
+    registration_deadline: str,
+    event_link: str,
+) -> str:
+    return _email_shell(
+        f"Registration Closing Soon: {_safe_text(event_title)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Registration for <strong>{_safe_text(event_title)}</strong> hosted by <strong>{_safe_text(organization_name)}</strong> closes soon.</p>
+
+        <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <p style="margin:0 0 4px 0;color:#92400e;font-size:12px;font-weight:800;text-transform:uppercase;">Deadline</p>
+            <p style="margin:0;color:#111827;font-size:16px;font-weight:800;">{_safe_text(registration_deadline)}</p>
+        </div>
+
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(event_link)}" style="display:inline-block;padding:14px 28px;background:#f59e0b;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Register Here</a>
+        </div>
+        """,
+        subtitle="Complete your registration",
+        accent="#f59e0b",
+    )
+
+
+def get_email_verification_template(participant_name: str, verification_link: str) -> str:
+    return _email_shell(
+        "Verify Your Email",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Welcome to Studlyf. Please verify your email address to activate your account.</p>
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(verification_link)}" style="display:inline-block;padding:14px 28px;background:#6C3BFF;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Verify Email</a>
+        </div>
+        <p style="margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">If you did not create this account, you can safely ignore this email.</p>
+        """,
+        subtitle="Please verify your account",
+    )
+
+
+def get_password_reset_template(participant_name: str, reset_link: str, expiry_duration: str) -> str:
+    return _email_shell(
+        "Password Reset",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">We received a request to reset your Studlyf account password.</p>
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(reset_link)}" style="display:inline-block;padding:14px 28px;background:#EF4444;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Reset Password</a>
+        </div>
+        <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;text-align:center;">This link will expire in <strong>{_safe_text(expiry_duration)}</strong>.</p>
+        <p style="margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">If you did not request this, please ignore this email.</p>
+        """,
+        subtitle="Security request received",
+        accent="#EF4444",
+    )
+
+
+def get_event_published_template(organizer_name: str, event_title: str, event_link: str) -> str:
+    return _email_shell(
+        f"Event Published: {_safe_text(event_title)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(organizer_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Your event <strong>{_safe_text(event_title)}</strong> has been successfully published on Studlyf.</p>
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(event_link)}" style="display:inline-block;padding:14px 28px;background:#6C3BFF;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">View Event</a>
+        </div>
+        <p style="margin:0;color:#475569;line-height:1.7;text-align:center;">Participants can now discover and register for your opportunity.</p>
+        """,
+        subtitle="Your event is live",
+    )
+
+
+def get_new_registration_notification_template(organizer_name: str, event_title: str, participant_name: str, registration_count: int, dashboard_link: str) -> str:
+    return _email_shell(
+        f"New Registration: {_safe_text(event_title)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(organizer_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">A new participant has registered for <strong>{_safe_text(event_title)}</strong>.</p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <p style="margin:0 0 4px 0;color:#64748b;font-size:12px;font-weight:800;text-transform:uppercase;">Participant</p>
+            <p style="margin:0;color:#111827;font-size:16px;font-weight:800;">{_safe_text(participant_name)}</p>
+            <p style="margin:12px 0 0 0;color:#64748b;font-size:13px;">Total registrations: <strong>{int(registration_count)}</strong></p>
+        </div>
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(dashboard_link)}" style="display:inline-block;padding:14px 28px;background:#111827;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">View Participants</a>
+        </div>
+        """,
+        subtitle="A new participant joined",
+    )
+
+
+def get_subscription_activated_template(user_name: str, plan_name: str, billing_cycle: str, start_date: str, expiry_date: str, subscription_link: str) -> str:
+    return _email_shell(
+        f"Subscription Activated: {_safe_text(plan_name)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(user_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Your subscription plan <strong>"{_safe_text(plan_name)}"</strong> has been activated successfully.</p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:18px;">
+            <table width="100%" style="border-collapse:collapse;">
+                <tr><td style="padding:6px 0;color:#64748b;">Plan</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(plan_name)}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Billing Cycle</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(billing_cycle)}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Start Date</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(start_date)}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Expiry Date</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(expiry_date)}</td></tr>
+            </table>
+        </div>
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(subscription_link)}" style="display:inline-block;padding:14px 28px;background:#6C3BFF;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Manage Subscription</a>
+        </div>
+        """,
+        subtitle="Subscription active",
+    )
+
+
+def get_payment_failed_template(user_name: str, plan_name: str, payment_link: str) -> str:
+    return _email_shell(
+        f"Payment Failed: {_safe_text(plan_name)}",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(user_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">We were unable to process your recent payment for <strong>"{_safe_text(plan_name)}"</strong>.</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Please update your payment method or retry payment to avoid interruption of services.</p>
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(payment_link)}" style="display:inline-block;padding:14px 28px;background:#EF4444;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Retry Payment</a>
+        </div>
+        """,
+        subtitle="Action required",
+        accent="#EF4444",
+    )
+
+
+def get_recommended_opportunities_template(participant_name: str, recommended_opportunities: str, recommendation_link: str) -> str:
+    return _email_shell(
+        "Recommended Opportunities",
+        f"""
+        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Based on your interests and activity, we found new opportunities you may like.</p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:18px;white-space:pre-line;">
+            {_safe_text(recommended_opportunities)}
+        </div>
+        <div style="text-align:center;margin:24px 0;">
+            <a href="{_safe_text(recommendation_link)}" style="display:inline-block;padding:14px 28px;background:#6C3BFF;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;">Explore More</a>
+        </div>
+        """,
+        subtitle="Personalized for you",
+    )
 
 async def send_course_purchase_email(to_email: str, student_name: str, course_name: str, amount: str, order_id: str):
     """

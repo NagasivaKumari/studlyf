@@ -119,6 +119,8 @@ async def submit_stage_data(
         # If team_id provided, verify participant is in that team
         if team_id and str(participant.get("team_id")) != str(team_id):
             return {"error": "You are not a member of this team"}
+
+        # (team size checks moved after fetching event)
         
         # Get event and stage
         event = await events_col.find_one({"_id": ObjectId(event_id)})
@@ -126,6 +128,23 @@ async def submit_stage_data(
             return {"error": "Event not found"}
         
         # Enforce participation type
+        # If team_id present, validate team size against event rules (min/max)
+        if team_id:
+            try:
+                team = await teams_col.find_one({"_id": ObjectId(team_id)})
+                members = team.get("members", []) if team else []
+                # event-level team size constraints
+                min_ts = int(event.get("minTeamSize") or event.get("min_team_size") or 0)
+                max_ts = int(event.get("maxTeamSize") or event.get("max_team_size") or 0)
+                count = len(members) if isinstance(members, list) else 0
+                if min_ts and count < min_ts:
+                    return {"error": f"This team does not meet the minimum team size of {min_ts}", "status": "team_size_invalid"}
+                if max_ts and count > max_ts:
+                    return {"error": f"This team exceeds the maximum team size of {max_ts}", "status": "team_size_invalid"}
+            except Exception:
+                # ignore team size checks if teams fetch fails
+                pass
+
         ptype = str(event.get("participationType") or "").lower().strip()
         if ptype == "individual" and team_id:
             return {"error": "This event is for individual participation only. Team submissions are not allowed.", "status": "restricted"}

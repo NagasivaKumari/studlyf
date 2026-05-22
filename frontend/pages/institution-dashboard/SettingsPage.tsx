@@ -55,9 +55,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
         { id: 'plan', label: 'Plans & Subscription', icon: CreditCard },
     ];
 
-    const [plansData, setPlansData] = useState<{ plans: any[]; faqs: any[]; currentPlanId: string } | null>(null);
+    const [plansData, setPlansData] = useState<{ plans: any[]; faqs: any[]; currentPlanId: string; pendingPlan?: { plan_id: string; plan_name: string; queued_at?: string | null; is_upgrade?: boolean; is_downgrade?: boolean }; expiry?: { expires_at: string | null; days_remaining: number | null; is_expired: boolean } } | null>(null);
     const [plansLoading, setPlansLoading] = useState(false);
     const [selectingPlanId, setSelectingPlanId] = useState<string | null>(null);
+    const [planModalOpen, setPlanModalOpen] = useState(false);
+    const [planModalLoading, setPlanModalLoading] = useState(false);
+    const [planModalAction, setPlanModalAction] = useState<'upgrade' | 'downgrade' | 'switch' | 'unknown'>('unknown');
+    const [planModalError, setPlanModalError] = useState<string | null>(null);
+    const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
     const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
     const [eventPackages, setEventPackages] = useState<any[] | null>(null);
 
@@ -102,6 +107,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
     const [saving, setSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const refreshPlans = async () => {
+        const refetch = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans`, { headers: authHeaders() });
+        if (refetch.ok) {
+            const data = await refetch.json();
+            setPlansData(data);
+            return data;
+        }
+        return null;
+    };
 
     useEffect(() => {
         let isMounted = true;
@@ -242,38 +257,75 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
         }
     };
 
-    const handleSelectPlan = async (planId: string) => {
-        if (!plansData || planId === plansData.currentPlanId) return;
+    const handleSelectPlan = async (plan: any) => {
+        if (!plansData || plan.id === plansData.currentPlanId) return;
         try {
-            setSelectingPlanId(planId);
+            setSelectingPlanId(plan.id);
+            setPlanModalError(null);
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans/select`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ plan_id: planId }),
+                body: JSON.stringify({ plan_id: plan.id }),
             });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
-                throw new Error(data?.detail || 'Failed to update subscription plan');
+                throw new Error(data?.detail || 'Failed to queue subscription plan');
             }
 
             const payload = await res.json().catch(() => ({}));
-
-            setPlansData(prev => {
-                if (!prev) return prev;
-                return {
-                    ...prev,
-                    currentPlanId: planId,
-                };
-            });
-            if (payload?.enabled) {
-                setHackathonPackageEnabled(true);
-            }
-            // Refresh badge state
-            setPackageStatus(payload || { ...(packageStatus || {}), current_plan_id: planId });
+            setSelectedPlan(plan);
+            setPlanModalAction(payload?.pending?.is_downgrade ? 'downgrade' : payload?.pending?.is_upgrade ? 'upgrade' : 'switch');
+            setPlanModalOpen(true);
+            await refreshPlans();
         } catch (err: any) {
             alert(err?.message || 'Failed to update subscription plan');
         } finally {
             setSelectingPlanId(null);
+        }
+    };
+
+    const handleCancelPendingPlan = async () => {
+        try {
+            setPlanModalLoading(true);
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans/cancel-pending`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({}),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.detail || 'Failed to cancel pending plan');
+            }
+            await refreshPlans();
+            setPlanModalOpen(false);
+            setSelectedPlan(null);
+        } catch (err: any) {
+            setPlanModalError(err?.message || 'Failed to cancel pending plan');
+        } finally {
+            setPlanModalLoading(false);
+        }
+    };
+
+    const handleConfirmPlanChange = async () => {
+        try {
+            setPlanModalLoading(true);
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans/confirm`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({}),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.detail || 'Failed to confirm plan change');
+            }
+            await refreshPlans();
+            setPackageStatus(prev => ({ ...(prev || {}), subscription_status: 'active', payment_status: 'free' }));
+            setPlanModalOpen(false);
+            setSelectedPlan(null);
+        } catch (err: any) {
+            setPlanModalError(err?.message || 'Failed to confirm plan change');
+        } finally {
+            setPlanModalLoading(false);
         }
     };
 
@@ -922,11 +974,28 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                                     <p className="text-xs font-black uppercase tracking-widest text-[#6C3BFF]">
                                         Active Subscription: {plansData.plans.find((p: any) => p.id === plansData.currentPlanId)?.name || plansData.currentPlanId}
                                     </p>
+                                    {plansData.pendingPlan && (
+                                        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-amber-100 text-amber-700 mt-2">
+                                            Pending change: {plansData.pendingPlan.plan_name}
+                                            <span className="text-amber-500">•</span>
+                                            Demo Mode — payment confirmation is simulated.
+                                        </div>
+                                    )}
+                                    {plansData.expiry && plansData.expiry.expires_at && (
+                                        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold ${plansData.expiry.is_expired ? 'bg-red-100 text-red-700' : plansData.expiry.days_remaining <= 7 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                                            {plansData.expiry.is_expired ? (
+                                                <>Expired on {new Date(plansData.expiry.expires_at).toLocaleDateString()}</>
+                                            ) : (
+                                                <>Valid until {new Date(plansData.expiry.expires_at).toLocaleDateString()} ({plansData.expiry.days_remaining} days remaining)</>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 px-4">
                                     {plansData.plans.map((plan: any) => {
                                         const isCurrent = plan.id === plansData.currentPlanId;
+                                        const isPending = plansData.pendingPlan?.plan_id === plan.id;
                                         return (
                                             <div key={plan.id} className={`p-8 bg-white border rounded-[2.5rem] flex flex-col hover:shadow-xl transition-all ${plan.isRecommended ? 'border-2 border-blue-500 shadow-2xl shadow-blue-50 scale-[1.03] z-10' : 'border-slate-100'}`}>
                                                 {plan.isRecommended && (
@@ -938,21 +1007,23 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                                                     <p className="text-[10px] text-slate-400 font-bold">{plan.duration}</p>
                                                 </div>
                                                 <button
-                                                                onClick={() => handleSelectPlan(plan.id)}
-                                                                disabled={isCurrent || selectingPlanId === plan.id}
-                                                                className={`w-full py-4 rounded-full font-black text-sm uppercase tracking-widest mb-10 transition-all ${isCurrent ? 'bg-slate-100 text-slate-400 cursor-default' : 'bg-[#2563EB] text-white hover:bg-[#1E40AF] shadow-lg shadow-blue-100 cursor-pointer'} ${selectingPlanId === plan.id ? 'opacity-90 cursor-wait' : ''}`}
-                                                            >
-                                                                {isCurrent ? (
-                                                                    'Current Plan'
-                                                                ) : selectingPlanId === plan.id ? (
-                                                                    <div className="flex items-center justify-center gap-2">
-                                                                        <Loader2 size={16} className="animate-spin" />
-                                                                        <span>Switching...</span>
-                                                                    </div>
-                                                                ) : (
-                                                                    plan.cta
-                                                                )}
-                                                            </button>
+                                                    onClick={() => handleSelectPlan(plan)}
+                                                    disabled={isCurrent || isPending || selectingPlanId === plan.id}
+                                                    className={`w-full py-4 rounded-full font-black text-sm uppercase tracking-widest mb-10 transition-all ${isCurrent || isPending ? 'bg-slate-100 text-slate-400 cursor-default' : 'bg-[#2563EB] text-white hover:bg-[#1E40AF] shadow-lg shadow-blue-100 cursor-pointer'} ${selectingPlanId === plan.id ? 'opacity-90 cursor-wait' : ''}`}
+                                                >
+                                                    {isCurrent ? (
+                                                        'Current Plan'
+                                                    ) : isPending ? (
+                                                        'Pending Confirmation'
+                                                    ) : selectingPlanId === plan.id ? (
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <Loader2 size={16} className="animate-spin" />
+                                                            <span>Preparing...</span>
+                                                        </div>
+                                                    ) : (
+                                                        plan.cta
+                                                    )}
+                                                </button>
                                                 <div className="space-y-6 flex-1">
                                                     <p className="text-sm font-black text-slate-700">Includes:</p>
                                                     <ul className="space-y-4">
@@ -968,6 +1039,102 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                                         );
                                     })}
                                 </div>
+
+                                <AnimatePresence>
+                                    {planModalOpen && selectedPlan && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center px-4"
+                                        >
+                                            <motion.div
+                                                initial={{ y: 24, scale: 0.98 }}
+                                                animate={{ y: 0, scale: 1 }}
+                                                exit={{ y: 24, scale: 0.98 }}
+                                                className="w-full max-w-3xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100"
+                                            >
+                                                <div className="p-6 md:p-8 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-purple-50">
+                                                    <div className="flex items-start justify-between gap-4">
+                                                        <div>
+                                                            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-500">Subscription Confirmation</p>
+                                                            <h3 className="mt-2 text-2xl font-black text-slate-900">Review {selectedPlan.name}</h3>
+                                                            <p className="mt-2 text-sm text-slate-600 max-w-2xl">
+                                                                Demo Mode — payment flow is simulated for development purposes. In production, this is where the checkout gateway would open.
+                                                            </p>
+                                                        </div>
+                                                        <div className={`px-3 py-2 rounded-full text-xs font-black uppercase tracking-widest ${planModalAction === 'downgrade' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                            {planModalAction === 'downgrade' ? 'Scheduled downgrade' : 'Ready to activate'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="p-6 md:p-8 space-y-6">
+                                                    {planModalError && (
+                                                        <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+                                                            {planModalError}
+                                                        </div>
+                                                    )}
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div className="rounded-3xl border border-slate-100 p-5 bg-slate-50/70">
+                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Current Plan</p>
+                                                            <p className="mt-2 text-xl font-black text-slate-900">{plansData.plans.find((p: any) => p.id === plansData.currentPlanId)?.name || plansData.currentPlanId}</p>
+                                                            <p className="mt-2 text-sm text-slate-500">You keep this plan until the next billing event when downgrading.</p>
+                                                        </div>
+                                                        <div className="rounded-3xl border border-indigo-100 p-5 bg-indigo-50/60">
+                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">Selected Plan</p>
+                                                            <p className="mt-2 text-xl font-black text-slate-900">{selectedPlan.name}</p>
+                                                            <p className="mt-2 text-sm text-slate-600">{selectedPlan.priceLabel === 'Free' ? '₹0 demo pricing' : `${selectedPlan.currency}${selectedPlan.price}`}</p>
+                                                            <p className="mt-1 text-xs font-bold uppercase tracking-widest text-indigo-500">{selectedPlan.duration}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <p className="text-sm font-black uppercase tracking-widest text-slate-400 mb-3">Included Features</p>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                            {selectedPlan.features?.map((feature: string, index: number) => (
+                                                                <div key={index} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 text-sm text-slate-600">
+                                                                    <CheckCircle2 size={16} className="mt-0.5 text-emerald-500 shrink-0" />
+                                                                    <span>{feature}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="rounded-3xl bg-slate-50 p-5 border border-slate-100 text-sm text-slate-600">
+                                                        <p className="font-black text-slate-800 mb-2">Billing behavior</p>
+                                                        <ul className="space-y-2 leading-relaxed">
+                                                            <li>• Upgrades activate immediately after confirmation in demo mode.</li>
+                                                            <li>• Downgrades are queued for the next cycle when an expiry date exists.</li>
+                                                            <li>• Plan state is stored as pending until you confirm or cancel.</li>
+                                                        </ul>
+                                                    </div>
+
+                                                    <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleCancelPendingPlan}
+                                                            disabled={planModalLoading}
+                                                            className="px-5 py-3 rounded-full border border-slate-200 text-slate-600 font-black uppercase tracking-widest text-xs hover:bg-slate-50 disabled:opacity-60"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleConfirmPlanChange}
+                                                            disabled={planModalLoading}
+                                                            className="px-5 py-3 rounded-full bg-[#2563EB] text-white font-black uppercase tracking-widest text-xs hover:bg-[#1E40AF] disabled:opacity-60 flex items-center justify-center gap-2"
+                                                        >
+                                                            {planModalLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+                                                            <span>Continue to Payment</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
 
                                 <div className="pt-24 space-y-12 pb-12">
                                     <h3 className="text-4xl font-black text-slate-800 text-center font-sans">Frequently asked questions</h3>

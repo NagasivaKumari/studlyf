@@ -40,6 +40,7 @@ async def post_opportunity(data: dict = Body(...), user: dict = Depends(get_auth
                         str(institution_id),
                         deadline_value=data.get("deadline"),
                         deadline_label="application deadline",
+                        start_date_value=data.get("startDate"),
                     )
                 except ValueError as ve:
                     raise HTTPException(status_code=400, detail=str(ve))

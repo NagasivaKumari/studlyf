@@ -89,6 +89,7 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         maxSize: 50,
         checkboxText: ''
     });
+    const [orgInput, setOrgInput] = useState('');
 
     const candidateOptions = ['Everyone can apply', 'College Students', 'Freshers', 'Professionals', 'School Students'];
     const genderOptions = ['Female', 'Male', 'Transgender', 'Intersex', 'Non-binary', 'Prefer not to say', 'Others'];
@@ -397,6 +398,12 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         if (step < steps.length) {
             setStep(step + 1);
         } else {
+            // Validate team size
+            if (Number(formData.minTeamSize) > Number(formData.maxTeamSize)) {
+                alert('Minimum team size cannot be greater than maximum team size');
+                return;
+            }
+
             setLoading(true);
             try {
                 const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
@@ -490,6 +497,11 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
     const handleSaveDraft = async () => {
         if (!formData.title.trim()) {
             alert("Please enter at least an Opportunity Title to save a draft.");
+            return;
+        }
+        // Validate team size before saving
+        if (Number(formData.minTeamSize) > Number(formData.maxTeamSize)) {
+            alert('Minimum team size cannot be greater than maximum team size');
             return;
         }
         setLoading(true);
@@ -762,6 +774,78 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                     className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-xl outline-none transition-all text-slate-900 font-medium"
                                                 />
                                             </div>
+                                        </div>
+
+                                        {/* Eligibility Section */}
+                                        <div className="mt-6 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest">Eligibility</label>
+                                                <span className="text-[10px] text-slate-400">Set who can apply</span>
+                                            </div>
+
+                                            <div className="mb-4">
+                                                <div className="text-[11px] font-bold text-slate-500 mb-2">Candidate Types</div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {candidateOptions.map(opt => (
+                                                        <button key={opt} onClick={() => toggleCandidateType(opt)} className={`px-3 py-1 rounded-lg text-[12px] ${formData.candidateTypes.includes(opt) ? 'bg-[#6C3BFF] text-white' : 'bg-white border border-slate-200 text-slate-600'}`}>
+                                                            {opt}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-4">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="text-[11px] font-bold text-slate-500">Eligible Organizations</div>
+                                                    <div className="text-[11px] text-slate-400">Leave as 'Allow All' to permit any college</div>
+                                                </div>
+                                                <div className="flex gap-2 items-center">
+                                                    <input value={orgInput} onChange={(e) => setOrgInput(e.target.value)} placeholder="Add college / org" className="px-3 py-2 rounded-lg border border-slate-200 w-full" />
+                                                    <button onClick={() => { addOrganization(orgInput); setOrgInput(''); }} className="px-3 py-2 bg-[#6C3BFF] text-white rounded-lg">Add</button>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2 mt-3">
+                                                    {formData.eligibleOrganizations.map(org => (
+                                                        <div key={org} className="px-3 py-1 bg-white border border-slate-200 rounded-full flex items-center gap-2 text-[12px]">
+                                                            <span>{org}</span>
+                                                            {org !== 'Allow All' && <button onClick={() => setFormData({...formData, eligibleOrganizations: formData.eligibleOrganizations.filter(o => o !== org)})} className="text-red-500">✕</button>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <div className="mt-2 text-[11px] text-slate-400">Tip: Use exact college names to restrict applications.</div>
+                                            </div>
+
+                                            <div className="mb-4">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="text-[11px] font-bold text-slate-500">Eligible Genders</div>
+                                                    <div className="text-[11px] text-slate-400">Default: Allow All</div>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    <button onClick={() => toggleGenderRestriction('all')} className={`px-3 py-1 rounded-lg ${formData.eligibleGenders.includes('Allow All') ? 'bg-[#6C3BFF] text-white' : 'bg-white border border-slate-200 text-slate-600'}`}>Allow All</button>
+                                                    {genderOptions.map(g => (
+                                                        <button key={g} onClick={() => toggleGender(g)} className={`px-3 py-1 rounded-lg ${formData.eligibleGenders.includes(g) ? 'bg-[#6C3BFF] text-white' : 'bg-white border border-slate-200 text-slate-600'}`}>{g}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-4 items-end">
+                                                <div>
+                                                    <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Participation Type</label>
+                                                    <select value={formData.participationType} onChange={(e) => setFormData({...formData, participationType: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200">
+                                                        <option value="both">Both (individual & team)</option>
+                                                        <option value="individual">Individual (solo only)</option>
+                                                        <option value="team">Team only</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Min Team Size</label>
+                                                    <input type="number" min={1} value={formData.minTeamSize} onChange={(e) => setFormData({...formData, minTeamSize: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-slate-200" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Max Team Size</label>
+                                                    <input type="number" min={1} value={formData.maxTeamSize} onChange={(e) => setFormData({...formData, maxTeamSize: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-slate-200" />
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 text-[11px] text-slate-400">If participation type is <strong>team</strong>, team size limits will be enforced at submission.</div>
                                         </div>
 
                                         <div>

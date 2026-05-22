@@ -10,13 +10,31 @@ try:
     HAS_WEASYPRINT = True
 except Exception:
     HAS_WEASYPRINT = False
-from datetime import datetime
-from db import certificates_col, leaderboard_col, submissions_col, scores_col
+from datetime import datetime, timezone
+from bson import ObjectId
+from db import event_certificates_col
+from services.email_template_service import get_active_template, render_template
+
+
+ACHIEVEMENT_TYPES = {
+    "participation": "Participation",
+    "finalist": "Finalist",
+    "winner": "Winner",
+    "top_performer": "Top Performer",
+    "organizer": "Organizer",
+    "mentor": "Mentor",
+}
+
+VALID_ACHIEVEMENTS = list(ACHIEVEMENT_TYPES.keys())
+
+
+def generate_certificate_id(event_code: str = "HACK") -> str:
+    year = datetime.utcnow().year
+    seq = uuid.uuid4().int % 100000
+    return f"STUD-{event_code}-{year}-{seq:05d}"
+
 
 class InstitutionalCertificateService:
-    """
-    Automated professional certificate generation and verification system.
-    """
     def __init__(self):
         template_dir = os.path.join(os.path.dirname(__file__), '../templates')
         os.makedirs(template_dir, exist_ok=True)
@@ -26,7 +44,7 @@ class InstitutionalCertificateService:
         )
 
     def _generate_qr_blob(self, url: str):
-        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr = qrcode.QRCode(version=1, box_size=10, border=3)
         qr.add_data(url)
         qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
@@ -34,78 +52,298 @@ class InstitutionalCertificateService:
         img.save(buffered, format="PNG")
         return base64.b64encode(buffered.getvalue()).decode()
 
-    async def issue_event_certificate(self, cert_data: dict):
-        cert_id = str(uuid.uuid4())
-        v_code = hashlib.sha256(f"{cert_id}".encode()).hexdigest()[:10].upper()
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        v_url = f"{frontend_url}/verify/{cert_id}"
-        qr_blob = self._generate_qr_blob(v_url)
-
-        # HTML Rendering logic...
-        template_path = os.path.join(os.path.dirname(__file__), '../templates/professional_certificate.html')
-        if not os.path.exists(template_path):
-            self._create_template(template_path)
-
-        template = self.jinja_env.get_template('professional_certificate.html')
-        issue_date = datetime.utcnow().strftime('%B %d, %Y')
-        html = template.render({**cert_data, "cert_id": cert_id, "v_code": v_code, "qr_blob": qr_blob, "issue_date": issue_date})
-        
-        if HAS_WEASYPRINT:
-            output_path = f"artifacts/certs/certificate_{cert_id}.pdf"
-            os.makedirs("artifacts/certs", exist_ok=True)
-            HTML(string=html).write_pdf(output_path)
-        else:
-            print(f"WARNING: WeasyPrint not available. Certificate {cert_id} created in DB but PDF not generated locally.")
-
-        # Persistent Record (Spec compliant)
-        await certificates_col.insert_one({
-            "certificate_id": cert_id,
-            "event_id": cert_data["event_id"],
-            "recipient_name": cert_data["recipient_name"],
-            "rank": cert_data["rank"],
-            "issued_at": datetime.utcnow(),
-            "verification_code": v_code,
-            "immutable_flag": True
-        })
-        return cert_id
-
-    def _create_template(self, path):
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write("""
-<!DOCTYPE html>
-<html>
+    def _ensure_template(self, path: str):
+        if not os.path.exists(path):
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write("""<!DOCTYPE html>
+<html lang="en">
 <head>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;800&display=swap');
-        body { font-family: 'Outfit', sans-serif; text-align: center; color: #1e293b; background: white; padding: 50px; }
-        .border { border: 15px solid #1e293b; padding: 40px; border-double: 5px solid #d4af37; }
-        .header { font-size: 50px; font-weight: 800; color: #1e293b; }
-        .recipient { font-size: 40px; margin: 30px 0; border-bottom: 2px solid #d4af37; display: inline-block; padding: 0 40px; }
-        .footer { margin-top: 50px; display: flex; justify-content: space-between; align-items: flex-end; }
-        .qr { width: 100px; height: 100px; }
-    </style>
+<meta charset="utf-8">
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700;14..32,800&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: #f8fafc; padding: 40px; display: flex; justify-content: center; }
+    .cert { width: 900px; min-height: 600px; background: #ffffff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); overflow: hidden; position: relative; }
+    .cert-border { border: 2px solid #e2e8f0; border-radius: 14px; margin: 16px; padding: 32px 40px; min-height: calc(100% - 32px); position: relative; }
+    .cert-border::before { content: ''; position: absolute; top: -1px; left: 40px; right: 40px; height: 4px; background: linear-gradient(90deg, #6c3bff, #4f46e5); border-radius: 2px; }
+    .header { text-align: center; margin-bottom: 28px; }
+    .header h1 { font-size: 28px; font-weight: 800; color: #1e293b; letter-spacing: 3px; text-transform: uppercase; }
+    .header .subtitle { font-size: 11px; color: #6c3bff; font-weight: 700; text-transform: uppercase; letter-spacing: 4px; margin-top: 4px; }
+    .sep { width: 60px; height: 3px; background: linear-gradient(90deg, #6c3bff, #4f46e5); margin: 16px auto; border-radius: 2px; }
+    .presented-to { text-align: center; color: #64748b; font-size: 13px; margin-bottom: 4px; font-weight: 500; }
+    .recipient-name { text-align: center; font-size: 32px; font-weight: 800; color: #0f172a; margin: 8px 0; letter-spacing: -0.5px; }
+    .for-text { text-align: center; color: #64748b; font-size: 13px; margin-bottom: 8px; font-weight: 500; }
+    .event-title { text-align: center; font-size: 20px; font-weight: 700; color: #4f46e5; margin: 8px 0; }
+    .org-text { text-align: center; color: #64748b; font-size: 13px; margin: 6px 0; font-weight: 500; }
+    .org-name { text-align: center; font-size: 16px; font-weight: 700; color: #1e293b; margin: 2px 0 12px 0; }
+    .platform-line { text-align: center; color: #94a3b8; font-size: 12px; margin-bottom: 16px; font-style: italic; }
+    .desc-text { text-align: center; color: #475569; font-size: 13px; line-height: 1.7; max-width: 600px; margin: 0 auto 16px auto; }
+    .wish-text { text-align: center; color: #475569; font-size: 13px; line-height: 1.6; max-width: 550px; margin: 0 auto 20px auto; }
+    .cert-id-box { text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 16px; display: inline-block; margin: 0 auto 24px auto; }
+    .cert-id-box .label { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    .cert-id-box .value { font-size: 11px; color: #0f172a; font-weight: 700; letter-spacing: 0.5px; }
+    .signatures { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
+    .signature-block { text-align: center; width: 45%; }
+    .signature-block .line { width: 140px; height: 1px; background: #cbd5e1; margin: 0 auto 6px auto; }
+    .signature-block .title { font-size: 10px; color: #64748b; font-weight: 600; }
+    .signature-block .name { font-size: 12px; color: #1e293b; font-weight: 700; margin-top: 2px; }
+    .footer-qr { position: absolute; bottom: 20px; right: 20px; text-align: center; }
+    .footer-qr img { width: 56px; height: 56px; }
+    .footer-qr .qr-label { font-size: 7px; color: #94a3b8; line-height: 1.2; margin-top: 2px; }
+    .verify-link { text-align: center; margin-top: 16px; }
+    .verify-link a { color: #6c3bff; font-size: 10px; text-decoration: none; }
+</style>
 </head>
 <body>
-    <div class="border">
-        <div class="header">CERTIFICATE OF ACHIEVEMENT</div>
-        <p>This is to officially certify that</p>
-        <div class="recipient">{{ recipient_name }}</div>
-        <p>has achieved the rank of <strong>{{ rank }}</strong> in the</p>
-        <h2>{{ event_name }}</h2>
-        <p>Date of Issue: {{ issue_date }}</p>
-        <div class="footer">
-            <div style="text-align: left;">
-                <img class="qr" src="data:image/png;base64,{{ qr_blob }}">
-                <div style="font-size: 10px;">ID: {{ cert_id }}<br>VERIFY AT STUDLYF.COM</div>
+    <div class="cert">
+        <div class="cert-border">
+            <div class="header">
+                <h1>Certificate of Participation</h1>
+                <div class="subtitle">Studlyf</div>
             </div>
-            <div style="text-align: right;">
-                <div style="font-size: 20px; font-weight: bold; border-top: 1px solid #1e293b; padding-top: 10px;">Authorized Official</div>
-                <div style="font-size: 12px; color: #64748b;">Studlyf Institution Network</div>
+            <div class="sep"></div>
+            <div class="presented-to">This certificate is proudly presented to</div>
+            <div class="recipient-name">{{ participant_name }}</div>
+            <div class="for-text">for successfully participating in</div>
+            <div class="event-title">&ldquo;{{ event_title }}&rdquo;</div>
+            <div class="org-text">organized by</div>
+            <div class="org-name">{{ organization_name }}</div>
+            <div class="platform-line">through the Studlyf platform on {{ event_date }}.</div>
+            <div class="desc-text">The participant demonstrated enthusiasm, commitment, and active involvement throughout the event.</div>
+            <div class="wish-text">We appreciate their participation and wish them continued success in their learning and professional journey.</div>
+            <div class="cert-id-box">
+                <div class="label">Certificate ID</div>
+                <div class="value">{{ certificate_id }}</div>
+                <div class="label" style="margin-top:2px;">Issued Date</div>
+                <div class="value">{{ issued_date }}</div>
+            </div>
+            <div class="signatures">
+                <div class="signature-block">
+                    <div class="line"></div>
+                    <div class="title">Organizer Signature</div>
+                    <div class="name">{{ organizer_signature }}</div>
+                </div>
+                <div class="signature-block">
+                    <div class="line"></div>
+                    <div class="title">Studlyf Authorized Signature</div>
+                    <div class="name">{{ studlyf_signature }}</div>
+                </div>
+            </div>
+            <div class="footer-qr">
+                <img src="data:image/png;base64,{{ qr_blob }}" alt="QR">
+                <div class="qr-label">Verify<br>{{ cert_short_id }}</div>
+            </div>
+            <div class="verify-link">
+                <a href="{{ verification_url }}">Verify Certificate: {{ verification_url }}</a>
             </div>
         </div>
     </div>
 </body>
-</html>
-""")
+</html>""")
+
+    async def issue_event_certificate(
+        self,
+        event_id: str,
+        user_id: str,
+        participant_name: str,
+        event_title: str,
+        organization_name: str,
+        event_date: str,
+        achievement_type: str = "participation",
+        event_code: str = "HACK",
+    ) -> dict:
+        cert_id = generate_certificate_id(event_code)
+        v_code = hashlib.sha256(f"{cert_id}:{event_id}:{user_id}".encode()).hexdigest()[:12].upper()
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        v_url = f"{frontend_url}/verify/{cert_id}"
+        qr_blob = self._generate_qr_blob(v_url)
+        issue_date = datetime.utcnow().strftime("%B %d, %Y")
+        achievement_label = ACHIEVEMENT_TYPES.get(achievement_type, "Participation")
+
+        template_path = os.path.join(os.path.dirname(__file__), '../templates/professional_certificate.html')
+        self._ensure_template(template_path)
+        template = self.jinja_env.get_template('professional_certificate.html')
+
+        html = template.render(
+            participant_name=participant_name,
+            event_title=event_title,
+            organization_name=organization_name,
+            event_date=event_date,
+            certificate_id=cert_id,
+            issued_date=issue_date,
+            qr_blob=qr_blob,
+            verification_url=v_url,
+            cert_short_id=cert_id[-10:],
+            organizer_signature=organization_name,
+            studlyf_signature="Studlyf Authorized Signature",
+        )
+
+        pdf_path = None
+        if HAS_WEASYPRINT:
+            pdf_path = f"artifacts/certs/certificate_{cert_id}.pdf"
+            os.makedirs("artifacts/certs", exist_ok=True)
+            HTML(string=html).write_pdf(pdf_path)
+
+        record = {
+            "certificate_id": cert_id,
+            "event_id": event_id,
+            "user_id": user_id,
+            "participant_name": participant_name,
+            "event_title": event_title,
+            "organization_name": organization_name,
+            "event_date": event_date,
+            "achievement_type": achievement_label,
+            "achievement_key": achievement_type,
+            "issued_at": datetime.utcnow(),
+            "issued_date": issue_date,
+            "verification_code": v_code,
+            "verification_url": v_url,
+            "pdf_path": pdf_path,
+            "immutable_flag": True,
+        }
+        await event_certificates_col.insert_one(record)
+        record["_id"] = str(record["_id"])
+
+        return record
+
+    async def get_certificate(self, certificate_id: str) -> dict:
+        cert = await event_certificates_col.find_one({"certificate_id": certificate_id})
+        if cert:
+            cert["_id"] = str(cert["_id"])
+        return cert
+
+    async def get_user_certificates(self, event_id: str, user_id: str) -> list:
+        cursor = event_certificates_col.find({"event_id": event_id, "user_id": user_id}).sort("issued_at", -1)
+        certs = await cursor.to_list(length=None)
+        for c in certs:
+            c["_id"] = str(c["_id"])
+        return certs
+
+    async def get_event_certificates(self, event_id: str) -> list:
+        cursor = event_certificates_col.find({"event_id": event_id}).sort("issued_at", -1)
+        certs = await cursor.to_list(length=None)
+        for c in certs:
+            c["_id"] = str(c["_id"])
+        return certs
+
+
+async def enqueue_certificate_job(event_id: str, achievement_type: str = "participation", event_code: str = "HACK") -> str:
+    """Create a certificate generation job in the queue. Returns job_id."""
+    from db import certificate_jobs_col
+    from bson import ObjectId as _oid
+    result = await certificate_jobs_col.insert_one({
+        "event_id": event_id,
+        "achievement_type": achievement_type,
+        "event_code": event_code,
+        "status": "pending",
+        "processed": 0,
+        "total": 0,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    })
+    return str(result.inserted_id)
+
+
+async def process_certificate_jobs():
+    """Background worker: polls certificate_jobs_col for pending jobs and processes them."""
+    import asyncio
+    from db import certificate_jobs_col, events_col, participants_col, users_col, event_certificates_col
+    from services.email_template_service import send_template_email
+
+    while True:
+        try:
+            job = await certificate_jobs_col.find_one_and_update(
+                {"status": "pending"},
+                {"$set": {"status": "processing", "started_at": datetime.utcnow()}},
+                sort=[("created_at", 1)],
+            )
+            if not job:
+                await asyncio.sleep(5)
+                continue
+
+            event_id = job["event_id"]
+            achievement_type = job.get("achievement_type", "participation")
+            event_code = job.get("event_code", "HACK")
+            event = await events_col.find_one({"_id": ObjectId(event_id)}) if event_id else None
+            if not event:
+                await certificate_jobs_col.update_one(
+                    {"_id": job["_id"]},
+                    {"$set": {"status": "failed", "error": "Event not found", "completed_at": datetime.utcnow()}},
+                )
+                continue
+
+            event_title = event.get("title", "Untitled Event")
+            org_name = event.get("organisation") or event.get("organization") or "Unknown"
+            event_date = event.get("eventDate") or event.get("start_date") or datetime.utcnow().strftime("%B %d, %Y")
+            institution_id = str(event.get("institution_id", ""))
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+            template = await get_active_template(event_id, institution_id, "certificate_issued")
+
+            cursor = participants_col.find({"event_id": event_id})
+            total = await participants_col.count_documents({"event_id": event_id})
+            processed = 0
+
+            async for participant in cursor:
+                pid = participant.get("user_id")
+                if not pid:
+                    continue
+
+                existing = await event_certificates_col.find_one({
+                    "event_id": event_id, "user_id": pid, "achievement_key": achievement_type
+                })
+                if existing:
+                    processed += 1
+                    continue
+
+                pname = participant.get("name") or participant.get("participant_name") or "Participant"
+                puser = await users_col.find_one({"user_id": pid})
+
+                record = await certificate_service.issue_event_certificate(
+                    event_id=event_id,
+                    user_id=pid,
+                    participant_name=pname,
+                    event_title=event_title,
+                    organization_name=org_name,
+                    event_date=event_date,
+                    achievement_type=achievement_type,
+                    event_code=event_code[:6].upper(),
+                )
+
+                try:
+                    pemail = (puser or {}).get("email", "").strip()
+                    if pemail and template:
+                        context = {
+                            "participant_name": pname,
+                            "event_title": event_title,
+                            "organization_name": org_name,
+                            "event_date": event_date,
+                            "certificate_id": record["certificate_id"],
+                            "issued_date": record["issued_date"],
+                            "certificate_download_link": f"{frontend_url}/certificates/certificate_{record['certificate_id']}.pdf",
+                            "verification_url": record["verification_url"],
+                        }
+                        subj, body = render_template(template, context)
+                        from services.email_service import send_notification_email
+                        await send_notification_email(pemail, subj, body)
+                except Exception as e:
+                    print(f"[CERT BG EMAIL FAIL] {pid}: {e}")
+
+                processed += 1
+                await certificate_jobs_col.update_one(
+                    {"_id": job["_id"]},
+                    {"$set": {"processed": processed, "updated_at": datetime.utcnow()}},
+                )
+
+            await certificate_jobs_col.update_one(
+                {"_id": job["_id"]},
+                {"$set": {"status": "completed", "processed": processed, "total": total, "completed_at": datetime.utcnow()}},
+            )
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[CERT QUEUE ERROR] {e}")
+            await asyncio.sleep(10)
+
 
 certificate_service = InstitutionalCertificateService()

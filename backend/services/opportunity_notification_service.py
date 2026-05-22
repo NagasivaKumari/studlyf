@@ -7,103 +7,83 @@ Handles email notifications for opportunities:
 """
 
 import asyncio
+import os
 from datetime import datetime, timedelta
 from db import db, users_col, opportunities_col, events_col, participants_col
 from services.email_service import send_notification_email
+from services.email_template_service import get_active_template, render_template
 from bson import ObjectId
 
 opportunity_emails_log_col = db["opportunity_emails_log"]
 
 async def send_new_opportunity_email(opportunity: dict, event: dict = None) -> dict:
     """
-    Send immediate email to all registered students about a new opportunity.
-    
-    Args:
-        opportunity: The opportunity document
-        event: Optional event document for additional context
-    
-    Returns:
-        dict with sent_count and failed_count
+    Send immediate email to all users about a new opportunity.
+    Uses the DB-based template system (supports event-level, institution-level, default overrides).
     """
     sent_count = 0
     failed_count = 0
-    
+    log_entries = []
+
     try:
-        # Get all users in the database
+        event_data = event or {}
+        org_name = opportunity.get("organization") or event_data.get("organisation") or "Unknown Organization"
+        event_mode = opportunity.get("location") or event_data.get("opportunityMode") or "Online"
+        prize_pool = opportunity.get("prizePool") or event_data.get("prize_pool") or opportunity.get("prize_pool") or "Not specified"
+        eligibility = opportunity.get("candidateTypes") or event_data.get("candidateTypes") or []
+        eligibility_str = ", ".join(eligibility) if isinstance(eligibility, list) else (str(eligibility) or "Open to all")
+        short_desc = opportunity.get("description") or event_data.get("description") or ""
+        if len(short_desc) > 250:
+            short_desc = short_desc[:250] + "..."
+
         all_users = await users_col.find({}).to_list(length=None)
-        
+
         opp_id = str(opportunity.get("_id", ""))
-        opp_title = opportunity.get("title") or ""
-        opp_org = opportunity.get("organization") or ""
-        opp_deadline = opportunity.get("deadline")
-        opp_type = opportunity.get("type") or ""
-        
-        # Format deadline
+        opp_title = opportunity.get("title") or event_data.get("title") or ""
+        opp_deadline = opportunity.get("deadline") or event_data.get("registrationDeadline")
+        opp_type = opportunity.get("type") or event_data.get("opportunityType") or ""
+
+        institution_id = str(event_data.get("institution_id", "")) if event_data else ""
+
         deadline_str = "Not specified"
         if opp_deadline:
             if isinstance(opp_deadline, str):
                 deadline_str = opp_deadline
             else:
                 deadline_str = opp_deadline.strftime("%B %d, %Y")
-        
-        # Email template
-        type_label = f" {opp_type}" if opp_type else ""
-        email_subject = f"🚀 New{type_label} Opportunity: {opp_title}" if opp_title else f"🚀 New{type_label} Opportunity"
-        email_body = f"""
-        <html>
-            <body style="font-family: system-ui, -apple-system, sans-serif; color: #111827; line-height: 1.6;">
-                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
-                        <h1 style="margin: 0; font-size: 28px; font-weight: 900;">{opp_title or (opp_type or 'New')}</h1>
-                        <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">Don't miss out on this exciting opportunity</p>
-                    </div>
 
-                    <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #667eea;">
-                        <h2 style="margin: 0 0 10px 0; color: #111827; font-size: 20px;">{opp_title}</h2>
-                        <p style="margin: 0; color: #64748b; font-weight: 600;">By: {opp_org}</p>
-                    </div>
+        email_subject = f"New Opportunity: {opp_title} by {org_name}"
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+        event_link = f"{frontend_url}/opportunities/{opp_id}"
 
-                    <div style="background: white; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                        <div style="margin-bottom: 15px;">
-                            <span style="background: #dbeafe; color: #1e40af; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase;">{opp_type}</span>
-                        </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
-                            <div>
-                                <p style="margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: 600;">Deadline</p>
-                                <p style="margin: 5px 0 0 0; color: #111827; font-weight: 600; font-size: 14px;">{deadline_str}</p>
-                            </div>
-                            <div>
-                                <p style="margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: 600;">Posted On</p>
-                                <p style="margin: 5px 0 0 0; color: #111827; font-weight: 600; font-size: 14px;">{datetime.utcnow().strftime('%B %d, %Y')}</p>
-                            </div>
-                        </div>
-                    </div>
+        # Resolve template from DB (event-level > institution-level > default)
+        template = await get_active_template(opp_id, institution_id, "new_opportunity")
+        base_context = {
+            "event_title": opp_title or "Untitled Opportunity",
+            "organization_name": org_name,
+            "event_type": opp_type or "General",
+            "event_mode": event_mode,
+            "registration_deadline": deadline_str,
+            "prize_pool": prize_pool,
+            "eligibility": eligibility_str,
+            "short_description": short_desc,
+            "event_link": event_link,
+            "frontend_url": frontend_url,
+        }
 
-                    <div style="text-align: center; margin-bottom: 30px;">
-                        <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/opportunities/{opp_id}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-block; transition: transform 0.2s; text-transform: uppercase; letter-spacing: 0.5px;">
-                            View Opportunity
-                        </a>
-                    </div>
-
-                    <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; text-align: center; color: #64748b; font-size: 12px;">
-                        <p style="margin: 0;">You're receiving this because you're registered on Studlyf. <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/settings/notifications" style="color: #667eea; text-decoration: none;">Manage preferences</a></p>
-                    </div>
-                </div>
-            </body>
-        </html>
-        """
-        
-        # Send to all registered students
         for user in all_users:
             try:
                 email = user.get("email", "").strip()
                 if not email:
                     continue
-                asyncio.create_task(send_notification_email(email, email_subject, email_body))
+
+                participant_name = user.get("name") or user.get("full_name") or user.get("displayName") or "there"
+                context = {**base_context, "participant_name": participant_name}
+                subj, body = render_template(template, context)
+
+                await send_notification_email(email, subj or email_subject, body)
                 sent_count += 1
-                
-                # Log the email sent
-                await opportunity_emails_log_col.insert_one({
+                log_entries.append({
                     "opportunity_id": opp_id,
                     "user_id": user.get("user_id"),
                     "email": email,
@@ -111,16 +91,23 @@ async def send_new_opportunity_email(opportunity: dict, event: dict = None) -> d
                     "sent_at": datetime.utcnow(),
                     "status": "sent"
                 })
+
             except Exception as e:
                 failed_count += 1
-                print(f"Failed to send email to {user.get('email')}: {str(e)}")
-        
-        print(f"New opportunity emails sent: {sent_count}, failed: {failed_count}")
+                print(f"[EMAIL FAIL] {user.get('email')}: {str(e)}")
+
+        if log_entries:
+            try:
+                await opportunity_emails_log_col.insert_many(log_entries, ordered=False)
+            except Exception as log_err:
+                print(f"[LOG FAIL] Failed to bulk insert logs: {str(log_err)}")
+
+        print(f"[EMAIL] New opportunity: sent={sent_count}, failed={failed_count}")
         return {"sent_count": sent_count, "failed_count": failed_count, "opportunity_id": opp_id}
-        
+
     except Exception as e:
-        print(f"Error in send_new_opportunity_email: {str(e)}")
-        return {"sent_count": 0, "failed_count": 0, "error": str(e)}
+        print(f"[EMAIL ERROR] send_new_opportunity_email: {str(e)}")
+        return {"sent_count": sent_count, "failed_count": failed_count, "error": str(e)}
 
 
 async def send_deadline_reminder_emails(days_until: int = 3) -> dict:
@@ -178,46 +165,18 @@ async def send_deadline_reminder_emails(days_until: int = 3) -> dict:
                         if not email:
                             continue
                         
-                        # Prepare email
-                        email_subject = f"⏰ Reminder: {days_until} day{'s' if days_until != 1 else ''} left to apply for {opp_title}"
-                        email_body = f"""
-                        <html>
-                            <body style="font-family: system-ui, -apple-system, sans-serif; color: #111827; line-height: 1.6;">
-                                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                                    <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
-                                        <h1 style="margin: 0; font-size: 28px; font-weight: 900;">⏰ Time's Running Out!</h1>
-                                        <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">Only {days_until} day{'s' if days_until != 1 else ''} left to apply</p>
-                                    </div>
-
-                                    <div style="background: #fffbeb; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #f59e0b;">
-                                        <h2 style="margin: 0 0 10px 0; color: #111827; font-size: 20px;">{opp_title}</h2>
-                                        <p style="margin: 0; color: #64748b; font-weight: 600;">By: {opp_org}</p>
-                                    </div>
-
-                                    <div style="background: white; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                                        <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                                            <p style="margin: 0; color: #92400e; font-weight: 600; font-size: 14px;">
-                                                📌 Deadline: {opp.get('deadline', '').strftime('%B %d, %Y at %I:%M %p') if isinstance(opp.get('deadline'), datetime) else opp.get('deadline')}
-                                            </p>
-                                        </div>
-                                        <p style="margin: 0; color: #64748b;">Don't miss this amazing opportunity! Click the button below to apply now.</p>
-                                    </div>
-
-                                    <div style="text-align: center; margin-bottom: 30px;">
-                                        <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/opportunities/{opp_id}" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-block; text-transform: uppercase; letter-spacing: 0.5px;">
-                                            Apply Now
-                                        </a>
-                                    </div>
-
-                                    <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; text-align: center; color: #64748b; font-size: 12px;">
-                                        <p style="margin: 0;">You're receiving this deadline reminder because you're registered on Studlyf.</p>
-                                    </div>
-                                </div>
-                            </body>
-                        </html>
-                        """
-                        
-                        await send_notification_email(email, email_subject, email_body)
+                        # Prepare email via template system
+                        reminder_dt = opp.get('deadline')
+                        reminder_date = reminder_dt.strftime('%B %d, %Y') if isinstance(reminder_dt, datetime) else str(reminder_dt or '')
+                        from services.platform_notification_service import notify_opportunity_reminder
+                        await notify_opportunity_reminder(
+                            recipient_email=email,
+                            participant_name=user.get("name") or user.get("full_name") or "Student",
+                            event_title=opp_title,
+                            organization_name=opp_org,
+                            registration_deadline=reminder_date,
+                            event_link=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/opportunities/{opp_id}",
+                        )
                         sent_count += 1
                         
                         # Log the reminder
