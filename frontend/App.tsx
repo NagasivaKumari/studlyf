@@ -59,6 +59,9 @@ import OpportunityDetails from './pages/opportunities/OpportunityDetails';
 import MyApplications from './pages/opportunities/MyApplications';
 import EventHub from './pages/events/EventHub';
 import EventQuizPage from './pages/events/EventQuizPage';
+import EventPackagePage from './pages/events/EventPackagePage';
+import ParticipantPortal from './pages/events/ParticipantPortal';
+import ParticipantCardPage from './pages/events/ParticipantCardPage';
 import JudgePortalLayout from './pages/judge/JudgePortalLayout';
 import EvaluationPage from './pages/EvaluationPage';
 import HackathonWelcomePopup from './components/HackathonWelcomePopup';
@@ -323,6 +326,10 @@ const App: React.FC = () => {
             <Route path="/opportunities/my-applications" element={<ProtectedRoute><MyApplications /></ProtectedRoute>} />
             <Route path="/opportunities/:id" element={<ProtectedRoute><OpportunityDetails /></ProtectedRoute>} />
             <Route path="/events/:eventId" element={<ProtectedRoute><EventHub /></ProtectedRoute>} />
+            <Route path="/events/:eventId/package" element={<ProtectedRoute><EventPackagePage /></ProtectedRoute>} />
+            <Route path="/events/:eventId/package/card" element={<ProtectedRoute><ParticipantCardPage /></ProtectedRoute>} />
+            <Route path="/events/:eventId/portal" element={<ProtectedRoute><ParticipantPortal /></ProtectedRoute>} />
+            <Route path="/events/:eventId/card" element={<ProtectedRoute><ParticipantCardPage /></ProtectedRoute>} />
             <Route path="/events/:eventId/quiz/:quizId" element={<ProtectedRoute><EventQuizPage /></ProtectedRoute>} />
             <Route path="/learn/career-onboarding" element={<ProtectedRoute><CareerOnboarding /></ProtectedRoute>} />
 

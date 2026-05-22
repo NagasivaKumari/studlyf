@@ -172,3 +172,10 @@ backend/scripts/db_integration_test.py
 
 # Frontend build output (should never be committed)
 frontend/dist/
+
+# Standalone mini-projects (separate from main app)
+hackathon-admin/
+participant-card/
+
+# Backend diagnostic files
+backend/db_diagnostics.txt

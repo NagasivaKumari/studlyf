@@ -179,22 +179,7 @@ const Navigation: React.FC = () => {
                 >
                   OPPORTUNITIES
                 </Link>
-                {user && (
-                  <Link
-                    to="/dashboard/my-courses"
-                    className="flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-[#4B5563] hover:text-[#7C3AED]"
-                  >
-                    MY COURSES
-                  </Link>
-                )}
-                {user && role !== 'institution' && (
-                  <Link
-                    to="/opportunities/my-applications"
-                    className="hidden xl:flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-[#4B5563] hover:text-[#7C3AED]"
-                  >
-                    MY APPLICATIONS
-                  </Link>
-                )}
+
                 
                 {user ? (
                   <>

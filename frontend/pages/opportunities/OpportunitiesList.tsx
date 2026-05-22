@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Filter, Briefcase, Calendar, MapPin, ChevronRight, ChevronLeft, Sparkles, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -6,16 +6,60 @@ import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
 import { plainTextFromRichContent, formatOpportunityLocation } from '../../utils/text';
 
+const typeOptions = ['All', 'My Events', 'Hackathon', 'Competition', 'Challenge', 'Conference', 'Workshop', 'Case Study', 'Webinar', 'Internship', 'Job'];
+const locationOptions = ['All', 'Remote', 'On-site', 'Hybrid'];
+const sortOptions = ['Newest', 'Deadline soon', 'Most applied'];
+
+const normalizeText = (value: unknown) => String(value ?? '').toLowerCase();
+
+const matchesOpportunityType = (opportunityType: unknown, selectedType: string) => {
+    if (selectedType === 'All') return true;
+
+    const type = normalizeText(opportunityType);
+    const keywordMap: Record<string, string[]> = {
+        'my events': [],
+        hackathon: ['hackathon', 'coding challenge', 'coding challenge', 'coding challenges', 'contest'],
+        competition: ['competition', 'contest', 'challenge', 'case competition'],
+        challenge: ['challenge', 'coding challenge', 'ideathon'],
+        conference: ['conference', 'summit', 'expo', 'forum'],
+        workshop: ['workshop', 'bootcamp', 'masterclass'],
+        'case study': ['case study', 'case competition', 'case challenge'],
+        webinar: ['webinar', 'virtual session', 'online session'],
+        internship: ['internship', 'trainee', 'apprenticeship', 'placement'],
+        job: ['job', 'role', 'career', 'hiring']
+    };
+
+    const selected = selectedType.toLowerCase();
+    const keywords = keywordMap[selected] || [selected];
+    return keywords.some((keyword) => type.includes(keyword));
+};
+
+const matchesLocation = (location: unknown, selectedLocation: string) => {
+    if (selectedLocation === 'All') return true;
+    const text = normalizeText(location);
+    if (!text) return selectedLocation === 'Remote' ? false : true;
+    if (selectedLocation === 'Remote') return text.includes('remote') || text.includes('online') || text.includes('virtual');
+    if (selectedLocation === 'On-site') return text.includes('on-site') || text.includes('onsite') || text.includes('in-person') || text.includes('offline');
+    if (selectedLocation === 'Hybrid') return text.includes('hybrid');
+    return true;
+};
+
+const safeDateValue = (value: unknown) => {
+    const date = new Date(String(value ?? ''));
+    return Number.isNaN(date.getTime()) ? new Date(0) : date;
+};
 const OpportunitiesList: React.FC = () => {
     const [opportunities, setOpportunities] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedType, setSelectedType] = useState('All');
+    const [selectedLocation, setSelectedLocation] = useState('All');
+    const [selectedSort, setSelectedSort] = useState('Newest');
+    const [showAppliedOnly, setShowAppliedOnly] = useState(false);
+    const [isFiltersOpen, setIsFiltersOpen] = useState(false);
     const [appliedIds, setAppliedIds] = useState<string[]>([]);
     const navigate = useNavigate();
     const { user } = useAuth();
-
-    const types = ['All', 'My Events', 'Hackathon', 'Competition', 'Challenge', 'Conference', 'Workshop', 'Case Study', 'Webinar', 'Internship', 'Job'];
 
     useEffect(() => {
         const fetchData = async () => {
@@ -41,14 +85,41 @@ const OpportunitiesList: React.FC = () => {
         fetchData();
     }, [user]);
 
-    const filteredOpportunities = opportunities.filter(opp => {
-        const matchesSearch = opp.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                             opp.organization.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesType = selectedType === 'All' || 
-                           (selectedType === 'My Events' && appliedIds.includes(opp._id)) ||
-                           opp.type.toLowerCase() === selectedType.toLowerCase();
-        return matchesSearch && matchesType;
-    });
+    const filteredOpportunities = useMemo(() => {
+        const query = normalizeText(searchQuery).trim();
+
+        const filtered = opportunities.filter((opp) => {
+            const title = normalizeText(opp.title);
+            const organization = normalizeText(opp.organization);
+            const description = normalizeText(plainTextFromRichContent(opp.description));
+            const locationLabel = normalizeText(formatOpportunityLocation(opp.location));
+            const matchesSearch = !query || title.includes(query) || organization.includes(query) || description.includes(query) || locationLabel.includes(query);
+            const matchesApplied = !showAppliedOnly || appliedIds.includes(opp._id);
+            const matchesType = selectedType === 'My Events'
+                ? appliedIds.includes(opp._id)
+                : matchesOpportunityType(opp.type, selectedType);
+            const matchesSelectedLocation = matchesLocation(opp.location, selectedLocation);
+
+            return matchesSearch && matchesApplied && matchesType && matchesSelectedLocation;
+        });
+
+        const sorted = [...filtered].sort((a, b) => {
+            if (selectedSort === 'Most applied') {
+                return (Number(b.applicantsCount) || 0) - (Number(a.applicantsCount) || 0);
+            }
+
+            const dateA = safeDateValue(a.deadline).getTime();
+            const dateB = safeDateValue(b.deadline).getTime();
+
+            if (selectedSort === 'Deadline soon') {
+                return dateA - dateB;
+            }
+
+            return dateB - dateA;
+        });
+
+        return sorted;
+    }, [appliedIds, opportunities, searchQuery, selectedLocation, selectedSort, selectedType, showAppliedOnly]);
 
     const getTypeColor = (type: string) => {
         switch (type.toLowerCase()) {
@@ -57,8 +128,20 @@ const OpportunitiesList: React.FC = () => {
             case 'internship': return 'text-blue-600 bg-blue-50 border-blue-100';
             case 'job': return 'text-green-600 bg-green-50 border-green-100';
             case 'competition': return 'text-orange-600 bg-orange-50 border-orange-100';
+            case 'conference': return 'text-cyan-600 bg-cyan-50 border-cyan-100';
+            case 'workshop': return 'text-fuchsia-600 bg-fuchsia-50 border-fuchsia-100';
+            case 'case study': return 'text-amber-600 bg-amber-50 border-amber-100';
+            case 'webinar': return 'text-indigo-600 bg-indigo-50 border-indigo-100';
             default: return 'text-slate-600 bg-slate-50 border-slate-100';
         }
+    };
+
+    const resetFilters = () => {
+        setSelectedType('All');
+        setSelectedLocation('All');
+        setSelectedSort('Newest');
+        setSearchQuery('');
+        setShowAppliedOnly(false);
     };
 
     return (
@@ -100,26 +183,66 @@ const OpportunitiesList: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-3">
-                        {types.map(type => (
+                    {/* Category chips: single horizontal row; filters live on the right (desktop) or toggle (mobile) */}
+                    <div className="flex items-center gap-3 overflow-x-auto py-4">
+                        <div className="flex gap-3">
+                            {typeOptions.map((type) => (
+                                <button
+                                    key={type}
+                                    onClick={() => setSelectedType(type)}
+                                    className={`px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all border flex-shrink-0 ${
+                                        selectedType === type
+                                        ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/20'
+                                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                                    }`}
+                                >
+                                    {type}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex-1" />
+                        <div className="hidden xl:flex items-center">
                             <button
-                                key={type}
-                                onClick={() => setSelectedType(type)}
-                                className={`px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all border ${
-                                    selectedType === type 
-                                    ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/20' 
-                                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                                }`}
+                                onClick={() => setIsFiltersOpen((v) => !v)}
+                                className="inline-flex items-center gap-2 px-5 py-2 rounded-2xl bg-slate-900 text-white text-sm font-black uppercase tracking-widest shadow-xl shadow-slate-900/15"
                             >
-                                {type}
+                                <Filter size={16} /> Filters
                             </button>
-                        ))}
+                        </div>
                     </div>
                 </div>
             </div>
 
+            <AnimatePresence>
+                {isFiltersOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -12 }}
+                        className="lg:hidden px-6 pt-6"
+                    >
+                        <div className="max-w-7xl mx-auto bg-white border border-slate-100 rounded-[28px] shadow-lg p-5 space-y-5">
+                            <FilterPanel
+                                selectedType={selectedType}
+                                setSelectedType={setSelectedType}
+                                selectedLocation={selectedLocation}
+                                setSelectedLocation={setSelectedLocation}
+                                selectedSort={selectedSort}
+                                setSelectedSort={setSelectedSort}
+                                showAppliedOnly={showAppliedOnly}
+                                setShowAppliedOnly={setShowAppliedOnly}
+                                resetFilters={resetFilters}
+                                getTypeColor={getTypeColor}
+                            />
+                        </div>
+                    </motion.div>
+                )}
+
+            </AnimatePresence>
+
             {/* Content Section */}
-            <div className="max-w-7xl mx-auto px-6 mt-12">
+            <div className="max-w-7xl mx-auto px-6 mt-12 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8 lg:items-start">
+                <div>
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-32 space-y-4">
                         <div className="relative">
@@ -131,7 +254,7 @@ const OpportunitiesList: React.FC = () => {
                         <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Synchronizing Stream...</p>
                     </div>
                 ) : filteredOpportunities.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         {filteredOpportunities.map((opp, idx) => (
                             <motion.div
                                 initial={{ opacity: 0, y: 20 }}
@@ -212,17 +335,133 @@ const OpportunitiesList: React.FC = () => {
                         </div>
                         <h2 className="text-2xl font-black text-slate-900 mb-2">No opportunities found</h2>
                         <p className="text-slate-400 font-bold mb-8">Try adjusting your filters or search terms</p>
-                        <button 
-                            onClick={() => { setSelectedType('All'); setSearchQuery(''); }}
-                            className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20"
-                        >
-                            Reset Filters
-                        </button>
                     </div>
                 )}
+                </div>
+
+                <aside className="hidden lg:block self-start">
+                    <div className="bg-white border border-slate-100 rounded-[28px] shadow-sm p-6 space-y-6">
+                        <FilterPanel
+                            selectedType={selectedType}
+                            setSelectedType={setSelectedType}
+                            selectedLocation={selectedLocation}
+                            setSelectedLocation={setSelectedLocation}
+                            selectedSort={selectedSort}
+                            setSelectedSort={setSelectedSort}
+                            showAppliedOnly={showAppliedOnly}
+                            setShowAppliedOnly={setShowAppliedOnly}
+                            resetFilters={resetFilters}
+                            getTypeColor={getTypeColor}
+                        />
+                    </div>
+                </aside>
             </div>
         </div>
     );
 };
 
+interface FilterPanelProps {
+    selectedType: string;
+    setSelectedType: React.Dispatch<React.SetStateAction<string>>;
+    selectedLocation: string;
+    setSelectedLocation: React.Dispatch<React.SetStateAction<string>>;
+    selectedSort: string;
+    setSelectedSort: React.Dispatch<React.SetStateAction<string>>;
+    showAppliedOnly: boolean;
+    setShowAppliedOnly: React.Dispatch<React.SetStateAction<boolean>>;
+    resetFilters: () => void;
+    getTypeColor: (type: string) => string;
+}
+
+const FilterPanel: React.FC<FilterPanelProps> = ({
+    selectedType,
+    setSelectedType,
+    selectedLocation,
+    setSelectedLocation,
+    selectedSort,
+    setSelectedSort,
+    showAppliedOnly,
+    setShowAppliedOnly,
+    resetFilters,
+    getTypeColor,
+}) => {
+    return (
+        <>
+            <div className="flex items-center justify-between gap-3">
+                <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-500">Filters</p>
+                    <h2 className="text-lg font-black text-slate-900 mt-1">Narrow results</h2>
+                </div>
+                <button
+                    onClick={resetFilters}
+                    className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-700 transition-colors"
+                >
+                    Reset
+                </button>
+            </div>
+
+            <div className="space-y-3">
+                <label className="block text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                    {typeOptions.map((type) => (
+                        <button
+                            key={type}
+                            onClick={() => setSelectedType(type)}
+                            className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                selectedType === type
+                                    ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-900/15'
+                                    : `bg-white border-slate-200 hover:border-slate-300 ${getTypeColor(type)}`
+                            }`}
+                        >
+                            {type}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <label className="block text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Location</label>
+                <div className="grid grid-cols-2 gap-2">
+                    {locationOptions.map((location) => (
+                        <button
+                            key={location}
+                            onClick={() => setSelectedLocation(location)}
+                            className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                selectedLocation === location
+                                    ? 'bg-purple-600 text-white border-purple-600 shadow-lg shadow-purple-600/15'
+                                    : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                            }`}
+                        >
+                            {location}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <label className="block text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Sort by</label>
+                <select
+                    value={selectedSort}
+                    onChange={(e) => setSelectedSort(e.target.value)}
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
+                >
+                    {sortOptions.map((sort) => (
+                        <option key={sort} value={sort}>{sort}</option>
+                    ))}
+                </select>
+            </div>
+
+            <button
+                onClick={() => setShowAppliedOnly((value) => !value)}
+                className={`w-full px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.24em] border transition-all ${
+                    showAppliedOnly
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                }`}
+            >
+                {showAppliedOnly ? 'Showing applied only' : 'Show applied only'}
+            </button>
+        </>
+    );
+};
 export default OpportunitiesList;

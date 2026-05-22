@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from db import participants_col, opportunities_col, events_col
 from datetime import datetime, timezone
 from bson import ObjectId
+from services.stage_service import get_event_stages
 
 async def check_stage_submission_access(
     event_id: str, 
@@ -64,6 +65,50 @@ async def check_stage_submission_access(
                 detail=f"You cannot submit at this stage. Your application status is '{current_status}'. "
                        f"Only shortlisted participants can submit. Please wait for admin review."
             )
+
+        # Additional rule: if the stage requires a team, ensure participant belongs to a team
+        # unless the event explicitly allows individual progression without a team.
+        try:
+            event = await events_col.find_one({"_id": ObjectId(event_id)})
+        except Exception:
+            event = await events_col.find_one({"event_link_id": str(event_id)})
+
+        allow_individual = False
+        try:
+            if event and event.get("allow_individual_progress_with_no_team"):
+                allow_individual = True
+        except:
+            allow_individual = False
+
+        # If participant has no team, check stage config for team requirement
+        if not participant.get("team_id") and not allow_individual:
+            # Look up event stages and find a SUBMISSION stage config
+            try:
+                stages = await get_event_stages(str(event.get("_id"))) if event else []
+                submission_stage = None
+                for s in stages:
+                    if (s.get("type") or "").upper() == "SUBMISSION":
+                        submission_stage = s
+                        break
+                team_required = False
+                if submission_stage:
+                    # stage-level config overrides
+                    cfg = submission_stage.get("config") or {}
+                    if isinstance(cfg, dict) and cfg.get("team_required") is not None:
+                        team_required = bool(cfg.get("team_required"))
+                    else:
+                        team_required = bool(submission_stage.get("team_required", False))
+
+                if team_required:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="This stage requires a team. Please form or join a team before submitting."
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                # If we can't determine stage config, be conservative and allow (don't block unexpectedly)
+                pass
     
     elif stage_type == "team_formation":
         # Registered participants can form teams

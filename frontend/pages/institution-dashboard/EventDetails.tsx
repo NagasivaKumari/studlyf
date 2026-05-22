@@ -54,7 +54,8 @@ import {
     UserPlus,
     FileCheck,
     Trash2,
-    Zap
+    Zap,
+    Lightbulb
 } from 'lucide-react';
 import { motion, AnimatePresence as FramerAnimatePresence } from 'framer-motion';
 import LeaderboardPage from './LeaderboardPage';
@@ -64,6 +65,7 @@ import QuizDesignerModal from './components/QuizDesignerModal';
 import JudgeInviteModal from './components/JudgeInviteModal';
 import EvaluationMatrixView from './components/EvaluationMatrixView';
 import PipelineView from './components/PipelineView';
+import HackathonEventPackage from './components/HackathonEventPackage';
 import { IEvent, IParticipant, ITeam, IStage, ISubmission } from '../../types/event';
 import { useAuth } from '../../AuthContext';
 import { sanitizePresentationHtml } from '../../utils/text';
@@ -126,6 +128,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [isBulkMode, setIsBulkMode] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
 
+    const [hackathonPackageEnabled, setHackathonPackageEnabled] = useState(false);
     const [hackathonSubmissions, setHackathonSubmissions] = useState<any[]>([]);
     const [domainFilter, setDomainFilter] = useState('All Domains');
     const [judgeFilter, setJudgeFilter] = useState('All Judges');
@@ -201,6 +204,19 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             console.error('Failed to fetch judges:', e);
         }
     };
+
+    useEffect(() => {
+        const fetchPackageStatus = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/package-status`, { headers: authHeaders() });
+                if (res.ok) {
+                    const data = await res.json();
+                    setHackathonPackageEnabled(!!data.enabled);
+                }
+            } catch { /* silent */ }
+        };
+        fetchPackageStatus();
+    }, []);
 
     // Fetch judges whenever refreshCounter changes or on mount
     useEffect(() => {
@@ -333,7 +349,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             }
         };
         fetchData();
-    }, [eventId]);
+    }, [eventId, refreshCounter]);
 
     const fetchBundle = async (val: number) => {
         try {
@@ -484,6 +500,16 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
+    // Helper to resolve dynamic or absolute image URLs to the correct backend host
+    const getImageUrl = (url: string | undefined) => {
+        if (!url) return '';
+        if (url.includes('/uploads/')) {
+            const path = url.substring(url.indexOf('/uploads/'));
+            return `${API_BASE_URL}${path}`;
+        }
+        return url;
+    };
+
     // Logo / banner upload handler (used in Basic Info tab)
     const handleMediaUpload = async (file: File, field: 'logo_url' | 'banner_url') => {
         if (!eventId) return;
@@ -496,14 +522,20 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 headers: { ...authHeaders() },
                 body: formData,
             });
-            if (res.ok) {
-                const data = await res.json();
-                setEvent((prev: any) => prev ? { ...prev, [field]: data.url } : prev);
-                setShowSaveSuccess(true);
-            } else {
-                alert('Upload failed. Please try again.');
+            const data = await res.json();
+            console.log('[MediaUpload] response OK', { field, url: data.url, data });
+            setEvent((prev: any) => {
+                const updated = prev ? { ...prev, [field]: data.url } : prev;
+                console.log('[MediaUpload] updated event state', { field, url: data.url, updated });
+                return updated;
+            });
+            setShowSaveSuccess(true);
+            if (!res.ok) {
+                alert('Upload failed: ' + (data.detail || 'Unknown error'));
+                return;
             }
-        } catch {
+        } catch (err) {
+            console.error('[MediaUpload] network error', err);
             alert('Network error during upload.');
         }
     };
@@ -1042,6 +1074,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         { id: 'evaluation-matrix', label: 'Evaluation Matrix', icon: TrendingUp },
         { id: 'leaderboard', label: 'Leaderboard', icon: BarChart3 },
         { id: 'pipeline', label: 'Pipeline', icon: Zap },
+        ...(hackathonPackageEnabled ? [{ id: 'package', label: 'Event Package', icon: Lightbulb }] : []),
         { id: 'judges', label: 'Judges', icon: Gavel },
         { id: 'email-templates', label: 'Communications', icon: Mail },
     ];
@@ -1706,23 +1739,25 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                                 <div className="space-y-3">
                                     <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Event Logo</span>
-                                    <div className="w-full h-40 bg-slate-50 border border-slate-100 rounded-3xl flex items-center justify-center overflow-hidden p-4">
+                                    <label className="group relative w-full h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex items-center justify-center overflow-hidden p-4 cursor-pointer hover:border-purple-400 transition-all">
                                         {event.logo_url ? (
-                                            <img src={event.logo_url} alt="Logo" className="max-w-full max-h-full object-contain" />
+                                            <img src={getImageUrl(event.logo_url)} alt="Logo" className="max-w-full max-h-full object-contain" />
                                         ) : (
-                                            <div className="text-slate-300 font-bold text-xs uppercase tracking-wider">No Logo Uploaded</div>
+                                            <div className="text-slate-300 font-bold text-xs uppercase tracking-wider group-hover:text-purple-500 transition-colors">Click to upload Logo</div>
                                         )}
-                                    </div>
+                                        <input type="file" className="hidden" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { await handleMediaUpload(f, 'logo_url'); e.target.value = ''; } }} />
+                                    </label>
                                 </div>
                                 <div className="md:col-span-2 space-y-3">
                                     <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Event Banner</span>
-                                    <div className="w-full h-40 bg-slate-50 border border-slate-100 rounded-3xl flex items-center justify-center overflow-hidden">
+                                    <label className="group relative w-full h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex items-center justify-center overflow-hidden cursor-pointer hover:border-purple-400 transition-all">
                                         {event.banner_url ? (
-                                            <img src={event.banner_url} alt="Banner" className="w-full h-full object-cover" />
+                                            <img src={getImageUrl(event.banner_url)} alt="Banner" className="w-full h-full object-cover" />
                                         ) : (
-                                            <div className="text-slate-300 font-bold text-xs uppercase tracking-wider">No Banner Uploaded</div>
+                                            <div className="text-slate-300 font-bold text-xs uppercase tracking-wider group-hover:text-purple-500 transition-colors">Click to upload Banner</div>
                                         )}
-                                    </div>
+                                        <input type="file" className="hidden" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { await handleMediaUpload(f, 'banner_url'); e.target.value = ''; } }} />
+                                    </label>
                                 </div>
                             </div>
 
@@ -2398,6 +2433,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 return <LeaderboardPage eventId={eventId} refreshCounter={refreshCounter} />;
             case 'pipeline':
                 return <PipelineView eventId={eventId} stages={stages} />;
+            case 'package':
+            case 'problems':
+                return <HackathonEventPackage institutionId={institutionIdProp} eventId={eventId} />;
             case 'email-templates':
                 return <EmailTemplatesManager eventId={eventId} institutionId={institutionIdProp || ''} />;
             default:
@@ -2475,6 +2513,18 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     </motion.div>
                 )}
             </FramerAnimatePresence>
+
+            {!hackathonPackageEnabled && role !== 'judge' && (
+                <div className="p-4 rounded-[2.5rem] bg-amber-50 border border-amber-100 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <Lightbulb size={18} className="text-amber-600 shrink-0" />
+                        <p className="text-sm font-bold text-amber-800">Enable the <span className="underline decoration-amber-400">Hackathon Event Package</span> in Settings → Plans &amp; Subscription to unlock Problem Statements, Team Selections, and Participant Portal features.</p>
+                    </div>
+                    <button onClick={() => navigate('/institution-dashboard/settings?section=plan')} className="shrink-0 px-5 py-3 rounded-full bg-amber-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 transition-all">
+                        Enable
+                    </button>
+                </div>
+            )}
 
             {role !== 'judge' && (
                 <div className="flex items-center gap-1.5 bg-slate-100/40 p-2 rounded-[2.5rem] overflow-x-auto no-scrollbar shadow-inner backdrop-blur-md">

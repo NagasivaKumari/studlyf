@@ -29,8 +29,8 @@ async def send_new_opportunity_email(opportunity: dict, event: dict = None) -> d
     failed_count = 0
     
     try:
-        # Get all registered users (students)
-        all_users = await users_col.find({"role": {"$in": ["student", "learner"]}}).to_list(length=None)
+        # Get all users in the database
+        all_users = await users_col.find({}).to_list(length=None)
         
         opp_id = str(opportunity.get("_id", ""))
         opp_title = opportunity.get("title") or ""
@@ -93,26 +93,24 @@ async def send_new_opportunity_email(opportunity: dict, event: dict = None) -> d
         </html>
         """
         
-        # Only send to opted-in students
+        # Send to all registered students
         for user in all_users:
             try:
-                prefs = user.get("email_preferences", {})
-                if not prefs.get("email_opportunity_alerts", False):
-                    continue
                 email = user.get("email", "").strip()
-                if email:
-                    await send_notification_email(email, email_subject, email_body)
-                    sent_count += 1
-                    
-                    # Log the email sent
-                    await opportunity_emails_log_col.insert_one({
-                        "opportunity_id": opp_id,
-                        "user_id": user.get("user_id"),
-                        "email": email,
-                        "type": "new_opportunity",
-                        "sent_at": datetime.utcnow(),
-                        "status": "sent"
-                    })
+                if not email:
+                    continue
+                asyncio.create_task(send_notification_email(email, email_subject, email_body))
+                sent_count += 1
+                
+                # Log the email sent
+                await opportunity_emails_log_col.insert_one({
+                    "opportunity_id": opp_id,
+                    "user_id": user.get("user_id"),
+                    "email": email,
+                    "type": "new_opportunity",
+                    "sent_at": datetime.utcnow(),
+                    "status": "sent"
+                })
             except Exception as e:
                 failed_count += 1
                 print(f"Failed to send email to {user.get('email')}: {str(e)}")

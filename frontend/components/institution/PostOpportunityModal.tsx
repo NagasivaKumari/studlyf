@@ -228,6 +228,17 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                 ...prev,
                                 organisation: data.name || 'Your Institution'
                             }));
+                            // If institution has saved logo/banner, use them as previews
+                            if (data.logo_url || data.logoUrl) {
+                                setLogoPreview(data.logo_url || data.logoUrl);
+                            }
+                            if (data.banner_url || data.bannerUrl) {
+                                setOpportunityBannerPreview(data.banner_url || data.bannerUrl);
+                            }
+                            if (data.festivalData) {
+                                if (data.festivalData.logo_url) setFestivalLogoPreview(data.festivalData.logo_url);
+                                if (data.festivalData.banner_url) setFestivalBannerPreview(data.festivalData.banner_url);
+                            }
                         }
                     } catch (err) {
                         console.error("Failed to fetch institution profile", err);

@@ -144,8 +144,14 @@ async def update_event(event_id: str, update_data: dict):
     return await get_event_by_id(event_id)
 
 async def delete_event(event_id: str):
-    await events_col.delete_one({"_id": ObjectId(event_id)})
-    return {"message": "Event deleted successfully"}
+    # Soft-delete: mark event as DELETED and hide from students/institution views
+    update = {
+        "status": "DELETED",
+        "visible_to_students": False,
+        "updated_at": datetime.utcnow()
+    }
+    await events_col.update_one({"_id": ObjectId(event_id)}, {"$set": update})
+    return {"message": "Event soft-deleted (status=DELETED)"}
 
 async def update_event_status(event_id: str, status: str):
     """Update event status and auto-sync to opportunities if LIVE."""

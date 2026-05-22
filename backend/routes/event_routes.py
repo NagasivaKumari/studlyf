@@ -46,8 +46,12 @@ async def list_events(
         if status: filters["status"] = status
         if institution_id: filters["institution_id"] = institution_id
     elif role == "institution":
+        # Institution users should not see soft-deleted events by default.
         filters["institution_id"] = str((user or {}).get("institution_id") or institution_id or "")
-        if status: filters["status"] = status
+        if status:
+            filters["status"] = status
+        else:
+            filters["status"] = {"$ne": "DELETED"}
     else:
         filters["status"] = "LIVE"
     return await get_all_events(filters)
@@ -58,6 +62,12 @@ async def view_event(event_id: str, user: Optional[dict] = Depends(get_auth_user
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     role = str((user or {}).get("role") or "").lower()
+    # If event is soft-deleted, only admin/super_admin may view it
+    if str(event.get("status") or "").upper() == "DELETED":
+        if role not in ("admin", "super_admin"):
+            raise HTTPException(status_code=404, detail="Event not found")
+
+    # For non-LIVE events, allow admins to view; institutions and students see only LIVE unless explicitly requested
     if str(event.get("status") or "").upper() not in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
         if role not in ("admin", "super_admin") and str((user or {}).get("institution_id") or "") != str(event.get("institution_id") or ""):
             raise HTTPException(status_code=404, detail="Event not found")
@@ -129,13 +139,32 @@ async def upload_event_media(
         except:
             event_id_obj = event_id
         
+        # Try updating events collection first
         result = await events_col.update_one(
             {"_id": event_id_obj},
             {"$set": {field: url}}
         )
         
-        if result.matched_count == 0:
-            raise HTTPException(status_code=404, detail="Event not found")
+        from db import opportunities_col
+        
+        # Sync to linked opportunity if a matching event was found and updated
+        if result.matched_count > 0:
+            try:
+                await opportunities_col.update_many(
+                    {"event_link_id": str(event_id)},
+                    {"$set": {field: url}}
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger("event_routes").warning(f"[SYNC] Failed to update opportunity media: {e}")
+        else:
+            # Fallback: if the event wasn't in events_col, check if it's a standalone opportunity
+            opp_result = await opportunities_col.update_one(
+                {"_id": event_id_obj},
+                {"$set": {field: url}}
+            )
+            if opp_result.matched_count == 0:
+                raise HTTPException(status_code=404, detail="Event not found")
         
         return {"url": url, "status": "success", "field": field}
         
