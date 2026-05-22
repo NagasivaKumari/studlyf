@@ -68,6 +68,38 @@ const ADS_CSS = `
   position:absolute; bottom:-30px; right:-20px;
   font-family:'Playfair Display',serif; font-size:11rem; font-weight:900;
   color:rgba(255,255,255,.07); line-height:1; }
+
+@keyframes ads-pill-shimmer {
+  0%   { transform: translateX(-180%) skewX(-20deg); }
+  100% { transform: translateX(300%) skewX(-20deg); }
+}
+.ads-cta-pill {
+  position:relative; display:inline-flex; align-items:center; justify-content:center;
+  gap:8px; padding:12px 24px; font-size:.8rem; font-family:'Inter',sans-serif;
+  font-weight:700; letter-spacing:.04em; color:#fff; background:#7c3aed;
+  border:none; border-radius:9999px; cursor:pointer; outline:none; overflow:hidden;
+  margin-top:auto;
+  transition: transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .3s ease, background .3s ease;
+  box-shadow: 0 4px 16px rgba(124,58,237,0.35), 0 1px 0 rgba(255,255,255,0.12) inset;
+}
+.ads-cta-pill::before {
+  content:''; position:absolute; inset:0; border-radius:9999px;
+  background:linear-gradient(180deg,rgba(255,255,255,0.15) 0%,transparent 55%);
+  pointer-events:none; z-index:1;
+}
+.ads-cta-pill::after {
+  content:''; position:absolute; top:0; left:0; width:40%; height:100%;
+  background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,0.22) 50%,transparent 80%);
+  animation: ads-pill-shimmer 2.8s ease-in-out infinite;
+  pointer-events:none; z-index:2;
+}
+.ads-cta-pill:hover {
+  background:#6d28d9; transform:translateY(-2px) scale(1.03);
+  box-shadow: 0 0 0 4px rgba(139,92,246,0.15), 0 0 30px 8px rgba(139,92,246,0.35),
+    0 12px 30px rgba(109,40,217,0.4), 0 1px 0 rgba(255,255,255,0.15) inset;
+}
+.ads-cta-pill:active { transform:translateY(0) scale(0.97); }
+.ads-cta-pill:hover span:last-child { transform:translateX(4px); }
 `;
 
 export function useCSS() {
@@ -131,16 +163,8 @@ function bgStyle(color?: string): React.CSSProperties {
     return val.startsWith('linear') ? { backgroundImage: val } : { background: val };
 }
 
-/* ─── CTA button ────────────────────────────────── */
-const CTA_STYLES: Record<string, React.CSSProperties> = {
-    primary: { background: '#C84B2F', color: '#fff' },
-    dark: { background: '#1A1410', color: '#FFFFFF' },
-    gold: { background: '#D4A847', color: '#1A1410' },
-    sage: { background: '#4A6741', color: '#fff' },
-    'outline-light': { background: 'transparent', border: '1px solid rgba(255,255,255,.35)', color: 'rgba(255,255,255,.85)' },
-    white: { background: '#FFFFFF', color: '#C84B2F', fontWeight: 600 },
-};
-function CtaBtn({ text, link, style: s = 'primary', fullWidth = false }: { text: string; link?: string; style?: string; fullWidth?: boolean }) {
+/* ─── CTA button (purple pill style matching hero) ── */
+function CtaBtn({ text, link, style: _s = 'primary', fullWidth = false }: { text: string; link?: string; style?: string; fullWidth?: boolean }) {
     const handleClick = () => {
         if (link) {
             window.open(link, '_blank', 'noopener,noreferrer');
@@ -153,13 +177,15 @@ function CtaBtn({ text, link, style: s = 'primary', fullWidth = false }: { text:
     };
 
     return (
-        <button onClick={handleClick} style={{
-            fontFamily: "'Inter',sans-serif", fontSize: '.75rem', fontWeight: 600,
-            letterSpacing: '.08em', textTransform: 'uppercase', padding: '12px 18px', borderRadius: 4,
-            border: 'none', cursor: 'pointer', marginTop: 'auto', width: fullWidth ? '100%' : 'fit-content',
-            ...CTA_STYLES[s]
+        <button onClick={handleClick} className="ads-cta-pill" style={{
+            width: fullWidth ? '100%' : 'fit-content',
         }}>
-            {text}
+            <span style={{ position: 'relative', zIndex: 5 }}>{text}</span>
+            <span style={{ position: 'relative', zIndex: 5, display: 'inline-flex', alignItems: 'center', transition: 'transform 0.25s ease' }}>
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                    <path d="M4 10h12M11 5l5 5-5 5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            </span>
         </button>
     );
 }
@@ -171,9 +197,21 @@ function getYoutubeEmbed(url?: string) {
     return match ? `https://www.youtube-nocookie.com/embed/${match[1]}?autoplay=1&mute=1&loop=1&playlist=${match[1]}&controls=0&modestbranding=1` : null;
 }
 
+function resolveMediaUrl(url?: string): string {
+    if (!url) return '';
+    if (url.startsWith('https://launchpad-api.holistichealervedika.com')) {
+        return url.replace('https://launchpad-api.holistichealervedika.com', API_BASE_URL);
+    }
+    if (url.startsWith('/uploads/')) {
+        return `${API_BASE_URL}${url}`;
+    }
+    return url;
+}
+
 /* ─── Card components ──────────────────────────── */
 function VideoCard({ ad }: { ad: AdItem }) {
-    const isVideo = ad.media_type === 'video' || !!getYoutubeEmbed(ad.media_url) || !!ad.media_url?.match(/\.(mp4|webm|mov|ogg)$/i);
+    const resolvedMediaUrl = resolveMediaUrl(ad.media_url);
+    const isVideo = ad.media_type === 'video' || !!getYoutubeEmbed(resolvedMediaUrl) || !!resolvedMediaUrl?.match(/\.(mp4|webm|mov|ogg)$/i);
     return (
         <div className="ads-card-hover" style={{
             flex: '0 0 380px', minHeight: 220,
@@ -182,30 +220,29 @@ function VideoCard({ ad }: { ad: AdItem }) {
         }}>
             <div style={{ position: 'relative', overflow: 'hidden' }}>
                 {isVideo ? (
-                    getYoutubeEmbed(ad.media_url) ? (
+                    getYoutubeEmbed(resolvedMediaUrl) ? (
                         <iframe
-                            src={getYoutubeEmbed(ad.media_url)!}
+                            src={getYoutubeEmbed(resolvedMediaUrl)!}
                             style={{ width: '100%', height: '100%', border: 'none', objectFit: 'cover' }}
                             allow="autoplay; encrypted-media"
                             title={ad.title}
                         />
                     ) : (
                              <video
-                                key={ad.media_url}
-                                src={ad.media_url}
+                                key={resolvedMediaUrl}
+                                src={resolvedMediaUrl}
                                 autoPlay={true}
                                 loop={true}
                                 muted={true}
                                 playsInline={true}
-                                crossOrigin="anonymous"
                                 style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
                             />
                         )
                     ) : (
-                        <img src={ad.media_url} alt={ad.title} crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+                        <img src={resolvedMediaUrl} alt={ad.title} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
                     )}
                 {ad.tag && <div style={{
-                    position: 'absolute', top: 20, left: 20, background: '#C84B2F',
+                    position: 'absolute', top: 20, left: 20, background: '#7c3aed',
                     color: '#fff', fontSize: '.68rem', fontWeight: 600, letterSpacing: '.1em',
                     textTransform: 'uppercase', padding: '6px 14px', borderRadius: 4
                 }}>{ad.tag}</div>}
@@ -235,7 +272,7 @@ function VideoCard({ ad }: { ad: AdItem }) {
                             border: '1px solid rgba(255,255,255,0.1)'
                         }}>{p}</span>)}
                     </div>
-                    {ad.show_cta !== false && <CtaBtn text={ad.cta_text} link={ad.cta_link} style={ad.cta_style} fullWidth={true} />}
+                    {(ad.show_cta !== false || ad.title.toLowerCase().includes("urgent hiring")) && <CtaBtn text={ad.cta_text || "Enroll →"} link={ad.cta_link} style={ad.cta_style} fullWidth={true} />}
                 </div>
             </div>
         </div>
@@ -243,6 +280,7 @@ function VideoCard({ ad }: { ad: AdItem }) {
 }
 
 function ImageCard({ ad }: { ad: AdItem }) {
+    const resolvedMediaUrl = resolveMediaUrl(ad.media_url);
     return (
         <div className="ads-card-hover" style={{
             flex: '0 0 260px', minHeight: 260,
@@ -250,7 +288,7 @@ function ImageCard({ ad }: { ad: AdItem }) {
             background: '#fff', border: '1px solid #f3f4f6', boxShadow: '0 20px 40px rgba(0,0,0,0.06)'
         }}>
             <div style={{ position: 'relative', overflow: 'hidden', height: '120px', flexShrink: 0, background: '#f8fafc' }}>
-                <img src={ad.media_url} alt={ad.title} crossOrigin="anonymous"
+                <img src={resolvedMediaUrl} alt={ad.title}
                     style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
                 {ad.badge && <div style={{
                     position: 'absolute', top: 12, right: 12, background: '#fff',
@@ -277,7 +315,7 @@ function ImageCard({ ad }: { ad: AdItem }) {
                  }}>
                     {ad.description}</p>
                 <div style={{ marginTop: 'auto' }}>
-                    {ad.show_cta !== false && <CtaBtn text={ad.cta_text} link={ad.cta_link} style={ad.cta_style} fullWidth={true} />}
+                    {(ad.show_cta !== false || ad.title.toLowerCase().includes("urgent hiring")) && <CtaBtn text={ad.cta_text || "Enroll →"} link={ad.cta_link} style={ad.cta_style} fullWidth={true} />}
                 </div>
             </div>
         </div>
@@ -285,7 +323,9 @@ function ImageCard({ ad }: { ad: AdItem }) {
 }
 
 function VideoImageCard({ ad }: { ad: AdItem }) {
-    const isVideo = ad.media_type === 'video' || !!getYoutubeEmbed(ad.media_url) || !!ad.media_url?.match(/\.(mp4|webm|mov|ogg)$/i);
+    const resolvedMediaUrl = resolveMediaUrl(ad.media_url);
+    const resolvedSecondaryMediaUrl = resolveMediaUrl(ad.secondary_media_url);
+    const isVideo = ad.media_type === 'video' || !!getYoutubeEmbed(resolvedMediaUrl) || !!resolvedMediaUrl?.match(/\.(mp4|webm|mov|ogg)$/i);
     return (
         <div className="ads-card-hover" style={{
             flex: '0 0 420px', minHeight: 220,
@@ -294,27 +334,26 @@ function VideoImageCard({ ad }: { ad: AdItem }) {
         }}>
             <div style={{ position: 'relative', overflow: 'hidden', borderRight: '1px solid #f3f4f6' }}>
                 {isVideo ? (
-                    getYoutubeEmbed(ad.media_url) ? (
+                    getYoutubeEmbed(resolvedMediaUrl) ? (
                         <iframe
-                            src={getYoutubeEmbed(ad.media_url)!}
+                            src={getYoutubeEmbed(resolvedMediaUrl)!}
                             style={{ width: '100%', height: '100%', border: 'none', objectFit: 'cover' }}
                             allow="autoplay; encrypted-media"
                             title={ad.title}
                         />
                     ) : (
                         <video
-                            key={ad.media_url}
-                            src={ad.media_url}
+                            key={resolvedMediaUrl}
+                            src={resolvedMediaUrl}
                             autoPlay={true}
                             loop={true}
                             muted={true}
                             playsInline={true}
-                            crossOrigin="anonymous"
                             style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#f8fafc' }}
                         />
                     )
                 ) : (
-                    <img src={ad.media_url} alt="Primary" crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#f8fafc' }} />
+                    <img src={resolvedMediaUrl} alt="Primary" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#f8fafc' }} />
                 )}
                 <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(0,0,0,0.5)', color: '#fff', padding: '4px 10px', borderRadius: 4, fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>Main</div>
             </div>
@@ -322,8 +361,8 @@ function VideoImageCard({ ad }: { ad: AdItem }) {
             <div style={{ display: 'grid', gridTemplateRows: '1.2fr 1fr' }}>
                 {/* Secondary Image Area */}
                 <div style={{ position: 'relative', overflow: 'hidden', background: '#f9fafb' }}>
-                    {ad.secondary_media_url ? (
-                        <img src={ad.secondary_media_url} alt="Secondary" crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    {resolvedSecondaryMediaUrl ? (
+                        <img src={resolvedSecondaryMediaUrl} alt="Secondary" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     ) : (
                         <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>
                              <ImageIcon size={32} />
@@ -337,7 +376,7 @@ function VideoImageCard({ ad }: { ad: AdItem }) {
                     <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: '#111', lineHeight: 1.2 }}>{ad.title}</h3>
                     <p style={{ fontSize: '.85rem', color: '#555', margin: 0, overflowY: 'auto', maxHeight: '120px', lineHeight: 1.5 }}>{ad.description}</p>
                     <div style={{ marginTop: 'auto' }}>
-                         {ad.show_cta !== false && <CtaBtn text={ad.cta_text} link={ad.cta_link} style={ad.cta_style} fullWidth={true} />}
+                         {(ad.show_cta !== false || ad.title.toLowerCase().includes("urgent hiring")) && <CtaBtn text={ad.cta_text || "Enroll →"} link={ad.cta_link} style={ad.cta_style} fullWidth={true} />}
                     </div>
                 </div>
             </div>
