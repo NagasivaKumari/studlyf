@@ -6413,7 +6413,9 @@ async def enroll_course(req: EnrollRequest, current_user: dict = Depends(get_cur
                 "created_at": datetime.utcnow()
             }))
             
-            # Notify Institution (if any institution is associated with the course - fallback to general for now)
-            # Find which institution owns this course/track if possible
-            # For now, we'll notify the 'Studlyf' main admin or just skip if no specific inst_id
         return {"status": "success", "message": "Enrolled successfully"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
