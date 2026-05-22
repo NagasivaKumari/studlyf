@@ -1,10 +1,8 @@
 /// <reference types="vite/client" />
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD
-    ? (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000')
-    : 'http://localhost:8000');
+export const API_BASE_URL = import.meta.env.RENDER_EXTERNAL_URL ?? '';
 
-export const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || 'https://studlyf-thub.vercel.app';
+export const FRONTEND_URL = import.meta.env.FRONTEND_URL ?? '';
 
 /** Merge with fetch headers so institution / learner JWT routes work after server hardening. */
 export function authHeaders(): Record<string, string> {
@@ -12,4 +10,8 @@ export function authHeaders(): Record<string, string> {
     return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-console.log('App is running in:', import.meta.env.MODE, 'Targeting API:', API_BASE_URL);
+if (!API_BASE_URL || !FRONTEND_URL) {
+    console.warn('Missing env values. Set FRONTEND_URL and RENDER_EXTERNAL_URL in your env file.');
+}
+
+console.log('App is running in:', import.meta.env.MODE, 'Targeting API:', API_BASE_URL || '(missing env)');

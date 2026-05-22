@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import EmailTemplatesManager from './components/EmailTemplatesManager';
 import { 
@@ -91,6 +91,20 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const { user, role } = useAuth();
     const [activeTab, setActiveTab] = useState(initialSection || 'dashboard');
     const [event, setEvent] = useState<IEvent | null>(null);
+    const [logoError, setLogoError] = useState(false);
+    const [bannerError, setBannerError] = useState(false);
+    const prevLogoUrl = useRef<string | undefined>(undefined);
+    const prevBannerUrl = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        if (event?.logo_url && event.logo_url !== prevLogoUrl.current) {
+            prevLogoUrl.current = event.logo_url;
+            setLogoError(false);
+        }
+        if (event?.banner_url && event.banner_url !== prevBannerUrl.current) {
+            prevBannerUrl.current = event.banner_url;
+            setBannerError(false);
+        }
+    }, [event?.logo_url, event?.banner_url]);
     const [institution, setInstitution] = useState<any>(null);
     const [participants, setParticipants] = useState<IParticipant[]>([]);
     const [stages, setStages] = useState<IStage[]>([]);
@@ -523,17 +537,19 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 body: formData,
             });
             const data = await res.json();
+            if (!res.ok) {
+                alert('Upload failed: ' + (data.detail || 'Unknown error'));
+                return;
+            }
             console.log('[MediaUpload] response OK', { field, url: data.url, data });
             setEvent((prev: any) => {
                 const updated = prev ? { ...prev, [field]: data.url } : prev;
                 console.log('[MediaUpload] updated event state', { field, url: data.url, updated });
                 return updated;
             });
+            if (field === 'logo_url') setLogoError(false);
+            else setBannerError(false);
             setShowSaveSuccess(true);
-            if (!res.ok) {
-                alert('Upload failed: ' + (data.detail || 'Unknown error'));
-                return;
-            }
         } catch (err) {
             console.error('[MediaUpload] network error', err);
             alert('Network error during upload.');
@@ -1740,8 +1756,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 <div className="space-y-3">
                                     <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Event Logo</span>
                                     <label className="group relative w-full h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex items-center justify-center overflow-hidden p-4 cursor-pointer hover:border-purple-400 transition-all">
-                                        {event.logo_url ? (
-                                            <img src={getImageUrl(event.logo_url)} alt="Logo" className="max-w-full max-h-full object-contain" />
+                                        {event.logo_url && !logoError ? (
+                                            <img src={getImageUrl(event.logo_url)} alt="Logo" className="max-w-full max-h-full object-contain" onError={() => setLogoError(true)} />
                                         ) : (
                                             <div className="text-slate-300 font-bold text-xs uppercase tracking-wider group-hover:text-purple-500 transition-colors">Click to upload Logo</div>
                                         )}
@@ -1751,8 +1767,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 <div className="md:col-span-2 space-y-3">
                                     <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Event Banner</span>
                                     <label className="group relative w-full h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex items-center justify-center overflow-hidden cursor-pointer hover:border-purple-400 transition-all">
-                                        {event.banner_url ? (
-                                            <img src={getImageUrl(event.banner_url)} alt="Banner" className="w-full h-full object-cover" />
+                                        {event.banner_url && !bannerError ? (
+                                            <img src={getImageUrl(event.banner_url)} alt="Banner" className="w-full h-full object-cover" onError={() => setBannerError(true)} />
                                         ) : (
                                             <div className="text-slate-300 font-bold text-xs uppercase tracking-wider group-hover:text-purple-500 transition-colors">Click to upload Banner</div>
                                         )}

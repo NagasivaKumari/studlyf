@@ -16,6 +16,7 @@ type StageField = {
 type SubmissionFormProps = {
     eventId: string;
     stage: any;
+    participationType?: string;
 };
 
 const normalizeFields = (rawFields: any[]): StageField[] => {
@@ -33,7 +34,7 @@ const normalizeFields = (rawFields: any[]): StageField[] => {
     }));
 };
 
-const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
+const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage, participationType }) => {
     const [formValues, setFormValues] = useState<Record<string, any>>({});
     const [fileNames, setFileNames] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
@@ -52,7 +53,10 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
         () => normalizeFields(resolvedStage?.fields || resolvedStage?.config?.fields || []),
         [resolvedStage]
     );
-    const teamRequired = Boolean(resolvedStage?.team_required || resolvedStage?.teamRequired || stage?.team_required || stage?.teamRequired);
+    const isSolo = participationType === 'individual';
+    const isTeamOnly = participationType === 'team';
+    const teamRequired = isTeamOnly || Boolean(resolvedStage?.team_required || resolvedStage?.teamRequired || stage?.team_required || stage?.teamRequired);
+    const [teamDisplayName, setTeamDisplayName] = useState('');
     const stageDescription = String(resolvedStage?.description || resolvedStage?.config?.description || stage?.description || stage?.config?.description || '').trim();
     const stageVisibility = String(resolvedStage?.visibility || stage?.visibility || '').toLowerCase();
     const isPublicStage = stageVisibility === 'public';
@@ -192,11 +196,12 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
         setError(null);
 
         try {
+            const submitData = isSolo ? { ...formValues, team_display_name: teamDisplayName } : formValues;
             const response = await fetch(`${API_BASE_URL}/api/v1/stages/events/${eventId}/stages/${stageId}/submit`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({
-                    data: formValues,
+                    data: submitData,
                     team_id: teamId || undefined,
                 }),
             });
@@ -248,7 +253,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
         );
     }
 
-    if (teamRequired && !teamId) {
+    if (!isSolo && teamRequired && !teamId) {
         return (
             <div className="bg-white p-6 rounded-lg shadow-md">
                 <h2 className="text-2xl font-bold mb-2">{stageTitle}</h2>
@@ -318,6 +323,20 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage }) => {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
+                {isSolo ? (
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                            Team Name <span className="text-gray-400 font-normal">(for display)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={teamDisplayName}
+                            onChange={(e) => setTeamDisplayName(e.target.value)}
+                            placeholder="Enter your team name"
+                            className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                        />
+                    </div>
+                ) : null}
                 {fields.map((field) => {
                     const value = formValues[field.id];
                     const inputClass =

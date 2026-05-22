@@ -948,7 +948,7 @@ const OpportunityDetails: React.FC = () => {
                     <div className="my-8">
                         {eventId && submissionStage ? (
                             <div className="space-y-4">
-                                <SubmissionForm eventId={eventId} stage={submissionStage} />
+                                <SubmissionForm eventId={eventId} stage={submissionStage} participationType={opportunity?.participationType} />
                             </div>
                         ) : (
                             <div className="bg-white p-6 rounded-lg shadow-md text-slate-600">
@@ -1066,6 +1066,19 @@ const OpportunityDetails: React.FC = () => {
                                     {orgDisplay}
                                 </p>
 
+                                {/* Compact eligibility summary under title */}
+                                {elig.length > 0 && (
+                                    <div className="mt-3 flex items-center gap-3 text-sm text-slate-600">
+                                        <div className="text-[11px] font-bold uppercase text-slate-400">Eligible:</div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {elig.slice(0, 3).map((e, i) => (
+                                                <span key={i} className="px-2 py-1 bg-slate-100 rounded-lg text-[13px] font-medium">{e}</span>
+                                            ))}
+                                            {elig.length > 3 && <span className="text-xs text-slate-400">+{elig.length - 3} more</span>}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="mt-8 grid sm:grid-cols-2 gap-6">
                                     {venueLine ? (
                                         <div>
@@ -1096,6 +1109,16 @@ const OpportunityDetails: React.FC = () => {
                                                   })
                                                 : '—'}
                                         </p>
+                                            {/* Editable badge */}
+                                            <div className="mt-2">
+                                                {deadlineDate ? (
+                                                    daysLeft && daysLeft > 0 ? (
+                                                        <span className="inline-block px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-xs font-bold">Editable until {deadlineDate.toLocaleDateString('en-GB')}</span>
+                                                    ) : (
+                                                        <span className="inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-xs font-bold">Editing closed — deadline passed</span>
+                                                    )
+                                                ) : null}
+                                            </div>
                                     </div>
                                 </div>
                             </div>

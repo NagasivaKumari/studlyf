@@ -12,6 +12,7 @@ interface RecentListingsProps {
 const RecentListings: React.FC<RecentListingsProps> = ({ institutionId, onViewEvent, onViewAll }) => {
     const [events, setEvents] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         const fetchRecent = async () => {
@@ -53,8 +54,9 @@ const RecentListings: React.FC<RecentListingsProps> = ({ institutionId, onViewEv
                                     <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-purple-500 font-bold group-hover:scale-110 transition-transform overflow-hidden">
                                         {(() => {
                                             const logoSrc = event.logo_url || event.logo || event.institution_logo_url || event.institution_logo || event.image_url || event.image || '';
-                                            if (logoSrc) {
-                                                return <img src={logoSrc} className="w-full h-full object-cover" alt={event.title || 'Logo'} />;
+                                            const eid = event._id || '';
+                                            if (logoSrc && !imgErrors[eid]) {
+                                                return <img src={logoSrc} className="w-full h-full object-cover" alt={event.title || 'Logo'} onError={() => setImgErrors(prev => ({...prev, [eid]: true}))} />;
                                             }
                                             return event.category?.charAt(0) || 'E';
                                         })()}

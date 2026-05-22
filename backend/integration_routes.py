@@ -8,7 +8,18 @@ import json
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile, Body, Depends, Query
 from auth_institution import get_auth_user, assert_institution_scope, assert_institution_owns_event
-from services.email_service import send_notification_email, get_certificate_template, get_shortlist_template, get_announcement_template
+from services.email_service import (
+    send_notification_email,
+    get_certificate_template,
+    get_shortlist_template,
+    get_announcement_template,
+    get_status_update_template,
+    get_winner_announcement_template,
+    get_feedback_request_template,
+    get_certificate_issued_template,
+    get_registration_deadline_reminder_template,
+    get_event_published_template,
+)
 from services.institutional_analytics_service import analytics_service
 from services.institutional_certificate_service import certificate_service
 from services.leaderboard_service import leaderboard_service
@@ -167,43 +178,16 @@ async def _dispatch_status_email(target_id: str, status: str, doc: dict):
         body_html = get_shortlist_template(user_name, event_title, next_round_name)
     else:
         subject = f"Update on your submission for {event_title}"
-        status_colors = {
-            "Shortlisted": "#6C3BFF",
-            "Approved": "#10B981",
-            "Rejected": "#EF4444"
-        }
-        color = status_colors.get(status, "#6C3BFF")
-        body_html = f"""
-        <html>
-            <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-                <div style="max-width: 600px; margin: auto; padding: 40px; border: 1px solid #edf2f7; border-radius: 24px; background: white;">
-                    <div style="text-align: center; margin-bottom: 30px;">
-                        <div style="display: inline-block; padding: 12px; background: {color}10; border-radius: 16px; margin-bottom: 15px;">
-                            <span style="font-size: 32px;">📢</span>
-                        </div>
-                        <h2 style="color: #1a202c; margin: 0; font-size: 24px; font-weight: 800;">Status Update</h2>
-                    </div>
-
-                    <p>Hello <strong>{user_name}</strong>,</p>
-                    <p>We have an update regarding your project for <strong>{event_title}</strong>.</p>
-                    
-                    <div style="margin: 30px 0; padding: 25px; background: {color}08; border: 2px dashed {color}20; border-radius: 20px; text-align: center;">
-                        <p style="margin: 0; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; color: #64748b;">Current Status</p>
-                        <p style="margin: 10px 0 0 0; font-size: 32px; font-weight: 900; color: {color}; text-transform: uppercase;">{status}</p>
-                    </div>
-
-                    <p style="color: #4a5568;">
-                        {f"Congratulations! You have been <strong>{status.lower()}</strong>. Next steps will be shared soon." if status != "Rejected" else "Thank you for your participation. Unfortunately, your project was not selected for the next phase."}
-                    </p>
-
-                    <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #edf2f7; text-align: center; color: #a0aec0; font-size: 12px;">
-                        This is an automated notification from the Studlyf Institutional Portal.<br>
-                        Please do not reply directly to this email.
-                    </div>
-                </div>
-            </body>
-        </html>
-        """
+        body_html = get_status_update_template(
+            user_name=user_name,
+            event_name=event_title,
+            status=status,
+            status_message=(
+                f"Congratulations! You have been {status.lower()}. Next steps will be shared soon."
+                if status != "Rejected"
+                else "Thank you for your participation. Unfortunately, your project was not selected for the next phase."
+            ),
+        )
 
     try:
         # Send to all team members
@@ -624,6 +608,21 @@ async def get_event_participants(event_id: str, user: dict = Depends(get_auth_us
     except Exception as e:
         logger.error(f"[PARTICIPANTS] Failed to fetch hackathon submissions: {e}")
 
+    # Apply plan-based application view limits
+    try:
+        event_doc = await events_col.find_one({"event_id": event_id})
+        if not event_doc:
+            event_doc = await opportunities_col.find_one({"event_link_id": event_id})
+        inst_id = (event_doc or {}).get("institution_id")
+        if inst_id:
+            from services.subscription_service import get_current_plan_rules
+            rules = await get_current_plan_rules(inst_id)
+            max_views = rules.get("max_app_views")
+            if max_views is not None and len(students) > int(max_views):
+                students = students[:int(max_views)]
+    except Exception:
+        pass
+
     return students
 
 
@@ -826,29 +825,13 @@ async def send_event_deadline_reminders(event_id: str, user: dict = Depends(get_
     
     # Send emails in background
     for email in set(emails):
-        body = f"""
-        <html>
-            <body style="font-family: sans-serif; color: #333;">
-                <div style="max-width: 600px; margin: auto; padding: 30px; border: 1px solid #eee; border-radius: 20px; background: #fff;">
-                    <h2 style="color: #6C3BFF;">⏰ Deadline Approaching!</h2>
-                    <p>This is a friendly reminder for <strong>{ev.get('title')}</strong>.</p>
-                    <p>The submission window for <strong>{next_stage.get('name')}</strong> is closing soon.</p>
-                    <div style="background: #F5F3FF; padding: 20px; border-radius: 12px; margin: 20px 0;">
-                        <p style="margin: 0; color: #7C3AED; font-weight: bold;">Submission Deadline:</p>
-                        <p style="margin: 5px 0 0 0; font-size: 18px;">{deadline_str}</p>
-                    </div>
-                    <p>Please ensure you have uploaded your files or links before the cutoff. Late submissions will not be accepted.</p>
-                    <br>
-                    <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/#/events/{event_id}" 
-                       style="background: #6C3BFF; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
-                       View Event Dashboard
-                    </a>
-                    <br><br>
-                    <p style="font-size: 12px; color: #999;">Best Regards,<br>{ev.get('organisation') or 'Organizing Team'}</p>
-                </div>
-            </body>
-        </html>
-        """
+        body = get_registration_deadline_reminder_template(
+            participant_name="Participant",
+            event_title=ev.get('title') or "Event",
+            organization_name=ev.get('organisation') or ev.get('organization') or "Studlyf",
+            registration_deadline=deadline_str,
+            event_link=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/#/events/{event_id}",
+        )
         asyncio.create_task(send_notification_email(email, subject, body))
         
     return {"status": "success", "count": len(emails), "stage": next_stage.get("name")}
@@ -1591,8 +1574,9 @@ async def generate_event_certificates(event_id: str, rankings: list):
         members = team.get("members", []) if team else [{"full_name": rank_data["team_name"]}]
         
         for member in members:
+            certificate_id = f"STUD-{datetime.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
             cert_entries.append({
-                "certificate_id": str(uuid.uuid4()),
+                "certificate_id": certificate_id,
                 "verification_code": uuid.uuid4().hex[:12].upper(),
                 "event_id": event_id,
                 "event_title": event.get("title"),
@@ -1602,7 +1586,7 @@ async def generate_event_certificates(event_id: str, rankings: list):
                 "rank": rank_data["rank"],
                 "category": "Winner" if rank_data["rank"] <= 3 else "Participant",
                 "issued_date": datetime.utcnow().isoformat(),
-                "verification_url": f"/verify/cert/{uuid.uuid4().hex[:10]}",
+                "verification_url": f"{BASE_URL}/verify-certificate/{certificate_id}",
                 "status": "ISSUED"
             })
     
@@ -1628,6 +1612,40 @@ async def generate_event_certificates(event_id: str, rankings: list):
                     category=cert.get('category', 'Participant')
                 )
                 asyncio.create_task(send_notification_email(recipient_email, subject, body))
+
+                issued_subject = f"Certificate Issued: {cert['event_title']}"
+                certificate_issue_date = cert.get("issued_date") or cert.get("issued_at") or datetime.utcnow().isoformat()
+                issued_body = get_certificate_issued_template(
+                    participant_name=cert['recipient_name'],
+                    event_title=cert['event_title'],
+                    organization_name=(event or {}).get("organisation") or (event or {}).get("organization") or "Studlyf",
+                    certificate_id=cert.get("certificate_id", ""),
+                    issued_date=certificate_issue_date,
+                    certificate_download_link=f"{BASE_URL}/download-certificate/{cert.get('certificate_id', '')}",
+                    verification_url=cert.get("verification_url") or f"{BASE_URL}/verify-certificate/{cert.get('certificate_id', '')}",
+                )
+                asyncio.create_task(send_notification_email(recipient_email, issued_subject, issued_body))
+
+                if cert.get("rank") and int(cert.get("rank") or 0) <= 3:
+                    winner_subject = f"Winner Announcement: {cert['event_title']}"
+                    winner_body = get_winner_announcement_template(
+                        participant_name=cert['recipient_name'],
+                        event_title=cert['event_title'],
+                        organization_name=(event or {}).get("organisation") or (event or {}).get("organization") or "Studlyf",
+                        rank=str(cert.get('rank')),
+                        prize_details=f"Rank {cert.get('rank')} achiever in {cert['event_title']}",
+                        results_link=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/events/{event_id}",
+                    )
+                    asyncio.create_task(send_notification_email(recipient_email, winner_subject, winner_body))
+
+                feedback_subject = f"We'd love your feedback on {cert['event_title']}"
+                feedback_body = get_feedback_request_template(
+                    participant_name=cert['recipient_name'],
+                    event_title=cert['event_title'],
+                    organization_name=(event or {}).get("organisation") or (event or {}).get("organization") or "Studlyf",
+                    feedback_link=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/events/{event_id}?tab=feedback",
+                )
+                asyncio.create_task(send_notification_email(recipient_email, feedback_subject, feedback_body))
     
     return {"status": "Event finalized and leaderboard generated successfully"}
 
@@ -1674,6 +1692,36 @@ async def verify_certificate(certificate_id: str):
         "status": "VALIDATED",
         "institution": "Certified Institution Network"
     }
+
+
+@router.get("/download-certificate/{certificate_id}")
+async def download_certificate(certificate_id: str):
+    """Generate and download a certificate PDF for a verified certificate."""
+    cert = await certificates_col.find_one({"certificate_id": certificate_id})
+    if not cert:
+        raise HTTPException(status_code=404, detail="Certificate not found or invalid.")
+
+    from fastapi.responses import FileResponse
+    from services.certificate_service import certificate_service as pdf_certificate_service
+
+    issued_at = cert.get("issued_at") or cert.get("issued_date") or datetime.utcnow()
+    issued_date = issued_at.strftime("%B %d, %Y") if hasattr(issued_at, "strftime") else str(issued_at)
+    cert_data = {
+        "participant_name": cert.get("recipient_name") or cert.get("student_name") or "Participant",
+        "event_name": cert.get("event_name") or cert.get("event_title") or "Studlyf Event",
+        "organization_name": cert.get("organization_name") or cert.get("organization") or "Studlyf",
+        "event_date": issued_date,
+        "issued_date": issued_date,
+        "certificate_id": certificate_id,
+        "verification_url": cert.get("verification_url") or f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/verify/{certificate_id}",
+        "achievement_type": cert.get("achievement_type") or cert.get("category") or "Participation",
+        "organizer_signature": cert.get("organization_name") or cert.get("organization") or "Studlyf",
+        "studlyf_signature": "Studlyf Authorized Signature",
+    }
+    pdf_path = await pdf_certificate_service.generate_certificate_pdf(cert_data)
+    media_type = "application/pdf" if str(pdf_path).lower().endswith(".pdf") else "text/html"
+    download_name = f"certificate_{certificate_id}.pdf" if media_type == "application/pdf" else f"certificate_{certificate_id}.html"
+    return FileResponse(pdf_path, media_type=media_type, filename=download_name)
 
 @router.options("/notifications/{institution_id}")
 async def options_notifications(institution_id: str):
@@ -2582,16 +2630,23 @@ async def _notify_new_opportunity(event_id: str):
     """Send new opportunity alert to students and notify institution admin."""
     from db import opportunities_col
 
-    # Notify all students
     opp = await opportunities_col.find_one({"event_link_id": event_id})
     if not opp:
         return
+    # Fetch source event for richer template context
+    from db import events_col as _ev_col
+    source_event = None
+    try:
+        source_event = await _ev_col.find_one({"_id": ObjectId(event_id)})
+    except Exception:
+        pass
     from services.opportunity_notification_service import send_new_opportunity_email
-    await send_new_opportunity_email(opp)
+    await send_new_opportunity_email(opp, event=source_event)
 
-    # Also notify institution admin
+    # Also notify institution admin via template system
     try:
         from db import events_col, users_col
+        from services.platform_notification_service import notify_event_published
         event = await events_col.find_one({"_id": ObjectId(event_id)})
         if event:
             iid = event.get("institution_id")
@@ -2600,25 +2655,17 @@ async def _notify_new_opportunity(event_id: str):
                     "institution_id": str(iid),
                     "role": {"$in": ["admin", "institution", "super_admin"]}
                 }).to_list(length=None)
-                from services.email_service import send_notification_email
                 title = event.get("title", "New Event")
                 for admin in admins:
                     email = admin.get("email", "").strip()
                     if not email:
                         continue
-                    asyncio.create_task(send_notification_email(
-                        email,
-                        f"📢 Event Published: {title}",
-                        f"""
-                        <html><body style="font-family: system-ui, sans-serif; padding: 20px;">
-                            <h2>✅ Event Published</h2>
-                            <p>Your event <strong>{title}</strong> is now live on the portal.</p>
-                            <p>All registered students have been notified via email.</p>
-                            <hr>
-                            <p style="color: #64748b; font-size: 12px;">Studlyf Admin Notification</p>
-                        </body></html>
-                        """
-                    ))
+                    await notify_event_published(
+                        recipient_email=email,
+                        organizer_name=admin.get("full_name") or admin.get("name") or "Organizer",
+                        event_title=title,
+                        event_link=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/#/events/{event_id}",
+                    )
     except Exception as e:
         logger.error(f"[ADMIN NOTIFY] Failed: {str(e)}")
 
@@ -3472,6 +3519,7 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
                 str(iid),
                 deadline_value=event_data.get("registrationDeadline"),
                 deadline_label="registration window",
+                start_date_value=event_data.get("registrationStartDate"),
             )
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
@@ -3536,6 +3584,33 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
             "logo_url": event_data.get("logo_url", ""),
             "banner_url": event_data.get("banner_url", ""),
         }
+        # Normalize eligibility fields from event_data into opp_data
+        def _norm_list(v):
+            if v is None:
+                return []
+            if isinstance(v, list):
+                return v
+            if isinstance(v, str):
+                try:
+                    parsed = json.loads(v)
+                    return parsed if isinstance(parsed, list) else [parsed]
+                except:
+                    return [v]
+            return [v]
+
+        opp_data["candidateTypes"] = _norm_list(event_data.get("candidateTypes") or event_data.get("candidate_types") or ['Everyone'])
+        opp_data["eligibleOrganizations"] = _norm_list(event_data.get("eligibleOrganizations") or event_data.get("eligible_organizations") or [])
+        opp_data["eligibleGenders"] = _norm_list(event_data.get("eligibleGenders") or event_data.get("eligible_genders") or [])
+        opp_data["participationType"] = str(event_data.get("participationType") or event_data.get("participation_type") or "both")
+        # Normalize numeric team sizes
+        try:
+            opp_data["minTeamSize"] = int(event_data.get("minTeamSize") if event_data.get("minTeamSize") is not None else event_data.get("min_team_size") if event_data.get("min_team_size") is not None else 1)
+        except:
+            opp_data["minTeamSize"] = 1
+        try:
+            opp_data["maxTeamSize"] = int(event_data.get("maxTeamSize") if event_data.get("maxTeamSize") is not None else event_data.get("max_team_size") if event_data.get("max_team_size") is not None else 5)
+        except:
+            opp_data["maxTeamSize"] = 5
         
         # Ensure deadline is datetime
         if isinstance(opp_data["deadline"], str):
@@ -3686,6 +3761,7 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
                     existing_iid,
                     deadline_value=event_data.get("registrationDeadline") or (existing_event or {}).get("registrationDeadline"),
                     deadline_label="registration window",
+                    start_date_value=event_data.get("registrationStartDate") or (existing_event or {}).get("registrationStartDate"),
                 )
             except ValueError as ve:
                 raise HTTPException(status_code=400, detail=str(ve))
@@ -3726,6 +3802,33 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
                 "logo_url": updated_event.get("logo_url", ""),
                 "banner_url": updated_event.get("banner_url", ""),
             }
+
+            # Normalize eligibility fields from updated_event into opp_data
+            def _norm_list(v):
+                if v is None:
+                    return []
+                if isinstance(v, list):
+                    return v
+                if isinstance(v, str):
+                    try:
+                        parsed = json.loads(v)
+                        return parsed if isinstance(parsed, list) else [parsed]
+                    except:
+                        return [v]
+                return [v]
+
+            opp_data["candidateTypes"] = _norm_list(updated_event.get("candidateTypes") or updated_event.get("candidate_types") or ['Everyone'])
+            opp_data["eligibleOrganizations"] = _norm_list(updated_event.get("eligibleOrganizations") or updated_event.get("eligible_organizations") or [])
+            opp_data["eligibleGenders"] = _norm_list(updated_event.get("eligibleGenders") or updated_event.get("eligible_genders") or [])
+            opp_data["participationType"] = str(updated_event.get("participationType") or updated_event.get("participation_type") or "both")
+            try:
+                opp_data["minTeamSize"] = int(updated_event.get("minTeamSize") if updated_event.get("minTeamSize") is not None else updated_event.get("min_team_size") if updated_event.get("min_team_size") is not None else 1)
+            except:
+                opp_data["minTeamSize"] = 1
+            try:
+                opp_data["maxTeamSize"] = int(updated_event.get("maxTeamSize") if updated_event.get("maxTeamSize") is not None else updated_event.get("max_team_size") if updated_event.get("max_team_size") is not None else 5)
+            except:
+                opp_data["maxTeamSize"] = 5
 
             opp_data["status"] = "active" if _is_live_like_status(updated_event.get("status")) else "draft"
             

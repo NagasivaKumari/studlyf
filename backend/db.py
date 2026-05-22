@@ -184,6 +184,8 @@ enrollments_col = db["enrollments"]
 users_col = db["users"]
 resumes_col = db["resumes"]
 certificates_col = db["certificates"]
+event_certificates_col = db["event_certificates"]
+certificate_jobs_col = db["certificate_jobs"]
 
 # Career & Operations
 interviews_col = db["interviews"]

@@ -92,16 +92,26 @@ async def send_team_invite(
             }}}
         )
         
-        # Send email
+        # Send email via template system
         try:
+            from services.platform_notification_service import notify_team_invitation
             leader_name = user.get("full_name") or user.get("name") or "Team Leader"
             event_name = event.get("title") or event.get("name") or "Event"
             team_name = team.get("team_name", "Our Team")
-            
-            subj = f"Invitation: Join {leader_name}'s team for {event_name}"
-            body = get_team_invite_template(leader_name, team_name, event_name, invite_code)
-            
-            asyncio.create_task(send_notification_email(invite_email, subj, body))
+            org_name = event.get("organisation") or event.get("organization") or "Studlyf"
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+            invite_link = f"{frontend_url}/events/join-team?code={invite_code}"
+            await notify_team_invitation(
+                recipient_email=invite_email,
+                participant_name="there",
+                team_leader_name=leader_name,
+                team_name=team_name,
+                event_title=event_name,
+                organization_name=org_name,
+                invite_link=invite_link,
+                current_team_size=len(team.get("members", [])) + 1,
+                max_team_size=4,
+            )
         except Exception as e:
             print(f"Error sending team invite email: {e}")
         

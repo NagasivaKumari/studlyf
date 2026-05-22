@@ -8,6 +8,119 @@ from bson import ObjectId
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 import re
+import json
+
+def _ensure_list(val):
+    """Normalize a field value to a list, handling JSON-encoded strings."""
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        # Try JSON decode for array-like strings
+        if val.startswith("[") and val.endswith("]"):
+            try:
+                parsed = json.loads(val)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                pass
+        return [val]
+    return [str(val)]
+
+async def validate_event_restrictions(
+    event: Dict[str, Any],
+    user_id: str
+) -> Optional[str]:
+    """
+    Validate user against event restrictions (candidateTypes, college, gender).
+    Returns an error message string if blocked, or None if allowed.
+    """
+    try:
+        user = await users_col.find_one({"user_id": str(user_id)})
+        if not user:
+            return "User not found"
+
+        # --- participationType is NOT checked here (affects submission/team, not registration) ---
+
+        # --- candidateTypes ---
+        candidate_types = _ensure_list(event.get("candidateTypes"))
+        if candidate_types:
+            allowed = [c.lower().strip() for c in candidate_types]
+            if "everyone can apply" not in allowed:
+                user_college = str(user.get("college") or user.get("institution") or "").strip()
+                user_role = str(user.get("role") or "").lower().strip()
+
+                # Build heuristics: if user has a college set, treat as College Student
+                is_college_student = bool(user_college)
+                is_fresher = False  # No reliable field; could check years of experience if available
+                is_professional = user_role in ("professional", "institution", "alumni")
+                is_school_student = "school" in user_college.lower() if user_college else False
+
+                matched = False
+                for typ in allowed:
+                    if "college student" in typ and is_college_student:
+                        matched = True
+                        break
+                    if "fresher" in typ and is_fresher:
+                        matched = True
+                        break
+                    if "professional" in typ and is_professional:
+                        matched = True
+                        break
+                    if "school student" in typ and is_school_student:
+                        matched = True
+                        break
+                    if "everyone" in typ:
+                        matched = True
+                        break
+
+                if not matched and not any("everyone" in t for t in allowed):
+                    return "You are not eligible for this event based on the candidate type restrictions. Only the following types can register: " + ", ".join(allowed)
+
+        # --- College / Organization restriction ---
+        eligible_orgs = _ensure_list(event.get("eligibleOrganizations"))
+        if eligible_orgs:
+            # "Allow All" means no restriction
+            orgs_clean = [o.lower().strip() for o in eligible_orgs if o]
+            if "allow all" not in orgs_clean:
+                user_college = str(user.get("college") or user.get("institution") or "").strip().lower()
+                if user_college:
+                    matched_org = any(org in user_college or user_college in org for org in orgs_clean)
+                    if not matched_org:
+                        return f"Only applicants from specific colleges/organizations can register for this event."
+        else:
+            legacy_restriction = event.get("collegeRestriction")
+            if legacy_restriction and str(legacy_restriction).lower() not in ("", "everyone can apply", "everyone"):
+                user_college = str(user.get("college") or user.get("institution") or "").strip().lower()
+                if not user_college or legacy_restriction.lower() not in user_college:
+                    pass  # Legacy field is vague; we don't strictly block on it
+
+        # --- Gender restriction ---
+        eligible_genders = _ensure_list(event.get("eligibleGenders"))
+        if eligible_genders:
+            # "Allow All" means no restriction
+            genders_clean = [g.lower().strip() for g in eligible_genders if g]
+            if "allow all" not in genders_clean:
+                user_gender = str(user.get("gender") or "").strip().lower()
+                if user_gender:
+                    matched_gender = any(g == user_gender for g in genders_clean)
+                    if not matched_gender:
+                        allowed = [g for g in eligible_genders if g]
+                        return f"This event is restricted to: {', '.join(allowed)}"
+        else:
+            legacy_gender = event.get("genderRestriction")
+            if legacy_gender and str(legacy_gender).lower() not in ("", "everyone can apply", "everyone", "allow all"):
+                user_gender = str(user.get("gender") or "").strip().lower()
+                if user_gender:
+                    allowed = [g.strip().lower() for g in str(legacy_gender).split(",")]
+                    if user_gender not in allowed:
+                        return f"This event is restricted to: {legacy_gender}"
+
+        return None
+    except Exception as e:
+        print(f"[WARNING] validate_event_restrictions error: {e}")
+        return None  # Don't block on validation errors — fail open
 
 async def get_user_profile_data(user_id: str) -> Dict[str, Any]:
     """Fetch user profile data (name, email, college, etc.) for auto-fill."""
@@ -171,6 +284,11 @@ async def complete_registration(
         event = await events_col.find_one({"_id": ObjectId(event_id)})
         if not event:
             return {"error": "Event not found"}
+
+        # Enforce event eligibility restrictions (candidateTypes, college, gender)
+        restriction_error = await validate_event_restrictions(event, user_id)
+        if restriction_error:
+            return {"error": restriction_error, "status": "restricted"}
 
         # Determine first stage from event stages to set as current_stage
         event_stages = event.get("stages", [])

@@ -3,6 +3,8 @@ Team Join Request Service - Handle team join requests with approval system
 Implements Unstop-like team formation with request/approval workflow
 """
 
+import os
+
 from db import (
     teams_col, participants_col, users_col, events_col,
     notifications_col
@@ -12,6 +14,12 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 from enum import Enum
 import secrets
+import asyncio
+
+from services.email_service import (
+    send_notification_email,
+    get_team_join_request_approved_template,
+)
 
 class JoinRequestStatus(str, Enum):
     PENDING = "pending"
@@ -186,6 +194,22 @@ async def approve_join_request(
             related_type="join_request",
             event_id=str(join_request["event_id"]),
         )
+
+        try:
+            from services.platform_notification_service import notify_team_join_approved
+            event = await events_col.find_one({"_id": ObjectId(join_request["event_id"])} )
+            if requester and requester.get("email"):
+                frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+                await notify_team_join_approved(
+                    recipient_email=requester["email"],
+                    participant_name=requester.get("full_name") or requester.get("name") or "Participant",
+                    team_name=team.get("team_name") or team.get("name") or "Your Team",
+                    event_title=event.get("title") if event else "Studlyf Event",
+                    organization_name=(event or {}).get("organisation") or (event or {}).get("organization") or "Studlyf",
+                    team_link=f"{frontend_url}/#/events/{join_request['event_id']}?tab=team",
+                )
+        except Exception as email_error:
+            print(f"[WARN] Could not send join approval email: {email_error}")
         
         return {
             "status": "success",

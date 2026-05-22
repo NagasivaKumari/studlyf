@@ -3,6 +3,7 @@ Dynamic Submission Service - Handle stage submissions with admin-defined fields
 """
 
 from db import submission_data_col, participants_col, events_col, users_col, opportunities_col, opportunity_applications_col
+from notification_service import notification_service
 from bson import ObjectId
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
@@ -118,11 +119,37 @@ async def submit_stage_data(
         # If team_id provided, verify participant is in that team
         if team_id and str(participant.get("team_id")) != str(team_id):
             return {"error": "You are not a member of this team"}
+
+        # (team size checks moved after fetching event)
         
         # Get event and stage
         event = await events_col.find_one({"_id": ObjectId(event_id)})
         if not event:
             return {"error": "Event not found"}
+        
+        # Enforce participation type
+        # If team_id present, validate team size against event rules (min/max)
+        if team_id:
+            try:
+                team = await teams_col.find_one({"_id": ObjectId(team_id)})
+                members = team.get("members", []) if team else []
+                # event-level team size constraints
+                min_ts = int(event.get("minTeamSize") or event.get("min_team_size") or 0)
+                max_ts = int(event.get("maxTeamSize") or event.get("max_team_size") or 0)
+                count = len(members) if isinstance(members, list) else 0
+                if min_ts and count < min_ts:
+                    return {"error": f"This team does not meet the minimum team size of {min_ts}", "status": "team_size_invalid"}
+                if max_ts and count > max_ts:
+                    return {"error": f"This team exceeds the maximum team size of {max_ts}", "status": "team_size_invalid"}
+            except Exception:
+                # ignore team size checks if teams fetch fails
+                pass
+
+        ptype = str(event.get("participationType") or "").lower().strip()
+        if ptype == "individual" and team_id:
+            return {"error": "This event is for individual participation only. Team submissions are not allowed.", "status": "restricted"}
+        if ptype == "team" and not team_id:
+            return {"error": "This event requires team participation. Please form or join a team before submitting.", "status": "restricted"}
         
         # Find target stage
         target_stage = None
@@ -262,6 +289,22 @@ async def submit_stage_data(
                 )
         except Exception as e:
             print(f"[WARN] Failed to sync opportunity application: {e}")
+            # Create notification for user and institution admins (if any)
+            try:
+                # Notify submitting user
+                title = f"Submission received: {target_stage.get('name')}"
+                message = f"Your submission for '{target_stage.get('name')}' has been received. You can view it in My Applications or on the Event page."
+                await notification_service.create_notification(
+                    user_id=str(user_id),
+                    notification_type="submission",
+                    title=title,
+                    message=message,
+                    metadata={"stage_id": stage_id, "event_id": str(event_id)},
+                    institution_id=str(event.get("institution_id")) if event else None,
+                    event_id=str(event_id)
+                )
+            except Exception as e:
+                print(f"[WARN] Could not create submission notification: {e}")
         
         return {
             "status": "success",
