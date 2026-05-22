@@ -332,11 +332,10 @@ const EventHub: React.FC = () => {
     const event_id_as_opp = event?.opportunity_id || eventId;
     const isLeader = team && (String(team.leader_id || team.team_leader_id) === String(user?.user_id));
 
-    const isSoloEvent = event?.participationType === 'individual';
     const tabs = [
         { id: 'timeline', label: 'Timeline', icon: <Clock size={14} /> },
         { id: 'submissions', label: 'Submissions', icon: <FileText size={14} /> },
-        ...(isSoloEvent ? [] : [{ id: 'team' as const, label: 'My Team', icon: <UsersRound size={14} /> }]),
+        { id: 'team', label: 'My Team', icon: <UsersRound size={14} /> },
         { id: 'results', label: 'Results', icon: <Trophy size={14} /> }
     ];
 
@@ -745,13 +744,29 @@ const EventHub: React.FC = () => {
                                 <div>
                                     <h2 className="text-3xl font-black text-slate-900 tracking-tight">My Team</h2>
                                     <p className="text-slate-500 font-medium mt-2">
-                                        {team
-                                            ? `You're part of "${team.team_name}"`
-                                            : 'Create a new team or join an existing one using an invite code.'}
+                                        {event?.participationType === 'individual'
+                                            ? 'Set your display name for this event.'
+                                            : team
+                                                ? `You're part of "${team.team_name}"`
+                                                : 'Create a new team or join an existing one using an invite code.'}
                                     </p>
                                 </div>
 
-                                {!team ? (
+                                {event?.participationType === 'individual' ? (
+                                    <div className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-xl shadow-slate-900/5 space-y-6">
+                                        <h3 className="text-xl font-black text-slate-900">Your Display Name</h3>
+                                        <p className="text-slate-500 text-sm font-medium">Choose a team name to appear on the leaderboard and certificate.</p>
+                                        <div className="flex gap-4">
+                                            <input
+                                                type="text"
+                                                placeholder="Enter your team name"
+                                                value={teamName}
+                                                onChange={(e) => setTeamName(e.target.value)}
+                                                className="flex-1 px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
+                                            />
+                                        </div>
+                                    </div>
+                                ) : !team ? (
                                     <>
                                         {/* Create Team */}
                                         <div className="p-10 bg-white border border-slate-100 rounded-[3rem] shadow-xl shadow-slate-900/5 space-y-6">
