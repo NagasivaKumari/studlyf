@@ -172,7 +172,6 @@ async def startup_event():
 
     # Launch certificate background worker
     try:
-        import asyncio
         from services.institutional_certificate_service import process_certificate_jobs
         asyncio.create_task(process_certificate_jobs())
         logger.info("Certificate generation background worker started")
