@@ -5370,6 +5370,8 @@ async def forgot_password(data: dict = Body(...)):
     email = str(data.get("email") or "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
+    if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+        raise HTTPException(status_code=400, detail="A valid email address is required")
     
     # Check if user exists
     user = await users_col.find_one({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
