@@ -3,6 +3,7 @@ from typing import List, Optional
 from bson import ObjectId
 from datetime import datetime
 import asyncio
+import os
 
 from auth_institution import get_auth_user, get_auth_user_optional
 from services.opportunity_service import (
@@ -184,6 +185,16 @@ async def learner_view_quiz(event_id: str, quiz_id: str, user: dict = Depends(ge
         if st not in ("shortlisted", "accepted"):
             raise HTTPException(status_code=403, detail="This round is only for shortlisted participants")
 
+    # Enforce unlock rules (depends_on)
+    from stage_access_control import check_stage_unlock_rules
+    for s in stages:
+        if not isinstance(s, dict):
+            continue
+        cfg = s.get("config") if isinstance(s.get("config"), dict) else {}
+        if str(cfg.get("quiz_id") or "") == str(quiz_id):
+            await check_stage_unlock_rules(event_id, uid, s)
+            break
+
     # Hide answers
     q_out = []
     for q in (quiz.get("questions") or []):
@@ -218,6 +229,16 @@ async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(
     p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
     if not p:
         raise HTTPException(status_code=400, detail="You must register/apply before attempting the assessment")
+
+    # Enforce unlock rules (depends_on)
+    from stage_access_control import check_stage_unlock_rules
+    for s in (ev.get("stages") or []):
+        if not isinstance(s, dict):
+            continue
+        cfg = s.get("config") if isinstance(s.get("config"), dict) else {}
+        if str(cfg.get("quiz_id") or "") == str(quiz_id):
+            await check_stage_unlock_rules(event_id, uid, s)
+            break
 
     answers = payload.get("answers") or []
     if not isinstance(answers, list):
@@ -257,40 +278,6 @@ async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(
         "submitted_at": datetime.utcnow().isoformat(),
     }
     await participants_col.update_one({"_id": p["_id"]}, {"$push": {"quiz_attempts": attempt}, "$set": {"updated_at": datetime.utcnow()}})
-
-    if passed:
-        opp = await opportunities_col.find_one({"event_link_id": str(event_id)})
-        if opp:
-            await opportunity_applications_col.update_many(
-                {"opportunity_id": str(opp["_id"]), "user_id": uid},
-                {"$set": {"status": "shortlisted", "reviewed_at": datetime.utcnow()}},
-            )
-        await participants_col.update_many(
-            {"event_id": str(event_id), "user_id": uid},
-            {"$set": {"status": "shortlisted", "updated_at": datetime.utcnow()}},
-        )
-        try:
-            await notifications_col.insert_one(
-                {
-                    "user_id": uid,
-                    "type": "stage_shortlisted",
-                    "message": f'You qualified for the next stage in "{ev.get("title")}".',
-                    "is_read": False,
-                    "created_at": datetime.utcnow().isoformat(),
-                    "meta": {"event_id": str(event_id), "quiz_id": str(quiz_id), "score": score},
-                }
-            )
-            em = str(user.get("email") or "").strip()
-            if em:
-                asyncio.create_task(
-                    send_notification_email(
-                        em,
-                        f"Shortlisted: {ev.get('title')}",
-                        f"<html><body><p>You passed the assessment (score {score}%). You are shortlisted.</p></body></html>",
-                    )
-                )
-        except Exception:
-            pass
 
     return {"status": "success", "score": score, "passed": passed, "coding_pending_review": coding_pending}
 
@@ -991,4 +978,36 @@ async def hackathon_project_submit(
     )
 
     return {"status": "success", "message": "Project submitted successfully", "data": submission_doc}
+
+
+def _stage_unlock_email_html(participant_name: str, event_title: str, org_name: str, stage_name: str, unlock_time: str, stage_link: str) -> str:
+    from html import escape
+    pn = escape(participant_name)
+    et = escape(event_title)
+    on = escape(org_name)
+    sn = escape(stage_name)
+    ut = escape(unlock_time)
+    sl = escape(stage_link)
+    return f"""<html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;margin:0;padding:0;">
+<div style="max-width:560px;margin:0 auto;padding:32px 20px;">
+<div style="background:linear-gradient(135deg,#6C3BFF,#8B5CF6);border-radius:16px 16px 0 0;padding:32px 24px;text-align:center;">
+<div style="font-size:40px;margin-bottom:8px;">🎉</div>
+<h1 style="color:#ffffff;font-size:20px;font-weight:800;margin:0;">Congratulations!</h1>
+<p style="color:rgba(255,255,255,0.85);font-size:14px;margin:8px 0 0;">You have successfully qualified for the next stage</p>
+</div>
+<div style="background:#ffffff;border-radius:0 0 16px 16px;padding:32px 24px;">
+<p style="font-size:15px;color:#0f172a;margin:0 0 16px;">Hi <strong>{pn}</strong>,</p>
+<p style="font-size:14px;color:#475569;line-height:1.6;margin:0 0 20px;">You have successfully qualified for the next stage of <strong>{et}</strong> hosted by <strong>{on}</strong>.</p>
+<div style="background:#f1f5f9;border-radius:12px;padding:16px;margin-bottom:20px;">
+<table style="width:100%;font-size:13px;">
+<tr><td style="color:#64748b;padding:4px 0;">Stage</td><td style="font-weight:600;padding:4px 0;">{sn}</td></tr>
+<tr><td style="color:#64748b;padding:4px 0;">Unlock Time</td><td style="font-weight:600;padding:4px 0;">{ut}</td></tr>
+</table>
+</div>
+<a href="{sl}" style="display:inline-block;background:#6C3BFF;color:#ffffff;font-size:14px;font-weight:700;padding:14px 28px;border-radius:12px;text-decoration:none;">Access Your Stage</a>
+<p style="font-size:12px;color:#94a3b8;margin-top:24px;">Best of luck for the next round.</p>
+<hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0 16px;">
+<p style="font-size:12px;color:#94a3b8;margin:0;">Regards,<br>Team Studlyf<br>On behalf of {on}</p>
+</div>
+</div></body></html>"""
 
