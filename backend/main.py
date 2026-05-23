@@ -110,6 +110,15 @@ async def startup_event():
     # Attempt database connection; allow failures to propagate so the
     # process fails fast when no real MongoDB is available.
     await db.connect()
+    
+    # Spawn background stage email queue worker
+    try:
+        from services.email_queue_service import start_email_queue_worker
+        asyncio.create_task(start_email_queue_worker())
+        logger.info("Background Stage Email Queue Worker spawned successfully")
+    except Exception as e:
+        logger.error(f"Failed to start background stage email queue worker: {e}")
+
     logger.info("Application startup completed successfully")
 
     # DB diagnostics dump
@@ -572,7 +581,7 @@ from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
 from routes import student_features_routes
-from routes import event_certificate_routes
+from routes import event_certificate_routes, registration_flow_routes
 import hackathon_integration_routes
 import participant_card_routes
 from rate_limiter import rate_limit, check_rate_limit
@@ -648,6 +657,7 @@ app.include_router(hackathon_public_routes.router)
 app.include_router(participant_card_routes.router)
 app.include_router(event_certificate_routes.router)
 app.include_router(event_certificate_routes.verification_router)
+app.include_router(registration_flow_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -5373,8 +5383,12 @@ async def forgot_password(data: dict = Body(...)):
     expiry_ts = int(time() + 3600)  # 1 hour expiry (unix ts)
     try:
         # Use a dedicated collection for password resets
+        # Persist a token_hash to avoid unique-index conflicts on null values
+        import hashlib
+        token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
         await db.password_resets.insert_one({
             "token": token,
+            "token_hash": token_hash,
             "email": email,
             "expiry": expiry_ts,
             "created_at": datetime.now(timezone.utc)

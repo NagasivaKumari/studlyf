@@ -36,6 +36,8 @@ async def _create_opportunity_for_event(event_data: dict, opportunities_col):
             "institution_id": str(event_data.get("institution_id", "")),
             "status": "active",
             "event_link_id": event_id_str,
+            "logo_url": event_data.get("logo_url") or event_data.get("logo") or "",
+            "banner_url": event_data.get("banner_url") or event_data.get("banner") or "",
             "updated_at": datetime.utcnow()
         }
         
