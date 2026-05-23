@@ -5365,12 +5365,14 @@ async def delete_experience(user_id: str, exp_index: int):
 
 @app.post("/api/auth/forgot-password")
 async def forgot_password(data: dict = Body(...)):
-    email = data.get("email")
+    import re
+
+    email = str(data.get("email") or "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
     
     # Check if user exists
-    user = await users_col.find_one({"email": email})
+    user = await users_col.find_one({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
     logger.info(f"[FORGOT PASSWORD DEBUG] Attempting reset for: {email}")
     logger.info(f"[FORGOT PASSWORD DEBUG] User found in database: {bool(user)}")
     
@@ -5400,14 +5402,17 @@ async def forgot_password(data: dict = Body(...)):
     # Send email via template system
     from services.platform_notification_service import notify_password_reset
     reset_link = f"{frontend_url}/#/reset-password?token={token}"
-    user_doc = await users_col.find_one({"email": email})
+    user_doc = user or await users_col.find_one({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
     participant_name = (user_doc or {}).get("full_name") or (user_doc or {}).get("name") or "Participant"
-    await notify_password_reset(
+    sent_ok = await notify_password_reset(
         recipient_email=email,
         participant_name=participant_name,
         reset_link=reset_link,
         expiry_duration="1 hour",
     )
+    if not sent_ok:
+        logger.error(f"[FORGOT PASSWORD] Email delivery failed for {email}")
+        raise HTTPException(status_code=503, detail="Email service unavailable. Please try again shortly.")
     
     return {"status": "success", "message": "Reset link sent"}
 
