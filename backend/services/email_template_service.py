@@ -699,10 +699,11 @@ async def send_template_email(
     template = await get_active_template(event_id, institution_id, template_type)
     if not template:
         logger.warning(f"No template found for type '{template_type}' — skipping email to {recipient}")
-        return
+        return False
 
     subj, body = render_template(template, context)
-    await send_notification_email(recipient, subject_override or subj, body)
+    result = await send_notification_email(recipient, subject_override or subj, body)
+    return bool(result)
 
 
 def markdown_to_html(md: str) -> str:

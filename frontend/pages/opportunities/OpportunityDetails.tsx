@@ -764,7 +764,16 @@ const OpportunityDetails: React.FC = () => {
     const venueLine = buildVenueLine(opportunity);
     const teamSize = teamSizeLabel(opportunity);
     const elig = eligibilityList(opportunity);
-    const logoSrc = getImageUrl(opportunity.logo_url || opportunity.institution_logo_url || '');
+    const logoSrc = getImageUrl(
+        opportunity.logo_url ||
+        opportunity.logoUrl ||
+        opportunity.institution_logo_url ||
+        opportunity.institutionLogoUrl ||
+        opportunity.organization_logo_url ||
+        opportunity.org_logo_url ||
+        opportunity.logo ||
+        ''
+    );
     const orgDisplay = opportunity.organization || opportunity.institution_profile_name || 'Host institution';
     const registeredCount = Number(opportunity.applicantsCount ?? opportunity.registeredCount ?? 0);
     const deadlineDate = (() => {

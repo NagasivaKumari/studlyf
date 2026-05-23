@@ -212,22 +212,32 @@ const STAGE_TYPES = [
 ];
 
 const REGISTRATION_PROFILE_FIELDS = [
-    { key: 'profile_type', label: 'Profile Type (Student / Professional)', category: 'Identity', isMandatoryDefault: true },
-    { key: 'full_name', label: 'Full Name', category: 'Identity', isMandatoryDefault: true },
-    { key: 'email', label: 'Email Address', category: 'Identity', isMandatoryDefault: true },
-    { key: 'phone', label: 'Phone Number', category: 'Identity', isMandatoryDefault: true },
-    { key: 'gender', label: 'Gender', category: 'Identity', isMandatoryDefault: false },
-    { key: 'dob', label: 'Date of Birth', category: 'Identity', isMandatoryDefault: false },
-    { key: 'college', label: 'College Name', category: 'Education', isMandatoryDefault: true },
-    { key: 'degree', label: 'Degree / Program', category: 'Education', isMandatoryDefault: false },
-    { key: 'branch', label: 'Branch / Department', category: 'Education', isMandatoryDefault: false },
-    { key: 'graduation_year', label: 'Graduation Year', category: 'Education', isMandatoryDefault: false },
-    { key: 'cgpa', label: 'CGPA / Marks', category: 'Education', isMandatoryDefault: false },
-    { key: 'resume_url', label: 'Resume File', category: 'Professional', isMandatoryDefault: false },
-    { key: 'linkedin_url', label: 'LinkedIn Profile', category: 'Professional', isMandatoryDefault: false },
-    { key: 'github_url', label: 'GitHub Profile', category: 'Professional', isMandatoryDefault: false },
-    { key: 'portfolio_url', label: 'Portfolio URL', category: 'Professional', isMandatoryDefault: false },
-    { key: 'skills', label: 'Skills / Expertise', category: 'Professional', isMandatoryDefault: false }
+    { key: 'profile_type', label: 'Profile Type', category: 'Identity', defaultState: 'REQUIRED' as const },
+    { key: 'full_name', label: 'Full Name', category: 'Identity', defaultState: 'REQUIRED' as const },
+    { key: 'email', label: 'Email Address', category: 'Identity', defaultState: 'REQUIRED' as const },
+    { key: 'phone', label: 'Phone Number', category: 'Identity', defaultState: 'REQUIRED' as const },
+    { key: 'location', label: 'Location', category: 'Identity', defaultState: 'OPTIONAL' as const },
+    { key: 'gender', label: 'Gender', category: 'Identity', defaultState: 'OPTIONAL' as const },
+    { key: 'dob', label: 'Date of Birth', category: 'Identity', defaultState: 'HIDDEN' as const },
+
+    { key: 'college', label: 'College Name', category: 'Education', defaultState: 'REQUIRED' as const },
+    { key: 'degree', label: 'Degree / Program', category: 'Education', defaultState: 'OPTIONAL' as const },
+    { key: 'branch', label: 'Branch / Department', category: 'Education', defaultState: 'OPTIONAL' as const },
+    { key: 'graduation_year', label: 'Graduation Year', category: 'Education', defaultState: 'OPTIONAL' as const },
+    { key: 'roll_number', label: 'Roll Number', category: 'Education', defaultState: 'OPTIONAL' as const },
+    { key: 'cgpa', label: 'CGPA / Marks', category: 'Education', defaultState: 'OPTIONAL' as const },
+
+    { key: 'company', label: 'Company', category: 'Professional', defaultState: 'OPTIONAL' as const },
+    { key: 'job_title', label: 'Job Title', category: 'Professional', defaultState: 'OPTIONAL' as const },
+    { key: 'years_of_experience', label: 'Years of Experience', category: 'Professional', defaultState: 'OPTIONAL' as const },
+    { key: 'industry', label: 'Industry', category: 'Professional', defaultState: 'OPTIONAL' as const },
+    { key: 'organization_name', label: 'Organization Name', category: 'Professional', defaultState: 'OPTIONAL' as const },
+    { key: 'website_url', label: 'Website URL', category: 'Professional', defaultState: 'OPTIONAL' as const },
+    { key: 'resume_url', label: 'Resume File', category: 'Professional', defaultState: 'OPTIONAL' as const },
+    { key: 'linkedin_url', label: 'LinkedIn Profile', category: 'Professional', defaultState: 'OPTIONAL' as const },
+    { key: 'github_url', label: 'GitHub Profile', category: 'Professional', defaultState: 'OPTIONAL' as const },
+    { key: 'portfolio_url', label: 'Portfolio URL', category: 'Professional', defaultState: 'HIDDEN' as const },
+    { key: 'skills', label: 'Skills / Expertise', category: 'Professional', defaultState: 'OPTIONAL' as const }
 ];
 
 const normalizeStageTypeId = (rawType: string | undefined) => {
@@ -815,17 +825,12 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                                             </thead>
                                                                             <tbody className="divide-y divide-slate-100/70 text-xs">
                                                                                 {REGISTRATION_PROFILE_FIELDS.map((field) => {
-                                                                                    const value = config[field.key] || (field.isMandatoryDefault ? 'REQUIRED' : 'HIDDEN');
+                                                                                    const value = config[field.key] || field.defaultState || 'OPTIONAL';
                                                                                     
                                                                                     return (
                                                                                         <tr key={field.key} className="hover:bg-slate-50/40 transition-colors">
                                                                                             <td className="px-5 py-4 font-bold text-slate-800 flex items-center gap-2">
                                                                                                 {field.label}
-                                                                                                {field.isMandatoryDefault && (
-                                                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-purple-50 text-[#6C3BFF] border border-purple-100/50">
-                                                                                                        🔒 Required
-                                                                                                    </span>
-                                                                                                )}
                                                                                             </td>
                                                                                             <td className="px-5 py-4">
                                                                                                 <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
@@ -842,18 +847,14 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                                                                 <div className="inline-flex p-0.5 bg-slate-100/80 rounded-xl border border-slate-200/40 shadow-inner">
                                                                                                     {(['REQUIRED', 'OPTIONAL', 'HIDDEN'] as const).map((opt) => {
                                                                                                         const isSelected = value === opt;
-                                                                                                        const isDisabled = field.isMandatoryDefault && opt !== 'REQUIRED';
                                                                                                         return (
                                                                                                             <button
                                                                                                                 key={opt}
                                                                                                                 type="button"
-                                                                                                                disabled={isDisabled}
                                                                                                                 onClick={() => handleFieldConfigChange(field.key, opt)}
                                                                                                                 className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-200 ${
                                                                                                                     isSelected
                                                                                                                         ? 'bg-[#6C3BFF] text-white shadow-sm'
-                                                                                                                        : isDisabled
-                                                                                                                        ? 'text-slate-300 cursor-not-allowed opacity-40'
                                                                                                                         : 'text-slate-400 hover:text-slate-700 hover:bg-white/40'
                                                                                                                 }`}
                                                                                                             >

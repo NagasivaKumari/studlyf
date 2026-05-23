@@ -65,6 +65,7 @@ DEFAULT_FIELDS_METADATA = {
     "full_name": {"label": "Full Name", "category": "Identity", "default": "REQUIRED", "type": "text"},
     "email": {"label": "Email", "category": "Identity", "default": "REQUIRED", "type": "text"},
     "phone": {"label": "Phone Number", "category": "Identity", "default": "REQUIRED", "type": "text"},
+    "location": {"label": "Location", "category": "Identity", "default": "OPTIONAL", "type": "text"},
     "gender": {"label": "Gender", "category": "Identity", "default": "OPTIONAL", "type": "text"},
     "dob": {"label": "Date of Birth", "category": "Identity", "default": "HIDDEN", "type": "date"},
     
@@ -72,7 +73,15 @@ DEFAULT_FIELDS_METADATA = {
     "degree": {"label": "Degree", "category": "Education", "default": "OPTIONAL", "type": "text"},
     "branch": {"label": "Branch / Department", "category": "Education", "default": "OPTIONAL", "type": "text"},
     "graduation_year": {"label": "Graduation Year", "category": "Education", "default": "OPTIONAL", "type": "number"},
+    "roll_number": {"label": "Roll Number", "category": "Education", "default": "OPTIONAL", "type": "text"},
     "cgpa": {"label": "CGPA", "category": "Education", "default": "OPTIONAL", "type": "text"},
+
+    "company": {"label": "Company", "category": "Professional", "default": "OPTIONAL", "type": "text"},
+    "job_title": {"label": "Job Title", "category": "Professional", "default": "OPTIONAL", "type": "text"},
+    "years_of_experience": {"label": "Years of Experience", "category": "Professional", "default": "OPTIONAL", "type": "number"},
+    "industry": {"label": "Industry", "category": "Professional", "default": "OPTIONAL", "type": "text"},
+    "organization_name": {"label": "Organization Name", "category": "Professional", "default": "OPTIONAL", "type": "text"},
+    "website_url": {"label": "Website URL", "category": "Professional", "default": "OPTIONAL", "type": "url"},
     
     "resume_url": {"label": "Resume", "category": "Professional", "default": "OPTIONAL", "type": "file"},
     "linkedin_url": {"label": "LinkedIn URL", "category": "Professional", "default": "OPTIONAL", "type": "url"},
@@ -80,6 +89,217 @@ DEFAULT_FIELDS_METADATA = {
     "portfolio_url": {"label": "Portfolio URL", "category": "Professional", "default": "HIDDEN", "type": "url"},
     "skills": {"label": "Skills", "category": "Professional", "default": "OPTIONAL", "type": "text"}
 }
+
+LEGACY_FIELD_KEY_ALIASES = {
+    "1": "full_name",
+    "2": "email",
+    "3": "phone",
+    "4": "college",
+    "5": "degree",
+    "6": "branch",
+    "7": "graduation_year",
+    "8": "cgpa",
+    "9": "resume_url",
+    "10": "linkedin_url",
+    "11": "github_url",
+    "12": "portfolio_url",
+    "13": "skills",
+    "name": "full_name",
+    "fullname": "full_name",
+    "full_name": "full_name",
+    "mail": "email",
+    "email": "email",
+    "phone": "phone",
+    "phone_number": "phone",
+    "mobile": "phone",
+    "profile_type": "profile_type",
+    "college": "college",
+    "college_name": "college",
+    "degree": "degree",
+    "branch": "branch",
+    "department": "branch",
+    "graduation_year": "graduation_year",
+    "grad_year": "graduation_year",
+    "roll_number": "roll_number",
+    "rollno": "roll_number",
+    "cgpa": "cgpa",
+    "gender": "gender",
+    "dob": "dob",
+    "location": "location",
+    "resume": "resume_url",
+    "resume_url": "resume_url",
+    "linkedin": "linkedin_url",
+    "linkedin_url": "linkedin_url",
+    "github": "github_url",
+    "github_url": "github_url",
+    "portfolio": "portfolio_url",
+    "portfolio_url": "portfolio_url",
+    "skills": "skills",
+    "company": "company",
+    "job_title": "job_title",
+    "experience": "years_of_experience",
+    "years_of_experience": "years_of_experience",
+    "industry": "industry",
+    "organization_name": "organization_name",
+    "website": "website_url",
+    "website_url": "website_url"
+}
+
+PROFILE_DEFAULTS_BASE = {
+    "profile_type": "REQUIRED",
+    "full_name": "REQUIRED",
+    "email": "REQUIRED",
+    "phone": "REQUIRED",
+    "location": "OPTIONAL",
+    "gender": "OPTIONAL",
+    "dob": "HIDDEN",
+    "college": "REQUIRED",
+    "degree": "OPTIONAL",
+    "branch": "OPTIONAL",
+    "graduation_year": "OPTIONAL",
+    "roll_number": "OPTIONAL",
+    "cgpa": "OPTIONAL",
+    "company": "HIDDEN",
+    "job_title": "HIDDEN",
+    "years_of_experience": "HIDDEN",
+    "industry": "HIDDEN",
+    "organization_name": "HIDDEN",
+    "website_url": "HIDDEN",
+    "resume_url": "OPTIONAL",
+    "linkedin_url": "OPTIONAL",
+    "github_url": "OPTIONAL",
+    "portfolio_url": "HIDDEN",
+    "skills": "OPTIONAL"
+}
+
+PROFILE_TYPE_DEFAULT_OVERRIDES = {
+    "student": {
+        "college": "REQUIRED",
+        "degree": "OPTIONAL",
+        "branch": "OPTIONAL",
+        "graduation_year": "OPTIONAL",
+        "roll_number": "OPTIONAL",
+        "cgpa": "OPTIONAL",
+        "company": "HIDDEN",
+        "job_title": "HIDDEN",
+        "years_of_experience": "HIDDEN",
+        "industry": "HIDDEN",
+        "organization_name": "HIDDEN",
+        "website_url": "HIDDEN"
+    },
+    "professional": {
+        "college": "HIDDEN",
+        "degree": "HIDDEN",
+        "branch": "HIDDEN",
+        "graduation_year": "HIDDEN",
+        "roll_number": "HIDDEN",
+        "cgpa": "HIDDEN",
+        "company": "OPTIONAL",
+        "job_title": "OPTIONAL",
+        "years_of_experience": "OPTIONAL",
+        "industry": "OPTIONAL",
+        "website_url": "OPTIONAL"
+    },
+    "freelancer": {
+        "college": "HIDDEN",
+        "degree": "HIDDEN",
+        "branch": "HIDDEN",
+        "graduation_year": "HIDDEN",
+        "roll_number": "HIDDEN",
+        "cgpa": "HIDDEN",
+        "company": "HIDDEN",
+        "job_title": "HIDDEN",
+        "years_of_experience": "OPTIONAL",
+        "industry": "OPTIONAL",
+        "website_url": "OPTIONAL",
+        "portfolio_url": "OPTIONAL",
+        "skills": "OPTIONAL"
+    },
+    "organization": {
+        "college": "HIDDEN",
+        "degree": "HIDDEN",
+        "branch": "HIDDEN",
+        "graduation_year": "HIDDEN",
+        "roll_number": "HIDDEN",
+        "cgpa": "HIDDEN",
+        "organization_name": "REQUIRED",
+        "company": "OPTIONAL",
+        "job_title": "OPTIONAL",
+        "years_of_experience": "HIDDEN",
+        "industry": "OPTIONAL",
+        "website_url": "OPTIONAL"
+    },
+    "recruiter": {
+        "college": "HIDDEN",
+        "degree": "HIDDEN",
+        "branch": "HIDDEN",
+        "graduation_year": "HIDDEN",
+        "roll_number": "HIDDEN",
+        "cgpa": "HIDDEN",
+        "organization_name": "REQUIRED",
+        "company": "OPTIONAL",
+        "job_title": "OPTIONAL",
+        "years_of_experience": "HIDDEN",
+        "industry": "OPTIONAL",
+        "website_url": "OPTIONAL"
+    }
+}
+
+
+def normalize_profile_type(value: Any) -> str:
+    v = str(value or "").strip().lower()
+    if v in ("working professional", "working_professional"):
+        return "professional"
+    if v in ("student", "professional", "freelancer", "organization", "recruiter"):
+        return v
+    return "student"
+
+
+def normalize_profile_field_key(key: Any) -> Optional[str]:
+    raw = str(key or "").strip().lower().replace(" ", "_")
+    normalized = LEGACY_FIELD_KEY_ALIASES.get(raw, raw)
+    if normalized in DEFAULT_FIELDS_METADATA:
+        return normalized
+    return None
+
+
+def build_profile_fields_config_from_legacy(legacy_rf: Any) -> Dict[str, str]:
+    legacy_map: Dict[str, str] = {}
+    if not isinstance(legacy_rf, list):
+        return legacy_map
+
+    for f in legacy_rf:
+        if not isinstance(f, dict):
+            continue
+        raw_key = f.get("id") or f.get("key") or f.get("name") or f.get("field")
+        key = normalize_profile_field_key(raw_key)
+        if not key:
+            continue
+        required = f.get("required") in (True, "true", "True", 1) or f.get("isFixed") is True
+        legacy_map[key] = "REQUIRED" if required else "OPTIONAL"
+    return legacy_map
+
+
+def normalize_profile_fields_config(config: Any) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    if not isinstance(config, dict):
+        return out
+
+    for key, value in config.items():
+        nk = normalize_profile_field_key(key)
+        if not nk:
+            continue
+        state = str(value or "").strip().upper()
+        if state not in ("REQUIRED", "OPTIONAL", "HIDDEN"):
+            state = "OPTIONAL"
+        out[nk] = state
+    return out
+
+
+def compute_default_profile_config(profile_type: str) -> Dict[str, str]:
+    defaults = dict(PROFILE_DEFAULTS_BASE)
+    defaults.update(PROFILE_TYPE_DEFAULT_OVERRIDES.get(normalize_profile_type(profile_type), {}))
+    return defaults
  
 class UserProfileSchema(BaseModel):
     profile_type: Optional[str] = None
@@ -92,7 +312,14 @@ class UserProfileSchema(BaseModel):
     degree: Optional[str] = None
     branch: Optional[str] = None
     graduation_year: Optional[int] = None
+    roll_number: Optional[str] = None
     cgpa: Optional[str] = None
+    company: Optional[str] = None
+    job_title: Optional[str] = None
+    years_of_experience: Optional[int] = None
+    industry: Optional[str] = None
+    organization_name: Optional[str] = None
+    website_url: Optional[str] = None
     resume_url: Optional[str] = None
     linkedin_url: Optional[str] = None
     github_url: Optional[str] = None
@@ -116,9 +343,11 @@ async def fetch_legacy_profile(user_id: str) -> dict:
         
         profile = {
             "user_id": str(user_id),
+            "profile_type": user.get("profile_type", ""),
             "full_name": full_name,
             "email": user.get("email", ""),
             "phone": user.get("phone", ""),
+            "location": user.get("location", ""),
             "gender": user.get("gender", ""),
             "dob": user.get("dob", ""),
             "college": college,
@@ -127,6 +356,12 @@ async def fetch_legacy_profile(user_id: str) -> dict:
             "graduation_year": user.get("graduation_year") or user.get("endYear"),
             "roll_number": user.get("roll_number", ""),
             "cgpa": user.get("cgpa", ""),
+            "company": user.get("company", ""),
+            "job_title": user.get("job_title", ""),
+            "years_of_experience": user.get("years_of_experience"),
+            "industry": user.get("industry", ""),
+            "organization_name": user.get("organization_name", ""),
+            "website_url": user.get("website_url", ""),
             "resume_url": user.get("resume_url", ""),
             "linkedin_url": user.get("linkedin_url", ""),
             "github_url": user.get("github_url", ""),
@@ -205,10 +440,26 @@ async def update_global_profile(data: UserProfileSchema, user: dict = Depends(ge
         sync_users["email"] = update_data["email"]
     if "phone" in update_data:
         sync_users["phone"] = update_data["phone"]
+    if "location" in update_data:
+        sync_users["location"] = update_data["location"]
     if "college" in update_data:
         sync_users["college"] = update_data["college"]
         sync_users["college_name"] = update_data["college"]
         sync_users["institution"] = update_data["college"]
+    if "roll_number" in update_data:
+        sync_users["roll_number"] = update_data["roll_number"]
+    if "company" in update_data:
+        sync_users["company"] = update_data["company"]
+    if "job_title" in update_data:
+        sync_users["job_title"] = update_data["job_title"]
+    if "years_of_experience" in update_data:
+        sync_users["years_of_experience"] = update_data["years_of_experience"]
+    if "industry" in update_data:
+        sync_users["industry"] = update_data["industry"]
+    if "organization_name" in update_data:
+        sync_users["organization_name"] = update_data["organization_name"]
+    if "website_url" in update_data:
+        sync_users["website_url"] = update_data["website_url"]
     if "gender" in update_data:
         sync_users["gender"] = update_data["gender"]
     if "skills" in update_data:
@@ -304,79 +555,20 @@ async def get_registration_form_config(event_id: str, user: dict = Depends(get_a
             raise HTTPException(status_code=404, detail="Event not found")
         
         settings = event.get("registration_settings") or {}
-        profile_fields_config = settings.get("profile_fields_config") or {}
+        profile_fields_config = normalize_profile_fields_config(settings.get("profile_fields_config") or {})
 
-        # Backward-compatibility: some events store registrationFields as an array
-        # (legacy PostOpportunity flow). If profile_fields_config is empty, try
-        # to build a config map from registrationFields so the frontend shows
-        # the fields the admin configured.
-        if not profile_fields_config:
-            legacy_rf = event.get("registrationFields") or event.get("registration_fields") or []
-            if isinstance(legacy_rf, list) and len(legacy_rf) > 0:
-                try:
-                    legacy_map = {}
-                    for f in legacy_rf:
-                        # Expect objects like { id, label, required }
-                        key = f.get('id') or f.get('key') or f.get('name')
-                        if not key:
-                            continue
-                        # Normalize common boolean/required flag
-                        required = f.get('required') in (True, 'true', 'True', 1) or f.get('isFixed') is True
-                        legacy_map[key] = 'REQUIRED' if required else 'OPTIONAL'
-                    if legacy_map:
-                        profile_fields_config = legacy_map
-                except Exception:
-                    pass
-
-        # If still empty, check the mirrored opportunities collection for legacy fields
-        if not profile_fields_config:
-            try:
-                opp = await opportunities_col.find_one({"event_link_id": str(event_id)})
-                if opp:
-                    legacy_rf = opp.get("registrationFields") or opp.get("registration_fields") or []
-                    if isinstance(legacy_rf, list) and len(legacy_rf) > 0:
-                        legacy_map = {}
-                        for f in legacy_rf:
-                            key = f.get('id') or f.get('key') or f.get('name')
-                            if not key:
-                                continue
-                            required = f.get('required') in (True, 'true', 'True', 1) or f.get('isFixed') is True
-                            legacy_map[key] = 'REQUIRED' if required else 'OPTIONAL'
-                        if legacy_map:
-                            profile_fields_config = legacy_map
-            except Exception:
-                pass
-
-        # If still empty, check the mirrored opportunities collection for legacy fields
-        if not profile_fields_config:
-            try:
-                opp = await opportunities_col.find_one({"event_link_id": str(event_id)})
-                if opp:
-                    legacy_rf = opp.get("registrationFields") or opp.get("registration_fields") or []
-                    if isinstance(legacy_rf, list) and len(legacy_rf) > 0:
-                        legacy_map = {}
-                        for f in legacy_rf:
-                            key = f.get('id') or f.get('key') or f.get('name')
-                            if not key:
-                                continue
-                            required = f.get('required') in (True, 'true', 'True', 1) or f.get('isFixed') is True
-                            legacy_map[key] = 'REQUIRED' if required else 'OPTIONAL'
-                        if legacy_map:
-                            profile_fields_config = legacy_map
-            except Exception:
-                pass
-        
-        # Ensure default field config states exist
-        for field, meta in DEFAULT_FIELDS_METADATA.items():
-            if field not in profile_fields_config:
-                profile_fields_config[field] = meta["default"]
-                
-        custom_questions = event.get("custom_questions") or []
-        
-        # Load user global profile
+        # Load user global profile first; defaults can depend on profile_type.
         profile = await user_profiles_col.find_one({"user_id": user["user_id"]})
         if not profile:
             profile = await fetch_legacy_profile(user["user_id"])
+
+        # Fill missing defaults based on profile type, while preserving explicit admin config.
+        defaults_map = compute_default_profile_config(profile.get("profile_type", "student"))
+        for field, default_state in defaults_map.items():
+            if field not in profile_fields_config:
+                profile_fields_config[field] = default_state
+                
+        custom_questions = event.get("custom_questions") or []
             
         reg = await registrations_col.find_one({"event_id": str(event_id), "user_id": user["user_id"]})
         reg_status = reg.get("status", "NOT_REGISTERED") if reg else "NOT_REGISTERED"
@@ -385,7 +577,9 @@ async def get_registration_form_config(event_id: str, user: dict = Depends(get_a
         fields_definitions = []
         for field, status_str in profile_fields_config.items():
             if status_str != "HIDDEN":
-                meta = DEFAULT_FIELDS_METADATA[field]
+                meta = DEFAULT_FIELDS_METADATA.get(field)
+                if not meta:
+                    continue
                 fields_definitions.append({
                     "id": field,
                     "label": meta["label"],
@@ -439,36 +633,22 @@ async def submit_event_registration(event_id: str, request: ApplyRegistrationReq
             raise HTTPException(status_code=404, detail="Event not found")
             
         settings = event.get("registration_settings") or {}
-        profile_fields_config = settings.get("profile_fields_config") or {}
+        profile_fields_config = normalize_profile_fields_config(settings.get("profile_fields_config") or {})
 
-        # Backwards-compatibility: fallback to legacy registrationFields array
-        if not profile_fields_config:
-            legacy_rf = event.get("registrationFields") or event.get("registration_fields") or []
-            if isinstance(legacy_rf, list) and len(legacy_rf) > 0:
-                try:
-                    legacy_map = {}
-                    for f in legacy_rf:
-                        key = f.get('id') or f.get('key') or f.get('name')
-                        if not key:
-                            continue
-                        required = f.get('required') in (True, 'true', 'True', 1) or f.get('isFixed') is True
-                        legacy_map[key] = 'REQUIRED' if required else 'OPTIONAL'
-                    if legacy_map:
-                        profile_fields_config = legacy_map
-                except Exception:
-                    pass
+        # Resolve effective profile type and apply defaults for missing fields only.
+        effective_profile_type = normalize_profile_type(request.profile_data.get("profile_type"))
+        defaults_map = compute_default_profile_config(effective_profile_type)
+        for field, default_state in defaults_map.items():
+            if field not in profile_fields_config:
+                profile_fields_config[field] = default_state
         
         # 1. Validate required profile fields
         profile_data = request.profile_data
-        is_professional = str(profile_data.get("profile_type", "")).strip().lower() == "working professional"
+        is_professional = normalize_profile_type(profile_data.get("profile_type")) == "professional"
         
         for field, status_str in profile_fields_config.items():
             meta = DEFAULT_FIELDS_METADATA.get(field)
             if status_str == "REQUIRED":
-                # Bypass validation for all Education fields for Working Professionals (except 'college' which doubles as employer name)
-                if is_professional and meta and meta.get("category") == "Education" and field != "college":
-                    continue
-                
                 if not profile_data.get(field):
                     raise HTTPException(
                         status_code=400,
