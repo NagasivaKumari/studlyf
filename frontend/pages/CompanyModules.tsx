@@ -221,6 +221,18 @@ const PREMIUM_COMPANIES: Company[] = [
     ],
     hr: [
       {
+        id: 'gh2',
+        question: 'Describe a situation where you noticed an inefficiency in a project and fixed it without being asked.',
+        modelAnswer: 'While working on a team project, I noticed that our code review process was taking 3-4 days per PR due to manual testing. Without being assigned, I researched automated testing frameworks, implemented a CI/CD pipeline with GitHub Actions, and set up automated unit and integration tests. This reduced review time to under 24 hours and caught bugs earlier in the development cycle.',
+        aiTips: 'Emphasize Google values: proactivity, technical excellence, and improving team efficiency through automation.',
+        starTips: {
+          situation: 'Our team had a slow code review process with 3-4 day turnaround times due to manual testing requirements.',
+          task: 'I identified the inefficiency and took initiative to automate the testing and review process.',
+          action: 'Researched and implemented CI/CD pipeline with GitHub Actions, set up automated unit and integration tests, and created documentation for the team.',
+          result: 'Reduced PR review time from 3-4 days to under 24 hours, increased code quality, and the automation was adopted across all team projects.'
+        }
+      },
+      {
         id: 'gh1',
         question: 'Tell me about a time you worked on a technically challenging project under severe ambiguity.',
         modelAnswer: 'In my third-year internship, I was tasked with designing a real-time data scraper without knowing the exact rate limits or page limits of host sites. I researched the problem from first principles, implemented a dynamic back-off algorithm (exponential decay) to prevent getting IP-blocked, structured the crawler using robust multi-threading, and successfully delivered a highly robust ETL pipeline that processed 50k nodes daily.',
@@ -327,13 +339,13 @@ const PREMIUM_COMPANIES: Company[] = [
       {
         id: 'ah1',
         question: 'Describe a situation where you noticed an inefficiency in a project and fixed it without being asked.',
-        modelAnswer: 'While building a student application, I realized that database queries were loading entire user profiles repeatedly for each post on the dashboard. This wasted network bandwidth and degraded server loading times. I researched database optimizations, implemented MongoDB projection to only fetch necessary post summaries, and added a Redis cache for static profiles. This reduced average page latency by 45%.',
-        aiTips: 'Emphasize Amazon Leadership Principles: Ownership, Bias for Action, and Frugality.',
+        modelAnswer: 'While building a student application, I noticed that database queries were loading entire user profiles repeatedly for each post on the dashboard. This wasted network bandwidth and degraded server loading times. Without being asked, I took Ownership of the issue, researched database optimizations, implemented MongoDB projection to only fetch necessary post summaries, and added a Redis cache for static profiles. This demonstrated Bias for Action by proactively solving the problem, and Frugality by optimizing resource usage. The result was a 45% reduction in average page latency and 70% reduction in database load.',
+        aiTips: 'Emphasize Amazon Leadership Principles: Ownership (taking responsibility without being asked), Bias for Action (proactively solving problems), and Frugality (optimizing resources and costs).',
         starTips: {
-          situation: 'Our team was building a dashboard that had highly laggy search results under large records.',
-          task: 'I took the initiative to optimize API responses and search rendering logic.',
-          action: 'Implemented debouncing (300ms delay) on the frontend search bar, indexed database text search fields, and cached queries.',
-          result: 'Reduced database query stress by 70% and eliminated lag, yielding extremely smooth, real-time query rendering.'
+          situation: 'Our team was building a dashboard that had highly laggy search results under large records, affecting user experience.',
+          task: 'I took Ownership to optimize API responses and search rendering logic without waiting for assignment.',
+          action: 'Demonstrated Bias for Action by implementing debouncing (300ms delay) on the frontend search bar, indexed database text search fields, and cached queries. Applied Frugality by reducing unnecessary database calls.',
+          result: 'Reduced database query stress by 70% and eliminated lag, yielding extremely smooth, real-time query rendering. This proactive approach became a best practice for the team.'
         }
       }
     ]
@@ -396,6 +408,18 @@ const PREMIUM_COMPANIES: Company[] = [
       }
     ],
     hr: [
+      {
+        id: 'mh2',
+        question: 'Describe a situation where you noticed an inefficiency in a project and fixed it without being asked.',
+        modelAnswer: 'While working on a Microsoft Teams integration project, I noticed that our API calls were being made synchronously, causing the UI to freeze during data fetches. Without being asked, I researched async/await patterns, refactored all API calls to be asynchronous, and implemented loading states. This improved user experience significantly and reduced app crashes by 60%.',
+        aiTips: 'Emphasize Microsoft values: Growth Mindset (learning and improving), Customer Obsession (improving UX), and technical excellence.',
+        starTips: {
+          situation: 'Our Teams integration had UI freezing issues due to synchronous API calls during data fetches.',
+          task: 'I identified the performance bottleneck and took initiative to refactor the API architecture.',
+          action: 'Researched async/await patterns, refactored all API calls to be asynchronous, implemented loading states and error handling.',
+          result: 'Eliminated UI freezing, reduced app crashes by 60%, and the async pattern became the standard for all future integrations.'
+        }
+      },
       {
         id: 'mh1',
         question: 'Give an example of a time when you had to learn a completely new framework/technology in a very short timeline.',
@@ -512,6 +536,18 @@ const PREMIUM_COMPANIES: Company[] = [
     ],
     hr: [
       {
+        id: 'adh2',
+        question: 'Describe a situation where you noticed an inefficiency in a project and fixed it without being asked.',
+        modelAnswer: 'While working on a creative design tool, I noticed that the rendering engine was recalculating the entire canvas on every minor change, causing significant lag. Without being assigned, I implemented a dirty rectangle system that only re-rendered changed regions. This reduced rendering time by 75% and made the tool much more responsive for designers.',
+        aiTips: 'Emphasize Adobe values: Creativity (innovative solutions), User Experience (performance matters), and technical excellence.',
+        starTips: {
+          situation: 'Our creative design tool had performance issues due to full canvas recalculation on every change.',
+          task: 'I identified the rendering bottleneck and proactively optimized the rendering engine.',
+          action: 'Implemented dirty rectangle system to only re-render changed regions, optimized the render loop, added performance monitoring.',
+          result: 'Reduced rendering time by 75%, improved tool responsiveness, and the optimization became standard across Adobe products.'
+        }
+      },
+      {
         id: 'adh1',
         question: 'Tell me about a creative solution you implemented to solve a complex technical problem.',
         modelAnswer: 'During a college project, our image processing pipeline took 30+ seconds per batch. I researched Web Workers and proposed offloading computation to background threads. I implemented a worker pool pattern processing images in parallel, reducing batch time to under 5 seconds — an 83% improvement. This creative approach earned recognition and was adopted by two other project teams.',
@@ -619,6 +655,18 @@ const PREMIUM_COMPANIES: Company[] = [
       }
     ],
     hr: [
+      {
+        id: 'fkh2',
+        question: 'Describe a situation where you noticed an inefficiency in a project and fixed it without being asked.',
+        modelAnswer: 'While working on an e-commerce feature, I noticed that product images were being loaded at full resolution regardless of device, causing slow page loads on mobile. Without being asked, I implemented responsive image loading with different sizes for different devices, and lazy loading for images below the fold. This reduced page load time by 60% on mobile and improved conversion rates.',
+        aiTips: 'Emphasize Flipkart values: Customer First (improving experience), Speed (performance), and Data-Driven (measuring impact).',
+        starTips: {
+          situation: 'Our e-commerce pages were slow on mobile due to full-resolution image loading.',
+          task: 'I identified the performance issue and took initiative to optimize image delivery.',
+          action: 'Implemented responsive image loading with device-specific sizes, added lazy loading for below-fold images, monitored performance metrics.',
+          result: 'Reduced mobile page load time by 60%, improved conversion rates by 15%, and the optimization was rolled out across the platform.'
+        }
+      },
       {
         id: 'fkh1',
         question: 'Describe a time when you had to deliver results under extreme time pressure.',
@@ -1792,8 +1840,8 @@ const CompanyModules: React.FC = () => {
                         setSelectedQuestion(null);
                       }}
                       className={`w-full flex items-center justify-between p-3.5 rounded-2xl border text-xs font-black uppercase tracking-widest transition-all ${activeTab === t.id
-                        ? 'bg-purple-500/10 border-purple-500/40 text-purple-300 shadow-lg shadow-purple-100/20'
-                        : 'bg-transparent border-transparent text-slate-400 hover:bg-white hover:text-slate-700'
+                        ? 'bg-purple-500/10 border-purple-500/40 text-purple-700 shadow-lg shadow-purple-100/20'
+                        : 'bg-transparent border-transparent text-slate-700 hover:bg-white hover:text-slate-900'
                         }`}
                     >
                       <div className="flex items-center gap-3">
@@ -2582,8 +2630,8 @@ const CompanyModules: React.FC = () => {
                         
                         {/* Title header */}
                         <header>
-                          <h2 className="text-3xl font-black uppercase tracking-tight text-slate-800 mb-2">Behavioral Sync</h2>
-                          <p className="text-xs font-semibold text-slate-400">Master real HR behavioral placement assessments asked by {selectedCompany.name}.</p>
+                          <h2 className="text-3xl font-black uppercase tracking-tight text-white mb-2">Behavioral Sync</h2>
+                          <p className="text-xs font-semibold text-gray-300">Master real HR behavioral placement assessments asked by {selectedCompany.name}.</p>
                         </header>
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -2592,26 +2640,29 @@ const CompanyModules: React.FC = () => {
                           <div className="lg:col-span-2 space-y-6">
                             
                             {/* Question Drawer Card */}
-                            <div className="bg-[#120B2E] border border-gray-200 rounded-[2rem] p-6 lg:p-8">
-                              <span className="text-[9px] uppercase tracking-widest font-black text-purple-400 block mb-2">Target Behavioral Query</span>
-                              <h3 className="text-2xl font-bold text-slate-800 italic leading-relaxed">"{selectedCompany.hr[0].question}"</h3>
-                              <p className="text-xs text-slate-400 mt-4 font-semibold">{selectedCompany.hr[0].aiTips}</p>
+                            <div className="bg-gradient-to-br from-[#1a0a2e] to-[#16082a] border border-purple-500/30 rounded-[2rem] p-6 lg:p-8 shadow-2xl relative overflow-hidden">
+                              <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-transparent to-purple-500/10 animate-pulse" />
+                              <div className="relative z-10">
+                                <span className="text-[9px] uppercase tracking-widest font-black text-purple-400 block mb-2">Target Behavioral Query</span>
+                                <h3 className="text-2xl font-bold text-white italic leading-relaxed">"{selectedCompany.hr[0].question}"</h3>
+                                <p className="text-xs text-gray-300 mt-4 font-semibold">{selectedCompany.hr[0].aiTips}</p>
+                              </div>
                             </div>
 
                             {/* STAR Method Assistant Tool */}
-                            <div className="bg-gray-50/80 border border-gray-200 rounded-[2rem] p-6 lg:p-8 space-y-6">
+                            <div className="bg-gradient-to-br from-[#0f0a1e] to-[#1a0a2e] border border-purple-500/20 rounded-[2rem] p-6 lg:p-8 space-y-6 shadow-xl">
                               <div className="flex justify-between items-center">
-                                <h4 className="text-lg font-bold text-slate-700">STAR Method Planner</h4>
+                                <h4 className="text-lg font-bold text-white">STAR Method Planner</h4>
                                 <span className="text-[8px] bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 font-bold px-2 py-0.5 rounded">Structured Narratives</span>
                               </div>
 
                               {/* Tabs inside STAR */}
-                              <div className="flex gap-2 border-b border-gray-100 pb-3">
+                              <div className="flex gap-2 border-b border-purple-500/20 pb-3">
                                 {(['S', 'T', 'A', 'R'] as const).map((tab) => (
                                   <button
                                     key={tab}
                                     onClick={() => setStarTab(tab)}
-                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${starTab === tab ? 'bg-purple-500/10 border border-purple-500/40 text-purple-300' : 'bg-transparent text-slate-400 hover:text-slate-600'}`}
+                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${starTab === tab ? 'bg-purple-500/20 border border-purple-500/40 text-white' : 'bg-transparent text-gray-400 hover:text-gray-200'}`}
                                   >
                                     {tab === 'S' ? 'Situation' : tab === 'T' ? 'Task' : tab === 'A' ? 'Action' : 'Result'}
                                   </button>
@@ -2631,13 +2682,13 @@ const CompanyModules: React.FC = () => {
                                     : starTab === 'A' ? selectedCompany.hr[0].starTips.action
                                     : selectedCompany.hr[0].starTips.result
                                   }
-                                  className="w-full bg-gray-50 border border-gray-200 focus:border-purple-500/60 rounded-2xl p-4 text-xs h-24 focus:outline-none text-slate-700"
+                                  className="w-full bg-[#1a0a2e] border border-purple-500/30 focus:border-purple-500/60 rounded-2xl p-4 text-xs h-24 focus:outline-none text-white placeholder-gray-500"
                                 />
                                 <div className="flex justify-between items-center">
-                                  <span className="text-[8px] text-slate-400">Auto-saves state in active workspace</span>
+                                  <span className="text-[8px] text-gray-400">Auto-saves state in active workspace</span>
                                   <button
                                     onClick={importStarAnswer}
-                                    className="px-4 py-2 bg-gray-100 border border-gray-200 hover:border-purple-500/30 rounded-xl text-[10px] font-black uppercase text-purple-400"
+                                    className="px-4 py-2 bg-purple-600/20 border border-purple-500/30 hover:border-purple-500/50 rounded-xl text-[10px] font-black uppercase text-purple-300"
                                   >
                                     Sync STAR Narrative to Editor
                                   </button>
@@ -2648,27 +2699,27 @@ const CompanyModules: React.FC = () => {
                             {/* Main Answer Area & Evaluator */}
                             <div className="space-y-4">
                               <div className="flex justify-between items-center">
-                                <span className="text-xs font-black uppercase tracking-wider text-slate-700">Construct Your Response</span>
-                                <span className="text-[10px] text-slate-400 font-bold">{hrAnswer.split(' ').filter(Boolean).length} Words</span>
+                                <span className="text-xs font-black uppercase tracking-wider text-white">Construct Your Response</span>
+                                <span className="text-[10px] text-gray-400 font-bold">{hrAnswer.split(' ').filter(Boolean).length} Words</span>
                               </div>
                               <textarea
                                 value={hrAnswer}
                                 onChange={(e) => setHrAnswer(e.target.value)}
                                 placeholder="Type or sync your behavioral response here..."
-                                className="w-full bg-gray-50 border border-gray-200 focus:border-purple-500 rounded-3xl p-6 text-xs h-48 focus:outline-none text-slate-700 leading-relaxed font-medium"
+                                className="w-full bg-[#1a0a2e] border border-purple-500/30 focus:border-purple-500 rounded-3xl p-6 text-xs h-48 focus:outline-none text-white leading-relaxed font-medium placeholder-gray-500"
                               />
 
                               <div className="flex gap-3">
                                 <button
                                   onClick={runHrEvaluation}
                                   disabled={evaluatingHr}
-                                  className="flex-grow py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-purple-100/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                  className="flex-grow py-4 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                                 >
                                   {evaluatingHr ? 'Assessing Answer...' : 'Submit for AI Evaluation'}
                                 </button>
                                 <button
                                   onClick={() => setHrAnswer('')}
-                                  className="px-6 bg-gray-100 border border-gray-200 text-slate-400 hover:text-slate-700 rounded-2xl text-xs font-black uppercase"
+                                  className="px-6 bg-purple-900/30 border border-purple-500/20 text-gray-400 hover:text-white rounded-2xl text-xs font-black uppercase"
                                 >
                                   Clear
                                 </button>
@@ -2680,13 +2731,13 @@ const CompanyModules: React.FC = () => {
                               <motion.div
                                 initial={{ opacity: 0, y: 15 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="bg-[#10092B] border border-purple-500/25 p-8 rounded-[2.5rem] space-y-6 shadow-2xl"
+                                className="bg-gradient-to-br from-[#10092B] to-[#1a0a2e] border border-purple-500/25 p-8 rounded-[2.5rem] space-y-6 shadow-2xl"
                               >
-                                <header className="flex justify-between items-center border-b border-gray-100 pb-4">
+                                <header className="flex justify-between items-center border-b border-purple-500/20 pb-4">
                                   <h4 className="text-lg font-bold text-purple-400 flex items-center gap-2">
                                     <Bot className="w-5 h-5 text-purple-400 animate-pulse" /> AI Evaluation Report
                                   </h4>
-                                  <span className="text-2xl font-black text-slate-800">{hrEvaluation.overall} / 100</span>
+                                  <span className="text-2xl font-black text-white">{hrEvaluation.overall} / 100</span>
                                 </header>
 
                                 {/* Scores grid */}
@@ -2697,18 +2748,18 @@ const CompanyModules: React.FC = () => {
                                     { l: 'STAR Adherence', val: hrEvaluation.structure },
                                     { l: 'Professionalism', val: hrEvaluation.professionalism }
                                   ].map((sc, i) => (
-                                    <div key={i} className="p-4 bg-gray-100 rounded-xl border border-gray-100">
-                                      <span className="text-[8px] uppercase tracking-wider font-black text-slate-400 block mb-1">{sc.l}</span>
-                                      <span className="text-sm font-black text-slate-700">{sc.val}%</span>
+                                    <div key={i} className="p-4 bg-purple-900/30 rounded-xl border border-purple-500/20">
+                                      <span className="text-[8px] uppercase tracking-wider font-black text-purple-400 block mb-1">{sc.l}</span>
+                                      <span className="text-sm font-black text-white">{sc.val}%</span>
                                     </div>
                                   ))}
                                 </div>
 
                                 <div className="space-y-2">
-                                  <span className="text-[10px] uppercase tracking-widest font-black text-slate-400">Actionable Feedback Tips</span>
+                                  <span className="text-[10px] uppercase tracking-widest font-black text-purple-400">Actionable Feedback Tips</span>
                                   <ul className="space-y-2">
                                     {hrEvaluation.feedback.map((f: string, i: number) => (
-                                      <li key={i} className="text-xs text-slate-400 leading-relaxed flex items-start gap-2">
+                                      <li key={i} className="text-xs text-gray-300 leading-relaxed flex items-start gap-2">
                                         <Sparkles className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" />
                                         <span>{f}</span>
                                       </li>
@@ -2722,20 +2773,132 @@ const CompanyModules: React.FC = () => {
 
                           {/* Company Cultural Pillars info card */}
                           <div className="space-y-6">
-                            <div className="bg-[#120D26]/60 border border-gray-200 rounded-[2rem] p-6 lg:p-8 shadow-2xl relative overflow-hidden">
-                              <h4 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-700">
-                                <Medal className="w-5 h-5 text-purple-400" /> Cultural Alignment
-                              </h4>
-                              <p className="text-xs text-slate-400 leading-relaxed mb-6 font-semibold">
-                                {selectedCompany.name} strictly filters candidates who display core culture properties:
-                              </p>
-                              <div className="space-y-4">
-                                {selectedCompany.culture.split(',').map((pil, idx) => (
-                                  <div key={idx} className="flex items-center gap-3 bg-gray-100/40 p-3.5 rounded-xl border border-white/[0.02]">
-                                    <CheckCircle2 className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                                    <span className="text-xs font-bold text-slate-600">{pil.trim()}</span>
+                            <div className="bg-gradient-to-br from-purple-900/95 to-slate-900/95 border border-purple-500/30 rounded-[2rem] p-6 lg:p-8 shadow-2xl relative overflow-hidden">
+                              <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-transparent to-purple-500/10 animate-pulse" />
+                              <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+                              <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+                              
+                              <div className="relative z-10">
+                                <h4 className="text-xl font-bold mb-6 flex items-center gap-3 text-white">
+                                  <div className="relative">
+                                    <Medal className="w-5 h-5 text-purple-300" />
+                                    <div className="absolute inset-0 bg-purple-400 blur-lg opacity-50" />
                                   </div>
-                                ))}
+                                  Cultural Alignment
+                                </h4>
+                                <p className="text-xs text-purple-200/80 leading-relaxed mb-6 font-semibold">
+                                  {selectedCompany.name} strictly filters candidates who display core culture properties:
+                                </p>
+                                <div className="space-y-4">
+                                  {selectedCompany.culture.split(',').map((pil, idx) => (
+                                    <div key={idx} className="flex items-center gap-3 bg-white/10 backdrop-blur-sm p-3.5 rounded-xl border border-purple-400/30 hover:bg-white/15 hover:border-purple-400/50 transition-all group">
+                                      <div className="relative">
+                                        <CheckCircle2 className="w-4 h-4 text-purple-300 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                                        <div className="absolute inset-0 bg-purple-400 blur-md opacity-40 group-hover:opacity-60 transition-opacity" />
+                                      </div>
+                                      <span className="text-xs font-bold text-white">{pil.trim()}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Company-Specific Leadership Principles Card */}
+                            <div className="bg-gradient-to-br from-[#1a0a2e] to-[#0f0a1e] border border-purple-500/20 rounded-[2rem] p-6 lg:p-8 shadow-xl">
+                              <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-3">
+                                <Award className="w-5 h-5 text-purple-400" />
+                                Leadership Principles
+                              </h4>
+                              <p className="text-xs text-gray-300 leading-relaxed mb-4 font-semibold">
+                                Key values {selectedCompany.name} evaluates in behavioral interviews:
+                              </p>
+                              <div className="space-y-3">
+                                {selectedCompany.id === 'amazon' && (
+                                  <>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Ownership</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Bias for Action</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Frugality</span>
+                                    </div>
+                                  </>
+                                )}
+                                {selectedCompany.id === 'google' && (
+                                  <>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Googliness</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Technical Excellence</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Proactivity</span>
+                                    </div>
+                                  </>
+                                )}
+                                {selectedCompany.id === 'microsoft' && (
+                                  <>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Growth Mindset</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Customer Obsession</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Technical Excellence</span>
+                                    </div>
+                                  </>
+                                )}
+                                {selectedCompany.id === 'adobe' && (
+                                  <>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Creativity</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">User Experience</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Innovation</span>
+                                    </div>
+                                  </>
+                                )}
+                                {selectedCompany.id === 'flipkart' && (
+                                  <>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Customer First</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Speed</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                      <Check className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs font-bold text-white">Data-Driven</span>
+                                    </div>
+                                  </>
+                                )}
+                                {(selectedCompany.id === 'goldman' || selectedCompany.id === 'atlassian' || selectedCompany.id === 'tcs' || selectedCompany.id === 'infosys') && (
+                                  <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
+                                    <Check className="w-4 h-4 text-purple-400" />
+                                    <span className="text-xs font-bold text-white">Professional Excellence</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>

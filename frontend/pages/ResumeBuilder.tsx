@@ -116,21 +116,23 @@ const DEFAULT_RESUME_DATA: ResumeData = {
 
 // --- Styles ---
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Outfit:wght@100..900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Outfit:wght@100..900&family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
   
   :root {
-    --hr-green: #008542;
-    --hr-green-hover: #006b35;
-    --hr-border: #e2e8f0;
-    --hr-text: #1e293b;
-    --hr-text-light: #64748b;
-    --hr-bg: #f8fafc;
+    --studlyf-purple: #7C3AED;
+    --studlyf-purple-dark: #6D28D9;
+    --studlyf-purple-light: #A78BFA;
+    --studlyf-border: #e2e8f0;
+    --studlyf-text: #1e293b;
+    --studlyf-text-light: #64748b;
+    --studlyf-bg: #f8fafc;
+    --studlyf-card-bg: #ffffff;
   }
 
   body { 
-    background-color: var(--hr-bg); 
-    font-family: 'Inter', sans-serif; 
-    color: var(--hr-text); 
+    background-color: var(--studlyf-bg); 
+    font-family: 'Poppins', sans-serif; 
+    color: var(--studlyf-text); 
   }
 
   .premium-scrollbar::-webkit-scrollbar { width: 6px; }
@@ -156,50 +158,62 @@ const styles = `
   /* Forms and Inputs */
   .hr-input {
     width: 100%;
-    border: 1px solid var(--hr-border);
-    border-radius: 8px;
+    border: 1px solid var(--studlyf-border);
+    border-radius: 12px;
     padding: 12px 16px;
     font-size: 14px;
+    font-family: 'Poppins', sans-serif;
     transition: all 0.2s;
     outline: none;
+    background: white;
   }
   .hr-input:focus {
-    border-color: var(--hr-green);
-    box-shadow: 0 0 0 2px rgba(0, 133, 66, 0.1);
+    border-color: var(--studlyf-purple);
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+  }
+  .hr-input::placeholder {
+    color: #94a3b8;
   }
 
   .hr-label {
     display: block;
     font-size: 12px;
-    font-weight: 500;
-    color: var(--hr-text-light);
+    font-weight: 600;
+    color: var(--studlyf-text-light);
     margin-bottom: 6px;
+    font-family: 'Poppins', sans-serif;
+    letter-spacing: 0.5px;
   }
 
   .hr-button-primary {
-    background-color: #7c3aed;
+    background: linear-gradient(135deg, var(--studlyf-purple), var(--studlyf-purple-dark));
     color: white;
     font-weight: 600;
-    padding: 10px 24px;
-    border-radius: 8px;
-    transition: background-color 0.2s;
+    padding: 12px 28px;
+    border-radius: 12px;
+    transition: all 0.3s;
+    font-family: 'Poppins', sans-serif;
+    box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
   }
   .hr-button-primary:hover {
-    background-color: #6d28d9;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(124, 58, 237, 0.4);
   }
 
   .hr-button-outline {
-    border: 1px solid var(--hr-border);
+    border: 2px solid var(--studlyf-border);
     background: white;
-    color: var(--hr-text);
+    color: var(--studlyf-text);
     font-weight: 600;
-    padding: 10px 24px;
-    border-radius: 8px;
-    transition: all 0.2s;
+    padding: 12px 28px;
+    border-radius: 12px;
+    transition: all 0.3s;
+    font-family: 'Poppins', sans-serif;
   }
   .hr-button-outline:hover {
-    background-color: #f1f5f9;
-    border-color: #cbd5e1;
+    background: #f8fafc;
+    border-color: var(--studlyf-purple);
+    color: var(--studlyf-purple);
   }
 
   /* Premium Button Styles */
@@ -223,13 +237,14 @@ const styles = `
   }
   .premium-btn {
       position: relative;
-      padding: 10px 24px;
-      background: linear-gradient(to right, #7C3AED, #6D28D9);
+      padding: 12px 28px;
+      background: linear-gradient(135deg, #7C3AED, #6D28D9);
       color: #fff;
       border: none;
-      border-radius: 12px;
+      border-radius: 16px;
       font-weight: 700;
       font-size: 14px;
+      font-family: 'Poppins', sans-serif;
       cursor: pointer;
       overflow: hidden;
       display: flex;
@@ -279,8 +294,8 @@ const styles = `
 
   /* Steps UI */
   .card-create-new {
-    border: 1px solid #cbd5e1;
-    border-radius: 12px;
+    border: 2px solid var(--studlyf-border);
+    border-radius: 20px;
     width: 300px;
     height: 400px;
     display: flex;
@@ -289,43 +304,51 @@ const styles = `
     justify-content: center;
     cursor: pointer;
     background: white;
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: transform 0.3s, box-shadow 0.3s;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
   }
   .card-create-new:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    transform: translateY(-8px);
+    box-shadow: 0 12px 30px rgba(124,58,237,0.15);
+    border-color: var(--studlyf-purple);
   }
 
   .template-card {
     border: 2px solid transparent;
-    border-radius: 12px;
-    padding: 8px;
+    border-radius: 20px;
+    padding: 12px;
     cursor: pointer;
-    transition: all 0.2s;
-    background: #f8fafc;
+    transition: all 0.3s;
+    background: white;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+  }
+  .template-card:hover {
+    box-shadow: 0 8px 25px rgba(124,58,237,0.15);
   }
   .template-card.selected {
-    border-color: #7c3aed;
+    border-color: var(--studlyf-purple);
     background: #f5f3ff;
+    box-shadow: 0 8px 30px rgba(124,58,237,0.2);
   }
 
   .section-accordion {
-    border-bottom: 1px solid var(--hr-border);
+    border-bottom: 1px solid var(--studlyf-border);
   }
 
   /* Specific Layouts */
   .editor-header {
     height: 80px;
-    border-bottom: 1px solid var(--hr-border);
+    border-bottom: 1px solid var(--studlyf-border);
     background: white;
     padding: 0 40px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
   }
 
   /* Resume Preview Typography (Classic) */
-  .classic-resume h1 { font-size: 24pt; font-weight: 400; text-align: center; margin-bottom: 4pt; font-family: serif; }
+  .classic-resume h1 { font-size: 24pt; font-weight: 400; text-align: center; margin-bottom: 4pt; font-family: 'Poppins', serif; }
   .classic-resume .contact { font-size: 9pt; text-align: center; margin-bottom: 12pt; }
   .classic-resume h2 { font-size: 10pt; font-weight: bold; border-bottom: 1px solid black; margin: 12pt 0 6pt 0; text-transform: uppercase; }
   .classic-resume .entry-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 10pt; }
@@ -338,26 +361,75 @@ const styles = `
 
 // --- Components ---
 
+// Floating Label Input Component
+const FloatingLabelInput = ({ label, value, onChange, placeholder, type = "text", className = "" }: any) => {
+    const [isFocused, setIsFocused] = React.useState(false);
+    const hasValue = value && value.length > 0;
+
+    return (
+        <div className={`relative ${className}`}>
+            <input
+                type={type}
+                value={value}
+                onChange={onChange}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
+                placeholder=" "
+                className={`hr-input pt-6 pb-2 ${(isFocused || hasValue) ? 'pt-7' : ''}`}
+            />
+            <label
+                className={`absolute left-4 transition-all duration-200 pointer-events-none ${
+                    isFocused || hasValue
+                        ? 'top-2 text-[10px] font-semibold text-purple-600 uppercase tracking-wider'
+                        : 'top-1/2 -translate-y-1/2 text-sm text-gray-400'
+                }`}
+            >
+                {label}
+            </label>
+        </div>
+    );
+};
+
 const AccordionItem = ({ title, icon: Icon, children, isOpen, onClick }: any) => {
     return (
         <div className="section-accordion">
-            <button
+            <motion.button
                 onClick={onClick}
-                className="w-full flex items-center justify-between py-4 px-6 hover:bg-slate-50 transition-colors"
+                className="w-full flex items-center justify-between py-4 px-6 hover:bg-gray-50 transition-colors"
+                whileHover={{ backgroundColor: "#f9fafb" }}
             >
                 <div className="flex items-center gap-4">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-                        <Icon size={16} />
-                    </div>
-                    <span className="font-semibold text-slate-700">{title}</span>
+                    <motion.div 
+                        className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-50 text-purple-600"
+                        whileHover={{ scale: 1.1, rotate: 5 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 10 }}
+                    >
+                        <Icon size={18} />
+                    </motion.div>
+                    <span className="font-semibold text-gray-800">{title}</span>
                 </div>
-                {isOpen ? <ChevronUp size={18} className="text-slate-400" /> : <ChevronDown size={18} className="text-slate-400" />}
-            </button>
-            {isOpen && (
-                <div className="px-6 pb-6 pt-2 animate-in slide-in-from-top-2 duration-200">
-                    {children}
-                </div>
-            )}
+                <motion.div
+                    animate={{ rotate: isOpen ? 180 : 0 }}
+                    transition={{ duration: 0.3 }}
+                >
+                    <ChevronDown size={18} className={isOpen ? "text-purple-600" : "text-gray-400"} />
+                </motion.div>
+            </motion.button>
+            <AnimatePresence>
+                {isOpen && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                        className="overflow-hidden"
+                    >
+                        <div className="px-6 pb-6 pt-2">
+                            {children}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
@@ -834,14 +906,13 @@ export default function ResumeBuilder() {
 
 
     if (step === 'dashboard') {
-        const displayName = resumeData.personalInfo.firstName || user?.displayName?.split(' ')[0] || "User";
+        const displayName = resumeData.personalInfo.firstName || user?.full_name?.split(' ')[0] || "User";
         return (
-            <div className="min-h-screen bg-slate-50 flex flex-col">
+            <div className="min-h-screen bg-gray-50 flex flex-col">
                 <style>{styles}</style>
                 <Navigation />
-                <Navigation />
                 <div className="flex-1 overflow-y-auto premium-scrollbar pt-32 pb-20">
-                    <div className="max-w-7xl mx-auto">
+                    <div className="max-w-7xl mx-auto px-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                             {/* Existing Resume Card */}
                             <motion.div
@@ -850,25 +921,25 @@ export default function ResumeBuilder() {
                                 className="group cursor-pointer"
                             >
                                 <div className="flex items-center justify-between mb-3 px-1">
-                                    <h3 className="font-bold text-slate-600 tracking-tight">{displayName.toUpperCase()}'S Resume</h3>
-                                    <span className="text-slate-300 font-black text-2xl">1</span>
+                                    <h3 className="font-bold text-gray-600 tracking-tight">{displayName.toUpperCase()}'S Resume</h3>
+                                    <span className="text-gray-300 font-black text-2xl">1</span>
                                 </div>
-                                <div className="aspect-[3/4] bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden relative group-hover:shadow-2xl transition-all p-4">
-                                    <div className="w-full h-full bg-slate-50 rounded-lg flex flex-col p-4 space-y-3 opacity-60">
-                                        <div className="h-4 w-1/3 bg-slate-200 rounded mx-auto mb-4"></div>
+                                <div className="aspect-[3/4] bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden relative group-hover:shadow-2xl transition-all p-4">
+                                    <div className="w-full h-full bg-gray-50 rounded-lg flex flex-col p-4 space-y-3 opacity-60">
+                                        <div className="h-4 w-1/3 bg-gray-200 rounded mx-auto mb-4"></div>
                                         <div className="space-y-1.5">
-                                            <div className="h-2 w-full bg-slate-200 rounded"></div>
-                                            <div className="h-2 w-full bg-slate-200 rounded"></div>
-                                            <div className="h-2 w-2/3 bg-slate-200 rounded"></div>
+                                            <div className="h-2 w-full bg-gray-200 rounded"></div>
+                                            <div className="h-2 w-full bg-gray-200 rounded"></div>
+                                            <div className="h-2 w-2/3 bg-gray-200 rounded"></div>
                                         </div>
-                                        <div className="pt-4 border-t border-slate-200 space-y-1.5">
-                                            <div className="h-2 w-full bg-slate-200 rounded"></div>
-                                            <div className="h-2 w-5/6 bg-slate-200 rounded"></div>
+                                        <div className="pt-4 border-t border-gray-200 space-y-1.5">
+                                            <div className="h-2 w-full bg-gray-200 rounded"></div>
+                                            <div className="h-2 w-5/6 bg-gray-200 rounded"></div>
                                         </div>
                                     </div>
-                                    <div className="absolute inset-0 bg-[#7c3aed]/0 group-hover:bg-[#7c3aed]/5 transition-colors flex items-center justify-center">
+                                    <div className="absolute inset-0 bg-purple-600/0 group-hover:bg-purple-600/5 transition-colors flex items-center justify-center">
                                         <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white p-3 rounded-full shadow-xl">
-                                            <Edit3 size={24} className="text-[#7c3aed]" />
+                                            <Edit3 size={24} className="text-purple-600" />
                                         </div>
                                     </div>
                                 </div>
@@ -878,12 +949,12 @@ export default function ResumeBuilder() {
                             <motion.div
                                 whileHover={{ y: -5 }}
                                 onClick={() => setStep('template_selection')}
-                                className="aspect-[3/4] rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-4 hover:border-[#7c3aed] hover:bg-white transition-all cursor-pointer group"
+                                className="aspect-[3/4] rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-4 hover:border-purple-500 hover:bg-white transition-all cursor-pointer group bg-white"
                             >
                                 <div className="h-24 w-20 relative">
-                                    <div className="absolute inset-0 bg-slate-50 rounded-lg transform translate-x-2 -translate-y-2 group-hover:bg-purple-50 transition-colors"></div>
-                                    <div className="absolute inset-0 bg-white border-2 border-slate-200 rounded-lg transform -translate-x-2 translate-y-2 flex items-center justify-center group-hover:border-[#7c3aed] transition-colors">
-                                        <Plus size={32} className="text-slate-400 group-hover:text-[#7c3aed] transition-colors" />
+                                    <div className="absolute inset-0 bg-gray-50 rounded-lg transform translate-x-2 -translate-y-2 group-hover:bg-purple-50 transition-colors"></div>
+                                    <div className="absolute inset-0 bg-white border-2 border-gray-200 rounded-lg transform -translate-x-2 translate-y-2 flex items-center justify-center group-hover:border-purple-500 transition-colors">
+                                        <Plus size={32} className="text-gray-400 group-hover:text-purple-600 transition-colors" />
                                     </div>
                                 </div>
                                 <button className="premium-btn !px-6 !py-2 !rounded-lg !text-sm">
@@ -902,85 +973,182 @@ export default function ResumeBuilder() {
 
     if (step === 'create_new') {
         return (
-            <div className="min-h-screen bg-white flex flex-col">
+            <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50/30 flex flex-col">
                 <style>{styles}</style>
                 <Navigation />
                 <div className="flex-1 overflow-y-auto premium-scrollbar pt-24 pb-20">
                     <div className="flex flex-col items-center justify-center p-6 text-center max-w-7xl mx-auto">
+                        {/* Hero Section */}
                         <motion.div 
-                            initial={{ opacity: 0, y: 20 }}
+                            initial={{ opacity: 0, y: 30 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="mb-16"
+                            transition={{ duration: 0.8, ease: "easeOut" }}
+                            className="mb-20 w-full"
                         >
-                            <h1 className="text-7xl font-black text-slate-900 mb-6 tracking-tight">Start your journey</h1>
-                            <p className="text-slate-500 text-2xl mb-10 max-w-xl mx-auto">Create a professional resume in minutes with our templates.</p>
+                            <motion.div 
+                                className="mb-6"
+                                initial={{ scale: 0.8, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                transition={{ delay: 0.2, duration: 0.6 }}
+                            >
+                                <span className="inline-block px-4 py-2 bg-purple-100 text-purple-700 rounded-full text-sm font-bold uppercase tracking-wider mb-6">
+                                    Professional Resume Builder
+                                </span>
+                            </motion.div>
+                            <h1 className="text-6xl md:text-7xl lg:text-8xl font-black mb-6 tracking-tight">
+                                <span className="text-gray-900">Create Your </span>
+                                <span className="bg-gradient-to-r from-purple-600 via-purple-500 to-purple-600 bg-clip-text text-transparent">Perfect Resume</span>
+                            </h1>
+                            <p className="text-xl md:text-2xl text-gray-600 mb-12 max-w-3xl mx-auto leading-relaxed">
+                                Build ATS-friendly, professional resumes in minutes with our AI-powered builder. Stand out from the competition.
+                            </p>
 
-                            <div className="flex items-center justify-center gap-6">
-                                <button
-                                onClick={() => setStep('template_selection')}
-                                    className="flex items-center gap-4 bg-[#7c3aed] text-white px-12 py-5 rounded-2xl font-bold text-2xl hover:bg-[#6d28d9] transition-all shadow-2xl shadow-purple-200 hover:-translate-y-1"
+                            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+                                <motion.button
+                                    onClick={() => setStep('template_selection')}
+                                    className="premium-btn !px-10 !py-5 !rounded-2xl !text-lg"
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.98 }}
                                 >
-                                    <Plus size={28} />
-                                    Create New
-                                </button>
+                                    <span className="premium-orb premium-orb1" />
+                                    <span className="premium-orb premium-orb2" />
+                                    <span className="premium-orb premium-orb3" />
+                                    <span className="premium-label flex items-center gap-3">
+                                        <Plus size={24} />
+                                        Create Your Resume
+                                    </span>
+                                </motion.button>
                                 {hasExistingData && (
-                                    <button
+                                    <motion.button
                                         onClick={() => setStep('dashboard')}
-                                        className="flex items-center gap-4 bg-white border-2 border-slate-200 text-slate-600 px-10 py-5 rounded-2xl font-bold text-2xl hover:bg-slate-50 transition-all hover:-translate-y-1"
+                                        className="hr-button-outline !px-10 !py-5 !rounded-2xl !text-lg"
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.98 }}
                                     >
                                         Go to Dashboard
-                                    </button>
+                                    </motion.button>
                                 )}
+                            </div>
+
+                            {/* Success Metrics */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
+                                {[
+                                    { value: '10K+', label: 'Students' },
+                                    { value: '98%', label: 'Success Rate' },
+                                    { value: '50+', label: 'Templates' },
+                                    { value: 'AI', label: 'Powered' },
+                                ].map((metric, i) => (
+                                    <motion.div
+                                        key={i}
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.3 + (i * 0.1) }}
+                                        className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:border-purple-200 hover:shadow-xl transition-all"
+                                    >
+                                        <div className="text-3xl font-black bg-gradient-to-r from-purple-600 to-purple-700 bg-clip-text text-transparent mb-1">
+                                            {metric.value}
+                                        </div>
+                                        <div className="text-sm font-semibold text-gray-600 uppercase tracking-wider">
+                                            {metric.label}
+                                        </div>
+                                    </motion.div>
+                                ))}
                             </div>
                         </motion.div>
 
-                        {/* Box 2: Attractive Information Section */}
+                        {/* Features Section */}
                         <motion.div 
                             initial={{ opacity: 0, y: 40 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.2 }}
+                            transition={{ delay: 0.5, duration: 0.8 }}
+                            className="w-full"
+                        >
+                            <div className="text-center mb-12">
+                                <h2 className="text-4xl md:text-5xl font-black text-gray-900 mb-4">
+                                    Why Choose <span className="bg-gradient-to-r from-purple-600 to-purple-500 bg-clip-text text-transparent">STUDLYF</span>?
+                                </h2>
+                                <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+                                    Powerful features designed to help you land your dream job
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 px-4">
+                                {[
+                                    {
+                                        icon: Sparkles,
+                                        title: 'AI-Powered Review',
+                                        description: 'Our smart AI analyzes your content and provides actionable tips to make your resume stand out.',
+                                        gradient: 'from-purple-500 to-purple-600',
+                                        bg: 'bg-purple-50'
+                                    },
+                                    {
+                                        icon: Layout,
+                                        title: 'Modern Templates',
+                                        description: 'Choose from multiple professional layouts designed by experts to match industry standards.',
+                                        gradient: 'from-cyan-500 to-cyan-600',
+                                        bg: 'bg-cyan-50'
+                                    },
+                                    {
+                                        icon: Share2,
+                                        title: 'One-Click Sharing',
+                                        description: 'Instantly share your resume via a unique public link or download as a high-quality PDF.',
+                                        gradient: 'from-emerald-500 to-emerald-600',
+                                        bg: 'bg-emerald-50'
+                                    }
+                                ].map((feature, i) => (
+                                    <motion.div
+                                        key={i}
+                                        initial={{ opacity: 0, y: 30 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.6 + (i * 0.15) }}
+                                        className="group bg-white p-8 rounded-[2.5rem] border border-gray-200 shadow-xl shadow-gray-100/50 flex flex-col items-center text-center hover:shadow-2xl hover:shadow-purple-100/30 transition-all duration-500"
+                                        whileHover={{ y: -8 }}
+                                    >
+                                        <motion.div 
+                                            className={`h-20 w-20 ${feature.bg} rounded-3xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300`}
+                                            whileHover={{ rotate: 5 }}
+                                        >
+                                            <feature.icon className={`bg-gradient-to-r ${feature.gradient} bg-clip-text text-transparent`} size={36} />
+                                        </motion.div>
+                                        <h3 className="text-2xl font-black text-gray-900 mb-3">{feature.title}</h3>
+                                        <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        </motion.div>
+
+                        {/* CTA Banner */}
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.8, duration: 0.6 }}
                             className="w-full mt-20"
                         >
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 px-4">
-                                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl shadow-slate-100/50 flex flex-col items-center text-center group hover:border-purple-200 transition-all">
-                                    <div className="h-20 w-20 bg-purple-50 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform">
-                                        <Sparkles className="text-[#7c3aed]" size={36} />
-                                    </div>
-                                    <h3 className="text-2xl font-black text-slate-800 mb-4">AI-Powered Review</h3>
-                                    <p className="text-slate-500 leading-relaxed">Our smart AI analyzes your content and provides actionable tips to make your resume stand out.</p>
+                            <div className="relative bg-gradient-to-r from-purple-600 via-purple-700 to-purple-600 rounded-[3rem] p-12 md:p-16 text-white text-center overflow-hidden shadow-2xl shadow-purple-300/50">
+                                <div className="absolute inset-0 bg-gradient-to-r from-purple-400/20 via-transparent to-purple-400/20 animate-pulse" />
+                                <div className="absolute top-0 left-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+                                <div className="absolute bottom-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+                                
+                                <div className="relative z-10">
+                                    <h2 className="text-4xl md:text-5xl font-black mb-6">Ready to Build Your Future?</h2>
+                                    <p className="text-purple-100 text-xl md:text-2xl leading-relaxed mb-10 max-w-3xl mx-auto">
+                                        Join thousands of students who have already secured their dream roles using our professional resume builder.
+                                    </p>
+                                    <motion.button
+                                        onClick={() => setStep('template_selection')}
+                                        className="premium-btn !px-10 !py-5 !rounded-2xl !text-lg"
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.98 }}
+                                    >
+                                        <span className="premium-orb premium-orb1" />
+                                        <span className="premium-orb premium-orb2" />
+                                        <span className="premium-orb premium-orb3" />
+                                        <span className="premium-label flex items-center gap-3">
+                                            <Plus size={24} />
+                                            Get Started Now
+                                        </span>
+                                    </motion.button>
                                 </div>
-
-                                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl shadow-slate-100/50 flex flex-col items-center text-center group hover:border-purple-200 transition-all">
-                                    <div className="h-20 w-20 bg-purple-50 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform">
-                                        <Layout className="text-[#7c3aed]" size={36} />
-                                    </div>
-                                    <h3 className="text-2xl font-black text-slate-800 mb-4">Modern Templates</h3>
-                                    <p className="text-slate-500 leading-relaxed">Choose from multiple professional layouts designed by experts to match industry standards.</p>
-                                </div>
-
-                                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl shadow-slate-100/50 flex flex-col items-center text-center group hover:border-purple-200 transition-all">
-                                    <div className="h-20 w-20 bg-purple-50 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform">
-                                        <Share2 className="text-[#7c3aed]" size={36} />
-                                    </div>
-                                    <h3 className="text-2xl font-black text-slate-800 mb-4">One-Click Sharing</h3>
-                                    <p className="text-slate-500 leading-relaxed">Instantly share your resume via a unique public link or download as a high-quality PDF.</p>
-                                </div>
-                            </div>
-                            
-                            <div className="mt-20 p-12 bg-gradient-to-r from-[#7c3aed] to-[#6d28d9] rounded-[4rem] text-white text-left relative overflow-hidden shadow-2xl shadow-purple-200">
-                                <div className="relative z-10 max-w-2xl">
-                                    <h2 className="text-4xl font-black mb-6">Build your future with confidence.</h2>
-                                    <p className="text-purple-100 text-xl leading-relaxed mb-8">Join thousands of students who have already secured their dream roles using our professional resume builder.</p>
-                                    <div className="flex gap-4">
-                                        <div className="px-6 py-3 bg-white/10 backdrop-blur-md rounded-xl text-sm font-bold border border-white/20">
-                                            Trusted by 10k+ Students
-                                        </div>
-                                        <div className="px-6 py-3 bg-white/10 backdrop-blur-md rounded-xl text-sm font-bold border border-white/20">
-                                            98% Success Rate
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="absolute right-0 top-0 h-full w-1/3 bg-white/5 skew-x-12 translate-x-1/2" />
                             </div>
                         </motion.div>
                     </div>
@@ -991,83 +1159,182 @@ export default function ResumeBuilder() {
 
     if (step === 'template_selection') {
         return (
-            <div className="min-h-screen bg-gradient-to-b from-white to-purple-50/30 flex flex-col">
+            <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50/30 flex flex-col">
                 <style>{styles}</style>
                 <Navigation />
-                <div className="flex-1 flex flex-col items-center pt-48 px-6 pb-20">
-                    <div className="text-center mb-16">
-                        <h1 className="text-5xl font-black text-[#0f172a] mb-4">Select a template</h1>
-                        <p className="text-slate-500 text-xl">Choose a template and start creating resume with us.</p>
-                    </div>
+                <div className="flex-1 flex flex-col items-center pt-32 px-6 pb-20">
+                    <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.6 }}
+                        className="text-center mb-16"
+                    >
+                        <span className="inline-block px-4 py-2 bg-purple-100 text-purple-700 rounded-full text-sm font-bold uppercase tracking-wider mb-4">
+                            Choose Your Style
+                        </span>
+                        <h1 className="text-5xl md:text-6xl font-black text-gray-900 mb-4">
+                            Select a <span className="bg-gradient-to-r from-purple-600 via-purple-500 to-purple-600 bg-clip-text text-transparent">Template</span>
+                        </h1>
+                        <p className="text-gray-600 text-xl max-w-2xl mx-auto">
+                            Choose from our professionally designed templates and start building your perfect resume.
+                        </p>
+                    </motion.div>
                     
-                    <div className="flex flex-col md:flex-row gap-8 max-w-4xl w-full justify-center px-4">
+                    <div className="flex flex-col md:flex-row gap-10 max-w-5xl w-full justify-center px-4">
                         {/* Classic Template Card */}
-                        <div 
+                        <motion.div
+                            initial={{ opacity: 0, y: 30 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2, duration: 0.6 }}
+                            whileHover={{ y: -10 }}
                             onClick={() => { setSelectedTemplate('classic'); setStep('editor'); }}
-                            className={`flex-1 bg-white border-2 rounded-[2rem] p-6 flex flex-col items-center group transition-all cursor-pointer ${selectedTemplate === 'classic' ? 'border-[#7c3aed] shadow-2xl shadow-purple-100 ring-4 ring-purple-50' : 'border-slate-100 hover:border-[#7c3aed] hover:shadow-xl hover:shadow-purple-50'}`}
+                            className={`flex-1 group cursor-pointer ${selectedTemplate === 'classic' ? 'scale-105' : 'hover:scale-105'}`}
                         >
-                            <div className="w-full aspect-[3/4] bg-slate-50 rounded-xl mb-6 overflow-hidden border border-slate-100 group-hover:scale-[1.02] transition-transform duration-500 p-4">
-                                <div className="h-full w-full bg-white shadow-sm rounded-sm p-3 space-y-2.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                                    <div className="h-3 w-1/3 mx-auto bg-slate-300 rounded-full"></div>
-                                    <div className="h-1.5 w-1/2 mx-auto bg-slate-200 rounded-full"></div>
-                                    <div className="h-0.5 w-full bg-slate-200 mt-4"></div>
-                                    <div className="space-y-1 pt-1">
-                                        <div className="h-1.5 w-full bg-slate-100 rounded"></div>
-                                        <div className="h-1.5 w-5/6 bg-slate-100 rounded"></div>
-                                        <div className="h-1.5 w-4/6 bg-slate-100 rounded"></div>
-                                    </div>
-                                    <div className="h-0.5 w-full bg-slate-200 mt-2"></div>
-                                    <div className="space-y-1 pt-1">
-                                        <div className="h-1.5 w-full bg-slate-100 rounded"></div>
-                                        <div className="h-1.5 w-5/6 bg-slate-100 rounded"></div>
-                                    </div>
-                                    <div className="h-0.5 w-full bg-slate-200 mt-2"></div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="h-1.5 bg-slate-100 rounded"></div>
-                                        <div className="h-1.5 bg-slate-100 rounded"></div>
+                            <div className={`bg-white border-2 rounded-[2.5rem] p-8 flex flex-col items-center transition-all duration-500 shadow-xl ${
+                                selectedTemplate === 'classic' 
+                                    ? 'border-purple-600 shadow-2xl shadow-purple-200 ring-4 ring-purple-100' 
+                                    : 'border-gray-200 hover:border-purple-400 hover:shadow-2xl hover:shadow-purple-100'
+                            }`}>
+                                <div className="w-full aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl mb-8 overflow-hidden border border-gray-200 group-hover:scale-[1.02] transition-transform duration-500 p-6 relative">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                    <div className="h-full w-full bg-white shadow-lg rounded-xl p-4 space-y-3 opacity-70 group-hover:opacity-100 transition-opacity relative z-10">
+                                        <div className="h-4 w-1/3 mx-auto bg-gradient-to-r from-purple-400 to-purple-500 rounded-full"></div>
+                                        <div className="h-2 w-1/2 mx-auto bg-gray-300 rounded-full"></div>
+                                        <div className="h-0.5 w-full bg-gray-200 mt-4"></div>
+                                        <div className="space-y-2 pt-2">
+                                            <div className="h-2 w-full bg-gray-100 rounded"></div>
+                                            <div className="h-2 w-5/6 bg-gray-100 rounded"></div>
+                                            <div className="h-2 w-4/6 bg-gray-100 rounded"></div>
+                                        </div>
+                                        <div className="h-0.5 w-full bg-gray-200 mt-3"></div>
+                                        <div className="space-y-2 pt-2">
+                                            <div className="h-2 w-full bg-gray-100 rounded"></div>
+                                            <div className="h-2 w-5/6 bg-gray-100 rounded"></div>
+                                        </div>
+                                        <div className="h-0.5 w-full bg-gray-200 mt-3"></div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="h-2 bg-gray-100 rounded"></div>
+                                            <div className="h-2 bg-gray-100 rounded"></div>
+                                        </div>
                                     </div>
                                 </div>
+                                <div className="text-center">
+                                    <h3 className="text-2xl font-black text-gray-900 mb-2">Classic</h3>
+                                    <p className="text-gray-600 text-sm mb-6">Clean & Professional</p>
+                                    <motion.button
+                                        className={`w-full py-4 rounded-xl font-bold text-sm transition-all duration-300 ${
+                                            selectedTemplate === 'classic'
+                                                ? 'premium-btn'
+                                                : 'hr-button-outline'
+                                        }`}
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.98 }}
+                                    >
+                                        {selectedTemplate === 'classic' && (
+                                            <>
+                                                <span className="premium-orb premium-orb1" />
+                                                <span className="premium-orb premium-orb2" />
+                                                <span className="premium-orb premium-orb3" />
+                                            </>
+                                        )}
+                                        <span className={selectedTemplate === 'classic' ? 'premium-label' : ''}>
+                                            {selectedTemplate === 'classic' ? 'Selected' : 'Select Template'}
+                                        </span>
+                                    </motion.button>
+                                </div>
                             </div>
-                            <h3 className="text-xl font-black text-slate-800 mb-1">Classic</h3>
-                            <p className="text-slate-500 text-sm">Clean & Professional</p>
-                        </div>
+                        </motion.div>
 
                         {/* Modern Template Card */}
-                        <div 
+                        <motion.div
+                            initial={{ opacity: 0, y: 30 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.4, duration: 0.6 }}
+                            whileHover={{ y: -10 }}
                             onClick={() => { setSelectedTemplate('modern'); setStep('editor'); }}
-                            className={`flex-1 bg-white border-2 rounded-[2rem] p-6 flex flex-col items-center group transition-all cursor-pointer ${selectedTemplate === 'modern' ? 'border-[#7c3aed] shadow-2xl shadow-purple-100 ring-4 ring-purple-50' : 'border-slate-100 hover:border-[#7c3aed] hover:shadow-xl hover:shadow-purple-50'}`}
+                            className={`flex-1 group cursor-pointer ${selectedTemplate === 'modern' ? 'scale-105' : 'hover:scale-105'}`}
                         >
-                            <div className="w-full aspect-[3/4] bg-slate-50 rounded-xl mb-6 overflow-hidden border border-slate-100 group-hover:scale-[1.02] transition-transform duration-500 p-4">
-                                <div className="h-full w-full bg-white shadow-sm rounded-sm flex opacity-60 group-hover:opacity-100 transition-opacity">
-                                    <div className="w-1/3 bg-slate-50 h-full p-2.5 space-y-2 border-r border-slate-100">
-                                        <div className="h-8 w-8 rounded-full bg-slate-200 mx-auto"></div>
-                                        <div className="h-1 w-full bg-slate-200 rounded"></div>
-                                        <div className="space-y-1 pt-2">
-                                            <div className="h-1 w-full bg-slate-100 rounded"></div>
-                                            <div className="h-1 w-full bg-slate-100 rounded"></div>
+                            <div className={`bg-white border-2 rounded-[2.5rem] p-8 flex flex-col items-center transition-all duration-500 shadow-xl ${
+                                selectedTemplate === 'modern' 
+                                    ? 'border-purple-600 shadow-2xl shadow-purple-200 ring-4 ring-purple-100' 
+                                    : 'border-gray-200 hover:border-purple-400 hover:shadow-2xl hover:shadow-purple-100'
+                            }`}>
+                                <div className="w-full aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl mb-8 overflow-hidden border border-gray-200 group-hover:scale-[1.02] transition-transform duration-500 p-6 relative">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                    <div className="h-full w-full bg-white shadow-lg rounded-xl flex opacity-70 group-hover:opacity-100 transition-opacity relative z-10">
+                                        <div className="w-1/3 bg-gradient-to-br from-gray-50 to-gray-100 h-full p-3 space-y-3 border-r border-gray-200">
+                                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-cyan-400 to-cyan-500 mx-auto"></div>
+                                            <div className="h-1.5 w-full bg-gray-200 rounded"></div>
+                                            <div className="space-y-2 pt-2">
+                                                <div className="h-1 w-full bg-gray-100 rounded"></div>
+                                                <div className="h-1 w-full bg-gray-100 rounded"></div>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="w-2/3 p-3 space-y-3">
-                                        <div className="h-2.5 w-1/2 bg-slate-300 rounded-full"></div>
-                                        <div className="space-y-1.5 pt-1">
-                                            <div className="h-1 w-full bg-slate-100 rounded"></div>
-                                            <div className="h-1 w-full bg-slate-100 rounded"></div>
-                                            <div className="h-1 w-5/6 bg-slate-100 rounded"></div>
-                                        </div>
-                                        <div className="h-2 w-1/3 bg-slate-200 rounded-full mt-2"></div>
-                                        <div className="space-y-1 pt-1">
-                                            <div className="h-1 w-full bg-slate-100 rounded"></div>
-                                            <div className="h-1 w-full bg-slate-100 rounded"></div>
+                                        <div className="w-2/3 p-4 space-y-4">
+                                            <div className="h-3 w-1/2 bg-gradient-to-r from-cyan-400 to-cyan-500 rounded-full"></div>
+                                            <div className="space-y-2 pt-1">
+                                                <div className="h-1.5 w-full bg-gray-100 rounded"></div>
+                                                <div className="h-1.5 w-full bg-gray-100 rounded"></div>
+                                                <div className="h-1.5 w-5/6 bg-gray-100 rounded"></div>
+                                            </div>
+                                            <div className="h-2.5 w-1/3 bg-gray-200 rounded-full mt-3"></div>
+                                            <div className="space-y-2 pt-1">
+                                                <div className="h-1.5 w-full bg-gray-100 rounded"></div>
+                                                <div className="h-1.5 w-full bg-gray-100 rounded"></div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
+                                <div className="text-center">
+                                    <h3 className="text-2xl font-black text-gray-900 mb-2">Modern</h3>
+                                    <p className="text-gray-600 text-sm mb-6">Creative & Visual</p>
+                                    <motion.button
+                                        className={`w-full py-4 rounded-xl font-bold text-sm transition-all duration-300 ${
+                                            selectedTemplate === 'modern'
+                                                ? 'premium-btn !bg-gradient-to-r !from-cyan-500 !to-cyan-600'
+                                                : 'hr-button-outline hover:bg-cyan-100 hover:text-cyan-700 hover:border-cyan-400'
+                                        }`}
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.98 }}
+                                    >
+                                        {selectedTemplate === 'modern' && (
+                                            <>
+                                                <span className="premium-orb premium-orb1" />
+                                                <span className="premium-orb premium-orb2" />
+                                                <span className="premium-orb premium-orb3" />
+                                            </>
+                                        )}
+                                        <span className={selectedTemplate === 'modern' ? 'premium-label' : ''}>
+                                            {selectedTemplate === 'modern' ? 'Selected' : 'Select Template'}
+                                        </span>
+                                    </motion.button>
+                                </div>
                             </div>
-                            <h3 className="text-xl font-black text-slate-800 mb-1">Modern</h3>
-                            <p className="text-slate-500 text-sm">Creative & Visual</p>
-                        </div>
+                        </motion.div>
                     </div>
 
-
+                    {/* Additional Info */}
+                    <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.6, duration: 0.6 }}
+                        className="mt-16 text-center"
+                    >
+                        <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-500">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                <span>ATS-Friendly</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
+                                <span>AI Optimized</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse" />
+                                <span>PDF Export</span>
+                            </div>
+                        </div>
+                    </motion.div>
                 </div>
             </div>
         );
@@ -1326,10 +1593,10 @@ export default function ResumeBuilder() {
     };
 
     return (
-        <div className="flex flex-col h-screen overflow-hidden bg-white">
+        <div className="flex flex-col h-screen overflow-hidden bg-gray-50">
             <style>{styles}</style>
 
-            <nav className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 shrink-0">
+            <nav className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sm:px-8 shrink-0 shadow-sm">
                 <div className="flex items-center gap-6">
                     <div
                         className="flex items-center cursor-pointer hover:opacity-80 transition-opacity"
@@ -1342,25 +1609,25 @@ export default function ResumeBuilder() {
                         />
                     </div>
 
-                    <div className="h-4 border-l border-slate-200 mx-2"></div>
+                    <div className="h-4 border-l border-gray-200 mx-2"></div>
 
                     <button
                         onClick={() => setStep(hasExistingData ? 'dashboard' : 'create_new')}
-                        className="text-slate-500 font-bold text-sm hover:text-slate-900 transition-colors"
+                        className="text-gray-600 font-bold text-sm hover:text-purple-600 transition-colors"
                     >
                         Home
                     </button>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                     <button 
                         onClick={() => setIsShareModalOpen(true)}
-                        className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm"
+                        className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-sm hover:shadow-md"
                     >
                         <Share2 size={16} />
                         Share
                     </button>
-                    <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 border border-slate-200">
+                    <div className="h-9 w-9 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 border border-purple-200">
                         <User size={18} />
                     </div>
                 </div>
@@ -1369,7 +1636,7 @@ export default function ResumeBuilder() {
             <header className="editor-header">
                 <div className="flex items-center justify-between gap-4">
                     <div className="flex flex-col">
-                        <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-gray-400">
                             <button onClick={() => setStep(hasExistingData ? 'dashboard' : 'create_new')} className="hover:text-purple-600 transition-colors">Home</button>
                             <ChevronRight size={12} />
                             <span>Resume Builder</span>
@@ -1382,19 +1649,19 @@ export default function ResumeBuilder() {
                                     onBlur={() => setIsEditingName(false)}
                                     onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)}
                                     onChange={(e) => setResumeData({ ...resumeData, name: e.target.value })}
-                                    className="text-2xl font-bold text-slate-800 outline-none w-auto max-w-[400px] border-b-2 border-purple-500 transition-all bg-transparent"
+                                    className="text-2xl font-bold text-gray-900 outline-none w-auto max-w-[400px] border-b-2 border-purple-500 transition-all bg-transparent"
                                 />
                             ) : (
                                 <h1
                                     onClick={() => setIsEditingName(true)}
-                                    className="text-2xl font-bold text-slate-800 cursor-pointer hover:text-purple-600 transition-colors flex items-center gap-2"
+                                    className="text-2xl font-bold text-gray-900 cursor-pointer hover:text-purple-600 transition-colors flex items-center gap-2"
                                 >
                                     {resumeData.name}
-                                    <Edit3 size={18} className="text-slate-300 transition-colors" />
+                                    <Edit3 size={18} className="text-gray-300 transition-colors" />
                                 </h1>
                             )}
-                            <span className="flex items-center gap-1.5 text-xs font-medium text-purple-500 bg-purple-50 px-2 py-0.5 rounded-full">
-                                <div className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-pulse" />
+                            <span className="flex items-center gap-1.5 text-xs font-semibold text-purple-600 bg-purple-50 px-3 py-1 rounded-full border border-purple-200">
+                                <div className="h-1.5 w-1.5 rounded-full bg-purple-600 animate-pulse" />
                                 Updated just now
                             </span>
                         </div>
@@ -1403,7 +1670,7 @@ export default function ResumeBuilder() {
                     <div className="flex items-center gap-3">
                         <button 
                             onClick={() => setShowAiPanel(true)}
-                            className="premium-btn !px-4 !py-2 !rounded-lg !text-xs"
+                            className="premium-btn !px-5 !py-2.5 !rounded-xl !text-xs"
                         >
                             <span className="premium-orb premium-orb1" />
                             <span className="premium-orb premium-orb2" />
@@ -1417,70 +1684,138 @@ export default function ResumeBuilder() {
 
             <main className="flex-1 flex overflow-hidden">
                 {/* Left Sidebar - Editor Controls */}
-                <div className="w-[450px] bg-white border-r border-slate-200 flex flex-col shadow-xl z-10">
-                    <div className="flex-1 overflow-y-auto premium-scrollbar p-8">
+                <div className="w-[450px] bg-white border-r border-gray-200 flex flex-col shadow-lg z-10">
+                    <div className="flex-1 overflow-y-auto premium-scrollbar p-6">
                         <AccordionItem
                             title="Personal Information"
                             icon={User}
                             isOpen={openSections.personalInfo}
                             onClick={() => toggleSection('personalInfo')}
                         >
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="hr-label">First Name</label>
-                                    <input className="hr-input" value={resumeData.personalInfo.firstName} onChange={(e) => updatePersonalInfo('firstName', e.target.value)} />
-                                </div>
-                                <div>
-                                    <label className="hr-label">Last Name</label>
-                                    <input className="hr-input" value={resumeData.personalInfo.lastName} onChange={(e) => updatePersonalInfo('lastName', e.target.value)} />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="hr-label">Job Title</label>
-                                    <input className="hr-input" value={resumeData.personalInfo.jobTitle} onChange={(e) => updatePersonalInfo('jobTitle', e.target.value)} placeholder="Software Engineer" />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="hr-label">Email</label>
-                                    <input className="hr-input" value={resumeData.personalInfo.email} onChange={(e) => updatePersonalInfo('email', e.target.value)} />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="hr-label">Phone</label>
-                                    <input className="hr-input" value={resumeData.personalInfo.phone} onChange={(e) => updatePersonalInfo('phone', e.target.value)} />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="hr-label">Location</label>
-                                    <input className="hr-input" value={resumeData.personalInfo.address} onChange={(e) => updatePersonalInfo('address', e.target.value)} />
-                                </div>
+                            <div className="grid grid-cols-2 gap-5">
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.1 }}
+                                >
+                                    <FloatingLabelInput 
+                                        label="First Name" 
+                                        value={resumeData.personalInfo.firstName} 
+                                        onChange={(e) => updatePersonalInfo('firstName', e.target.value)} 
+                                    />
+                                </motion.div>
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.15 }}
+                                >
+                                    <FloatingLabelInput 
+                                        label="Last Name" 
+                                        value={resumeData.personalInfo.lastName} 
+                                        onChange={(e) => updatePersonalInfo('lastName', e.target.value)} 
+                                    />
+                                </motion.div>
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.2 }}
+                                    className="col-span-2"
+                                >
+                                    <FloatingLabelInput 
+                                        label="Job Title" 
+                                        value={resumeData.personalInfo.jobTitle} 
+                                        onChange={(e) => updatePersonalInfo('jobTitle', e.target.value)} 
+                                        placeholder="Software Engineer"
+                                    />
+                                </motion.div>
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.25 }}
+                                    className="col-span-2"
+                                >
+                                    <FloatingLabelInput 
+                                        label="Email" 
+                                        type="email"
+                                        value={resumeData.personalInfo.email} 
+                                        onChange={(e) => updatePersonalInfo('email', e.target.value)} 
+                                    />
+                                </motion.div>
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.3 }}
+                                    className="col-span-2"
+                                >
+                                    <FloatingLabelInput 
+                                        label="Phone" 
+                                        type="tel"
+                                        value={resumeData.personalInfo.phone} 
+                                        onChange={(e) => updatePersonalInfo('phone', e.target.value)} 
+                                    />
+                                </motion.div>
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.35 }}
+                                    className="col-span-2"
+                                >
+                                    <FloatingLabelInput 
+                                        label="Location" 
+                                        value={resumeData.personalInfo.address} 
+                                        onChange={(e) => updatePersonalInfo('address', e.target.value)} 
+                                    />
+                                </motion.div>
                             </div>
 
-                            <div className="mt-8">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h4 className="text-sm font-bold text-slate-800">Links & Social</h4>
-                                    <button onClick={addLink} className="text-purple-600 hover:text-purple-700 font-bold text-xs flex items-center gap-1">
+                            <motion.div 
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.4 }}
+                                className="mt-8"
+                            >
+                                <div className="flex items-center justify-between mb-5">
+                                    <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Links & Social</h4>
+                                    <button 
+                                        onClick={addLink} 
+                                        className="text-purple-600 hover:text-purple-700 font-bold text-xs flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 rounded-lg hover:bg-purple-100 transition-all"
+                                    >
                                         <Plus size={14} /> Add Link
                                     </button>
                                 </div>
                                 <div className="space-y-3">
                                     {resumeData.personalInfo.links.map((link, i) => (
-                                        <div key={i} className="flex gap-2 group">
+                                        <motion.div 
+                                            key={i} 
+                                            initial={{ opacity: 0, x: -10 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ delay: 0.45 + (i * 0.05) }}
+                                            className="flex gap-2 group"
+                                        >
                                             <input 
                                                 placeholder="Label (e.g. LinkedIn)" 
-                                                className="w-1/3 hr-input !py-2 !px-3" 
+                                                className="w-1/3 hr-input !py-2.5 !px-4" 
                                                 value={link.label} 
                                                 onChange={(e) => updateLink(i, 'label', e.target.value)} 
                                             />
                                             <input 
                                                 placeholder="URL" 
-                                                className="flex-1 hr-input !py-2 !px-3" 
+                                                className="flex-1 hr-input !py-2.5 !px-4" 
                                                 value={link.url} 
                                                 onChange={(e) => updateLink(i, 'url', e.target.value)} 
                                             />
-                                            <button onClick={() => removeLink(i)} className="text-slate-300 hover:text-red-500 transition-colors">
+                                            <motion.button 
+                                                onClick={() => removeLink(i)} 
+                                                className="text-gray-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-lg"
+                                                whileHover={{ scale: 1.1 }}
+                                                whileTap={{ scale: 0.95 }}
+                                            >
                                                 <Trash2 size={16} />
-                                            </button>
-                                        </div>
+                                            </motion.button>
+                                        </motion.div>
                                     ))}
                                 </div>
-                            </div>
+                            </motion.div>
                         </AccordionItem>
 
                 <AccordionItem
@@ -1490,36 +1825,63 @@ export default function ResumeBuilder() {
                     onClick={() => toggleSection('education')}
                 >
                     {resumeData.education.map((edu, i) => (
-                        <div key={i} className="bg-slate-50 rounded-xl p-4 mb-4 relative group">
-                            <button onClick={() => removeEducation(i)} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <motion.div 
+                            key={i} 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                            className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 mb-4 relative group border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all"
+                        >
+                            <motion.button 
+                                onClick={() => removeEducation(i)} 
+                                className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-red-50 rounded-lg"
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.95 }}
+                            >
                                 <Trash2 size={16} />
-                            </button>
-                            <div className="grid grid-cols-2 gap-4">
+                            </motion.button>
+                            <div className="grid grid-cols-2 gap-5">
                                 <div className="col-span-2">
-                                    <label className="hr-label">Institution</label>
-                                    <input className="hr-input border-transparent focus:border-emerald-500" value={edu.institution} onChange={(e) => updateEducation(i, 'institution', e.target.value)} />
+                                    <FloatingLabelInput 
+                                        label="Institution" 
+                                        value={edu.institution} 
+                                        onChange={(e) => updateEducation(i, 'institution', e.target.value)} 
+                                    />
                                 </div>
                                 <div>
-                                    <label className="hr-label">Degree</label>
-                                    <input className="hr-input border-transparent focus:border-emerald-500" value={edu.degree} onChange={(e) => updateEducation(i, 'degree', e.target.value)} />
+                                    <FloatingLabelInput 
+                                        label="Degree" 
+                                        value={edu.degree} 
+                                        onChange={(e) => updateEducation(i, 'degree', e.target.value)} 
+                                    />
                                 </div>
                                 <div>
-                                    <label className="hr-label">Year / Range</label>
-                                    <input className="hr-input border-transparent focus:border-emerald-500" value={edu.year} onChange={(e) => updateEducation(i, 'year', e.target.value)} />
+                                    <FloatingLabelInput 
+                                        label="Year / Range" 
+                                        value={edu.year} 
+                                        onChange={(e) => updateEducation(i, 'year', e.target.value)} 
+                                    />
                                 </div>
                                 <div className="col-span-2">
-                                    <label className="hr-label">GPA / Score</label>
-                                    <input className="hr-input border-transparent focus:border-emerald-500" value={edu.gpa} onChange={(e) => updateEducation(i, 'gpa', e.target.value)} />
+                                    <FloatingLabelInput 
+                                        label="GPA / Score" 
+                                        value={edu.gpa} 
+                                        onChange={(e) => updateEducation(i, 'gpa', e.target.value)} 
+                                    />
                                 </div>
                             </div>
-                        </div>
+                        </motion.div>
                     ))}
-                    <button
+                    <motion.button
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
                         onClick={addEducation}
-                        className="w-full flex items-center justify-center gap-2 py-3 border border-dashed border-slate-300 rounded-lg text-slate-600 font-bold text-sm hover:bg-slate-50 transition-all"
+                        className="w-full flex items-center justify-center gap-2 py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 font-bold text-sm hover:bg-purple-50 hover:border-purple-400 hover:text-purple-600 transition-all"
                     >
                         <Plus size={18} /> Add Education
-                    </button>
+                    </motion.button>
                 </AccordionItem>
 
                 <AccordionItem
@@ -1529,45 +1891,74 @@ export default function ResumeBuilder() {
                     onClick={() => toggleSection('experience')}
                 >
                     {resumeData.experience.map((exp, i) => (
-                        <div key={i} className="bg-slate-50 rounded-xl p-4 mb-4 relative group">
-                            <button onClick={() => removeExperience(i)} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <motion.div 
+                            key={i} 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                            className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 mb-4 relative group border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all"
+                        >
+                            <motion.button 
+                                onClick={() => removeExperience(i)} 
+                                className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-red-50 rounded-lg"
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.95 }}
+                            >
                                 <Trash2 size={16} />
-                            </button>
-                            <div className="grid grid-cols-2 gap-4">
+                            </motion.button>
+                            <div className="grid grid-cols-2 gap-5">
                                 <div className="col-span-2">
-                                    <label className="hr-label">Company</label>
-                                    <input className="hr-input border-transparent focus:border-emerald-500" value={exp.company} onChange={(e) => updateExperience(i, 'company', e.target.value)} />
-                                </div>
-                                <div>
-                                    <label className="hr-label">Role</label>
-                                    <input className="hr-input border-transparent focus:border-emerald-500" value={exp.role} onChange={(e) => updateExperience(i, 'role', e.target.value)} />
-                                </div>
-                                <div>
-                                    <label className="hr-label">Range</label>
-                                    <input className="hr-input border-transparent focus:border-emerald-500" value={exp.range} onChange={(e) => updateExperience(i, 'range', e.target.value)} />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="hr-label">Location</label>
-                                    <input className="hr-input border-transparent focus:border-emerald-500" value={exp.location} onChange={(e) => updateExperience(i, 'location', e.target.value)} />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="hr-label">Achievements</label>
-                                    <textarea
-                                        className="hr-input border-transparent focus:border-emerald-500 min-h-[100px]"
-                                        value={exp.points}
-                                        onChange={(e) => updateExperience(i, 'points', e.target.value)}
-                                        placeholder="Write point by point, one per line..."
+                                    <FloatingLabelInput 
+                                        label="Company" 
+                                        value={exp.company} 
+                                        onChange={(e) => updateExperience(i, 'company', e.target.value)} 
                                     />
                                 </div>
+                                <div>
+                                    <FloatingLabelInput 
+                                        label="Role" 
+                                        value={exp.role} 
+                                        onChange={(e) => updateExperience(i, 'role', e.target.value)} 
+                                    />
+                                </div>
+                                <div>
+                                    <FloatingLabelInput 
+                                        label="Range" 
+                                        value={exp.range} 
+                                        onChange={(e) => updateExperience(i, 'range', e.target.value)} 
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <FloatingLabelInput 
+                                        label="Location" 
+                                        value={exp.location} 
+                                        onChange={(e) => updateExperience(i, 'location', e.target.value)} 
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <div className="relative">
+                                        <label className="absolute left-4 top-2 text-[10px] font-semibold text-purple-600 uppercase tracking-wider">Achievements</label>
+                                        <textarea
+                                            className="hr-input pt-7 pb-2 min-h-[120px]"
+                                            value={exp.points}
+                                            onChange={(e) => updateExperience(i, 'points', e.target.value)}
+                                            placeholder="Write point by point, one per line..."
+                                        />
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        </motion.div>
                     ))}
-                    <button
+                    <motion.button
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
                         onClick={addExperience}
-                        className="w-full flex items-center justify-center gap-2 py-3 border border-dashed border-slate-300 rounded-lg text-slate-600 font-bold text-sm hover:bg-slate-50 transition-all"
+                        className="w-full flex items-center justify-center gap-2 py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 font-bold text-sm hover:bg-purple-50 hover:border-purple-400 hover:text-purple-600 transition-all"
                     >
                         <Plus size={18} /> Add Experience
-                    </button>
+                    </motion.button>
                 </AccordionItem>
 
                 <AccordionItem
@@ -1582,9 +1973,15 @@ export default function ResumeBuilder() {
                             { key: 'frameworks', label: 'Add libraries / frameworks', icon: Layout, placeholder: 'JavaScript, React' },
                             { key: 'tools', label: 'Add tools / platforms', icon: Cpu, placeholder: 'Git, VS Code' },
                             { key: 'databases', label: 'Add databases', icon: Database, placeholder: 'SQL, MongoDB' },
-                        ].map((group) => (
-                            <div key={group.key}>
-                                <label className="hr-label">{group.label}</label>
+                        ].map((group, idx) => (
+                            <motion.div 
+                                key={group.key} 
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.1 }}
+                                className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-5 border border-gray-200"
+                            >
+                                <label className="hr-label mb-3 block">{group.label}</label>
                                 <div className="flex gap-2">
                                     <input
                                         id={`input-${group.key}`}
@@ -1598,28 +1995,41 @@ export default function ResumeBuilder() {
                                             }
                                         }}
                                     />
-                                    <button
+                                    <motion.button
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.95 }}
                                         onClick={() => {
                                             const el = document.getElementById(`input-${group.key}`) as HTMLInputElement;
                                             addSkill(group.key as any, el.value);
                                             el.value = '';
                                         }}
-                                        className="bg-slate-50 border border-slate-200 rounded-lg px-3 hover:bg-slate-100"
+                                        className="bg-purple-50 border border-purple-200 rounded-xl px-4 hover:bg-purple-100 transition-colors"
                                     >
-                                        <Plus size={18} />
-                                    </button>
+                                        <Plus size={18} className="text-purple-600" />
+                                    </motion.button>
                                 </div>
-                                <div className="flex flex-wrap gap-2 mt-3">
+                                <div className="flex flex-wrap gap-2 mt-4">
                                     {resumeData.skills[group.key as keyof ResumeData['skills']].map((s, i) => (
-                                        <div key={i} className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-medium group">
+                                        <motion.div 
+                                            key={i} 
+                                            initial={{ opacity: 0, scale: 0.8 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={{ delay: i * 0.05 }}
+                                            className="flex items-center gap-1.5 bg-gradient-to-r from-purple-50 to-purple-100 px-3 py-1.5 rounded-lg text-sm font-medium group border border-purple-200 hover:border-purple-300 transition-all"
+                                        >
                                             {s}
-                                            <button onClick={() => removeSkill(group.key as any, i)} className="text-slate-400 hover:text-red-500">
+                                            <motion.button 
+                                                onClick={() => removeSkill(group.key as any, i)} 
+                                                className="text-purple-400 hover:text-red-500 ml-1"
+                                                whileHover={{ scale: 1.2 }}
+                                                whileTap={{ scale: 0.8 }}
+                                            >
                                                 <X size={14} />
-                                            </button>
-                                        </div>
+                                            </motion.button>
+                                        </motion.div>
                                     ))}
                                 </div>
-                            </div>
+                            </motion.div>
                         ))}
                     </div>
                 </AccordionItem>
@@ -1631,44 +2041,78 @@ export default function ResumeBuilder() {
                     onClick={() => toggleSection('projects')}
                 >
                     <div className="mb-4">
-                        <h4 className="text-sm font-bold text-slate-800 mb-2">Open Source / Personal Projects</h4>
+                        <h4 className="text-sm font-bold text-gray-800 mb-4 uppercase tracking-wider">Open Source / Personal Projects</h4>
                         {resumeData.projects.map((p, i) => (
-                            <div key={i} className="bg-slate-50 rounded-xl p-4 mb-4 relative group">
-                                <button onClick={() => removeProject(i)} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <motion.div 
+                                key={i} 
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: i * 0.1 }}
+                                className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 mb-4 relative group border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all"
+                            >
+                                <motion.button 
+                                    onClick={() => removeProject(i)} 
+                                    className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-red-50 rounded-lg"
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.95 }}
+                                >
                                     <Trash2 size={16} />
-                                </button>
-                                <div className="grid grid-cols-2 gap-4">
+                                </motion.button>
+                                <div className="grid grid-cols-2 gap-5">
                                     <div className="col-span-2">
-                                        <label className="hr-label">Project Name</label>
-                                        <input className="hr-input border-transparent focus:border-emerald-500" value={p.name} onChange={(e) => updateProject(i, 'name', e.target.value)} />
+                                        <FloatingLabelInput 
+                                            label="Project Name" 
+                                            value={p.name} 
+                                            onChange={(e) => updateProject(i, 'name', e.target.value)} 
+                                        />
                                     </div>
                                     <div className="col-span-2">
-                                        <label className="hr-label">Technologies (e.g. React, Node.js)</label>
-                                        <input className="hr-input border-transparent focus:border-emerald-500" value={p.tech} onChange={(e) => updateProject(i, 'tech', e.target.value)} />
+                                        <FloatingLabelInput 
+                                            label="Technologies (e.g. React, Node.js)" 
+                                            value={p.tech} 
+                                            onChange={(e) => updateProject(i, 'tech', e.target.value)} 
+                                        />
                                     </div>
                                     <div className="col-span-2">
-                                        <label className="hr-label">Description</label>
-                                        <textarea className="hr-input border-transparent focus:border-emerald-500 min-h-[80px]" value={p.desc} onChange={(e) => updateProject(i, 'desc', e.target.value)} />
+                                        <div className="relative">
+                                            <label className="absolute left-4 top-2 text-[10px] font-semibold text-purple-600 uppercase tracking-wider">Description</label>
+                                            <textarea 
+                                                className="hr-input pt-7 pb-2 min-h-[100px]" 
+                                                value={p.desc} 
+                                                onChange={(e) => updateProject(i, 'desc', e.target.value)} 
+                                            />
+                                        </div>
                                     </div>
                                     <div className="col-span-2">
-                                        <label className="hr-label">Link (optional)</label>
-                                        <input className="hr-input border-transparent focus:border-emerald-500" value={p.link} onChange={(e) => updateProject(i, 'link', e.target.value)} />
+                                        <FloatingLabelInput 
+                                            label="Link (optional)" 
+                                            value={p.link} 
+                                            onChange={(e) => updateProject(i, 'link', e.target.value)} 
+                                        />
                                     </div>
                                 </div>
-                            </div>
+                            </motion.div>
                         ))}
                         <div className="flex gap-3 mt-4">
-                            <button
+                            <motion.button
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
                                 onClick={addProject}
-                                className="flex-1 flex items-center justify-center gap-2 py-3 border border-dashed border-slate-300 rounded-lg text-slate-600 font-bold text-sm hover:bg-slate-50 transition-all"
+                                className="flex-1 flex items-center justify-center gap-2 py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 font-bold text-sm hover:bg-purple-50 hover:border-purple-400 hover:text-purple-600 transition-all"
                             >
                                 <Plus size={18} /> Add Contribution / Project
-                            </button>
-                            <button
-                                className="px-6 flex items-center justify-center gap-2 py-3 border border-slate-300 rounded-lg text-slate-600 font-bold text-sm hover:bg-slate-50 transition-all"
+                            </motion.button>
+                            <motion.button
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                className="px-6 flex items-center justify-center gap-2 py-4 border-2 border-gray-300 rounded-xl text-gray-600 font-bold text-sm hover:bg-purple-50 hover:border-purple-400 hover:text-purple-600 transition-all"
                             >
                                 <Github size={18} /> Import
-                            </button>
+                            </motion.button>
                         </div>
                     </div>
                 </AccordionItem>
@@ -1679,39 +2123,58 @@ export default function ResumeBuilder() {
                     isOpen={openSections.certifications}
                     onClick={() => toggleSection('certifications')}
                 >
-                    <div className="flex gap-2 mb-4">
-                        <input
-                            id="input-cert"
-                            className="hr-input"
-                            placeholder="AWS Certified Developer..."
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    addCertification((e.target as HTMLInputElement).value);
-                                    (e.target as HTMLInputElement).value = '';
-                                }
-                            }}
-                        />
-                        <button
-                            onClick={() => {
-                                const el = document.getElementById('input-cert') as HTMLInputElement;
-                                addCertification(el.value);
-                                el.value = '';
-                            }}
-                            className="bg-slate-50 border border-slate-200 rounded-lg px-3 hover:bg-slate-100"
-                        >
-                            <Plus size={18} />
-                        </button>
-                    </div>
-                    <div className="space-y-2">
-                        {resumeData.certifications.map((c, i) => (
-                            <div key={i} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100 group">
-                                <span className="text-sm font-medium">{c}</span>
-                                <button onClick={() => removeCertification(i)} className="text-slate-300 hover:text-red-500">
-                                    <Trash2 size={16} />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
+                    <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-5 border border-gray-200 mb-4"
+                    >
+                        <div className="flex gap-2 mb-4">
+                            <input
+                                id="input-cert"
+                                className="hr-input"
+                                placeholder="AWS Certified Developer..."
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        addCertification((e.target as HTMLInputElement).value);
+                                        (e.target as HTMLInputElement).value = '';
+                                    }
+                                }}
+                            />
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => {
+                                    const el = document.getElementById('input-cert') as HTMLInputElement;
+                                    addCertification(el.value);
+                                    el.value = '';
+                                }}
+                                className="bg-purple-50 border border-purple-200 rounded-xl px-4 hover:bg-purple-100 transition-colors"
+                            >
+                                <Plus size={18} className="text-purple-600" />
+                            </motion.button>
+                        </div>
+                        <div className="space-y-2">
+                            {resumeData.certifications.map((c, i) => (
+                                <motion.div 
+                                    key={i} 
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: i * 0.05 }}
+                                    className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-200 group hover:border-purple-300 transition-all"
+                                >
+                                    <span className="text-sm font-medium text-gray-800">{c}</span>
+                                    <motion.button 
+                                        onClick={() => removeCertification(i)} 
+                                        className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg"
+                                        whileHover={{ scale: 1.1 }}
+                                        whileTap={{ scale: 0.95 }}
+                                    >
+                                        <Trash2 size={16} />
+                                    </motion.button>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </motion.div>
                 </AccordionItem>
 
                 <AccordionItem
@@ -1720,39 +2183,58 @@ export default function ResumeBuilder() {
                     isOpen={openSections.additional}
                     onClick={() => toggleSection('additional')}
                 >
-                    <div className="flex gap-2 mb-4">
-                        <input
-                            id="input-honor"
-                            className="hr-input"
-                            placeholder="Dean's List 2023..."
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    addHonor((e.target as HTMLInputElement).value);
-                                    (e.target as HTMLInputElement).value = '';
-                                }
-                            }}
-                        />
-                        <button
-                            onClick={() => {
-                                const el = document.getElementById('input-honor') as HTMLInputElement;
-                                addHonor(el.value);
-                                el.value = '';
-                            }}
-                            className="bg-slate-50 border border-slate-200 rounded-lg px-3 hover:bg-slate-100"
-                        >
-                            <Plus size={18} />
-                        </button>
-                    </div>
-                    <div className="space-y-2">
-                        {resumeData.additional.honorsAndAwards.map((h, i) => (
-                            <div key={i} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100 group">
-                                <span className="text-sm font-medium">{h}</span>
-                                <button onClick={() => removeHonor(i)} className="text-slate-300 hover:text-red-500">
-                                    <Trash2 size={16} />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
+                    <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-5 border border-gray-200 mb-4"
+                    >
+                        <div className="flex gap-2 mb-4">
+                            <input
+                                id="input-honor"
+                                className="hr-input"
+                                placeholder="Dean's List 2023..."
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        addHonor((e.target as HTMLInputElement).value);
+                                        (e.target as HTMLInputElement).value = '';
+                                    }
+                                }}
+                            />
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => {
+                                    const el = document.getElementById('input-honor') as HTMLInputElement;
+                                    addHonor(el.value);
+                                    el.value = '';
+                                }}
+                                className="bg-purple-50 border border-purple-200 rounded-xl px-4 hover:bg-purple-100 transition-colors"
+                            >
+                                <Plus size={18} className="text-purple-600" />
+                            </motion.button>
+                        </div>
+                        <div className="space-y-2">
+                            {resumeData.additional.honorsAndAwards.map((h, i) => (
+                                <motion.div 
+                                    key={i} 
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: i * 0.05 }}
+                                    className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-200 group hover:border-purple-300 transition-all"
+                                >
+                                    <span className="text-sm font-medium text-gray-800">{h}</span>
+                                    <motion.button 
+                                        onClick={() => removeHonor(i)} 
+                                        className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg"
+                                        whileHover={{ scale: 1.1 }}
+                                        whileTap={{ scale: 0.95 }}
+                                    >
+                                        <Trash2 size={16} />
+                                    </motion.button>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </motion.div>
                 </AccordionItem>
                     </div>
                 </div>
@@ -1769,7 +2251,7 @@ export default function ResumeBuilder() {
         <button
             onClick={() => handleSave()}
             disabled={isSaving}
-            className={`flex items-center gap-3 px-6 py-3 rounded-full shadow-lg font-bold transition-all ${saveStatus === 'saved' ? 'bg-purple-500 text-white' : 'bg-slate-900 text-white hover:bg-purple-600'}`}
+            className={`flex items-center gap-3 px-6 py-3 rounded-full shadow-lg font-bold transition-all ${saveStatus === 'saved' ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white' : 'bg-gradient-to-r from-gray-900 to-gray-800 text-white hover:from-purple-600 hover:to-purple-700'}`}
         >
             {isSaving ? <Loader2 className="animate-spin" size={18} /> : (saveStatus === 'saved' ? <CheckCircle size={18} /> : <Save size={18} />)}
             {isSaving ? 'Saving...' : (saveStatus === 'saved' ? 'Saved to Cloud' : 'Save Changes')}

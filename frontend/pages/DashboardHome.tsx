@@ -316,7 +316,7 @@ const DashboardHome: React.FC = () => {
                   className="text-lg sm:text-2xl font-black uppercase tracking-[0.2em] mb-4"
                 >
                   <span className="text-black">Welcome ! </span>
-                  <span className="text-[#7C3AED]">{user?.displayName || 'User'}</span>
+                  <span className="text-[#7C3AED]">{user?.full_name || 'User'}</span>
                 </motion.div>
                 <div className="scale-75 sm:scale-100 origin-center">
                   <TypewriterEffectSmooth words={typewriterWords} />
