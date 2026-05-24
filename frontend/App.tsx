@@ -58,7 +58,10 @@ import OpportunityDetails from './pages/opportunities/OpportunityDetails';
 import MyApplications from './pages/opportunities/MyApplications';
 
 import EventHub from './pages/events/EventHub';
+import EventPackagePage from './pages/events/EventPackagePage';
 import EventQuizPage from './pages/events/EventQuizPage';
+import ParticipantCardPage from './pages/events/ParticipantCardPage';
+import ParticipantPortal from './pages/events/ParticipantPortal';
 
 import JudgePortalLayout from './pages/judge/JudgePortalLayout';
 import EvaluationPage from './pages/EvaluationPage';
