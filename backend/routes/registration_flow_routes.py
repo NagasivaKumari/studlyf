@@ -969,40 +969,28 @@ async def notify_approved_participants(event_id: str, user: dict = Depends(get_a
                 else:
                     msg = f"Your application for <strong>{event_title}</strong> has been approved. You can now participate in the event."
 
-                inst_id = str(event.get("institution_id", ""))
-                tpl = await get_active_template(str(event.get("_id")), inst_id, "approval_rejection_update")
-                context = {
-                    "participant_name": p_name,
-                    "event_title": event_title,
-                    "application_status": "Approved",
-                    "status_message": msg,
-                }
-
-                if tpl:
-                    subj, body_html = render_template(tpl, context)
-                else:
-                    subj = f"Approved — {event_title}"
-                    logo_html = f'<img src="{app_logo_url}" alt="Studlyf" style="max-height:32px;margin-bottom:24px;" />' if app_logo_url else ""
-                    body_html = f"""<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 0 24px;">
-                        {logo_html}
-                        <div style="background: #f8f7ff; border-radius: 16px; padding: 32px; border: 1px solid #e8e5ff;">
-                            <p style="font-size: 13px; color: #6C3BFF; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0;">Approved</p>
-                            <p style="font-size: 20px; color: #0f172a; font-weight: 700; margin: 0 0 16px 0;">Hi {p_name},</p>
-                            <p style="font-size: 15px; color: #334155; line-height: 1.7; margin: 0 0 20px 0;">{msg}</p>
-                            <table style="width:100%;">
-                                <tr>
-                                    <td style="padding: 12px 16px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
-                                        <p style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Event</p>
-                                        <p style="font-size: 15px; color: #0f172a; font-weight: 600; margin: 0;">{event_title}</p>
-                                    </td>
-                                </tr>
-                            </table>
-                            <a href="{frontend_url}/events/{event_id}" style="display: block; text-align: center; padding: 14px 28px; background-color: #6C3BFF; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 14px; margin-top: 20px;">Go to Event</a>
-                        </div>
-                        <div style="text-align: center; padding: 24px 0 0 0;">
-                            <p style="font-size: 12px; color: #94a3b8; margin: 0;">Sent by <strong style="color: #64748b;">Studlyf</strong> on behalf of {org_name}</p>
-                        </div>
-                    </div>"""
+                subj = f"Approved — {event_title}"
+                logo_html = f'<img src="{app_logo_url}" alt="Studlyf" style="max-height:32px;margin-bottom:24px;" />' if app_logo_url else ""
+                body_html = f"""<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 0 24px;">
+                    {logo_html}
+                    <div style="background: #f8f7ff; border-radius: 16px; padding: 32px; border: 1px solid #e8e5ff;">
+                        <p style="font-size: 13px; color: #6C3BFF; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0;">Approved</p>
+                        <p style="font-size: 20px; color: #0f172a; font-weight: 700; margin: 0 0 16px 0;">Hi {p_name},</p>
+                        <p style="font-size: 15px; color: #334155; line-height: 1.7; margin: 0 0 20px 0;">{msg}</p>
+                        <table style="width:100%;">
+                            <tr>
+                                <td style="padding: 12px 16px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
+                                    <p style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Event</p>
+                                    <p style="font-size: 15px; color: #0f172a; font-weight: 600; margin: 0;">{event_title}</p>
+                                </td>
+                            </tr>
+                        </table>
+                        <a href="{frontend_url}/events/{event_id}" style="display: block; text-align: center; padding: 14px 28px; background-color: #6C3BFF; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 14px; margin-top: 20px;">Go to Event</a>
+                    </div>
+                    <div style="text-align: center; padding: 24px 0 0 0;">
+                        <p style="font-size: 12px; color: #94a3b8; margin: 0;">Sent by <strong style="color: #64748b;">Studlyf</strong> on behalf of {org_name}</p>
+                    </div>
+                </div>"""
 
                 await enqueue_email(email, subj, body_html, idempotency_key=f"notify_approved_{reg['_id']}")
                 sent += 1
