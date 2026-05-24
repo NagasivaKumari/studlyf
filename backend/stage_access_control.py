@@ -77,7 +77,7 @@ async def check_stage_unlock_rules(
                 continue
 
         # Check participant status as fallback
-        if participant_status in ("shortlisted", "accepted", "selected"):
+        if participant_status in ("shortlisted", "registered", "accepted", "selected", "approved"):
             # Only allow if dependency is before current stage
             continue
 
