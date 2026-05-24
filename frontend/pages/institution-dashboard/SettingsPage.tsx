@@ -75,10 +75,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
     const [togglingPackage, setTogglingPackage] = useState(false);
     const [packageStatus, setPackageStatus] = useState<any | null>(null);
     const [packageStatusLoading, setPackageStatusLoading] = useState(false);
-    const [imgErrors, setImgErrors] = useState<{logo: boolean; banner: boolean}>({ logo: false, banner: false });
-
-    const prevLogoRef = useRef('');
-    const prevBannerRef = useRef('');
 
     const [profile, setProfile] = useState<any>({
         name: '',
@@ -102,19 +98,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
             updates: false
         }
     });
-
-    useEffect(() => {
-        if (profile.logo_url !== prevLogoRef.current) {
-            setImgErrors(prev => ({ ...prev, logo: false }));
-            prevLogoRef.current = profile.logo_url;
-        }
-    }, [profile.logo_url]);
-    useEffect(() => {
-        if (profile.banner_url !== prevBannerRef.current) {
-            setImgErrors(prev => ({ ...prev, banner: false }));
-            prevBannerRef.current = profile.banner_url;
-        }
-    }, [profile.banner_url]);
 
     const [bulkList, setBulkList] = useState<{name: string, email: string, phone: string}[]>([]);
     const [onboardingRole, setOnboardingRole] = useState('student');
@@ -523,8 +506,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                                 onClick={handleBannerClick}
                                 className="w-full h-48 rounded-[3rem] bg-slate-100 border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer overflow-hidden group relative"
                             >
-                                {profile.banner_url && !imgErrors.banner ? (
-                                    <img src={profile.banner_url} alt="Banner" className="w-full h-full object-cover" onError={() => setImgErrors(prev => ({ ...prev, banner: true }))} />
+                                {profile.banner_url ? (
+                                    <img src={profile.banner_url} alt="Banner" className="w-full h-full object-cover" />
                                 ) : (
                                     <div className="text-center">
                                         <Plus className="mx-auto text-slate-300" size={32} />
@@ -540,8 +523,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
 
                             <div className="absolute -bottom-12 left-10 group" onClick={handleLogoClick}>
                                 <div className="w-32 h-32 rounded-[2rem] bg-white border-8 border-white shadow-2xl flex items-center justify-center overflow-hidden relative cursor-pointer group-hover:scale-105 transition-transform">
-                                    {profile.logo_url && !imgErrors.logo ? (
-                                        <img src={profile.logo_url} alt="Logo" className="w-full h-full object-cover" onError={() => setImgErrors(prev => ({ ...prev, logo: true }))} />
+                                    {profile.logo_url ? (
+                                        <img src={profile.logo_url} alt="Logo" className="w-full h-full object-cover" />
                                     ) : (
                                         <Building2 size={32} className="text-slate-200" />
                                     )}
