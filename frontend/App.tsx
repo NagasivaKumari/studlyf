@@ -314,7 +314,7 @@ const App: React.FC = () => {
 
             <Route path="/dashboard" element={
               <ProtectedRoute>
-                {role === 'institution' ? <Navigate to="/institution-dashboard" replace /> : <Navigate to="/opportunities" replace />}
+                {role === 'institution' ? <Navigate to="/institution-dashboard" replace /> : <Navigate to="/dashboard/learner" replace />}
               </ProtectedRoute>
             } />
             <Route path="/dashboard/learner" element={<ProtectedRoute><DashboardHome /></ProtectedRoute>} />
