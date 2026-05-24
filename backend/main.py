@@ -540,6 +540,46 @@ class InterviewInteractionRequest(BaseModel):
     user_response: str
     round_index: int
 
+# Ensure ResumeReviewRequest is defined
+# 1. Add the Request Model if not there
+class ResumeReviewRequest(BaseModel):
+    resumeData: dict
+
+# 2. The Robust API Route
+@app.post("/api/resume/review")
+async def review_resume_ai(req: ResumeReviewRequest):
+    try:
+        # 1. Be very strict with the AI prompt
+        prompt = f"""
+        Review this resume data: {json.dumps(req.resumeData)}
+        Provide 3-5 specific, professional suggestions for improvement.
+        Return ONLY a JSON object with a key "suggestions" containing the list.
+        Example: {{"suggestions": ["Add metrics", "Use action verbs", "List technologies"]}}
+        """
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+
+        # 2. Parse and ensure we find a list
+        raw_json = json.loads(clean_json_string(response.choices[0].message.content))
+        
+        # Get the list from 'suggestions' or any available list in the object
+        suggestions = raw_json.get("suggestions")
+        if not suggestions or not isinstance(suggestions, list):
+            suggestions = next((v for v in raw_json.values() if isinstance(v, list)), ["Add quantifiable metrics to your experience."])
+
+        return {"suggestions": suggestions} # Wrap in an object for the frontend
+
+    except Exception as e:
+        print(f"AI ERROR: {e}")
+        return {"suggestions": [
+            "Use stronger action verbs (e.g., 'Spearheaded', 'Orchestrated').",
+            "Quantify your results with percentages or dollar amounts.",
+            "Tailor your skills section to match a specific job description."
+        ]}
 def fix_id(doc):
     if doc and "_id" in doc:
         doc["_id"] = str(doc["_id"])
@@ -656,6 +696,9 @@ async def get_user_badges(user_id: str):
     if not user_profile:
         return {"badges": []}
     return {"badges": user_profile.get("badges", [])}
+
+
+
 
 # Base URL for backend links (portfolios, resumes)
 BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
@@ -1512,6 +1555,19 @@ def clean_json_string(json_str):
     elif "```" in json_str:
         json_str = json_str.split("```")[1].split("```")[0]
     return json_str.strip()
+
+def clean_json_results(raw_str):
+    """The most robust way to extract JSON from an AI response."""
+    try:
+        # 1. Try to find anything between [ ] or { }
+        match = re.search(r'(\[.*\]|\{.*\})', raw_str, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+        return json.loads(raw_str)
+    except:
+        # 2. Fallback: split by lines and look for bullet points
+        lines = [l.strip("- ").strip("123. ") for l in raw_str.split('\n') if len(l) > 10]
+        return lines[:3]
 
 def parse_with_groq(text):
     prompt = f"""
