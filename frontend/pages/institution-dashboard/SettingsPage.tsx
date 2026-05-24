@@ -31,7 +31,8 @@ import {
     ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL } from '../../apiConfig';
+import { useLocation } from 'react-router-dom';
+import { API_BASE_URL, authHeaders } from '../../apiConfig';
 
 interface SettingsPageProps {
     institutionId: string;
@@ -39,7 +40,11 @@ interface SettingsPageProps {
 }
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpdate }) => {
-    const [activeSection, setActiveSection] = useState('profile');
+    const location = useLocation();
+    const [activeSection, setActiveSection] = useState(() => {
+        const params = new URLSearchParams(location.search);
+        return params.get('section') || 'profile';
+    });
     const sections = [
         { id: 'profile', label: 'My Account', icon: Building2 },
         { id: 'team', label: 'Your Team', icon: Users },
@@ -49,6 +54,31 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
         { id: 'onboarding', label: 'Member Onboarding', icon: Plus },
         { id: 'plan', label: 'Plans & Subscription', icon: CreditCard },
     ];
+
+    const [plansData, setPlansData] = useState<{ plans: any[]; faqs: any[]; currentPlanId: string; pendingPlan?: { plan_id: string; plan_name: string; queued_at?: string | null; is_upgrade?: boolean; is_downgrade?: boolean }; expiry?: { expires_at: string | null; days_remaining: number | null; is_expired: boolean } } | null>(null);
+    const [plansLoading, setPlansLoading] = useState(false);
+    const [selectingPlanId, setSelectingPlanId] = useState<string | null>(null);
+    const [planModalOpen, setPlanModalOpen] = useState(false);
+    const [planModalLoading, setPlanModalLoading] = useState(false);
+    const [planModalAction, setPlanModalAction] = useState<'upgrade' | 'downgrade' | 'switch' | 'unknown'>('unknown');
+    const [planModalError, setPlanModalError] = useState<string | null>(null);
+    const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
+    const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+    const [eventPackages, setEventPackages] = useState<any[] | null>(null);
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const section = params.get('section');
+        if (section) setActiveSection(section);
+    }, [location.search]);
+    const [hackathonPackageEnabled, setHackathonPackageEnabled] = useState(false);
+    const [togglingPackage, setTogglingPackage] = useState(false);
+    const [packageStatus, setPackageStatus] = useState<any | null>(null);
+    const [packageStatusLoading, setPackageStatusLoading] = useState(false);
+    const [imgErrors, setImgErrors] = useState<{logo: boolean; banner: boolean}>({ logo: false, banner: false });
+
+    const prevLogoRef = useRef('');
+    const prevBannerRef = useRef('');
 
     const [profile, setProfile] = useState<any>({
         name: '',
@@ -73,6 +103,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
         }
     });
 
+    useEffect(() => {
+        if (profile.logo_url !== prevLogoRef.current) {
+            setImgErrors(prev => ({ ...prev, logo: false }));
+            prevLogoRef.current = profile.logo_url;
+        }
+    }, [profile.logo_url]);
+    useEffect(() => {
+        if (profile.banner_url !== prevBannerRef.current) {
+            setImgErrors(prev => ({ ...prev, banner: false }));
+            prevBannerRef.current = profile.banner_url;
+        }
+    }, [profile.banner_url]);
+
     const [bulkList, setBulkList] = useState<{name: string, email: string, phone: string}[]>([]);
     const [onboardingRole, setOnboardingRole] = useState('student');
     const [isOnboarding, setIsOnboarding] = useState(false);
@@ -81,6 +124,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
     const [saving, setSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const refreshPlans = async () => {
+        const refetch = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans`, { headers: authHeaders() });
+        if (refetch.ok) {
+            const data = await refetch.json();
+            setPlansData(data);
+            return data;
+        }
+        return null;
+    };
 
     useEffect(() => {
         let isMounted = true;
@@ -94,7 +147,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
             try {
                 setLoading(true);
                 const res = await fetch(`${API_BASE_URL}/api/v1/institution/profile/${institutionId}?t=${Date.now()}`, {
-                    headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+                    headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', ...authHeaders() }
                 }); 
                 if (res.ok && isMounted) {
                     const data = await res.json();
@@ -123,6 +176,176 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
         };
     }, [institutionId]);
 
+    useEffect(() => {
+        if (activeSection !== 'plan' || plansData) return;
+        const fetchPlans = async () => {
+            setPlansLoading(true);
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans`, { headers: authHeaders() });
+                if (res.ok) {
+                    const data = await res.json();
+                    setPlansData(data);
+                }
+            } catch (err) {
+                console.error("Failed to load plans");
+            } finally {
+                setPlansLoading(false);
+            }
+        };
+        fetchPlans();
+        // Also fetch event packages (institution-level links)
+        const fetchEventConfig = async () => {
+            try {
+                const r = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/event-config`, { headers: authHeaders() });
+                if (r.ok) {
+                    const cfg = await r.json();
+                    const raw = cfg?.event_packages;
+                    if (raw) {
+                        try {
+                            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                            if (Array.isArray(parsed)) setEventPackages(parsed);
+                        } catch (e) {
+                            console.warn('Failed to parse event_packages', e);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.debug('No event-config available', e);
+            }
+        };
+        fetchEventConfig();
+
+        const fetchHackathonPackage = async () => {
+            try {
+                const r = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/package-status`, { headers: authHeaders() });
+                if (r.ok) {
+                    const data = await r.json();
+                    setHackathonPackageEnabled(!!data.enabled);
+                    setPackageStatus(data || null);
+                }
+            } catch { /* silent */ }
+        };
+        fetchHackathonPackage();
+    }, [activeSection, plansData]);
+
+    // Fetch package status for badge (run on mount and when toggling)
+    useEffect(() => {
+        let mounted = true;
+        const fetchPackageStatus = async () => {
+            try {
+                setPackageStatusLoading(true);
+                const r = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/package-status`, { headers: authHeaders() });
+                if (!mounted) return;
+                if (r.ok) {
+                    const data = await r.json();
+                    setPackageStatus(data || null);
+                    setHackathonPackageEnabled(!!data?.enabled);
+                }
+            } catch (e) {
+                // ignore
+            } finally {
+                if (mounted) setPackageStatusLoading(false);
+            }
+        };
+        fetchPackageStatus();
+        return () => { mounted = false; };
+    }, [togglingPackage]);
+
+    const handleSubscribe = async () => {
+        try {
+            setTogglingPackage(true);
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/subscribe`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setHackathonPackageEnabled(true);
+                setPackageStatus(prev => ({ ...(prev || {}), enabled: true, subscription_status: 'active', payment_status: 'free', last_payment: { amount: 0, currency: '₹', provider: 'manual', status: 'free' } }));
+                alert(data.message || 'Hackathon Event Package activated!');
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(err.detail || 'Subscription failed. Please try again.');
+            }
+        } catch {
+            alert('Network error. Is the backend running?');
+        } finally {
+            setTogglingPackage(false);
+        }
+    };
+
+    const handleSelectPlan = async (plan: any) => {
+        if (!plansData || plan.id === plansData.currentPlanId) return;
+        try {
+            setSelectingPlanId(plan.id);
+            setPlanModalError(null);
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans/select`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ plan_id: plan.id }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.detail || 'Failed to queue subscription plan');
+            }
+
+            const payload = await res.json().catch(() => ({}));
+            setSelectedPlan(plan);
+            setPlanModalAction(payload?.pending?.is_downgrade ? 'downgrade' : payload?.pending?.is_upgrade ? 'upgrade' : 'switch');
+            setPlanModalOpen(true);
+            await refreshPlans();
+        } catch (err: any) {
+            alert(err?.message || 'Failed to update subscription plan');
+        } finally {
+            setSelectingPlanId(null);
+        }
+    };
+
+    const handleCancelPendingPlan = async () => {
+        try {
+            setPlanModalLoading(true);
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans/cancel-pending`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({}),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.detail || 'Failed to cancel pending plan');
+            }
+            await refreshPlans();
+            setPlanModalOpen(false);
+            setSelectedPlan(null);
+        } catch (err: any) {
+            setPlanModalError(err?.message || 'Failed to cancel pending plan');
+        } finally {
+            setPlanModalLoading(false);
+        }
+    };
+
+    const handleConfirmPlanChange = async () => {
+        try {
+            setPlanModalLoading(true);
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans/confirm`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({}),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.detail || 'Failed to confirm plan change');
+            }
+            await refreshPlans();
+            setPackageStatus(prev => ({ ...(prev || {}), subscription_status: 'active', payment_status: 'free' }));
+            setPlanModalOpen(false);
+            setSelectedPlan(null);
+        } catch (err: any) {
+            setPlanModalError(err?.message || 'Failed to confirm plan change');
+        } finally {
+            setPlanModalLoading(false);
+        }
+    };
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { id, value } = e.target;
         setProfile(prev => ({ ...prev, [id]: value }));
@@ -139,6 +362,28 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
         }));
     };
 
+    const handleMediaUpload = async (file: File, field: 'logo_url' | 'banner_url') => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('field', field);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/upload-media`, {
+                method: 'POST',
+                headers: { ...authHeaders() },
+                body: formData,
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                alert('Upload failed: ' + (data.detail || 'Unknown error'));
+                return;
+            }
+            setProfile(prev => ({ ...prev, [field]: data.url }));
+        } catch (err) {
+            console.error('[MediaUpload] network error', err);
+            alert('Network error during upload.');
+        }
+    };
+
     const handleBannerClick = () => {
         const input = document.createElement('input');
         input.type = 'file';
@@ -146,11 +391,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
         input.onchange = (e: any) => {
             const file = e.target.files?.[0];
             if (file) {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    setProfile(prev => ({ ...prev, banner_url: reader.result as string }));
-                };
-                reader.readAsDataURL(file);
+                handleMediaUpload(file, 'banner_url');
             }
         };
         input.click();
@@ -233,7 +474,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
             
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/profile`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify(payload)
             });
             
@@ -261,11 +502,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setProfile(prev => ({ ...prev, logo_url: reader.result as string }));
-            };
-            reader.readAsDataURL(file);
+            handleMediaUpload(file, 'logo_url');
         }
     };
 
@@ -286,8 +523,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                                 onClick={handleBannerClick}
                                 className="w-full h-48 rounded-[3rem] bg-slate-100 border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer overflow-hidden group relative"
                             >
-                                {profile.banner_url ? (
-                                    <img src={profile.banner_url} alt="Banner" className="w-full h-full object-cover" />
+                                {profile.banner_url && !imgErrors.banner ? (
+                                    <img src={profile.banner_url} alt="Banner" className="w-full h-full object-cover" onError={() => setImgErrors(prev => ({ ...prev, banner: true }))} />
                                 ) : (
                                     <div className="text-center">
                                         <Plus className="mx-auto text-slate-300" size={32} />
@@ -303,8 +540,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
 
                             <div className="absolute -bottom-12 left-10 group" onClick={handleLogoClick}>
                                 <div className="w-32 h-32 rounded-[2rem] bg-white border-8 border-white shadow-2xl flex items-center justify-center overflow-hidden relative cursor-pointer group-hover:scale-105 transition-transform">
-                                    {profile.logo_url ? (
-                                        <img src={profile.logo_url} alt="Logo" className="w-full h-full object-cover" />
+                                    {profile.logo_url && !imgErrors.logo ? (
+                                        <img src={profile.logo_url} alt="Logo" className="w-full h-full object-cover" onError={() => setImgErrors(prev => ({ ...prev, logo: true }))} />
                                     ) : (
                                         <Building2 size={32} className="text-slate-200" />
                                     )}
@@ -708,221 +945,264 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                     <div className="space-y-12 animate-in fade-in slide-in-from-right-4 duration-500 font-sans">
                         <div className="space-y-1 border-b border-slate-100 pb-8">
                             <h2 className="text-2xl font-black text-slate-800 tracking-tight">Plans & Subscription</h2>
-                            <p className="text-sm text-slate-400 font-medium">Compare plans and explore the benefits.</p>
+                            <p className="text-sm text-slate-400 font-medium">All plans are currently free — pick what fits your needs.</p>
                         </div>
 
-                        <div className="text-center space-y-2 py-8">
-                            <h3 className="text-4xl font-black text-slate-800">Available Plans</h3>
-                            <p className="text-sm text-slate-400 font-medium tracking-wide">Flexible options tailored to your specific hiring needs</p>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 px-4">
-                            {/* Basic Plan */}
-                            <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] flex flex-col hover:shadow-xl transition-all">
-                                <div className="mb-6 space-y-2">
-                                    <h4 className="text-xl font-black text-slate-700">Basic Plan</h4>
-                                    <p className="text-4xl font-black text-slate-800">Free</p>
-                                    <p className="text-[10px] text-slate-400 font-bold">Auto renews every 30 days</p>
-                                </div>
-                                <button className="w-full py-4 bg-slate-100 text-slate-400 rounded-full font-black text-sm uppercase tracking-widest mb-10 cursor-default">Current Plan</button>
-                                <div className="space-y-6 flex-1">
-                                    <p className="text-sm font-black text-slate-700">Includes:</p>
-                                    <ul className="space-y-4">
-                                        {[
-                                            '2 Jobs/Internship listings',
-                                            '7 days registration window per listing',
-                                            'Upto 30 applications view access per listing',
-                                            'Access listing upto 15 days after registration window ends',
-                                            '10 interviews credits',
-                                            '0 assessments credits'
-                                        ].map((f, i) => (
-                                            <li key={i} className="flex items-start gap-3 text-xs font-bold text-slate-500 leading-relaxed relative pl-4">
-                                                <span className="absolute left-0 top-1.5 w-1.5 h-1.5 bg-slate-400 rounded-full" />
-                                                {f}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
+                        {plansLoading && !plansData && (
+                            <div className="flex justify-center py-24">
+                                <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
                             </div>
+                        )}
 
-                            {/* Pack of 3 */}
-                            <div className="p-8 bg-white border-2 border-blue-500 rounded-[2.5rem] shadow-2xl shadow-blue-50 flex flex-col relative scale-[1.03] z-10">
-                                <div className="absolute top-6 right-6 px-3 py-1 bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest rounded-md">Recommended</div>
-                                <div className="mb-6 space-y-2">
-                                    <h4 className="text-xl font-black text-slate-700">Pack of 3</h4>
-                                    <p className="text-4xl font-black text-slate-800">₹4,999</p>
-                                    <p className="text-[10px] text-slate-400 font-bold">Valid for 30 days</p>
-                                </div>
-                                <button className="w-full py-4 bg-blue-600 text-white rounded-full font-black text-sm uppercase tracking-widest mb-10 hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2">
-                                    <Zap size={18} className="fill-white" /> Upgrade
-                                </button>
-                                <div className="space-y-6 flex-1">
-                                    <p className="text-sm font-black text-slate-700">Includes:</p>
-                                    <ul className="space-y-4">
-                                        {[
-                                            '3 Jobs/Internship listings',
-                                            '30 days registration window per listing',
-                                            'Unlimited Application views',
-                                            'Access listing upto 15 days after registration window ends',
-                                            '50 interviews credits',
-                                            '100 assessments credits'
-                                        ].map((f, i) => (
-                                            <li key={i} className="flex items-start gap-3 text-xs font-bold text-slate-600 leading-relaxed relative pl-4">
-                                                <span className="absolute left-0 top-1.5 w-1.5 h-1.5 bg-slate-500 rounded-full" />
-                                                {f}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            </div>
-
-                            {/* Pack of 7 */}
-                            <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] flex flex-col hover:shadow-xl transition-all">
-                                <div className="mb-6 space-y-2">
-                                    <h4 className="text-xl font-black text-slate-700">Pack of 7</h4>
-                                    <p className="text-4xl font-black text-slate-800">₹9,999</p>
-                                    <p className="text-[10px] text-slate-400 font-bold">Valid for 90 days</p>
-                                </div>
-                                <button className="w-full py-4 bg-blue-600 text-white rounded-full font-black text-sm uppercase tracking-widest mb-10 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2">
-                                    <Zap size={18} className="fill-white" /> Upgrade
-                                </button>
-                                <div className="space-y-6 flex-1">
-                                    <p className="text-sm font-black text-slate-700">Includes:</p>
-                                    <ul className="space-y-4">
-                                        {[
-                                            'Upto 7 Jobs/Internship',
-                                            '30 days registration window per listing',
-                                            'Unlimited Application views',
-                                            'Access listing upto 15 days after registration window ends',
-                                            '100 interviews credits',
-                                            '200 assessments credits'
-                                        ].map((f, i) => (
-                                            <li key={i} className="flex items-start gap-3 text-xs font-bold text-slate-500 leading-relaxed relative pl-4">
-                                                <span className="absolute left-0 top-1.5 w-1.5 h-1.5 bg-slate-400 rounded-full" />
-                                                {f}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            </div>
-
-                            {/* Enterprise */}
-                            <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] flex flex-col hover:shadow-xl transition-all">
-                                <div className="mb-6 space-y-2">
-                                    <h4 className="text-xl font-black text-slate-700">Enterprise</h4>
-                                    <p className="text-4xl font-black text-slate-800">Custom</p>
-                                    <p className="text-[10px] text-slate-400 font-bold">Custom duration</p>
-                                </div>
-                                <button className="w-full py-4 bg-white border border-slate-200 text-slate-700 rounded-full font-black text-sm uppercase tracking-widest mb-10 hover:bg-slate-50 transition-all shadow-sm">Contact Us</button>
-                                <div className="space-y-6 flex-1">
-                                    <p className="text-sm font-black text-slate-700">Includes:</p>
-                                    <ul className="space-y-4">
-                                        {[
-                                            'Host custom jobs/listing',
-                                            'Custom duration for registration window',
-                                            'Unlimited Application views',
-                                            'Access listing upto 30 days after registration window ends',
-                                            'Custom interviews credits',
-                                            'Custom assessments credits',
-                                            'Download access'
-                                        ].map((f, i) => (
-                                            <li key={i} className="flex items-start gap-3 text-xs font-bold text-slate-500 leading-relaxed relative pl-4">
-                                                <span className="absolute left-0 top-1.5 w-1.5 h-1.5 bg-slate-400 rounded-full" />
-                                                {f}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* FAQ Section */}
-                        <div className="pt-24 space-y-12 pb-12">
-                            <h3 className="text-4xl font-black text-slate-800 text-center font-sans">Frequently asked questions</h3>
-                            <div className="max-w-4xl mx-auto space-y-3">
-                                {[
-                                    {
-                                        q: "What is the difference between the Free and Paid Plans?",
-                                        a: "The Free Plan offers limited job/internship listings, a shorter listing duration, and lower candidate access limits. The Paid Plan extends these limits, allowing for more live listings, longer listing durations, and increased access to candidate data."
-                                    },
-                                    {
-                                        q: "How do I upgrade to a Paid Plan?",
-                                        a: "You can upgrade by purchasing a plan directly on Studylf. You can buy either Pack of 3, Pack of 7 or reach out to us via the Contact Us button under the custom plan."
-                                    },
-                                    {
-                                        q: "If I downgrade from a Paid Plan, what happens to my existing Job/Internship listings?",
-                                        a: "Existing public listings remain live until they reach their registration limit or end date. However, you won’t be able to create new public listings if you exceed the Basic Plan limit."
-                                    },
-                                    {
-                                        q: "How long can I keep a job/internship listing live?",
-                                        a: "Free Plan users can keep listings live for up to 7 days from the registration start date, while Paid Plan users can extend them as per the registration timeline defined for their plan."
-                                    },
-                                    {
-                                        q: "Can I extend a Job/Internship listing after purchasing a Paid Plan?",
-                                        a: "Yes, if you purchase a Paid Plan after listing a job, you can extend the registration period upto the defined limit within that plan."
-                                    },
-                                    {
-                                        q: "What happens if I try to list more than the allowed number of opportunities?",
-                                        a: "You will be able to list jobs and internships beyond the defined limit, however these listings would be approved only in private mode and won't be visible to candidates on the Studylf platform."
-                                    },
-                                    {
-                                        q: "How does the candidate Match Score impact my access to registration data?",
-                                        a: "The Candidate Compatibility Score is for reference only and does not impact your access to candidate data."
-                                    },
-                                    {
-                                        q: "Can I still access candidate data after my Paid Plan expires?",
-                                        a: "Yes, recruiters can access candidate data for 15 days once the opportunity is over. Post that you won't be able to access the candidate data for the specific opportunity."
-                                    },
-                                    {
-                                        q: "How many interviews can I schedule and complete?",
-                                        a: "Under Basic plan, recruiters can schedule upto 10 interviews across their live listing, while Paid Plan users can schedule interviews as per the interview credits alloted to them (1 interview credit = 1 interview schedule access)."
-                                    },
-                                    {
-                                        q: "Can I reset/reschedule an interview after the interview is completed?",
-                                        a: "Once an interview is marked completed (at least one evaluator and candidate joined), it is counted as complete. Once the interview is marked complete, you can reschedule it using your available credits."
-                                    },
-                                    {
-                                        q: "Can I reset/reschedule an upcoming interview?",
-                                        a: "You can reschedule/reset upcoming interviews. No new interview credit will be consumed in such scenario."
-                                    },
-                                    {
-                                        q: "How many candidates can complete an assessment?",
-                                        a: "You can invite as many candidates to participate/complete an assessment as per the available assessment credits in your plan (1 assessment credit = 1 candidate attempt)."
-                                    },
-                                    {
-                                        q: "Can I reset a candidate's assessment attempt?",
-                                        a: "Except for enterprise plan users, you cannot reset candidate's assessment attempt."
-                                    },
-                                    {
-                                        q: "Why should I subscribe to auto renewal my plan?",
-                                        a: "You can subscribe to Pack of 3 and Pack of 7 plans directly on Studylf. This ensures your team has uninterruppted access to the desired features at times. You can cancel the plan subscription aynytime from the payment page."
-                                    },
-                                    {
-                                        q: "What is the Enterprise Plan, and how do I get it?",
-                                        a: "The Enterprise Plan offers exclusive features and can be purchased by contacting recruit@studylf.com."
-                                    },
-                                    {
-                                        q: "Can I get refund of my payment?",
-                                        a: "Currently we do not allow refund once the payment is completed."
-                                    }
-                                ].map((item, i) => (
-                                    <div key={i} className="overflow-hidden">
-                                        <details className="group">
-                                            <summary className="flex items-center justify-between p-4 bg-[#F4F9FF] rounded-xl cursor-pointer list-none transition-all hover:bg-[#EBF5FF]">
-                                                <p className="text-sm font-bold text-slate-700 leading-relaxed">{item.q}</p>
-                                                <div className="flex-shrink-0 text-slate-400 font-light text-2xl group-open:hidden">+</div>
-                                                <div className="flex-shrink-0 text-slate-400 font-light text-2xl hidden group-open:block">−</div>
-                                            </summary>
-                                            <div className="px-5 py-4 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                <p className="text-sm text-slate-500 leading-relaxed font-medium">
-                                                    {item.a}
-                                                </p>
-                                            </div>
-                                        </details>
+                        {plansData && (
+                            <>
+                                {eventPackages && eventPackages.length > 0 && (
+                                    <div className="max-w-4xl mx-auto mb-6 px-4">
+                                        <h4 className="text-sm font-black text-slate-500 uppercase tracking-widest">Event Packages</h4>
+                                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {eventPackages.map((p: any, i: number) => (
+                                                <a key={i} href={p.url || p.link} target="_blank" rel="noreferrer" className="p-4 bg-white rounded-xl border border-slate-100 hover:shadow-md transition-all">
+                                                    <div className="text-sm font-bold text-[#6C3BFF]">{p.title || p.name || p.label || p.url}</div>
+                                                    <div className="text-xs text-slate-400 mt-1 truncate">{p.url || p.link}</div>
+                                                </a>
+                                            ))}
+                                        </div>
                                     </div>
-                                ))}
+                                )}
+                                <div className="max-w-4xl mx-auto px-4 mb-8">
+                                    <div className="p-8 bg-gradient-to-br from-indigo-600 to-purple-700 rounded-[2.5rem] text-white shadow-2xl shadow-indigo-200 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                                        <div className="space-y-3">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-200">Event Package</p>
+                                            <h4 className="text-2xl font-black">Hackathon Event Package</h4>
+                                            <p className="text-indigo-100 text-sm max-w-lg">Enables Problem Statements management, Team Selections, Participant Portal, and Participant Card for your events.</p>
+                                            <div className="flex flex-wrap gap-2 text-[10px] font-bold text-indigo-200 uppercase tracking-wider">
+                                                <span className="px-3 py-1 rounded-full bg-white/10">Problem Statements</span>
+                                                <span className="px-3 py-1 rounded-full bg-white/10">Team Selections</span>
+                                                <span className="px-3 py-1 rounded-full bg-white/10">Participant Portal</span>
+                                                <span className="px-3 py-1 rounded-full bg-white/10">Participant Card</span>
+                                            </div>
+                                        </div>
+                                        <div className="text-center shrink-0">
+                                            <p className="text-3xl font-black">₹0</p>
+                                            <p className="text-indigo-200 text-xs font-bold mt-1">Free — Subscribe now</p>
+                                            <button
+                                                onClick={handleSubscribe}
+                                                disabled={togglingPackage || hackathonPackageEnabled}
+                                                className={`mt-4 px-8 py-4 rounded-full font-black text-sm uppercase tracking-widest transition-all disabled:opacity-60 ${hackathonPackageEnabled ? 'bg-white/20 text-white cursor-default' : 'bg-white text-indigo-700 hover:bg-indigo-50 shadow-xl shadow-indigo-900/20'}`}
+                                            >
+                                                {togglingPackage ? <Loader2 size={16} className="animate-spin" /> : hackathonPackageEnabled ? 'Subscribed' : 'Subscribe Now'}
+                                            </button>
+                                            {hackathonPackageEnabled && (
+                                                <p className="text-indigo-200 text-[10px] font-bold uppercase tracking-widest mt-2 flex items-center justify-center gap-1"><CheckCircle2 size={12} /> Active — Payment recorded</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="text-center space-y-2 py-8">
+                                    <h3 className="text-4xl font-black text-slate-800">Available Plans</h3>
+                                    <p className="text-sm text-slate-400 font-medium tracking-wide">All at no cost — choose the plan that works best for you</p>
+                                    <p className="text-xs font-black uppercase tracking-widest text-[#6C3BFF]">
+                                        Active Subscription: {plansData.plans.find((p: any) => p.id === plansData.currentPlanId)?.name || plansData.currentPlanId}
+                                    </p>
+                                    {plansData.pendingPlan && (
+                                        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-amber-100 text-amber-700 mt-2">
+                                            Pending change: {plansData.pendingPlan.plan_name}
+                                            <span className="text-amber-500">•</span>
+                                            Demo Mode — payment confirmation is simulated.
+                                        </div>
+                                    )}
+                                    {plansData.expiry && plansData.expiry.expires_at && (
+                                        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold ${plansData.expiry.is_expired ? 'bg-red-100 text-red-700' : plansData.expiry.days_remaining <= 7 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                                            {plansData.expiry.is_expired ? (
+                                                <>Expired on {new Date(plansData.expiry.expires_at).toLocaleDateString()}</>
+                                            ) : (
+                                                <>Valid until {new Date(plansData.expiry.expires_at).toLocaleDateString()} ({plansData.expiry.days_remaining} days remaining)</>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 px-4">
+                                    {plansData.plans.map((plan: any) => {
+                                        const isCurrent = plan.id === plansData.currentPlanId;
+                                        const isPending = plansData.pendingPlan?.plan_id === plan.id;
+                                        return (
+                                            <div key={plan.id} className={`p-8 bg-white border rounded-[2.5rem] flex flex-col hover:shadow-xl transition-all ${plan.isRecommended ? 'border-2 border-blue-500 shadow-2xl shadow-blue-50 scale-[1.03] z-10' : 'border-slate-100'}`}>
+                                                {plan.isRecommended && (
+                                                    <div className="absolute top-6 right-6 px-3 py-1 bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest rounded-md">Recommended</div>
+                                                )}
+                                                <div className="relative mb-6 space-y-2">
+                                                    <h4 className="text-xl font-black text-slate-700">{plan.name}</h4>
+                                                    <p className="text-4xl font-black text-slate-800">{plan.priceLabel === 'Free' ? 'Free' : `${plan.currency}${plan.price}`}</p>
+                                                    <p className="text-[10px] text-slate-400 font-bold">{plan.duration}</p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleSelectPlan(plan)}
+                                                    disabled={isCurrent || isPending || selectingPlanId === plan.id}
+                                                    className={`w-full py-4 rounded-full font-black text-sm uppercase tracking-widest mb-10 transition-all ${isCurrent || isPending ? 'bg-slate-100 text-slate-400 cursor-default' : 'bg-[#2563EB] text-white hover:bg-[#1E40AF] shadow-lg shadow-blue-100 cursor-pointer'} ${selectingPlanId === plan.id ? 'opacity-90 cursor-wait' : ''}`}
+                                                >
+                                                    {isCurrent ? (
+                                                        'Current Plan'
+                                                    ) : isPending ? (
+                                                        'Pending Confirmation'
+                                                    ) : selectingPlanId === plan.id ? (
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <Loader2 size={16} className="animate-spin" />
+                                                            <span>Preparing...</span>
+                                                        </div>
+                                                    ) : (
+                                                        plan.cta
+                                                    )}
+                                                </button>
+                                                <div className="space-y-6 flex-1">
+                                                    <p className="text-sm font-black text-slate-700">Includes:</p>
+                                                    <ul className="space-y-4">
+                                                        {plan.features.map((f: string, i: number) => (
+                                                            <li key={i} className="flex items-start gap-3 text-xs font-bold text-slate-500 leading-relaxed relative pl-4">
+                                                                <span className="absolute left-0 top-1.5 w-1.5 h-1.5 bg-slate-400 rounded-full" />
+                                                                {f}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <AnimatePresence>
+                                    {planModalOpen && selectedPlan && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center px-4"
+                                        >
+                                            <motion.div
+                                                initial={{ y: 24, scale: 0.98 }}
+                                                animate={{ y: 0, scale: 1 }}
+                                                exit={{ y: 24, scale: 0.98 }}
+                                                className="w-full max-w-3xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100"
+                                            >
+                                                <div className="p-6 md:p-8 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-purple-50">
+                                                    <div className="flex items-start justify-between gap-4">
+                                                        <div>
+                                                            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-500">Subscription Confirmation</p>
+                                                            <h3 className="mt-2 text-2xl font-black text-slate-900">Review {selectedPlan.name}</h3>
+                                                            <p className="mt-2 text-sm text-slate-600 max-w-2xl">
+                                                                Demo Mode — payment flow is simulated for development purposes. In production, this is where the checkout gateway would open.
+                                                            </p>
+                                                        </div>
+                                                        <div className={`px-3 py-2 rounded-full text-xs font-black uppercase tracking-widest ${planModalAction === 'downgrade' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                            {planModalAction === 'downgrade' ? 'Scheduled downgrade' : 'Ready to activate'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="p-6 md:p-8 space-y-6">
+                                                    {planModalError && (
+                                                        <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+                                                            {planModalError}
+                                                        </div>
+                                                    )}
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div className="rounded-3xl border border-slate-100 p-5 bg-slate-50/70">
+                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Current Plan</p>
+                                                            <p className="mt-2 text-xl font-black text-slate-900">{plansData.plans.find((p: any) => p.id === plansData.currentPlanId)?.name || plansData.currentPlanId}</p>
+                                                            <p className="mt-2 text-sm text-slate-500">You keep this plan until the next billing event when downgrading.</p>
+                                                        </div>
+                                                        <div className="rounded-3xl border border-indigo-100 p-5 bg-indigo-50/60">
+                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">Selected Plan</p>
+                                                            <p className="mt-2 text-xl font-black text-slate-900">{selectedPlan.name}</p>
+                                                            <p className="mt-2 text-sm text-slate-600">{selectedPlan.priceLabel === 'Free' ? '₹0 demo pricing' : `${selectedPlan.currency}${selectedPlan.price}`}</p>
+                                                            <p className="mt-1 text-xs font-bold uppercase tracking-widest text-indigo-500">{selectedPlan.duration}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <p className="text-sm font-black uppercase tracking-widest text-slate-400 mb-3">Included Features</p>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                            {selectedPlan.features?.map((feature: string, index: number) => (
+                                                                <div key={index} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 text-sm text-slate-600">
+                                                                    <CheckCircle2 size={16} className="mt-0.5 text-emerald-500 shrink-0" />
+                                                                    <span>{feature}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="rounded-3xl bg-slate-50 p-5 border border-slate-100 text-sm text-slate-600">
+                                                        <p className="font-black text-slate-800 mb-2">Billing behavior</p>
+                                                        <ul className="space-y-2 leading-relaxed">
+                                                            <li>• Upgrades activate immediately after confirmation in demo mode.</li>
+                                                            <li>• Downgrades are queued for the next cycle when an expiry date exists.</li>
+                                                            <li>• Plan state is stored as pending until you confirm or cancel.</li>
+                                                        </ul>
+                                                    </div>
+
+                                                    <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleCancelPendingPlan}
+                                                            disabled={planModalLoading}
+                                                            className="px-5 py-3 rounded-full border border-slate-200 text-slate-600 font-black uppercase tracking-widest text-xs hover:bg-slate-50 disabled:opacity-60"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleConfirmPlanChange}
+                                                            disabled={planModalLoading}
+                                                            className="px-5 py-3 rounded-full bg-[#2563EB] text-white font-black uppercase tracking-widest text-xs hover:bg-[#1E40AF] disabled:opacity-60 flex items-center justify-center gap-2"
+                                                        >
+                                                            {planModalLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+                                                            <span>Continue to Payment</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+
+                                <div className="pt-24 space-y-12 pb-12">
+                                    <h3 className="text-4xl font-black text-slate-800 text-center font-sans">Frequently asked questions</h3>
+                                    <div className="max-w-4xl mx-auto space-y-3">
+                                        {plansData.faqs.map((faq: any, i: number) => (
+                                            <div key={i} className="bg-white border border-slate-100 rounded-2xl overflow-hidden">
+                                                <button
+                                                    onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}
+                                                    className="w-full px-6 py-5 flex items-center justify-between text-left font-bold text-slate-700 text-sm hover:bg-slate-50 transition-colors cursor-pointer"
+                                                >
+                                                    {faq.q}
+                                                    {expandedFaq === i ? <ChevronUp size={18} className="shrink-0 text-slate-400" /> : <ChevronDown size={18} className="shrink-0 text-slate-400" />}
+                                                </button>
+                                                <AnimatePresence>
+                                                    {expandedFaq === i && (
+                                                        <motion.div
+                                                            initial={{ height: 0, opacity: 0 }}
+                                                            animate={{ height: 'auto', opacity: 1 }}
+                                                            exit={{ height: 0, opacity: 0 }}
+                                                            className="overflow-hidden"
+                                                        >
+                                                            <p className="px-6 pb-5 text-sm text-slate-500 leading-relaxed">{faq.a}</p>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {!plansLoading && !plansData && (
+                            <div className="py-24 text-center text-slate-400 font-medium text-sm">
+                                Unable to load plans. Please try again later.
                             </div>
-                        </div>
+                        )}
                     </div>
                 );
 
@@ -938,19 +1218,45 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                     <h1 className="text-5xl font-black text-slate-900 tracking-tighter">Institutional Settings</h1>
                     <p className="text-slate-500 mt-3 text-xl font-medium">Control your digital presence and operational preferences.</p>
                 </div>
-                <AnimatePresence>
-                    {saveSuccess && (
-                        <motion.div 
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            className="flex items-center gap-3 px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 shadow-lg shadow-emerald-50"
-                        >
-                            <CheckCircle2 size={20} />
-                            <span className="text-sm font-black uppercase tracking-[0.1em]">Identity Synchronized</span>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                <div className="flex items-center gap-4">
+                    <AnimatePresence>
+                        {saveSuccess && (
+                            <motion.div 
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: 20 }}
+                                className="flex items-center gap-3 px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 shadow-lg shadow-emerald-50"
+                            >
+                                <CheckCircle2 size={20} />
+                                <span className="text-sm font-black uppercase tracking-[0.1em]">Identity Synchronized</span>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Package status badge */}
+                    <div className="p-3 bg-white rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
+                        {packageStatusLoading ? (
+                            <div className="flex items-center gap-2">
+                                <Loader2 className="animate-spin text-[#6C3BFF]" size={18} />
+                                <span className="text-xs font-black text-slate-500 uppercase">Checking package</span>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${packageStatus?.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {packageStatus?.enabled ? <CheckCircle2 size={18} /> : <Shield size={18} />}
+                                </div>
+                                <div className="text-left">
+                                    <div className="text-xs font-black uppercase tracking-widest">
+                                        {packageStatus?.enabled ? 'Package Unlocked' : 'Package Locked'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400">
+                                        {packageStatus?.subscription_status ? `${packageStatus.subscription_status}` : 'no subscription'} · {packageStatus?.last_payment ? `${packageStatus.last_payment.currency}${packageStatus.last_payment.amount}` : (packageStatus?.payment_status === 'free' ? '₹0' : (packageStatus?.payment_status || packageStatus?.payment_provider || 'free'))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
 
             <div className="flex flex-col lg:flex-row gap-12">

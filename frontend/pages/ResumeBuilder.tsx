@@ -2407,7 +2407,7 @@ export default function ResumeBuilder() {
                             <div className="flex items-center gap-2 p-4 bg-slate-50 border border-slate-100 rounded-2xl group focus-within:border-purple-200 focus-within:bg-white transition-all">
                                 <input 
                                     readOnly 
-                                    value={`${import.meta.env.VITE_FRONTEND_URL || window.location.origin}/resume/${Math.random().toString(36).substring(7)}`}
+                                    value={`${import.meta.env.VITE_FRONTEND_URL ?? ''}/resume/${Math.random().toString(36).substring(7)}`}
                                     className="flex-1 bg-transparent border-none outline-none text-slate-600 font-medium"
                                 />
                                 <button className="p-2 text-slate-400 hover:text-purple-600 transition-colors">

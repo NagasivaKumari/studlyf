@@ -53,6 +53,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
     const [evaluationComment, setEvaluationComment] = useState('');
     const [criteria, setCriteria] = useState<any[]>([]);
     const [user, setUser] = useState<any>(null);
+    const [eventPackages, setEventPackages] = useState<any[] | null>(null);
 
     useEffect(() => {
         const userData = localStorage.getItem('user');
@@ -108,6 +109,28 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
 
     useEffect(() => {
         fetchAll();
+        // fetch event packages for quick access
+        const fetchEventConfig = async () => {
+            if (!institutionId) return;
+            try {
+                const r = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/event-config`, { headers: authHeaders() });
+                if (r.ok) {
+                    const cfg = await r.json();
+                    const raw = cfg?.event_packages;
+                    if (raw) {
+                        try {
+                            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                            if (Array.isArray(parsed)) setEventPackages(parsed);
+                        } catch (e) {
+                            console.warn('Failed to parse event_packages', e);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.debug('No event-config for submissions', e);
+            }
+        };
+        fetchEventConfig();
     }, [institutionId, refreshCounter]);
 
     const handleOpenJudgeAssignment = async (submissionId: string, sourceType?: 'legacy' | 'hackathon') => {
@@ -382,6 +405,16 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                     </div>
                                 ))}
                             </div>
+                            {eventPackages && eventPackages.length > 0 && (
+                                <div className="mt-6 space-y-2">
+                                    <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest">Event Packages</h5>
+                                    <div className="flex flex-col gap-2">
+                                        {eventPackages.map((p: any, i: number) => (
+                                            <a key={i} href={p.url || p.link} target="_blank" rel="noreferrer" className="text-sm font-bold text-[#6C3BFF] truncate">{p.title || p.name || p.url}</a>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

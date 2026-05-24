@@ -17,12 +17,13 @@ const ForgotPasswordPage: React.FC = () => {
         e.preventDefault();
         setLoading(true);
         setError('');
+        const normalizedEmail = email.trim().toLowerCase();
         
         try {
             const res = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
+                body: JSON.stringify({ email: normalizedEmail })
             });
             
             if (res.ok) {

@@ -24,6 +24,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [currentPlanName, setCurrentPlanName] = useState<string>('');
     const searchInputRef = useRef<HTMLInputElement>(null);
 
     // Click Outside to Close Notifs
@@ -211,6 +212,27 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
         fetchProfile();
     }, [institutionId, refreshKey]);
 
+    useEffect(() => {
+        const fetchPlan = async () => {
+            if (!institutionId || role !== 'institution') return;
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans`, {
+                    headers: { ...authHeaders() },
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                const activeId = data?.currentPlanId;
+                const active = Array.isArray(data?.plans)
+                    ? data.plans.find((p: any) => p.id === activeId)
+                    : null;
+                setCurrentPlanName(active?.name || 'Basic Plan');
+            } catch {
+                // Best-effort badge only.
+            }
+        };
+        fetchPlan();
+    }, [institutionId, role, refreshKey]);
+
     const handleLogout = async () => {
         await logout();
         navigate('/login');
@@ -324,6 +346,11 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
 
                 {/* 3. Right Side: Notifs & Profile (Far Right) */}
                 <div className="flex items-center gap-4 relative z-10 shrink-0">
+                    {role !== 'judge' && currentPlanName && (
+                        <div className="hidden xl:flex items-center px-3.5 py-2 rounded-xl bg-white/15 border border-white/20 text-white text-[10px] font-black uppercase tracking-widest">
+                            Plan: {currentPlanName}
+                        </div>
+                    )}
                     {/* Notifications */}
                     {/* Notifications with Dynamic Dropdown */}
                     {role !== 'judge' && (

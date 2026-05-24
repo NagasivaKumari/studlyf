@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Video, FileText, Globe, ArrowUpRight, Zap, ChevronLeft, ChevronDown, HelpCircle } from 'lucide-react';
 
@@ -10,6 +10,26 @@ interface CreditBalanceModalProps {
 
 const CreditBalanceModal: React.FC<CreditBalanceModalProps> = ({ isOpen, onClose }) => {
     const [view, setView] = useState<'overview' | 'plans'>('overview');
+    const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
+    const [plansLoading, setPlansLoading] = useState(false);
+    useEffect(() => {
+        if (!isOpen) return;
+        const fetchPlans = async () => {
+            try {
+                setPlansLoading(true);
+                const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans`, { headers: authHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                setCurrentPlanId(data?.currentPlanId || null);
+            } catch (e) {
+                console.debug('Failed to load plans', e);
+            } finally {
+                setPlansLoading(false);
+            }
+        };
+        fetchPlans();
+    }, [isOpen]);
 
     const credits = [
         { icon: <FileText size={20} />, label: 'Assessment', remaining: 50, color: 'text-slate-600' },
@@ -180,7 +200,9 @@ const CreditBalanceModal: React.FC<CreditBalanceModalProps> = ({ isOpen, onClose
                                                 <p className="text-4xl font-black text-slate-800">Free</p>
                                                 <p className="text-[10px] text-slate-400 font-bold">Auto renews every 30 days</p>
                                             </div>
-                                            <button className="w-full py-4 bg-slate-100 text-slate-400 rounded-full font-black text-sm uppercase tracking-widest mb-10 cursor-default">Current Plan</button>
+                                            <button className={`w-full py-4 rounded-full font-black text-sm uppercase tracking-widest mb-10 ${currentPlanId === 'basic' ? 'bg-slate-100 text-slate-400 cursor-default' : 'bg-white text-indigo-700 hover:bg-indigo-50 shadow-xl shadow-indigo-900/20'}`} onClick={() => setView('plans')}>
+                                                {currentPlanId === 'basic' ? 'Current Plan' : 'View Plans'}
+                                            </button>
                                             <div className="space-y-6 flex-1">
                                                 <p className="text-sm font-black text-slate-700">Includes:</p>
                                                 <ul className="space-y-4">
@@ -325,3 +347,6 @@ const CreditBalanceModal: React.FC<CreditBalanceModalProps> = ({ isOpen, onClose
 };
 
 export default CreditBalanceModal;
+
+// Fetch current plan when modal is opened
+// (placed after export to avoid hoisting issues in this file structure)

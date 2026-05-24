@@ -352,7 +352,15 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                 </div>
             )}
 
-            {!registered ? (
+            {opportunity?.participationType === 'individual' ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-sm">
+                    <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <Users size={28} className="text-amber-600" />
+                    </div>
+                    <h2 className="text-lg font-black text-slate-900 mb-2">Individual Participation</h2>
+                    <p className="text-slate-500 font-medium text-sm">This event is for individual participation only. Teams are not allowed.</p>
+                </div>
+            ) : !registered ? (
                 <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-sm">
                     <div className="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
                         <Users size={28} className="text-purple-600" />

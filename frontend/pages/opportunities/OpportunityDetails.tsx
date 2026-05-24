@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { 
     Calendar, 
@@ -85,12 +86,29 @@ function applicationDecisionCopy(status: string | undefined) {
     };
 }
 
+const getImageUrl = (url: string | undefined) => {
+    if (!url) return '';
+    // If the URL is already absolute, return as-is (don't rewrite)
+    if (/^https?:\/\//i.test(url)) return url;
+    // Normalize internal upload paths to API base
+    if (url.includes('/uploads/')) {
+        const path = url.substring(url.indexOf('/uploads/'));
+        return `${API_BASE_URL}${path}`;
+    }
+    if (url.includes('uploads/')) {
+        const path = url.substring(url.indexOf('uploads/'));
+        return `${API_BASE_URL}/${path}`;
+    }
+    return url;
+};
+
 const OpportunityDetails: React.FC = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
     const [searchParams] = useSearchParams();
     const activeTab = searchParams.get('tab');
+    const location = useLocation();
     
     const [opportunity, setOpportunity] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -124,24 +142,23 @@ const OpportunityDetails: React.FC = () => {
     const [stats, setStats] = useState({ participants: 0, teams: 0, submissions: 0 });
     const [eventSubmissions, setEventSubmissions] = useState<any[]>([]);
     const [eventLeaderboard, setEventLeaderboard] = useState<any[]>([]);
-    const [showSubmissionModal, setShowSubmissionModal] = useState(false);
-    const [isSubmittingHackathon, setIsSubmittingHackathon] = useState(false);
-    const [hackathonSubmission, setHackathonSubmission] = useState({
-        teamName: '',
-        teamType: 'Solo',
-        teamLead: user?.full_name || user?.name || '',
-        teamMembers: '',
-        problemStatement: '',
-        solution: '',
-        pptLink: '',
-        domain: 'Artificial Intelligence',
-        githubLink: '',
-        deployedLink: ''
-    });
+
 
     const [stageRegistrationFields, setStageRegistrationFields] = useState<any>(null);
     const [prefilledFields, setPrefilledFields] = useState<Record<string, any>>({});
     const [loadingFields, setLoadingFields] = useState(false);
+    const [showRegistrationModal, setShowRegistrationModal] = useState(false);
+    
+    // Decoupled global profile onboarding states
+    const [registrationStatus, setRegistrationStatus] = useState<string>('NOT_REGISTERED');
+    const effectiveRegStatus = useMemo(() => {
+        if (registrationStatus === 'APPROVED') return 'APPROVED';
+        if (myApplication && ['shortlisted', 'accepted', 'approved'].includes(String(myApplication.status).toLowerCase())) return 'APPROVED';
+        return registrationStatus;
+    }, [registrationStatus, myApplication]);
+    const [formConfig, setFormConfig] = useState<any>(null);
+    const [currentStepIndex, setCurrentStepIndex] = useState(0);
+    const [uploadingField, setUploadingField] = useState<string | null>(null);
     const eventId = String(opportunity?.event_link_id || opportunity?.event_id || id || '');
 
     const computeStageStatus = (stage: any) => {
@@ -289,44 +306,77 @@ const OpportunityDetails: React.FC = () => {
         return () => clearInterval(refreshInterval);
     }, [id, user?.user_id]);
 
-        useEffect(() => {
-                if (!user || !eventId || isApplied) return;
+    // Keep the visible tab in sync with the `tab` URL parameter so Back/Forward preserves tab state
+    useEffect(() => {
+        const sp = new URLSearchParams(location.search);
+        const t = sp.get('tab');
+        if (t && t !== activeSection) {
+            // Only set if it's a recognized section
+            const allowed = ['details', 'dates', 'prizes', 'reviews', 'faq', 'submissions', 'leaderboard'];
+            if (allowed.includes(t)) setActiveSection(t as any);
+        }
+    }, [location.search]);
+
+    useEffect(() => {
+        if (!user || !eventId) return;
         
-                setLoadingFields(true);
-                fetch(`${API_BASE_URL}/api/v1/stages/events/${eventId}/registration-fields`, {
-                    headers: authHeaders()
-                })
+        setLoadingFields(true);
+        fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/form`, {
+            headers: authHeaders()
+        })
         .then(res => res.json())
         .then(data => {
-          if (data.status === 'success') {
-            setStageRegistrationFields(data);
-            // Extract prefilled values
-            const prefilled = {};
-            data.prefilled_fields?.forEach(field => {
-              if (field.prefilled_value) {
-                prefilled[field.id] = field.prefilled_value;
-              }
-            });
-            setPrefilledFields(prefilled);
-          }
+            if (data?.event_id) {
+                setFormConfig(data);
+                setRegistrationStatus(data.status);
+                
+                // Prefill answers state
+                const initialAnswers: Record<string, string> = {};
+                
+                // Prefill core profile fields
+                if (data.fields_definitions) {
+                    data.fields_definitions.forEach((fd: any) => {
+                        if (fd.prefilled_value) {
+                            initialAnswers[fd.id] = String(fd.prefilled_value);
+                        }
+                    });
+                }
+                
+                // Prefill custom questions if snapshots exist
+                if (data.registration?.custom_answers) {
+                    Object.assign(initialAnswers, data.registration.custom_answers);
+                }
+                
+                setRegAnswers(prev => ({ ...prev, ...initialAnswers }));
+            }
         })
-                .finally(() => setLoadingFields(false));
-            }, [user, eventId, isApplied]);
+        .catch(err => console.error("Error loading registration form config:", err))
+        .finally(() => setLoadingFields(false));
+    }, [user, eventId, isApplied]);
 
-    const registrationFields: RegField[] = Array.isArray(stageRegistrationFields?.custom_fields)
-        ? stageRegistrationFields.custom_fields.map((field: any) => ({
-            id: String(field.id || field.field_id || field.name || field.label),
-            label: String(field.label || field.name || 'Field'),
-            type: String(field.type || field.field_type || 'text'),
-            required: Boolean(field.required),
-            isFixed: Boolean(field.isFixed || field.prefilled),
-            options: Array.isArray(field.options) ? field.options : undefined,
-            hint: field.hint || field.placeholder || field.help_text || '',
-        }))
-        : Array.isArray(opportunity?.registrationFields)
-            ? opportunity.registrationFields
-            : [];
-    const useStageRegistration = Array.isArray(stageRegistrationFields?.custom_fields);
+    const registrationFields: RegField[] = formConfig?.fields_definitions
+        ? [
+            ...(formConfig.fields_definitions || []).map((field: any) => ({
+                id: String(field.id),
+                label: String(field.label),
+                type: String(field.type),
+                required: Boolean(field.required),
+                isFixed: true,
+                options: Array.isArray(field.options) ? field.options : undefined,
+                hint: field.hint || '',
+            })),
+            ...(formConfig.custom_questions || []).map((field: any) => ({
+                id: String(field.id),
+                label: String(field.label),
+                type: String(field.type),
+                required: Boolean(field.required),
+                isFixed: false,
+                options: Array.isArray(field.options) ? field.options : undefined,
+                hint: field.hint || '',
+            })),
+        ]
+        : [];
+    const useStageRegistration = Boolean(formConfig);
     const useInstitutionForm = registrationFields.length > 0;
 
     const buildLegacyPayload = () => {
@@ -391,6 +441,31 @@ const OpportunityDetails: React.FC = () => {
         };
     };
 
+    const handleFileUpload = async (fieldId: string, file: File) => {
+        setUploadingField(fieldId);
+        const uFormData = new FormData();
+        uFormData.append("file", file);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/registration/upload`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: uFormData
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setRegAnswers(prev => ({ ...prev, [fieldId]: data.url }));
+                alert("File uploaded successfully.");
+            } else {
+                alert(`Upload failed: ${data.detail || 'Unknown error'}`);
+            }
+        } catch (err) {
+            console.error("Upload error:", err);
+            alert("Failed to upload file.");
+        } finally {
+            setUploadingField(null);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) {
@@ -403,50 +478,47 @@ const OpportunityDetails: React.FC = () => {
             return;
         }
 
-        // NEW: Use the new registration endpoint if registrationFields are present
         if (useStageRegistration) {
-            const customFieldPayload: Record<string, any> = {};
-            let allRequiredFilled = true;
+            const profile_data: Record<string, any> = {};
+            const custom_answers: Record<string, any> = {};
 
-            registrationFields.forEach((field: any) => {
-                if (field.required) {
-                    if (field.type === 'file' && !regFiles[field.id]) {
-                        alert(`Please upload a file for: ${field.label}`);
-                        allRequiredFilled = false;
-                    } else if (!regAnswers[field.id]) {
-                        alert(`Please fill out: ${field.label}`);
-                        allRequiredFilled = false;
-                    }
+            // Populate core fields
+            if (formConfig?.fields_definitions) {
+                for (const fd of formConfig.fields_definitions) {
+                    profile_data[fd.id] = regAnswers[fd.id] || '';
                 }
-                customFieldPayload[field.id] = regAnswers[field.id] || '';
-            });
+            }
 
-            if (!allRequiredFilled) {
-                return;
+            // Populate custom fields
+            if (formConfig?.custom_questions) {
+                for (const q of formConfig.custom_questions) {
+                    custom_answers[q.id] = regAnswers[q.id] || '';
+                }
             }
 
             setSubmitting(true);
             try {
-                const response = await fetch(`${API_BASE_URL}/api/v1/stages/events/${eventId}/register`, {
+                const response = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/apply`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         ...authHeaders(),
                     },
                     body: JSON.stringify({
-                        custom_fields: customFieldPayload,
-                        institution_id: opportunity.createdBy || opportunity.institution_id,
+                        profile_data,
+                        custom_answers
                     }),
                 });
 
+                const data = await response.json();
                 if (response.ok) {
-                    const data = await response.json();
-                    setMyApplication(data.participant);
+                    setRegistrationStatus(data.reg_status);
                     setSubmitted(true);
                     setIsApplied(true);
+                    setShowRegistrationModal(false);
+                    alert("Registration submitted successfully!");
                 } else {
-                    const errorData = await response.json();
-                    alert(`Registration failed: ${errorData.detail || 'Unknown error'}`);
+                    alert(`Registration failed: ${data.detail || 'Unknown error'}`);
                 }
             } catch (err) {
                 console.error("Registration error:", err);
@@ -493,79 +565,6 @@ const OpportunityDetails: React.FC = () => {
             console.error("Apply error:", err);
         } finally {
             setSubmitting(false);
-        }
-    };
-
-    const handleHackathonSubmit = async () => {
-        if (!user) {
-            navigate('/login');
-            return;
-        }
-
-        if (!hackathonSubmission.teamName || !hackathonSubmission.teamLead || !hackathonSubmission.problemStatement || !hackathonSubmission.solution || !hackathonSubmission.pptLink) {
-            alert("Please fill all required fields");
-            return;
-        }
-
-        // Simple word count validation
-        const problemWords = hackathonSubmission.problemStatement.trim().split(/\s+/).length;
-        const solutionWords = hackathonSubmission.solution.trim().split(/\s+/).length;
-
-        if (problemWords > 50) {
-            alert("Problem Statement exceeds 50 words");
-            return;
-        }
-        if (solutionWords > 100) {
-            alert("Solution exceeds 100 words");
-            return;
-        }
-
-        if (!hackathonSubmission.pptLink.includes("drive.google.com")) {
-            alert("PPT Link must be a Google Drive link");
-            return;
-        }
-
-        setIsSubmittingHackathon(true);
-        try {
-            const payload = {
-                ...hackathonSubmission,
-                hackathonId: id,
-                institutionId: opportunity.createdBy || opportunity.institution_id,
-                submittedBy: user.user_id,
-                teamMembers: hackathonSubmission.teamMembers ? hackathonSubmission.teamMembers.split(",").map(m => m.trim()) : []
-            };
-
-            const response = await fetch(`${API_BASE_URL}/api/hackathons/submissions`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    ...authHeaders()
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (response.ok) {
-                setShowSubmissionModal(false);
-                setSubmitted(true);
-                setIsApplied(true);
-                alert("Submission successful!");
-                // Refresh stats and submissions
-                const statsRes = await fetch(`${API_BASE_URL}/api/hackathons/events/${id}/stats`);
-                if (statsRes.ok) setStats(await statsRes.json());
-                const subsRes = await fetch(`${API_BASE_URL}/api/hackathons/events/${id}/submissions`);
-                if (subsRes.ok) { const data = await subsRes.json(); if (Array.isArray(data)) setEventSubmissions(data); }
-            } else {
-                const err = await response.json();
-                const msg = Array.isArray(err.detail) 
-                    ? err.detail.map((e: any) => `${e.loc.join('.')}: ${e.msg}`).join('\n')
-                    : err.detail || "Submission failed";
-                alert(msg);
-            }
-        } catch (err) {
-            console.error("Hackathon submit error:", err);
-            alert("An error occurred during submission");
-        } finally {
-            setIsSubmittingHackathon(false);
         }
     };
 
@@ -704,26 +703,26 @@ const OpportunityDetails: React.FC = () => {
         const stype = s.type?.toUpperCase();
         const sname = s.name?.toUpperCase() || '';
         const event_hub_id = String(opportunity.event_link_id || opportunity.event_id || id);
+        const oppPath = id ? `/opportunities/${encodeURIComponent(String(id))}` : '';
+        const isSubmissionStage = stype === 'SUBMISSION' || sname.includes('SUBMISSION');
+        const regStatusStr = (effectiveRegStatus || 'NOT_REGISTERED').toUpperCase();
+        const isRegistrationStage = stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION');
 
-        if (stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION')) {
-            // Scroll to the registration / apply form
-            const formElement = document.querySelector('form') || document.querySelector('.sticky');
-            if (formElement) {
-                formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else {
-                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-            }
+        if (isRegistrationStage) {
+            if (regStatusStr === 'APPROVED') return;
+            setShowRegistrationModal(true);
             return;
         }
 
-        // For all other stages, they require registration first!
-        if (!isApplied) {
-            alert(`Please register/apply for "${opportunity.title}" first to participate in this stage!`);
-            const formElement = document.querySelector('form') || document.querySelector('.sticky');
-            if (formElement) {
-                formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Downstream timeline assessment locked unless APPROVED
+        if (regStatusStr !== 'APPROVED') {
+            if (regStatusStr === 'PENDING_APPROVAL') {
+                alert("Your registration is pending review by the host. Downstream stages will unlock as soon as your application is approved!");
+            } else if (regStatusStr === 'REJECTED') {
+                alert("Your registration has been rejected. You cannot participate in this opportunity.");
             } else {
-                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                alert("You must complete the registration first.");
+                setShowRegistrationModal(true);
             }
             return;
         }
@@ -745,15 +744,11 @@ const OpportunityDetails: React.FC = () => {
             }
             if (now > endDate) {
                 alert(`This stage has ended on ${endDate.toLocaleString()}. You can no longer participate.`);
-                // We might still want to let them view results (if FINAL stage), but for now, we alert.
                 if (stype !== 'FINAL' && !sname.includes('RESULT')) {
                     return;
                 }
             }
         }
-
-        // If already applied:
-        const oppPath = id ? `/opportunities/${encodeURIComponent(String(id))}` : '';
 
         if ((stype === 'TEAM_FORMATION' || sname.includes('TEAM')) && oppPath) {
             navigate(`${oppPath}?tab=team`);
@@ -764,11 +759,9 @@ const OpportunityDetails: React.FC = () => {
             if (quizId) {
                 navigate(`/events/${encodeURIComponent(event_hub_id)}/quiz/${quizId}`);
             } else {
-                // Fallback: direct to timeline in event hub
                 navigate(`/events/${encodeURIComponent(event_hub_id)}`);
             }
         } else {
-            // Default fallback: direct to event hub timeline
             navigate(`/events/${encodeURIComponent(event_hub_id)}`);
         }
     };
@@ -776,7 +769,16 @@ const OpportunityDetails: React.FC = () => {
     const venueLine = buildVenueLine(opportunity);
     const teamSize = teamSizeLabel(opportunity);
     const elig = eligibilityList(opportunity);
-    const logoSrc = opportunity.logo_url || opportunity.institution_logo_url || '';
+    const logoSrc = getImageUrl(
+        opportunity.logo_url ||
+        opportunity.logoUrl ||
+        opportunity.institution_logo_url ||
+        opportunity.institutionLogoUrl ||
+        opportunity.organization_logo_url ||
+        opportunity.org_logo_url ||
+        opportunity.logo ||
+        ''
+    );
     const orgDisplay = opportunity.organization || opportunity.institution_profile_name || 'Host institution';
     const registeredCount = Number(opportunity.applicantsCount ?? opportunity.registeredCount ?? 0);
     const deadlineDate = (() => {
@@ -803,6 +805,10 @@ const OpportunityDetails: React.FC = () => {
                   return type === 'SUBMISSION' || name.includes('SUBMISSION');
               })
             : null;
+    const submissionStageTitle = String(submissionStage?.name || submissionStage?.config?.label || 'Submission Stage').trim();
+    const submissionStageSubtitle = String(
+        submissionStage?.description || submissionStage?.config?.description || 'Share your solution and complete the stage requirements.'
+    ).trim();
 
     const prizePoolLabel =
         String(opportunity.prize_pool ?? opportunity.prizePool ?? opportunity.prizePoolLabel ?? '').trim() || '';
@@ -951,12 +957,15 @@ const OpportunityDetails: React.FC = () => {
                             <ChevronLeft size={18} /> Back
                         </button>
                         {user ? (
-                            <Link
-                                to="/dashboard/learner"
-                                className="text-sm font-bold text-slate-600 hover:text-purple-600"
-                            >
-                                Dashboard
-                            </Link>
+                            // Hide the Dashboard link when viewing the submissions tab — keep only Back
+                            activeTab !== 'submissions' ? (
+                                <Link
+                                    to="/dashboard/learner"
+                                    className="text-sm font-bold text-slate-600 hover:text-purple-600"
+                                >
+                                    Dashboard
+                                </Link>
+                            ) : null
                         ) : (
                             <Link
                                 to={`/login?next=${encodeURIComponent(window.location.pathname)}`}
@@ -993,24 +1002,7 @@ const OpportunityDetails: React.FC = () => {
                     <div className="my-8">
                         {eventId && submissionStage ? (
                             <div className="space-y-4">
-                                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-purple-600">Submission stage brief</p>
-                                    <h3 className="mt-2 text-xl font-black text-slate-900">{submissionStage.name || 'Submission'}</h3>
-                                    <p className="mt-2 text-sm font-medium text-slate-600 whitespace-pre-wrap">
-                                        {submissionStage.description || submissionStage?.config?.description || 'Follow the host instructions carefully before submitting.'}
-                                    </p>
-                                    {Array.isArray(submissionStage?.config?.fields) && submissionStage.config.fields.length > 0 ? (
-                                        <div className="mt-4 flex flex-wrap gap-2">
-                                            {submissionStage.config.fields.map((field: any) => (
-                                                <span key={field.id || field.field_id || field.label} className="px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-black uppercase tracking-widest">
-                                                    {field.label}
-                                                    {field.required ? ' *' : ''}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    ) : null}
-                                </div>
-                                <SubmissionForm eventId={eventId} stage={submissionStage} />
+                                <SubmissionForm eventId={eventId} stage={submissionStage} participationType={opportunity?.participationType} />
                             </div>
                         ) : (
                             <div className="bg-white p-6 rounded-lg shadow-md text-slate-600">
@@ -1020,6 +1012,53 @@ const OpportunityDetails: React.FC = () => {
                     </div>
                 ) : (
                 <>
+                {/* Onboarding Lock & Congratulations Banners */}
+                {user && (
+                    <div className={`mb-6 p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all duration-300 shadow-sm
+                        ${effectiveRegStatus === 'APPROVED' ? 'bg-purple-50/50 border-purple-200 text-purple-900' :
+                          effectiveRegStatus === 'PENDING_APPROVAL' ? 'bg-amber-50/60 border-amber-200 text-amber-900' :
+                          effectiveRegStatus === 'REJECTED' ? 'bg-rose-50 border-rose-200 text-rose-900' :
+                          'bg-slate-50 border-slate-200 text-slate-700'}`}
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm shrink-0
+                                ${effectiveRegStatus === 'APPROVED' ? 'bg-[#6C3BFF]' :
+                                  effectiveRegStatus === 'PENDING_APPROVAL' ? 'bg-amber-500' :
+                                  effectiveRegStatus === 'REJECTED' ? 'bg-rose-500' :
+                                  'bg-slate-500'}`}
+                            >
+                                {effectiveRegStatus === 'APPROVED' ? <CheckCircle2 size={24} /> :
+                                 effectiveRegStatus === 'PENDING_APPROVAL' ? <Clock size={24} /> :
+                                 effectiveRegStatus === 'REJECTED' ? <XCircle size={24} /> :
+                                 <Users size={24} />}
+                            </div>
+                            <div>
+                                <h3 className="font-black text-sm uppercase tracking-wider">
+                                    {effectiveRegStatus === 'APPROVED' ? 'Registration Approved' :
+                                     effectiveRegStatus === 'PENDING_APPROVAL' ? 'Registration Pending Host Review' :
+                                     effectiveRegStatus === 'REJECTED' ? 'Registration Rejected' :
+                                     'Registration Required'}
+                                </h3>
+                                <p className="text-xs font-semibold opacity-95 mt-1">
+                                    {effectiveRegStatus === 'APPROVED' ? 'Congratulations! You are officially registered. All event assessment stages are unlocked.' :
+                                     effectiveRegStatus === 'PENDING_APPROVAL' ? 'Your registration is under manual host evaluation. Downstream stages will unlock upon approval.' :
+                                     effectiveRegStatus === 'REJECTED' ? 'Unfortunately, your application did not meet the host criteria. Contact organizers for feedback.' :
+                                     'Complete the decoupled global registration form to unlock stages and timeline assessments.'}
+                                </p>
+                            </div>
+                        </div>
+                        {effectiveRegStatus === 'NOT_REGISTERED' && (
+                            <button
+                                type="button"
+                                onClick={() => setShowRegistrationModal(true)}
+                                className="px-5 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shrink-0 self-start md:self-auto"
+                            >
+                                Register Now
+                            </button>
+                        )}
+                    </div>
+                )}
+
                 {/* Stages Timeline */}
                 {Array.isArray(opportunity?.stages) && opportunity.stages.length > 0 && (
                     <div className="mb-8">
@@ -1029,8 +1068,9 @@ const OpportunityDetails: React.FC = () => {
                                 const startDate = stage.startDate || stage.start_date ? new Date(stage.startDate || stage.start_date) : null;
                                 const endDate = stage.endDate || stage.end_date ? new Date(stage.endDate || stage.end_date) : null;
                                 const status = computeStageStatus(stage);
+                                const regStatusStr = (effectiveRegStatus || 'NOT_REGISTERED').toUpperCase();
                                 const isRegistration = (String(stage.type || '').toUpperCase() === 'REGISTRATION') || (String(stage.name || '').toUpperCase().includes('REGISTER'));
-                                const canInteract = (status === 'active') && (isApplied || isRegistration);
+                                const canInteract = (status === 'active') && (isRegistration || regStatusStr === 'APPROVED');
 
                                 return (
                                     <React.Fragment key={stage.id || index}>
@@ -1127,6 +1167,19 @@ const OpportunityDetails: React.FC = () => {
                                     {orgDisplay}
                                 </p>
 
+                                {/* Compact eligibility summary under title */}
+                                {elig.length > 0 && (
+                                    <div className="mt-3 flex items-center gap-3 text-sm text-slate-600">
+                                        <div className="text-[11px] font-bold uppercase text-slate-400">Eligible:</div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {elig.slice(0, 3).map((e, i) => (
+                                                <span key={i} className="px-2 py-1 bg-slate-100 rounded-lg text-[13px] font-medium">{e}</span>
+                                            ))}
+                                            {elig.length > 3 && <span className="text-xs text-slate-400">+{elig.length - 3} more</span>}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="mt-8 grid sm:grid-cols-2 gap-6">
                                     {venueLine ? (
                                         <div>
@@ -1157,16 +1210,43 @@ const OpportunityDetails: React.FC = () => {
                                                   })
                                                 : '—'}
                                         </p>
+                                            {/* Editable badge */}
+                                            <div className="mt-2">
+                                                {deadlineDate ? (
+                                                    daysLeft && daysLeft > 0 ? (
+                                                        <span className="inline-block px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-xs font-bold">Editable until {deadlineDate.toLocaleDateString('en-GB')}</span>
+                                                    ) : (
+                                                        <span className="inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-xs font-bold">Editing closed — deadline passed</span>
+                                                    )
+                                                ) : null}
+                                            </div>
                                     </div>
                                 </div>
                             </div>
-                            {logoSrc ? (
-                                <div className="shrink-0 mx-auto md:mx-0">
-                                    <div className="w-28 h-28 md:w-36 md:h-36 rounded-full border-4 border-slate-100 shadow-md overflow-hidden bg-white">
-                                        <img src={logoSrc} alt="" className="w-full h-full object-cover" />
+                            <div className="shrink-0 mx-auto md:mx-0">
+                                <div className="w-28 h-28 md:w-36 md:h-36 rounded-full border-4 border-slate-100 shadow-md overflow-hidden bg-white flex items-center justify-center relative">
+                                    {logoSrc ? (
+                                        <img 
+                                            src={logoSrc} 
+                                            alt="" 
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                                // Log failing URL for diagnostics
+                                                try { console.warn('[LogoLoadError] failed to load', (e.currentTarget && e.currentTarget.src) || logoSrc); } catch (err) {}
+                                                e.currentTarget.style.display = 'none';
+                                                const sibling = e.currentTarget.nextElementSibling as HTMLElement;
+                                                if (sibling) sibling.style.display = 'flex';
+                                            }}
+                                        />
+                                    ) : null}
+                                    <div 
+                                        className="w-full h-full bg-purple-100 text-[#6C3BFF] font-black text-3xl md:text-4xl flex items-center justify-center uppercase shadow-inner"
+                                        style={{ display: logoSrc ? 'none' : 'flex' }}
+                                    >
+                                        {orgDisplay.charAt(0)}
                                     </div>
                                 </div>
-                            ) : null}
+                            </div>
                         </div>
 
                         {isApplied && !submitted ? (
@@ -1318,11 +1398,11 @@ const OpportunityDetails: React.FC = () => {
                                             
                                             let actionLabel = 'Unlock';
                                             if (stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION')) {
-                                                actionLabel = isApplied ? 'Registered' : 'Apply Now';
+                                                actionLabel = isApplied || effectiveRegStatus === 'APPROVED' ? 'Registered' : 'Apply Now';
                                             } else if (stype === 'TEAM_FORMATION' || sname.includes('TEAM')) {
                                                 actionLabel = 'Manage Team';
                                             } else if (stype === 'SUBMISSION' || sname.includes('SUBMISSION')) {
-                                                actionLabel = 'Submit Portal';
+                                                actionLabel = 'Open Submission Portal';
                                             } else if (stype === 'QUIZ' || stype === 'ASSESSMENT' || sname.includes('QUIZ') || sname.includes('ASSESSMENT')) {
                                                 actionLabel = 'Take Assessment';
                                             } else {
@@ -1331,7 +1411,8 @@ const OpportunityDetails: React.FC = () => {
 
                                             const stageStatus = computeStageStatus(s);
                                             const isReg = (String(s.type || '').toUpperCase() === 'REGISTRATION') || (String(s.name || '').toUpperCase().includes('REGISTER'));
-                                            const canAct = (stageStatus === 'active') && (isApplied || isReg);
+                                            const isSubmissionStage = (String(s.type || '').toUpperCase() === 'SUBMISSION') || (String(s.name || '').toUpperCase().includes('SUBMISSION'));
+                                            const canAct = (stageStatus === 'active') && (isApplied || isReg || isSubmissionStage || effectiveRegStatus === 'APPROVED');
 
                                             return (
                                                 <li
@@ -1405,9 +1486,9 @@ const OpportunityDetails: React.FC = () => {
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center shrink-0 ml-2">
-                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-purple-600 transition-colors flex items-center gap-1 bg-white border border-slate-150 px-3 py-1.5 rounded-xl shadow-sm">
+                                                        <button type="button" className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-purple-600 transition-colors flex items-center gap-1 bg-white border border-slate-150 px-3 py-1.5 rounded-xl shadow-sm hover:border-purple-200 hover:bg-purple-50/30">
                                                             {actionLabel} <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform text-slate-400 group-hover:text-purple-600" />
-                                                        </span>
+                                                        </button>
                                                     </div>
                                                 </li>
                                             );
@@ -1954,616 +2035,306 @@ const OpportunityDetails: React.FC = () => {
                         </footer>
                     </div>
 
-                    {/* Right Column: Application Form */}
-                    <div className="lg:col-span-1">
-                        <div className="sticky top-32">
-                            <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1">
-                                            <Clock size={12} /> Days left
-                                        </p>
-                                        <p className="mt-1 text-xl font-black text-slate-900">
-                                            {daysLeft != null ? daysLeft : '—'}
-                                        </p>
-                                    </div>
-                                    <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1">
-                                            <Users size={12} /> Registered
-                                        </p>
-                                        <p className="mt-1 text-xl font-black text-slate-900">{registeredCount}</p>
-                                    </div>
-                                </div>
-                                {processStats ? (
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Shortlisted</p>
-                                            <p className="mt-1 text-xl font-black text-slate-900">{shortlistedCount}</p>
-                                        </div>
-                                        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Eliminated</p>
-                                            <p className="mt-1 text-xl font-black text-slate-900">{rejectedCount}</p>
-                                        </div>
-                                    </div>
-                                ) : null}
-                            </div>
-                        <AnimatePresence mode="wait">
-                            {submitted ? (
-                                <motion.div 
-                                    initial={{ opacity: 0, scale: 0.9 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    className="bg-white rounded-[40px] p-10 border border-green-100 shadow-2xl shadow-green-900/5 text-center space-y-6"
-                                >
-                                    <div className="w-20 h-20 bg-green-500 rounded-3xl flex items-center justify-center text-white mx-auto shadow-xl shadow-green-500/20 rotate-12">
-                                        <CheckCircle2 size={40} />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <h2 className="text-2xl font-black text-slate-900">Application Sent!</h2>
-                                        <p className="text-slate-400 font-bold">Great job! The team at {opportunity.organization} will review your profile soon.</p>
-                                    </div>
-                                    <button 
-                                        onClick={() => navigate('/dashboard/learner')}
-                                        className="w-full bg-slate-900 text-white py-4 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20"
-                                    >
-                                        Go to Dashboard
-                                    </button>
-                                </motion.div>
-                            ) : isApplied ? (
-                                <motion.div
-                                    initial={{ opacity: 0, y: 12 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="bg-white rounded-[40px] p-10 border border-emerald-100 shadow-2xl shadow-emerald-900/5 space-y-6"
-                                >
-                                    {(() => {
-                                        const dec = applicationDecisionCopy(myApplication?.status);
-                                        const isPositive =
-                                            (myApplication?.status || '').toLowerCase() === 'accepted' ||
-                                            (myApplication?.status || '').toLowerCase() === 'shortlisted';
-                                        const isNegative = (myApplication?.status || '').toLowerCase() === 'rejected';
-                                        const ring = isNegative
-                                            ? 'bg-red-50 border-red-100'
-                                            : isPositive
-                                              ? 'bg-emerald-50 border-emerald-100'
-                                              : 'bg-green-50 border-green-100';
-                                        const iconBg = isNegative ? 'bg-red-500' : isPositive ? 'bg-emerald-500' : 'bg-green-600';
-                                        return (
-                                            <>
-                                                <div className={`rounded-3xl border p-6 ${ring}`}>
-                                                    <div className={`w-14 h-14 rounded-2xl ${iconBg} flex items-center justify-center text-white shadow-lg mb-4`}>
-                                                        <CheckCircle2 size={28} />
-                                                    </div>
-                                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{dec.headline}</p>
-                                                    <h2 className="text-xl font-black text-slate-900 mt-1">{dec.title}</h2>
-                                                    <p className="text-slate-600 text-sm font-medium mt-3 leading-relaxed">{dec.sub}</p>
-                                                </div>
-                                                <p className="text-[11px] text-slate-400 font-bold text-center">
-                                                    You cannot submit again for this listing. Status updates when the host reviews your application.
-                                                </p>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => navigate('/opportunities/my-applications')}
-                                                    className="w-full bg-slate-900 text-white py-4 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-slate-800 transition-all"
-                                                >
-                                                    My applications
-                                                </button>
-                                            </>
-                                        );
-                                    })()}
-                                </motion.div>
-                            ) : (
-                                <motion.div 
-                                    className="bg-white rounded-[40px] p-10 border border-slate-100 shadow-2xl shadow-purple-900/5 space-y-8"
-                                >
-                                    <div className="space-y-2">
-                                        <h2 className="text-2xl font-black text-slate-900">{submissionStage ? 'Submit Your Idea' : 'Apply Now'}</h2>
-                                        <p className="text-slate-400 font-bold text-sm">
-                                            {submissionStage
-                                                ? 'Share your solution and compete for prizes'
-                                                : `Join ${opportunity.organization} to start your journey`}
-                                        </p>
-                                    </div>
-
-                                    {submissionStage ? (
-                                        <div className="space-y-4">
-                                            <button 
-                                                onClick={() => setShowSubmissionModal(true)}
-                                                className="w-full py-5 rounded-2xl text-sm font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3 shadow-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 shadow-purple-600/30 active:scale-95"
-                                            >
-                                                Submit Your Idea <Send size={18} />
-                                            </button>
-                                            <p className="text-[11px] text-slate-400 font-bold text-center">
-                                                By submitting, you agree to the hackathon rules and guidelines.
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <form onSubmit={handleSubmit} className="space-y-6">
-                                        <div className="space-y-4">
-                                            {useInstitutionForm ? (
-                                                registrationFields.map((f) => {
-                                                    const t = (f.type || 'text').toLowerCase();
-                                                    const commonLabel = (
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">
-                                                            {f.label}
-                                                            {f.required ? ' *' : ''}
-                                                        </label>
-                                                    );
-                                                    const inputClass =
-                                                        'w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all';
-
-                                                    if (t === 'textarea') {
-                                                        return (
-                                                            <div key={f.id} className="space-y-1.5">
-                                                                {commonLabel}
-                                                                <textarea
-                                                                    required={!!f.required}
-                                                                    disabled={isApplied}
-                                                                    placeholder={f.hint || ''}
-                                                                    className={`${inputClass} resize-none h-32 text-slate-600`}
-                                                                    value={regAnswers[f.id] || ''}
-                                                                    onChange={(e) =>
-                                                                        setRegAnswers((prev) => ({ ...prev, [f.id]: e.target.value }))
-                                                                    }
-                                                                />
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    if (t === 'file' || t === 'upload') {
-                                                        return (
-                                                            <div key={f.id} className="space-y-1.5">
-                                                                {commonLabel}
-                                                                <div
-                                                                    onClick={() =>
-                                                                        !isApplied &&
-                                                                        document.getElementById(`reg-file-${f.id}`)?.click()
-                                                                    }
-                                                                    className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
-                                                                        isApplied || regFiles[f.id]
-                                                                            ? 'bg-emerald-50/30 border-emerald-200'
-                                                                            : 'bg-purple-50/30 border-purple-100 hover:border-purple-300'
-                                                                    }`}
-                                                                >
-                                                                    {regFiles[f.id] ? (
-                                                                        <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-500" />
-                                                                    ) : (
-                                                                        <Upload size={24} className="mx-auto mb-2 text-purple-400" />
-                                                                    )}
-                                                                    <p
-                                                                        className={`text-xs font-black uppercase tracking-widest ${
-                                                                            regFiles[f.id] ? 'text-emerald-600' : 'text-purple-600'
-                                                                        }`}
-                                                                    >
-                                                                        {regFiles[f.id]?.name || (isApplied ? 'Uploaded' : 'Choose file')}
-                                                                    </p>
-                                                                    {!isApplied && (
-                                                                        <input
-                                                                            id={`reg-file-${f.id}`}
-                                                                            type="file"
-                                                                            className="hidden"
-                                                                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                                                                            onChange={(e) => {
-                                                                                const file = e.target.files?.[0] || null;
-                                                                                setRegFiles((prev) => ({ ...prev, [f.id]: file }));
-                                                                            }}
-                                                                        />
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    if (t === 'dropdown' && f.options && f.options.length > 0) {
-                                                        return (
-                                                            <div key={f.id} className="space-y-1.5">
-                                                                {commonLabel}
-                                                                <select
-                                                                    required={!!f.required}
-                                                                    disabled={isApplied}
-                                                                    className={inputClass}
-                                                                    value={regAnswers[f.id] || ''}
-                                                                    onChange={(e) =>
-                                                                        setRegAnswers((prev) => ({ ...prev, [f.id]: e.target.value }))
-                                                                    }
-                                                                >
-                                                                    <option value="">Select…</option>
-                                                                    {f.options.map((opt) => (
-                                                                        <option key={opt} value={opt}>
-                                                                            {opt}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    if (t === 'radio' && f.options && f.options.length > 0) {
-                                                        return (
-                                                            <div key={f.id} className="space-y-2">
-                                                                {commonLabel}
-                                                                <div className="space-y-2 pl-2">
-                                                                    {f.options.map((opt) => (
-                                                                        <label key={opt} className="flex items-center gap-2 text-sm font-bold text-slate-600">
-                                                                            <input
-                                                                                type="radio"
-                                                                                name={`reg-${f.id}`}
-                                                                                disabled={isApplied}
-                                                                                checked={regAnswers[f.id] === opt}
-                                                                                onChange={() =>
-                                                                                    setRegAnswers((prev) => ({ ...prev, [f.id]: opt }))
-                                                                                }
-                                                                            />
-                                                                            {opt}
-                                                                        </label>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    if (t === 'checkbox' && f.options && f.options.length > 0) {
-                                                        return (
-                                                            <div key={f.id} className="space-y-2">
-                                                                {commonLabel}
-                                                                <div className="space-y-2 pl-2">
-                                                                    {f.options.map((opt) => (
-                                                                        <label key={opt} className="flex items-center gap-2 text-sm font-bold text-slate-600">
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                disabled={isApplied}
-                                                                                checked={(regAnswers[`${f.id}:${opt}`] || '') === 'on'}
-                                                                                onChange={(e) =>
-                                                                                    setRegAnswers((prev) => ({
-                                                                                        ...prev,
-                                                                                        [`${f.id}:${opt}`]: e.target.checked ? 'on' : '',
-                                                                                    }))
-                                                                                }
-                                                                            />
-                                                                            {opt}
-                                                                        </label>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    if (t === 'accept') {
-                                                        return (
-                                                            <label
-                                                                key={f.id}
-                                                                className="flex items-start gap-3 text-sm font-bold text-slate-600 cursor-pointer"
-                                                            >
-                                                                <input
-                                                                    type="checkbox"
-                                                                    disabled={isApplied}
-                                                                    checked={regAnswers[f.id] === 'on'}
-                                                                    onChange={(e) =>
-                                                                        setRegAnswers((prev) => ({
-                                                                            ...prev,
-                                                                            [f.id]: e.target.checked ? 'on' : '',
-                                                                        }))
-                                                                    }
-                                                                    className="mt-1"
-                                                                />
-                                                                <span>{f.label}</span>
-                                                            </label>
-                                                        );
-                                                    }
-
-                                                    const inputType =
-                                                        t === 'email' ? 'email' : t === 'tel' ? 'tel' : 'text';
-
-                                                    return (
-                                                        <div key={f.id} className="space-y-1.5">
-                                                            {commonLabel}
-                                                            <input
-                                                                type={inputType}
-                                                                required={!!f.required}
-                                                                disabled={isApplied}
-                                                                placeholder={f.hint || ''}
-                                                                className={inputClass}
-                                                                value={regAnswers[f.id] || ''}
-                                                                onChange={(e) =>
-                                                                    setRegAnswers((prev) => ({ ...prev, [f.id]: e.target.value }))
-                                                                }
-                                                            />
-                                                        </div>
-                                                    );
-                                                })
-                                            ) : (
-                                                <>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Full Name</label>
-                                                        <input
-                                                            type="text"
-                                                            value={formData.name}
-                                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                                            placeholder="Enter your full name"
-                                                            className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Email Address</label>
-                                                        <input
-                                                            type="email"
-                                                            value={formData.email}
-                                                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                                            placeholder="Enter your email"
-                                                            className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Why are you interested? (optional)</label>
-                                                        <textarea
-                                                            placeholder="Share your motivation and relevant skills..."
-                                                            className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-600 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all resize-none h-32"
-                                                            value={formData.interest}
-                                                            onChange={(e) => setFormData({ ...formData, interest: e.target.value })}
-                                                            disabled={isApplied}
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Resume / CV (optional)</label>
-                                                        <div
-                                                            onClick={() => !isApplied && document.getElementById('resume-upload')?.click()}
-                                                            className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
-                                                                isApplied || formData.resume ? 'bg-emerald-50/30 border-emerald-200' : 'bg-purple-50/30 border-purple-100 hover:border-purple-300'
-                                                            }`}
-                                                        >
-                                                            {formData.resume ? (
-                                                                <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-500" />
-                                                            ) : (
-                                                                <Upload size={24} className="mx-auto mb-2 text-purple-400" />
-                                                            )}
-                                                            <p className={`text-xs font-black uppercase tracking-widest ${formData.resume ? 'text-emerald-600' : 'text-purple-600'}`}>
-                                                                {formData.resume ? formData.resume.name : isApplied ? 'Resume Uploaded' : 'Upload Resume'}
-                                                            </p>
-                                                            <p className="text-[10px] font-bold text-slate-400 mt-1">
-                                                                {formData.resume ? `${(formData.resume.size / 1024 / 1024).toFixed(2)} MB` : 'PDF, DOC (Max 5MB)'}
-                                                            </p>
-                                                            {!isApplied && (
-                                                                <input
-                                                                    id="resume-upload"
-                                                                    type="file"
-                                                                    className="hidden"
-                                                                    accept=".pdf,.doc,.docx"
-                                                                    onChange={(e) => {
-                                                                        const file = e.target.files?.[0];
-                                                                        if (file) setFormData({ ...formData, resume: file });
-                                                                    }}
-                                                                />
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-
-                                        <button 
-                                            type="submit"
-                                            disabled={isApplied || submitting}
-                                            className={`w-full py-5 rounded-2xl text-sm font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3 shadow-xl ${
-                                                isApplied 
-                                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' 
-                                                : 'bg-purple-600 text-white hover:bg-purple-700 shadow-purple-600/30 active:scale-95'
-                                            }`}
-                                        >
-                                            {submitting ? (
-                                                <Loader2 size={20} className="animate-spin" />
-                                            ) : isApplied ? (
-                                                'Application Submitted'
-                                            ) : (
-                                                <>Submit Application <Send size={18} /></>
-                                            )}
-                                        </button>
-                                    </form>
-                                )}
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                        {isApplied && String(opportunity.participationType || '').toLowerCase() !== 'individual' ? (
-                            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-                                <h3 className="text-sm font-black text-slate-900">Team formation</h3>
-                                <p className="text-xs text-slate-600 font-medium">
-                                    This hackathon supports team participation. Teams must follow the host’s team size limits.
-                                </p>
-                                <p className="text-[11px] text-slate-400 font-semibold">
-                                    I can add “Create team / Join team by ID” directly here next (backend APIs already exist).
-                                </p>
-                            </div>
-                        ) : null}
-                        </div>
-                    </div>
+                    {/* Right column removed: submission CTA moved to the 'Submissions' tab */}
                 </div>
                 </>
                 )}
 
-            {/* Hackathon Submission Modal */}
-        <AnimatePresence>
-            {showSubmissionModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4">
-                    <motion.div 
+            {/* Registration Modal */}
+            <AnimatePresence>
+                {showRegistrationModal && (
+                    <motion.div
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        onClick={() => setShowSubmissionModal(false)}
-                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-                    />
-                    <motion.div 
-                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                        className="relative w-full max-w-3xl bg-white rounded-3xl sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+                        onClick={() => setShowRegistrationModal(false)}
                     >
-                        <div className="p-5 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-purple-50 to-white">
-                            <div>
-                                <h2 className="text-xl sm:text-2xl font-black text-slate-900">Submit Your Idea</h2>
-                                <p className="text-slate-500 font-bold text-xs sm:text-sm">Tell us about your project</p>
-                            </div>
-                            <button 
-                                onClick={() => setShowSubmissionModal(false)}
-                                className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors"
-                            >
-                                <ChevronLeft className="rotate-180" size={24} />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-8 space-y-5 sm:space-y-6">
-                            <div className="grid sm:grid-cols-2 gap-6">
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Name</label>
-                                    <input 
-                                        type="text" 
-                                        maxLength={40}
-                                        value={hackathonSubmission.teamName}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, teamName: e.target.value})}
-                                        placeholder="Enter team name"
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                    />
+                        <motion.div
+                            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-100">
+                                <div>
+                                    <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+                                        Decoupled Event Onboarding
+                                    </h2>
+                                    <p className="text-xs text-slate-500 mt-1">{opportunity?.title}</p>
                                 </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Type</label>
-                                    <div className="flex p-1 bg-slate-100 rounded-2xl">
-                                        {['Solo', 'Team'].map((type) => (
-                                            <button
-                                                key={type}
-                                                onClick={() => setHackathonSubmission({...hackathonSubmission, teamType: type})}
-                                                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                                                    hackathonSubmission.teamType === type ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                                                }`}
-                                            >
-                                                {type}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+                                <button
+                                    onClick={() => setShowRegistrationModal(false)}
+                                    className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+                                >
+                                    <span className="text-slate-500 font-bold">✕</span>
+                                </button>
                             </div>
 
-                            <div className="grid sm:grid-cols-2 gap-6">
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Lead Name</label>
-                                    <input 
-                                        type="text" 
-                                        value={hackathonSubmission.teamLead}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, teamLead: e.target.value})}
-                                        placeholder="Lead name"
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Domain</label>
-                                    <select 
-                                        value={hackathonSubmission.domain}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, domain: e.target.value})}
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all appearance-none"
+                            {submitted ? (
+                                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                                    <CheckCircle2 size={48} className="text-emerald-500 mb-4" />
+                                    <h3 className="text-lg font-black text-slate-900">Registration Submitted!</h3>
+                                    <p className="text-sm text-slate-500 mt-2">
+                                        {registrationStatus === 'PENDING_APPROVAL' 
+                                            ? 'Your registration is under host review. Downstream timeline rounds will unlock once approved!'
+                                            : 'Your registration is approved. All competition assessment stages are unlocked!'}
+                                    </p>
+                                    <button
+                                        onClick={() => { setShowRegistrationModal(false); navigate(`/opportunities/${id}`); }}
+                                        className="mt-6 px-6 py-3 bg-[#6C3BFF] text-white rounded-xl font-black text-xs uppercase tracking-wider"
                                     >
-                                        <option value="AI">AI</option>
-                                        <option value="FINTECH">FINTECH</option>
-                                        <option value="EDTECH">EDTECH</option>
-                                        <option value="MEDTECH">MEDTECH</option>
-                                        <option value="AGRITECH">AGRITECH</option>
-                                        <option value="BLOCK CHAIN">BLOCK CHAIN</option>
-                                        <option value="OTHERS">OTHERS</option>
-                                    </select>
+                                        Go to Details
+                                    </button>
                                 </div>
-                            </div>
+                            ) : (
+                                (() => {
+                                    const isProfessional = regAnswers['profile_type'] === 'Working Professional';
 
-                            {hackathonSubmission.teamType === 'Team' && (
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Team Members (Comma separated names)</label>
-                                    <input 
-                                        type="text" 
-                                        value={hackathonSubmission.teamMembers}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, teamMembers: e.target.value})}
-                                        placeholder="Member 1, Member 2, ..."
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                    />
-                                </div>
+                                    let identityFields = (formConfig?.fields_definitions || []).filter((fd: any) => fd.category === 'Identity');
+                                    let educationFields = (formConfig?.fields_definitions || []).filter((fd: any) => fd.category === 'Education');
+                                    const professionalFields = (formConfig?.fields_definitions || []).filter((fd: any) => fd.category === 'Professional');
+                                    const customQuestionsList = formConfig?.custom_questions || [];
+
+                                    if (isProfessional) {
+                                        // Move 'college' field (which acts as company name) from Education to Identity, and rename it
+                                        const collegeField = educationFields.find((fd: any) => fd.id === 'college');
+                                        if (collegeField) {
+                                            const updatedCollege = { 
+                                                ...collegeField, 
+                                                label: 'Current Company / Employer',
+                                                placeholder: 'e.g. Google, Stripe, Microsoft'
+                                            };
+                                            identityFields = [...identityFields, updatedCollege];
+                                        }
+                                        educationFields = educationFields.filter((fd: any) => fd.id !== 'college');
+                                    }
+
+                                    const activeSteps = [];
+                                    if (identityFields.length > 0) activeSteps.push({ id: 'identity', title: 'Identity', fields: identityFields, type: 'core' });
+                                    if (educationFields.length > 0 && !isProfessional) activeSteps.push({ id: 'education', title: 'Education', fields: educationFields, type: 'core' });
+                                    if (professionalFields.length > 0) activeSteps.push({ id: 'professional', title: 'Professional', fields: professionalFields, type: 'core' });
+                                    if (customQuestionsList.length > 0) activeSteps.push({ id: 'custom', title: 'Questions', fields: customQuestionsList, type: 'custom' });
+
+                                    if (activeSteps.length === 0) {
+                                        return (
+                                            <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-4">
+                                                <p className="text-sm text-slate-500 text-center py-8">
+                                                    No special registration fields are configured. Click submit to register.
+                                                </p>
+                                                <div className="flex gap-3 pt-4 border-t border-slate-100 justify-end">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowRegistrationModal(false)}
+                                                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        type="submit"
+                                                        disabled={submitting}
+                                                        className="px-6 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider"
+                                                    >
+                                                        {submitting ? <Loader2 size={14} className="animate-spin" /> : 'Register'}
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        );
+                                    }
+
+                                    const currentStep = activeSteps[currentStepIndex] || activeSteps[0];
+
+                                    return (
+                                        <>
+                                            {/* Wizard Progress Indicator */}
+                                            <div className="flex items-center justify-between px-6 py-3 bg-purple-50/50 border-b border-slate-100 shrink-0">
+                                                {activeSteps.map((stepItem, idx) => (
+                                                    <React.Fragment key={stepItem.id}>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all
+                                                                ${idx === currentStepIndex ? 'bg-[#6C3BFF] text-white ring-4 ring-purple-100' :
+                                                                  idx < currentStepIndex ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}
+                                                            >
+                                                                {idx < currentStepIndex ? '✓' : idx + 1}
+                                                            </div>
+                                                            <span className={`text-[11px] font-bold hidden sm:inline ${idx === currentStepIndex ? 'text-[#6C3BFF]' : 'text-slate-500'}`}>
+                                                                {stepItem.title}
+                                                            </span>
+                                                        </div>
+                                                        {idx < activeSteps.length - 1 && (
+                                                            <div className={`flex-1 h-0.5 mx-2 ${idx < currentStepIndex ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+                                                        )}
+                                                    </React.Fragment>
+                                                ))}
+                                            </div>
+
+                                            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+                                                <div className="space-y-4">
+                                                    {currentStep.fields.map((field: any) => {
+                                                        const isEmail = field.id === 'email';
+                                                        const isPrefilled = Boolean(field.prefilled_value);
+                                                        
+                                                        return (
+                                                            <div key={field.id} className="space-y-1.5">
+                                                                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                                                                    {field.label}
+                                                                    {field.required && <span className="text-rose-500">*</span>}
+                                                                    {isPrefilled && (
+                                                                        <span className="text-[9px] bg-purple-50 text-[#6C3BFF] border border-purple-100 px-1.5 py-0.5 rounded ml-auto font-bold">
+                                                                            Prefilled
+                                                                        </span>
+                                                                    )}
+                                                                </label>
+
+                                                                {field.id === 'profile_type' ? (
+                                                                    <div className="flex gap-4 mt-1.5">
+                                                                        {(['Student', 'Working Professional'] as const).map((typeOpt) => {
+                                                                            const isSelected = regAnswers[field.id] === typeOpt || (!regAnswers[field.id] && typeOpt === 'Student');
+                                                                            return (
+                                                                                <button
+                                                                                    key={typeOpt}
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        setRegAnswers(prev => ({ 
+                                                                                            ...prev, 
+                                                                                            [field.id]: typeOpt 
+                                                                                        }));
+                                                                                    }}
+                                                                                    className={`flex-1 py-3 px-4 rounded-xl border text-xs font-bold text-center transition-all duration-200 ${
+                                                                                        isSelected
+                                                                                            ? 'bg-[#6C3BFF]/5 text-[#6C3BFF] border-[#6C3BFF] ring-2 ring-purple-100 shadow-sm'
+                                                                                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-600 shadow-sm'
+                                                                                    }`}
+                                                                                >
+                                                                                    {typeOpt}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                ) : field.type === 'file' ? (
+                                                                    <div className="flex items-center gap-4 p-3 border border-slate-200 rounded-xl bg-slate-50/50">
+                                                                        <input
+                                                                            type="file"
+                                                                            id={`file-${field.id}`}
+                                                                            className="hidden"
+                                                                            onChange={e => {
+                                                                                const file = e.target.files?.[0];
+                                                                                if (file) handleFileUpload(field.id, file);
+                                                                            }}
+                                                                        />
+                                                                        <label
+                                                                            htmlFor={`file-${field.id}`}
+                                                                            className="px-4 py-2 bg-white border border-slate-250 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+                                                                        >
+                                                                            <Upload size={14} /> Upload Asset
+                                                                        </label>
+                                                                        <span className="text-xs text-slate-500 truncate max-w-xs font-semibold">
+                                                                            {uploadingField === field.id ? 'Uploading files...' :
+                                                                             regAnswers[field.id] ? String(regAnswers[field.id]).split('/').pop() : 'No file uploaded'}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : field.type === 'textarea' || field.type === 'paragraph' ? (
+                                                                    <textarea
+                                                                        value={regAnswers[field.id] || ''}
+                                                                        onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.value }))}
+                                                                        readOnly={isEmail}
+                                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm resize-none min-h-[90px] focus:border-[#6C3BFF] transition-colors"
+                                                                    />
+                                                                ) : field.type === 'checkbox' ? (
+                                                                    <label className="flex items-center gap-3 text-sm text-slate-700 cursor-pointer">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={regAnswers[field.id] === 'true' || regAnswers[field.id] === 'on'}
+                                                                            onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.checked ? 'on' : '' }))}
+                                                                            className="rounded border-slate-300 text-[#6C3BFF] focus:ring-[#6C3BFF]"
+                                                                        />
+                                                                        {field.label}
+                                                                    </label>
+                                                                ) : field.type === 'select' || field.type === 'dropdown' ? (
+                                                                    <select
+                                                                        value={regAnswers[field.id] || ''}
+                                                                        onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.value }))}
+                                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm focus:border-[#6C3BFF] transition-colors"
+                                                                    >
+                                                                        <option value="">Select option</option>
+                                                                        {(field.options || []).map((o: string) => (
+                                                                            <option key={o} value={o}>{o}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    <input
+                                                                        type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                                                        value={regAnswers[field.id] || ''}
+                                                                        onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.value }))}
+                                                                        readOnly={isEmail}
+                                                                        placeholder={field.placeholder || (field.id === 'college' ? (isProfessional ? 'e.g. Google, Stripe' : 'e.g. Stanford University') : '')}
+                                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm focus:border-[#6C3BFF] transition-colors"
+                                                                    />
+                                                                )}
+                                                                {field.help_text && (
+                                                                    <p className="text-[10px] text-slate-400 font-medium">{field.help_text}</p>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {/* Action Buttons */}
+                                                <div className="flex justify-between items-center pt-4 border-t border-slate-100 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        disabled={currentStepIndex === 0}
+                                                        onClick={() => setCurrentStepIndex(p => Math.max(0, p - 1))}
+                                                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-colors disabled:opacity-30"
+                                                    >
+                                                        Back
+                                                    </button>
+                                                    
+                                                    {currentStepIndex < activeSteps.length - 1 ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const activeStep = activeSteps[currentStepIndex];
+                                                                let valid = true;
+                                                                for (const fd of activeStep.fields) {
+                                                                    if (fd.required && !regAnswers[fd.id]) {
+                                                                        alert(`${fd.label} is required.`);
+                                                                        valid = false;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                if (valid) {
+                                                                    setCurrentStepIndex(p => Math.min(activeSteps.length - 1, p + 1));
+                                                                }
+                                                            }}
+                                                            className="px-6 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+                                                        >
+                                                            Next
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            type="submit"
+                                                            disabled={submitting}
+                                                            className="px-6 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 disabled:opacity-40 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2"
+                                                        >
+                                                            {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
+                                                            {submitting ? 'Submitting...' : 'Submit Registration'}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </form>
+                                        </>
+                                    );
+                                })()
                             )}
-
-                            <div className="space-y-1.5">
-                                <div className="flex items-center justify-between ml-4">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Problem Statement</label>
-                                    <span className={`text-[10px] font-black ${hackathonSubmission.problemStatement.trim().split(/\s+/).filter(Boolean).length > 50 ? 'text-red-500' : 'text-purple-600'}`}>
-                                        {hackathonSubmission.problemStatement.trim().split(/\s+/).filter(Boolean).length} / 50 words
-                                    </span>
-                                </div>
-                                <textarea 
-                                    value={hackathonSubmission.problemStatement}
-                                    onChange={(e) => setHackathonSubmission({...hackathonSubmission, problemStatement: e.target.value})}
-                                    placeholder="What problem are you solving?"
-                                    className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all h-28 sm:h-32 resize-none"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <div className="flex items-center justify-between ml-4">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Your Solution</label>
-                                    <span className={`text-[10px] font-black ${hackathonSubmission.solution.trim().split(/\s+/).filter(Boolean).length > 100 ? 'text-red-500' : 'text-purple-600'}`}>
-                                        {hackathonSubmission.solution.trim().split(/\s+/).filter(Boolean).length} / 100 words
-                                    </span>
-                                </div>
-                                <textarea 
-                                    value={hackathonSubmission.solution}
-                                    onChange={(e) => setHackathonSubmission({...hackathonSubmission, solution: e.target.value})}
-                                    placeholder="Describe your solution..."
-                                    className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all h-36 sm:h-40 resize-none"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">PPT Link (Google Drive)</label>
-                                <input 
-                                    type="url" 
-                                    value={hackathonSubmission.pptLink}
-                                    onChange={(e) => setHackathonSubmission({...hackathonSubmission, pptLink: e.target.value})}
-                                    placeholder="https://drive.google.com/..."
-                                    className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                />
-                            </div>
-
-                            <div className="grid sm:grid-cols-2 gap-6">
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">GitHub Link (Optional)</label>
-                                    <input 
-                                        type="url" 
-                                        value={hackathonSubmission.githubLink}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, githubLink: e.target.value})}
-                                        placeholder="https://github.com/..."
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Deployed Link (Optional)</label>
-                                    <input 
-                                        type="url" 
-                                        value={hackathonSubmission.deployedLink}
-                                        onChange={(e) => setHackathonSubmission({...hackathonSubmission, deployedLink: e.target.value})}
-                                        placeholder="https://..."
-                                        className="w-full px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-200 outline-none transition-all"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-5 sm:p-8 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3 sm:gap-4">
-                            <button 
-                                onClick={() => setShowSubmissionModal(false)}
-                                className="px-6 sm:px-8 py-3.5 sm:py-4 rounded-2xl text-sm font-black text-slate-500 hover:bg-slate-100 transition-all"
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                onClick={handleHackathonSubmit}
-                                disabled={isSubmittingHackathon}
-                                className="px-7 sm:px-10 py-3.5 sm:py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-black uppercase tracking-widest hover:from-purple-700 hover:to-indigo-700 shadow-xl shadow-purple-600/20 transition-all active:scale-95 disabled:opacity-50"
-                            >
-                                {isSubmittingHackathon ? 'Submitting...' : 'Submit Idea'}
-                            </button>
-                        </div>
+                        </motion.div>
                     </motion.div>
-                </div>
-            )}
-        </AnimatePresence>
+                )}
+            </AnimatePresence>
+
+            {/* Hackathon Submission Modal */}
+
         </div>
         </div>
     );

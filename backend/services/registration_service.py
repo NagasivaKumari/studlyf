@@ -3,29 +3,177 @@ Registration Service - Auto-fill user profile data and merge with event-specific
 Implements Unstop-like registration with pre-filled profile data
 """
 
-from db import users_col, participants_col, events_col, submission_data_col
+from db import db, users_col, participants_col, events_col, submission_data_col
 from bson import ObjectId
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 import re
+import json
+
+def _ensure_list(val):
+    """Normalize a field value to a list, handling JSON-encoded strings."""
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        # Try JSON decode for array-like strings
+        if val.startswith("[") and val.endswith("]"):
+            try:
+                parsed = json.loads(val)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                pass
+        return [val]
+    return [str(val)]
+
+async def validate_event_restrictions(
+    event: Dict[str, Any],
+    user_id: str
+) -> Optional[str]:
+    """
+    Validate user against event restrictions (candidateTypes, college, gender).
+    Uses the same profile data source as the registration form auto-fill.
+    Returns an error message string if blocked, or None if allowed.
+    """
+    try:
+        user = await users_col.find_one({"user_id": str(user_id)})
+        if not user:
+            return "User not found"
+        user_profile = await get_user_profile_data(user_id)
+
+        # --- participationType is NOT checked here (affects submission/team, not registration) ---
+
+        # --- candidateTypes ---
+        candidate_types = _ensure_list(event.get("candidateTypes"))
+        if candidate_types:
+            allowed = [c.lower().strip() for c in candidate_types]
+            if "everyone can apply" not in allowed:
+                user_college = str(user_profile.get("college") or user.get("college") or user.get("institution") or "").strip()
+                user_company = str(user_profile.get("institution") or user.get("company") or user.get("organization") or "").strip()
+                user_role = str(user.get("role") or "").lower().strip()
+
+                # Build heuristics — use get_user_profile_data for consistency with form auto-fill
+                is_college_student = bool(user_college) and not bool(user_company)  # has college, no company
+                is_fresher = False  # No reliable field; could check years of experience if available
+                is_professional = bool(user_company) or user_role in ("professional", "institution", "alumni")
+                is_school_student = "school" in user_college.lower() if user_college else False
+
+                matched = False
+                for typ in allowed:
+                    if "college student" in typ and is_college_student:
+                        matched = True
+                        break
+                    if "fresher" in typ and is_fresher:
+                        matched = True
+                        break
+                    if "professional" in typ and is_professional:
+                        matched = True
+                        break
+                    if "school student" in typ and is_school_student:
+                        matched = True
+                        break
+                    if "everyone" in typ:
+                        matched = True
+                        break
+
+                if not matched and not any("everyone" in t for t in allowed):
+                    return "You are not eligible for this event based on the candidate type restrictions. Only the following types can register: " + ", ".join(allowed)
+
+        # --- College / Organization restriction ---
+        eligible_orgs = _ensure_list(event.get("eligibleOrganizations"))
+        if eligible_orgs:
+            # "Allow All" means no restriction
+            orgs_clean = [o.lower().strip() for o in eligible_orgs if o]
+            if "allow all" not in orgs_clean:
+                user_college = str(user.get("college") or user.get("institution") or "").strip().lower()
+                if user_college:
+                    matched_org = any(org in user_college or user_college in org for org in orgs_clean)
+                    if not matched_org:
+                        return f"Only applicants from specific colleges/organizations can register for this event."
+        else:
+            legacy_restriction = event.get("collegeRestriction")
+            if legacy_restriction and str(legacy_restriction).lower() not in ("", "everyone can apply", "everyone"):
+                user_college = str(user.get("college") or user.get("institution") or "").strip().lower()
+                if not user_college or legacy_restriction.lower() not in user_college:
+                    pass  # Legacy field is vague; we don't strictly block on it
+
+        # --- Gender restriction ---
+        eligible_genders = _ensure_list(event.get("eligibleGenders"))
+        if eligible_genders:
+            # "Allow All" means no restriction
+            genders_clean = [g.lower().strip() for g in eligible_genders if g]
+            if "allow all" not in genders_clean:
+                user_gender = str(user.get("gender") or "").strip().lower()
+                if user_gender:
+                    matched_gender = any(g == user_gender for g in genders_clean)
+                    if not matched_gender:
+                        allowed = [g for g in eligible_genders if g]
+                        return f"This event is restricted to: {', '.join(allowed)}"
+        else:
+            legacy_gender = event.get("genderRestriction")
+            if legacy_gender and str(legacy_gender).lower() not in ("", "everyone can apply", "everyone", "allow all"):
+                user_gender = str(user.get("gender") or "").strip().lower()
+                if user_gender:
+                    allowed = [g.strip().lower() for g in str(legacy_gender).split(",")]
+                    if user_gender not in allowed:
+                        return f"This event is restricted to: {legacy_gender}"
+
+        return None
+    except Exception as e:
+        print(f"[WARNING] validate_event_restrictions error: {e}")
+        return None  # Don't block on validation errors — fail open
 
 async def get_user_profile_data(user_id: str) -> Dict[str, Any]:
-    """Fetch user profile data (name, email, college, etc.) for auto-fill."""
+    """Fetch user profile data (name, email, college, education, etc.) for auto-fill.
+    Merges base user fields with extended learner profile (education history)."""
     try:
         user = await users_col.find_one({"user_id": str(user_id)})
         if not user:
             return {}
+
+        full_name = user.get("full_name", "") or user.get("name", "")
+        first_name = full_name.split(" ")[0].lower().strip() if full_name else ""
+
+        college_raw = user.get("college", "") or user.get("institution", "") or user.get("college_name", "") or user.get("university", "") or user.get("education", "")
+        # Guard: if the "college" value is actually the user's name, treat as empty
+        if college_raw.lower().strip() == full_name.lower().strip() or college_raw.lower().strip() == first_name:
+            college_raw = ""
         
         profile_data = {
-            "full_name": user.get("full_name", ""),
-            "name": user.get("name", "") or user.get("full_name", ""),
+            "full_name": full_name,
+            "name": user.get("name", "") or full_name,
             "email": user.get("email", ""),
             "phone": user.get("phone", ""),
-            "college": user.get("college", "") or user.get("institution", ""),
-            "institution": user.get("institution", "") or user.get("college", ""),
+            "college": college_raw,
+            "institution": user.get("institution", "") or user.get("college", "") or user.get("college_name", "") or user.get("company", "") or user.get("organization", ""),
             "gender": user.get("gender", ""),
             "skills": user.get("skills", []),
         }
+
+        # Merge education from learner_profiles (extended profile)
+        try:
+            learner = await db["learner_profiles"].find_one({"user_id": str(user_id)})
+            if learner:
+                edu_list = learner.get("educationList", [])
+                if isinstance(edu_list, list) and len(edu_list) > 0:
+                    edu = edu_list[0]
+                else:
+                    edu = learner.get("education", {})
+                if isinstance(edu, dict):
+                    profile_data["degree"] = edu.get("degree", "")
+                    profile_data["specialization"] = edu.get("specialization", "")
+                    profile_data["startYear"] = str(edu.get("startYear", ""))
+                    profile_data["endYear"] = str(edu.get("endYear", ""))
+                    profile_data["cgpa"] = str(edu.get("cgpa", ""))
+                    # Also use education institution as college fallback
+                    edu_institution = edu.get("institution", "")
+                    if edu_institution and not profile_data["college"]:
+                        profile_data["college"] = edu_institution
+                        profile_data["institution"] = edu_institution
+        except Exception:
+            pass
         
         return profile_data
     except Exception as e:
@@ -50,6 +198,11 @@ async def classify_registration_fields(
         "college": ["college", "university", "institution", "school", "institution name", "college name"],
         "gender": ["gender", "sex", "choose your gender"],
         "skills": ["skills", "technical skills", "expertise", "your skills"],
+        "degree": ["degree", "qualification", "course", "branch", "major", "program"],
+        "specialization": ["specialization", "stream", "field of study", "discipline", "focus area", "concentration"],
+        "cgpa": ["cgpa", "gpa", "grade", "percentage", "marks", "score"],
+        "startYear": ["start year", "year of joining", "batch start", "admission year", "enrollment year"],
+        "endYear": ["end year", "graduation year", "year of passing", "passout year", "batch end", "completion year"],
     }
     
     classified = {
@@ -82,14 +235,19 @@ async def classify_registration_fields(
             "options": field.get("options", []),
         }
         
-        if is_prefillable and prefill_key and user_profile.get(prefill_key):
-            # This can be prefilled
-            field_info["prefilled"] = True
-            field_info["prefilled_value"] = user_profile.get(prefill_key)
-            classified["prefilled"].append(field_info)
-            classified["prefilled_values"][field_id] = user_profile.get(prefill_key)
+        if is_prefillable and prefill_key:
+            field_info["_profile_key"] = prefill_key
+            if user_profile.get(prefill_key):
+                field_info["prefilled"] = True
+                field_info["prefilled_value"] = user_profile.get(prefill_key)
+                classified["prefilled"].append(field_info)
+                classified["prefilled_values"][field_id] = user_profile.get(prefill_key)
+            else:
+                field_info["prefilled"] = False
+                classified["custom"].append(field_info)
         else:
             # This is custom/event-specific
+            field_info["_profile_key"] = ""
             field_info["prefilled"] = False
             classified["custom"].append(field_info)
     
@@ -123,10 +281,11 @@ async def merge_registration_data(
             user_profile
         )
         
-        # Build complete registration data
+        # Build complete registration data.
+        # User's submitted answers take priority over profile defaults.
         merged_data = {
-            **registration_data,  # Include all custom field answers
-            **field_classification["prefilled_values"]  # Add prefilled values
+            **field_classification["prefilled_values"],  # Start with profile defaults
+            **registration_data,  # User's answers override
         }
         
         # Extract name and email for participant record
@@ -171,6 +330,11 @@ async def complete_registration(
         event = await events_col.find_one({"_id": ObjectId(event_id)})
         if not event:
             return {"error": "Event not found"}
+
+        # Enforce event eligibility restrictions (candidateTypes, college, gender)
+        restriction_error = await validate_event_restrictions(event, user_id)
+        if restriction_error:
+            return {"error": restriction_error, "status": "restricted"}
 
         # Determine first stage from event stages to set as current_stage
         event_stages = event.get("stages", [])
@@ -237,13 +401,62 @@ async def complete_registration(
         print(f"[ERROR] complete_registration: {e}")
         return {"error": str(e), "status": "error"}
 
+# Core profile keys that must ALWAYS be collected in registration (like Unstop).
+CORE_REGISTRATION_KEYS = [
+    "name", "email", "phone", "college",
+    "degree", "specialization", "startYear", "endYear", "cgpa",
+]
+
+# Default field definitions for core keys (used when admin hasn't configured a matching field).
+DEFAULT_FIELD_DEFS = {
+    "name":           {"id": "full_name",      "label": "Full Name",         "type": "text",   "required": True},
+    "email":          {"id": "email",           "label": "Email",             "type": "text",   "required": True},
+    "phone":          {"id": "phone",           "label": "Phone Number",      "type": "text",   "required": True},
+    "college":        {"id": "college",         "label": "College Name",      "type": "text",   "required": True},
+    "degree":         {"id": "degree",          "label": "Degree",            "type": "text",   "required": False},
+    "specialization": {"id": "specialization",  "label": "Specialization",    "type": "text",   "required": False},
+    "startYear":      {"id": "startYear",       "label": "Start Year",        "type": "number", "required": False},
+    "endYear":        {"id": "endYear",         "label": "Graduation Year",   "type": "number", "required": False},
+    "cgpa":           {"id": "cgpa",            "label": "CGPA / Percentage", "type": "text",   "required": False},
+}
+
+def _ensure_core_fields(
+    classification: Dict[str, Any],
+    user_profile: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    After classify_registration_fields, inject any missing core fields
+    so the form always shows name, email, phone, college, education.
+    Already-present fields (prefilled or custom) are kept as-is.
+    """
+    existing_profile_keys = set()
+    for f in classification.get("prefilled", []):
+        existing_profile_keys.add(f.get("_profile_key", ""))
+    for f in classification.get("custom", []):
+        existing_profile_keys.add(f.get("_profile_key", ""))
+    
+    for key in CORE_REGISTRATION_KEYS:
+        if key not in existing_profile_keys:
+            default = DEFAULT_FIELD_DEFS.get(key)
+            if not default:
+                continue
+            entry = dict(default)
+            prefilled_val = user_profile.get(key) or ""
+            entry["prefilled"] = True
+            entry["prefilled_value"] = prefilled_val
+            classification["prefilled"].append(entry)
+            classification["prefilled_values"][default["id"]] = prefilled_val
+    
+    return classification
+
 async def get_registration_fields_with_prefill(
     event_id: str,
     user_id: str
 ) -> Dict[str, Any]:
     """
     Get registration fields for an event with prefill information.
-    Frontend uses this to know which fields are prefilled and which need user input.
+    ALWAYS includes core profile fields (name, email, phone, college, education).
+    Admin's stage config fields are merged on top as overrides or custom additions.
     """
     try:
         event = await events_col.find_one({"_id": ObjectId(event_id)})
@@ -251,11 +464,33 @@ async def get_registration_fields_with_prefill(
             return {"error": "Event not found"}
         
         user_profile = await get_user_profile_data(user_id)
-        registration_fields = event.get("registrationFields", [])
+        
+        # Try to get fields from REGISTRATION stage config first
+        admin_fields = []
+        for s in (event.get("stages") or []):
+            if isinstance(s, dict) and str(s.get("type", "")).upper() == "REGISTRATION":
+                cfg = s.get("config") if isinstance(s.get("config"), dict) else {}
+                stage_fields = cfg.get("fields", [])
+                if isinstance(stage_fields, list):
+                    admin_fields = stage_fields
+                    break
+        
+        # Fallback to event-level registrationFields (legacy)
+        if not admin_fields:
+            admin_fields = event.get("registrationFields", [])
         
         field_classification = await classify_registration_fields(
-            registration_fields,
+            admin_fields,
             user_profile
+        )
+        
+        # Always inject any missing core fields (name, email, phone, college, education)
+        field_classification = _ensure_core_fields(field_classification, user_profile)
+        
+        # Reorder prefilled fields: core fields in CORE_REGISTRATION_KEYS order, then non-core
+        core_order = {key: i for i, key in enumerate(CORE_REGISTRATION_KEYS)}
+        field_classification["prefilled"].sort(
+            key=lambda f: core_order.get(f.get("_profile_key", ""), 999)
         )
         
         return {

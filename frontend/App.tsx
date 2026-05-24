@@ -405,6 +405,7 @@ const App: React.FC = () => {
               }
             />
 
+
             <Route path="/dashboard/learner" element={<ProtectedRoute><DashboardHome /></ProtectedRoute>} />
             <Route path="/dashboard/profile" element={<ProtectedRoute><LearnerDashboard /></ProtectedRoute>} />
             <Route path="/dashboard/partner" element={<ProtectedRoute><PartnerDashboard /></ProtectedRoute>} />
@@ -417,6 +418,10 @@ const App: React.FC = () => {
 
             {/* Events */}
             <Route path="/events/:eventId" element={<ProtectedRoute><EventHub /></ProtectedRoute>} />
+            <Route path="/events/:eventId/package" element={<ProtectedRoute><EventPackagePage /></ProtectedRoute>} />
+            <Route path="/events/:eventId/package/card" element={<ProtectedRoute><ParticipantCardPage /></ProtectedRoute>} />
+            <Route path="/events/:eventId/portal" element={<ProtectedRoute><ParticipantPortal /></ProtectedRoute>} />
+            <Route path="/events/:eventId/card" element={<ProtectedRoute><ParticipantCardPage /></ProtectedRoute>} />
             <Route path="/events/:eventId/quiz/:quizId" element={<ProtectedRoute><EventQuizPage /></ProtectedRoute>} />
 
             {/* Institution */}

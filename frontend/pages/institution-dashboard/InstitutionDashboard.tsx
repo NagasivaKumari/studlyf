@@ -82,6 +82,7 @@ const InstitutionDashboard: React.FC = () => {
         navigate(tabPath, { replace: true });
     };
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+    const [selectedEventSection, setSelectedEventSection] = useState<string | undefined>(undefined);
     const [isPostModalOpen, setIsPostModalOpen] = useState(false);
     const [isJobModalOpen, setIsJobModalOpen] = useState(false);
     const [isInternshipModalOpen, setIsInternshipModalOpen] = useState(false);
@@ -101,8 +102,9 @@ const InstitutionDashboard: React.FC = () => {
         }
     }, [user]);
 
-    const handleViewEvent = async (eventId: string, status?: string) => {
+    const handleViewEvent = async (eventId: string, status?: string, section?: string) => {
         setSelectedEventId(eventId);
+        setSelectedEventSection(section);
         handleTabChange('event-details');
     };
 
@@ -172,6 +174,7 @@ const InstitutionDashboard: React.FC = () => {
                     <EventDetails 
                         institutionId={institutionId} 
                         eventId={selectedEventId} 
+                        initialSection={selectedEventSection}
                         onBack={() => handleTabChange('events')} 
                         onEditEvent={(eventId) => {
                             setEditingEventId(eventId);

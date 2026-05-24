@@ -130,14 +130,29 @@ async def get_event_stages(event_id: str) -> List[dict]:
             stage_info = STAGE_TYPES.get(stage_type, {})
             start_date = _parse_dt(stage.get("start_date") or stage.get("startDate"))
             end_date = _parse_dt(stage.get("end_date") or stage.get("endDate") or stage.get("deadline"))
+            result_time = _parse_dt(stage.get("result_time"))
 
-            if start_date and now < start_date:
-                computed_status = "Upcoming"
-            elif end_date and now > end_date:
-                computed_status = "Completed"
+            stored_status = stage.get("stored_status", "")
+            if stored_status:
+                computed_status = {
+                    "draft": "Upcoming",
+                    "scheduled": "Upcoming",
+                    "active": "Active",
+                    "completed": "Completed",
+                    "cancelled": "Completed",
+                }.get(stored_status, "Upcoming")
             else:
-                computed_status = "Active"
-            
+                if start_date and now < start_date:
+                    computed_status = "Upcoming"
+                elif end_date and now > end_date:
+                    computed_status = "Completed"
+                else:
+                    computed_status = "Active"
+
+            # Compute locked state from unlock rules
+            depends_on = stage.get("depends_on", [])
+            is_locked = len(depends_on) > 0  # resolved at access-check time
+
             enriched.append({
                 "id": stage.get("id") or f"stage_{idx}",
                 "name": stage.get("name", stage_info.get("label", "Stage")),
@@ -146,8 +161,11 @@ async def get_event_stages(event_id: str) -> List[dict]:
                 "icon": stage_info.get("icon", ""),
                 "start_date": stage.get("start_date") or stage.get("startDate"),
                 "end_date": stage.get("end_date") or stage.get("endDate") or stage.get("deadline"),
+                "result_time": result_time.isoformat() if result_time else None,
                 "status": computed_status,
-                "fields": stage.get("fields") or (stage.get("config") or {}).get("fields", []),  # For SUBMISSION stages
+                "stored_status": stored_status if stored_status else None,
+                "depends_on": depends_on,
+                "fields": stage.get("fields") or (stage.get("config") or {}).get("fields", []),
                 "config": stage.get("config") or {},
                 "team_required": stage_info.get("requires_team", False),
                 "view_only": stage_info.get("view_only", False),

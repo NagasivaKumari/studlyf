@@ -22,6 +22,9 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [verificationEmail, setVerificationEmail] = useState('');
+    const [resendLoading, setResendLoading] = useState(false);
+    const [resendMessage, setResendMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
@@ -61,14 +64,47 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
                 if (data.user.role === 'super_admin' || data.user.role === 'admin') navigate('/admin');
                 else if (data.user.role === 'institution') navigate('/institution-dashboard');
                 else if (data.user.role === 'judge') navigate('/judge-portal');
-                else navigate('/opportunities');
+                else navigate('/dashboard/learner');
             } else {
-                setError(data.detail || 'Login failed. Please check your credentials.');
+                const detail = data.detail || 'Login failed. Please check your credentials.';
+                setError(detail);
+                if (detail.toLowerCase().includes('verify your email')) {
+                    setVerificationEmail(emailClean);
+                }
             }
         } catch (err: any) {
             setError('Connection error. Is the backend running?');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleResendVerification = async () => {
+        const targetEmail = (verificationEmail || email).trim().toLowerCase();
+        if (!targetEmail) {
+            setError('Enter your email first to resend the verification link.');
+            return;
+        }
+
+        setResendLoading(true);
+        setResendMessage('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/auth/resend-verification`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: targetEmail }),
+            });
+
+            const data = await response.json().catch(() => ({}));
+            if (response.ok) {
+                setResendMessage(data.message || 'Verification link sent. Check your inbox.');
+            } else {
+                setError(data.detail || 'Unable to resend verification link.');
+            }
+        } catch {
+            setError('Connection error while resending the verification link.');
+        } finally {
+            setResendLoading(false);
         }
     };
 
@@ -79,8 +115,29 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
         <AuthCard title="Welcome Back" maxWidth="max-w-[450px]" transparent={transparent}>
             <form onSubmit={handleLogin} className="space-y-2.5">
                 {error && (
-                    <div className="p-3 bg-red-50 text-red-500 text-xs rounded-lg border border-red-100">
+                    <div className="p-3 bg-red-50 text-red-500 text-xs rounded-lg border border-red-100 space-y-3">
                         {error}
+                        {error.toLowerCase().includes('verify your email') && (
+                            <div className="pt-2 border-t border-red-100 flex flex-col gap-2">
+                                <p className="text-[10px] text-red-400 font-semibold uppercase tracking-widest">
+                                    Didn’t get the email?
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={handleResendVerification}
+                                    disabled={resendLoading}
+                                    className="self-start px-3 py-2 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors disabled:opacity-60"
+                                >
+                                    {resendLoading ? 'Sending...' : 'Resend Verification Link'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {resendMessage && (
+                    <div className="p-3 bg-green-50 text-green-600 text-xs rounded-lg border border-green-100">
+                        {resendMessage}
                     </div>
                 )}
 
@@ -179,6 +236,20 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
                 >
                     <span className="relative z-10">{loading ? 'Verifying...' : 'Access Dashboard'}</span>
                 </button>
+
+                <div className="mt-2 text-center">
+                    <p className="text-[11px] text-gray-500">
+                        Didn’t receive a verification email?
+                        <button
+                            type="button"
+                            onClick={handleResendVerification}
+                            disabled={resendLoading}
+                            className="ml-2 text-purple-600 font-black uppercase tracking-widest text-[10px] hover:underline disabled:opacity-60"
+                        >
+                            {resendLoading ? 'Sending...' : 'Resend Verification Link'}
+                        </button>
+                    </p>
+                </div>
             </form>
 
             <div className="mt-8 text-center pt-6 border-t border-gray-50">

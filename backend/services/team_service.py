@@ -27,6 +27,13 @@ async def create_team(
         if not participant:
             return {"error": "You must register for the event first", "status": "not_registered"}
         
+        # Check participation type - block team creation for 'individual' events
+        event = await events_col.find_one({"_id": ObjectId(event_id)})
+        if event:
+            ptype = str(event.get("participationType") or "").lower().strip()
+            if ptype == "individual":
+                return {"error": "This event is for individual participation only. Teams are not allowed.", "status": "restricted"}
+        
         # Check if already in a team
         if participant.get("team_id"):
             existing_team = await teams_col.find_one({"_id": ObjectId(participant["team_id"])})
@@ -132,6 +139,13 @@ async def join_team_with_code(
         
         if not participant:
             return {"error": "You must register for the event first"}
+        
+        # Check participation type - block joining teams for 'individual' events
+        event = await events_col.find_one({"_id": ObjectId(event_id)})
+        if event:
+            ptype = str(event.get("participationType") or "").lower().strip()
+            if ptype == "individual":
+                return {"error": "This event is for individual participation only. Teams are not allowed.", "status": "restricted"}
         
         # Check if already in a team
         if participant.get("team_id"):

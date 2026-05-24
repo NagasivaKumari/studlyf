@@ -8,6 +8,7 @@ from bson import ObjectId
 from db import notifications_col, users_col, institutions_col
 from services.email_service import send_notification_email
 from notification_helpers import notify_institution
+import os
 
 class NotificationService:
     """Service for managing all types of notifications"""

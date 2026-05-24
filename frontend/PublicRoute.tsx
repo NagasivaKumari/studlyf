@@ -33,8 +33,8 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             console.log("[PublicRoute] Redirecting Institution to dashboard");
             return <Navigate to="/institution-dashboard" replace />;
         }
-        console.log("[PublicRoute] Redirecting Student/Default to opportunities");
-        return <Navigate to="/opportunities" replace />;
+        console.log("[PublicRoute] Redirecting Student/Default to dashboard");
+        return <Navigate to="/dashboard/learner" replace />;
     }
 
     return <>{children}</>;

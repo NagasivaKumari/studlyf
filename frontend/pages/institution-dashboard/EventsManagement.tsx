@@ -14,7 +14,8 @@ import {
     ArrowUpRight,
     ChevronDown,
     X,
-    Globe
+    Globe,
+    Lightbulb
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -288,9 +289,11 @@ const EventsManagement: React.FC<EventsManagementProps> = ({ institutionId, onVi
                                                     <h4 className="text-[15px] font-black text-slate-800 leading-tight group-hover:text-blue-600 transition-all">{event.name}</h4>
                                                     <div className="flex items-center gap-3 pt-1">
                                                         <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black rounded uppercase tracking-wider">{event.type}</span>
-                                                        <span className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-wider">
-                                                            <Globe size={10} /> {event.visibility}
-                                                        </span>
+                                                        {event.visibility && event.visibility !== 'Unknown' && (
+                                                            <span className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                                                                <Globe size={10} /> {event.visibility}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </td>
@@ -319,6 +322,16 @@ const EventsManagement: React.FC<EventsManagementProps> = ({ institutionId, onVi
                                                         className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-white hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm"
                                                     >
                                                         <Edit2 size={14} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onViewEvent(event.id, event.status, 'package');
+                                                        }}
+                                                        className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-white hover:text-[#6C3BFF] hover:border-purple-200 transition-all shadow-sm"
+                                                        title="Open Event Package"
+                                                    >
+                                                        <Lightbulb size={14} />
                                                     </button>
                                                     <button 
                                                         onClick={(e) => {

@@ -72,6 +72,13 @@ class DatabaseManager:
             await self.db.users.create_index("user_id", unique=True)
             await self.db.users.create_index("email", unique=True)
             
+            # ── User Profiles ──
+            await self.db.user_profiles.create_index("user_id", unique=True)
+            
+            # ── Event Registrations ──
+            await self.db.registrations.create_index([("event_id", 1), ("user_id", 1)], unique=True)
+            await self.db.registrations.create_index([("event_id", 1), ("status", 1)])
+            
             # ── Institutions ──
             await self.db.institutions.create_index("name", unique=True)
             await self.db.institutions.create_index("institution_id", unique=True)
@@ -151,6 +158,12 @@ class DatabaseManager:
             await self.db.job_simulations.create_index([("user_id", 1), ("event_id", 1)])
             await self.db.badges.create_index([("user_id", 1), ("type", 1)])
             
+            # ── Email Queue & Delivery Logs ──
+            await self.db.email_queue.create_index([("status", 1), ("attempts", 1)])
+            await self.db.email_queue.create_index("idempotency_key", sparse=True)
+            await self.db.email_delivery_logs.create_index([("recipient", 1), ("status", 1)])
+            await self.db.email_delivery_logs.create_index("created_at", expireAfterSeconds=90*24*60*60)
+            
             logger.info("All production indexes ensured successfully")
         except Exception as e:
             logger.warning(f"Index creation warning: {e}")
@@ -182,8 +195,12 @@ progress_col = db["progress"]
 cart_col = db["cart"]
 enrollments_col = db["enrollments"]
 users_col = db["users"]
+user_profiles_col = db["user_profiles"]
+registrations_col = db["registrations"]
 resumes_col = db["resumes"]
 certificates_col = db["certificates"]
+event_certificates_col = db["event_certificates"]
+certificate_jobs_col = db["certificate_jobs"]
 
 # Career & Operations
 interviews_col = db["interviews"]
@@ -254,10 +271,19 @@ badges_col = db["badges"]
 # Email Templates (admin-configurable, event or institution level)
 email_templates_col = db["email_templates"]
 opportunity_emails_log_col = db["opportunity_emails_log"]
+email_queue_col = db["email_queue"]
+email_delivery_logs_col = db["email_delivery_logs"]
 gd_topics_col = db["gd_topics"]
 gamification_col = db["gamification"]
 user_gamification_col = db["user_gamification"]
 user_stats_col = db["user_stats"]
+
+# Hackathon Management (Problem Statements & Team Selection)
+hackathon_problems_col = db["hackathon_problems"]
+hackathon_selections_col = db["hackathon_selections"]
+hackathon_event_config_col = db["hackathon_event_config"]
+# Institution Event Packages (dynamic event-package feature)
+institution_event_packages_col = db["institution_event_packages"]
 
 # ─── GRIDFS BUCKET (persistent file storage, survives Render restarts) ────────
 # Usage: await gridfs_bucket.upload_from_stream(filename, data) → ObjectId

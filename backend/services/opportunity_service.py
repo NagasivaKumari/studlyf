@@ -3,7 +3,7 @@ import asyncio
 from db import db, events_col, users_col, notifications_col, institutions_col
 from models import Opportunity, OpportunityApplication
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from services.email_service import send_notification_email, get_registration_template, get_shortlist_template
@@ -285,6 +285,22 @@ async def _filter_public_opportunities(docs: List[dict]) -> List[dict]:
             continue
         ev = event_by_id.get(str(eid))
         if ev and _event_status_listable(ev.get("status")):
+            # Check plan-based listing access duration after deadline
+            inst_id = ev.get("institution_id")
+            deadline = d.get("deadline")
+            if inst_id and deadline:
+                try:
+                    from services.subscription_service import get_current_plan_rules
+                    rules = await get_current_plan_rules(inst_id)
+                    access_days = rules.get("access_days_after_deadline")
+                    if access_days is not None:
+                        if isinstance(deadline, str):
+                            deadline = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+                        max_visible_until = deadline + timedelta(days=int(access_days))
+                        if datetime.now(timezone.utc) > max_visible_until:
+                            continue
+                except Exception:
+                    pass
             out.append(d)
     return out
 
@@ -293,7 +309,7 @@ async def create_opportunity(data: dict) -> dict:
     # Ensure applicantsCount is 0 for new opportunities
     data["applicantsCount"] = 0
     data["createdAt"] = datetime.utcnow()
-    data["status"] = "active"
+    data["status"] = str(data.get("status") or "active").strip().lower()
     
     # Handle deadline if it's a string
     if isinstance(data.get("deadline"), str):
@@ -438,8 +454,72 @@ async def apply_for_opportunity(application_data: dict) -> dict:
             opp = await opportunities_col.find_one({"_id": ObjectId(oid)})
         except:
             opp = None
-            
+        # Fetch user profile for eligibility checks
+        user_profile = None
+        try:
+            user_profile = await users_col.find_one({"user_id": uid})
+        except Exception:
+            user_profile = None
+
+        # Eligibility enforcement based on opportunity fields
         if opp:
+            # Candidate types (e.g. Everyone, College Students, Freshers, Professionals, School Students)
+            cand_types = opp.get("candidateTypes") or opp.get("candidate_types") or []
+            if isinstance(cand_types, list) and len(cand_types) > 0:
+                # Normalize and check for everyone
+                low = [str(x).strip().lower() for x in cand_types if x]
+                if not any("every" in x for x in low):
+                    # need applicant candidate type
+                    applicant_type = str(application_data.get("candidateType") or application_data.get("candidate_type") or (user_profile or {}).get("candidateType") or (user_profile or {}).get("role") or "").strip().lower()
+                    if not applicant_type or applicant_type not in low:
+                        raise ValueError("You are not eligible to apply for this opportunity")
+
+            # Eligible organizations / college restriction
+            eligible_orgs = opp.get("eligibleOrganizations") or opp.get("eligible_organizations") or []
+            # Some old docs use collegeRestriction as a string marker
+            college_restr = opp.get("collegeRestriction") or opp.get("college_restriction")
+            if isinstance(eligible_orgs, list) and len(eligible_orgs) > 0:
+                low_orgs = [str(x).strip().lower() for x in eligible_orgs if x]
+                if not any("allow" in x or "all" in x for x in low_orgs):
+                    applicant_college = str(application_data.get("college") or (user_profile or {}).get("college") or (user_profile or {}).get("institution") or "").strip().lower()
+                    if not applicant_college or applicant_college not in low_orgs:
+                        raise ValueError("Your college/organization is not eligible to apply for this opportunity")
+            elif isinstance(college_restr, str) and college_restr.strip().lower() not in ("everyone", "allow all", "allow all organizations"):
+                # collegeRestriction may be a short string describing allowed orgs; fail closed if it's not permissive
+                appl_coll = str(application_data.get("college") or (user_profile or {}).get("college") or "").strip().lower()
+                if not appl_coll or college_restr.strip().lower() not in appl_coll:
+                    raise ValueError("Your college/organization is not eligible to apply for this opportunity")
+
+            # Gender restriction
+            eligible_genders = opp.get("eligibleGenders") or opp.get("eligible_genders") or []
+            gender_restr = opp.get("genderRestriction") or opp.get("gender_restriction")
+            if isinstance(eligible_genders, list) and len(eligible_genders) > 0:
+                low_g = [str(x).strip().lower() for x in eligible_genders if x]
+                if not any("allow" in x or "all" in x for x in low_g):
+                    applicant_gender = str(application_data.get("gender") or (user_profile or {}).get("gender") or "").strip().lower()
+                    if not applicant_gender or applicant_gender not in low_g:
+                        raise ValueError("You do not meet the gender eligibility for this opportunity")
+            elif isinstance(gender_restr, str) and gender_restr.strip().lower() not in ("everyone", "all"):
+                appl_gender = str(application_data.get("gender") or (user_profile or {}).get("gender") or "").strip().lower()
+                if not appl_gender or gender_restr.strip().lower() not in appl_gender:
+                    raise ValueError("You do not meet the gender eligibility for this opportunity")
+
+            # Participation type enforcement on portal applications
+            ptype = str(opp.get("participationType") or opp.get("participation_type") or "both").strip().lower()
+            if ptype == "individual" and (application_data.get("team_id") or application_data.get("teamMembers") or application_data.get("team_members")):
+                raise ValueError("This opportunity accepts individual applications only")
+            if ptype == "team":
+                # Expect application to include team details (simple check)
+                members = application_data.get("teamMembers") or application_data.get("team_members") or []
+                if not members or not isinstance(members, list) or len(members) == 0:
+                    raise ValueError("This opportunity requires team applications. Provide team members to apply.")
+                # Validate min/max team size if present
+                min_ts = int(opp.get("minTeamSize") or opp.get("min_team_size") or 0)
+                max_ts = int(opp.get("maxTeamSize") or opp.get("max_team_size") or 0)
+                if min_ts and len(members) < min_ts:
+                    raise ValueError(f"Team must have at least {min_ts} members to apply")
+                if max_ts and len(members) > max_ts:
+                    raise ValueError(f"Team must have at most {max_ts} members to apply")
             # Enforce registration deadline - with better error handling
             deadline = opp.get("deadline")
             if deadline:
