@@ -16,6 +16,7 @@ const EventQuizPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const [alreadySubmitted, setAlreadySubmitted] = useState(false);
     const [answers, setAnswers] = useState<any[]>([]);
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
     const submittedRef = useRef(false);
@@ -37,9 +38,13 @@ const EventQuizPage: React.FC = () => {
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data?.detail || 'Unable to open this quiz');
                 if (!cancelled) {
-                    setQuiz(data);
-                    setAnswers((data.questions || []).map(() => ({})));
-                    startedAtRef.current = Date.now();
+                    if (data.already_submitted) {
+                        setAlreadySubmitted(true);
+                    } else {
+                        setQuiz(data);
+                        setAnswers((data.questions || []).map(() => ({})));
+                        startedAtRef.current = Date.now();
+                    }
                 }
             } catch (e: any) {
                 if (!cancelled) setError(e?.message || 'Unable to load quiz');
@@ -115,12 +120,7 @@ const EventQuizPage: React.FC = () => {
                 throw new Error(errData.detail || 'Failed to submit quiz');
             }
 
-            const data = await res.json();
-            if (data.passed) {
-                alert(`Quiz submitted! Score: ${data.score}%. You qualified!`);
-            } else {
-                alert(`Quiz submitted. Score: ${data.score}%.`);
-            }
+            alert('Assessment submitted successfully.');
             navigate(`/events/${eventId}`);
         } catch (err: any) {
             submittedRef.current = false;
@@ -148,6 +148,18 @@ const EventQuizPage: React.FC = () => {
 
     if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Loading quiz...</div>;
     if (error) return <div className="min-h-screen flex items-center justify-center text-red-600 font-semibold">{error}</div>;
+    if (alreadySubmitted) return (
+        <div className="min-h-screen flex items-center justify-center py-10">
+            <div className="max-w-md mx-auto px-4 text-center">
+                <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                    <div className="text-4xl mb-4">📋</div>
+                    <h1 className="text-xl font-black text-slate-900 mb-2">Assessment Submitted</h1>
+                    <p className="text-sm text-slate-500 mb-6">You have already completed this assessment. Results will be shared once reviewed.</p>
+                    <button onClick={() => navigate(`/events/${eventId}`)} className="px-5 py-2 rounded-xl bg-purple-600 text-white font-bold text-sm">Back to Event</button>
+                </div>
+            </div>
+        </div>
+    );
     if (!quiz) return null;
 
     const timeAlmostUp = timeLeft !== null && timeLeft <= 120;
