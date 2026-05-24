@@ -560,6 +560,13 @@ async def get_registration_form_config(event_id: str, user: dict = Depends(get_a
         reg = await registrations_col.find_one({"event_id": str(event_id), "user_id": user["user_id"]})
         reg_status = reg.get("status", "NOT_REGISTERED") if reg else "NOT_REGISTERED"
         
+        if reg_status == "NOT_REGISTERED":
+            participant = await participants_col.find_one({"event_id": str(event_id), "user_id": user["user_id"]})
+            if participant:
+                ps = (participant.get("status") or "").lower()
+                if ps in ("shortlisted", "registered", "approved", "accepted"):
+                    reg_status = "APPROVED"
+        
         # Parse fields definitions to return to frontend
         fields_definitions = []
         for field, status_str in profile_fields_config.items():
