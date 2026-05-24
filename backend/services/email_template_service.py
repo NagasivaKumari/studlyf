@@ -113,16 +113,25 @@ DEFAULT_TEMPLATES = {
     "approval_rejection_update": {
         "name": "Application Status Update",
         "type": "approval_rejection_update",
-        "subject": "Application Update: {{event_title}}",
-        "placeholders": ["participant_name", "event_title", "application_status", "status_message"],
+        "subject": "{{application_status}} — {{event_title}}",
+        "placeholders": ["participant_name", "event_title", "application_status", "status_message", "organization_name"],
         "is_default": True,
         "emoji": "🔔",
-        "body_html": """<p style="margin: 0 0 16px 0; font-size: 16px; color: #1e293b;">Hi <strong>{{participant_name}}</strong>,</p>
-<p style="margin: 0 0 24px 0; font-size: 15px; color: #475569; line-height: 1.6;">An update is available regarding your application status for <strong>{{event_title}}</strong>.</p>
-<div style="background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 16px; padding: 24px; margin-bottom: 24px;">
-    <p style="margin: 0; font-size: 14px; color: #475569;">Application Status: <strong style="color: #0f172a;">{{application_status}}</strong></p>
-    <p style="margin: 8px 0 0 0; font-size: 14px; color: #64748b; line-height: 1.5;">{{status_message}}</p>
-</div>"""
+        "body_html": """<p style="margin: 0 0 24px 0; font-size: 16px; color: #1e293b;">Hi <strong>{{participant_name}}</strong>,</p>
+<div style="background: #f8f7ff; border-radius: 16px; padding: 28px; border: 1px solid #e8e5ff; margin-bottom: 24px;">
+    <p style="font-size: 12px; color: #6C3BFF; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin: 0 0 8px 0;">{{application_status}}</p>
+    <p style="font-size: 15px; color: #334155; line-height: 1.7; margin: 0 0 20px 0;">{{status_message}}</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px;">
+        <tr>
+            <td style="padding: 12px 16px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
+                <p style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Event</p>
+                <p style="font-size: 15px; color: #0f172a; font-weight: 600; margin: 0;">{{event_title}}</p>
+            </td>
+        </tr>
+    </table>
+    <a href="{{frontend_url}}/events/{{event_id}}" style="display: block; text-align: center; padding: 14px 28px; background-color: #6C3BFF; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 14px; margin-top: 20px;">Go to Event</a>
+</div>
+<p style="margin: 0; font-size: 12px; color: #94a3b8; text-align: center;">Sent by <strong style="color: #64748b;">Studlyf</strong> on behalf of {{organization_name}}</p>"""
     },
     "event_reminder": {
         "name": "Event Reminder",
