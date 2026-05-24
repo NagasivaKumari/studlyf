@@ -240,7 +240,7 @@ const ResourceCenter: React.FC = () => {
                                 animate={{ opacity: 1, scale: 1 }}
                                 transition={{ duration: 0.25 }}
                                 onClick={(event) => event.stopPropagation()}
-                                className="w-full max-w-5xl rounded-[2rem] overflow-hidden bg-white shadow-2xl border border-slate-200"
+                                className="w-full max-w-5xl max-h-[90vh] rounded-[2rem] overflow-hidden bg-white shadow-2xl border border-slate-200"
                             >
                                 <div className="flex items-start justify-between gap-4 p-6 bg-slate-950 text-white">
                                     <div>
@@ -256,24 +256,32 @@ const ResourceCenter: React.FC = () => {
                                     </button>
                                 </div>
 
-                                <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] p-6 bg-slate-50">
-                                    <div className="rounded-[1.5rem] overflow-hidden border border-slate-200 shadow-sm">
-                                        <img src={selectedResource.image} alt={selectedResource.title} className="w-full h-96 object-cover" />
-                                    </div>
+                                <div className="grid gap-6 lg:grid-cols-[1.2fr_0.9fr] p-6 bg-slate-50">
                                     <div className="space-y-4">
                                         <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
                                             <p className="text-sm text-slate-500 uppercase tracking-[0.35em]">Description</p>
                                             <p className="mt-3 text-slate-700 leading-relaxed">{selectedResource.desc}</p>
                                         </div>
-                                        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
-                                            <p className="text-sm text-slate-500 uppercase tracking-[0.35em]">Raw content</p>
-                                            <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-lime-100">
+                                        <div className="rounded-[1.5rem] border border-slate-200 bg-slate-950 p-6 shadow-sm">
+                                            <p className="text-sm text-slate-400 uppercase tracking-[0.35em]">Raw content</p>
+                                            <div className="mt-3 overflow-auto rounded-lg bg-slate-900 p-4 text-xs text-lime-100 max-h-[420px] whitespace-pre-wrap break-words">
 {`type: ${selectedResource.type}
 title: ${selectedResource.title}
 desc: ${selectedResource.desc}
 content: ${selectedResource.content}
 image: ${selectedResource.image}`}
-                                            </pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="rounded-[1.5rem] overflow-hidden border border-slate-200 shadow-sm">
+                                            <img src={selectedResource.image} alt={selectedResource.title} className="w-full h-96 object-cover" />
+                                        </div>
+                                        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
+                                            <p className="text-sm text-slate-500 uppercase tracking-[0.35em]">Details</p>
+                                            <p className="mt-3 text-slate-700 leading-relaxed">{selectedResource.content}</p>
+                                            <p className="mt-4 text-xs uppercase tracking-[0.35em] text-slate-400">Source</p>
+                                            <a href={selectedResource.link} target="_blank" rel="noreferrer" className="mt-2 block text-sm text-blue-600 hover:text-blue-500 truncate">{selectedResource.link}</a>
                                         </div>
                                     </div>
                                 </div>
