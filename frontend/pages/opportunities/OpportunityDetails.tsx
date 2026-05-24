@@ -1398,7 +1398,7 @@ const OpportunityDetails: React.FC = () => {
                                             
                                             let actionLabel = 'Unlock';
                                             if (stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION')) {
-                                                actionLabel = isApplied ? 'Registered' : 'Apply Now';
+                                                actionLabel = isApplied || effectiveRegStatus === 'APPROVED' ? 'Registered' : 'Apply Now';
                                             } else if (stype === 'TEAM_FORMATION' || sname.includes('TEAM')) {
                                                 actionLabel = 'Manage Team';
                                             } else if (stype === 'SUBMISSION' || sname.includes('SUBMISSION')) {
@@ -1412,7 +1412,7 @@ const OpportunityDetails: React.FC = () => {
                                             const stageStatus = computeStageStatus(s);
                                             const isReg = (String(s.type || '').toUpperCase() === 'REGISTRATION') || (String(s.name || '').toUpperCase().includes('REGISTER'));
                                             const isSubmissionStage = (String(s.type || '').toUpperCase() === 'SUBMISSION') || (String(s.name || '').toUpperCase().includes('SUBMISSION'));
-                                            const canAct = (stageStatus === 'active') && (isApplied || isReg || isSubmissionStage);
+                                            const canAct = (stageStatus === 'active') && (isApplied || isReg || isSubmissionStage || effectiveRegStatus === 'APPROVED');
 
                                             return (
                                                 <li
