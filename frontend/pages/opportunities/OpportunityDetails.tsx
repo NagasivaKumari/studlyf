@@ -1225,13 +1225,26 @@ const OpportunityDetails: React.FC = () => {
                             </div>
                             <div className="shrink-0 mx-auto md:mx-0">
                                 <div className="w-28 h-28 md:w-36 md:h-36 rounded-full border-4 border-slate-100 shadow-md overflow-hidden bg-white flex items-center justify-center relative">
-                                    {logoSrc && (
+                                    {logoSrc ? (
                                         <img 
                                             src={logoSrc} 
                                             alt="" 
                                             className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                                // Log failing URL for diagnostics
+                                                try { console.warn('[LogoLoadError] failed to load', (e.currentTarget && e.currentTarget.src) || logoSrc); } catch (err) {}
+                                                e.currentTarget.style.display = 'none';
+                                                const sibling = e.currentTarget.nextElementSibling as HTMLElement;
+                                                if (sibling) sibling.style.display = 'flex';
+                                            }}
                                         />
-                                    )}
+                                    ) : null}
+                                    <div 
+                                        className="w-full h-full bg-purple-100 text-[#6C3BFF] font-black text-3xl md:text-4xl flex items-center justify-center uppercase shadow-inner"
+                                        style={{ display: logoSrc ? 'none' : 'flex' }}
+                                    >
+                                        {orgDisplay.charAt(0)}
+                                    </div>
                                 </div>
                             </div>
                         </div>
