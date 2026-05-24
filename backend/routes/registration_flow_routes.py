@@ -566,6 +566,10 @@ async def get_registration_form_config(event_id: str, user: dict = Depends(get_a
                 ps = (participant.get("status") or "").lower()
                 if ps in ("shortlisted", "registered", "approved", "accepted"):
                     reg_status = "APPROVED"
+                    reg = participant
+
+        if reg and reg.get("_id"):
+            reg["_id"] = str(reg["_id"])
         
         # Parse fields definitions to return to frontend
         fields_definitions = []
