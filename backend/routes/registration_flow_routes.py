@@ -570,6 +570,8 @@ async def get_registration_form_config(event_id: str, user: dict = Depends(get_a
 
         if reg and reg.get("_id"):
             reg["_id"] = str(reg["_id"])
+        if "_id" in profile:
+            profile["_id"] = str(profile["_id"])
         
         # Parse fields definitions to return to frontend
         fields_definitions = []
