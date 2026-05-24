@@ -74,6 +74,8 @@ import ResourceCenter from './components/ResourceCenter';
 import Testimonials from './components/Testimonials';
 import Impact from './components/Impact';
 import Achievements from './components/Achievements';
+import RightHoverPanel from './components/RightHoverPanel';
+import SplashScreen from './components/SplashScreen';
 
 // Admin Pages
 import AdminLayout from './pages/admin/layout/AdminLayout';
@@ -357,6 +359,8 @@ const App: React.FC = () => {
         </Suspense>
       </main>
 
+      {isHome && <RightHoverPanel />}
+
       {isHome && (
         <>
           <Impact />
@@ -370,15 +374,50 @@ const App: React.FC = () => {
   );
 };
 
-const AppWrapper = () => (
-  <HeroUIProvider>
-    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <AuthProvider>
-        <ScrollToTop />
-        <App />
-      </AuthProvider>
-    </Router>
-  </HeroUIProvider>
-);
+const AppWrapper: React.FC = () => {
+  const [showSplash, setShowSplash] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('studlyf_splash_shown') !== '1';
+    } catch (e) {
+      return true;
+    }
+  });
+
+  const handleSplashFinish = () => {
+    try { sessionStorage.setItem('studlyf_splash_shown', '1'); } catch (e) {}
+    setShowSplash(false);
+  };
+  const appRef = React.useRef<HTMLDivElement | null>(null);
+  const [appMounted, setAppMounted] = useState(false);
+
+  useEffect(() => {
+    if (!showSplash) {
+      // mount the app and trigger fade-in
+      setAppMounted(true);
+      requestAnimationFrame(() => {
+        if (appRef.current) appRef.current.style.opacity = '1';
+      });
+    }
+  }, [showSplash]);
+
+  return (
+    <HeroUIProvider>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthProvider>
+          <ScrollToTop />
+          {showSplash ? (
+            <SplashScreen duration={7500} onFinish={handleSplashFinish} />
+          ) : (
+            appMounted && (
+              <div ref={appRef} style={{ opacity: 0, transition: 'opacity 600ms ease' }}>
+                <App />
+              </div>
+            )
+          )}
+        </AuthProvider>
+      </Router>
+    </HeroUIProvider>
+  );
+};
 
 export default AppWrapper;

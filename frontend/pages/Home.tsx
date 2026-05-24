@@ -1,6 +1,8 @@
 
 import React from 'react';
 import LandingHero from '../components/LandingHero';
+import HomepageSpotlight from '../components/HomepageSpotlight';
+import ColorfulHighlights from '../components/ColorfulHighlights';
 import WhatIsStudlyf from '../components/WhatIsStudlyf';
 import VoicesThatInspire from '../components/VoicesThatInspire';
 import OldVsNewSection from '../components/OldVsNewSection';
@@ -9,6 +11,7 @@ import RoadmapSection from '../components/RoadmapSection';
 import WhoWeServe from '../components/WhoWeServe';
 import FeaturedInstitutions from '../components/FeaturedInstitutions';
 import OurPartners from '../components/OurPartners';
+import FAQ from '../components/FAQ';
 import LandingNavbar from '../components/LandingNavbar';
 import PurpleNavbar from '../components/PurpleNavbar';
 
@@ -23,6 +26,10 @@ const Home: React.FC = () => {
         <PurpleNavbar />
       </div>
 
+      <HomepageSpotlight />
+
+      <ColorfulHighlights />
+
       {/* Scrollable content starts here */}
       <WhatIsStudlyf />
       <VoicesThatInspire />
@@ -30,6 +37,7 @@ const Home: React.FC = () => {
       <MentorCredibility />
       <WhoWeServe />
       <RoadmapSection />
+      <FAQ />
       <FeaturedInstitutions />
       <OurPartners />
     </div>
