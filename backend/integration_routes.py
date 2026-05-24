@@ -3618,6 +3618,11 @@ async def submit_event_quiz(event_id: str, quiz_id: str, payload: dict = Body(..
     if not p:
         raise HTTPException(status_code=400, detail="You must register/apply before attempting the assessment")
 
+    # Prevent multiple attempts
+    existing_attempts = [a for a in (p.get("quiz_attempts") or []) if str(a.get("quiz_id") or "") == str(quiz_id)]
+    if existing_attempts:
+        raise HTTPException(status_code=400, detail="You have already submitted this assessment")
+
     answers = payload.get("answers") or []
     if not isinstance(answers, list):
         raise HTTPException(status_code=400, detail="answers must be a list")

@@ -211,6 +211,10 @@ async def learner_view_quiz(event_id: str, quiz_id: str, user: dict = Depends(ge
         "duration": quiz.get("duration"),
         "pass_mark": quiz.get("pass_mark", 70),
         "questions": q_out,
+        "already_submitted": any(
+            str(a.get("quiz_id") or "") == str(quiz_id)
+            for a in (p.get("quiz_attempts") or [])
+        ),
     }
 
 
@@ -229,6 +233,11 @@ async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(
     p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
     if not p:
         raise HTTPException(status_code=400, detail="You must register/apply before attempting the assessment")
+
+    # Prevent multiple attempts
+    existing_attempts = [a for a in (p.get("quiz_attempts") or []) if str(a.get("quiz_id") or "") == str(quiz_id)]
+    if existing_attempts:
+        raise HTTPException(status_code=400, detail="You have already submitted this assessment")
 
     # Enforce unlock rules (depends_on)
     from stage_access_control import check_stage_unlock_rules
