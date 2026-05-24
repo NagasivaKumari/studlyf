@@ -26,6 +26,22 @@ from db import db, events_col, opportunities_col
 
 
 def build_legacy_map(registration_fields):
+    alias = {
+        '1': 'full_name',
+        '2': 'email',
+        '3': 'phone',
+        '4': 'college',
+        '5': 'degree',
+        '6': 'branch',
+        '7': 'graduation_year',
+        '8': 'cgpa',
+        '9': 'resume_url',
+        '10': 'linkedin_url',
+        '11': 'github_url',
+        '12': 'portfolio_url',
+        '13': 'skills',
+    }
+
     m = {}
     for f in registration_fields or []:
         if not isinstance(f, dict):
@@ -33,6 +49,7 @@ def build_legacy_map(registration_fields):
         key = f.get('id') or f.get('key') or f.get('name')
         if not key:
             continue
+        key = alias.get(str(key).strip().lower(), str(key).strip().lower().replace(' ', '_'))
         required = f.get('required') in (True, 'true', 'True', 1) or f.get('isFixed') is True
         m[key] = 'REQUIRED' if required else 'OPTIONAL'
     return m
@@ -116,8 +133,7 @@ def main():
 
     args = parser.parse_args()
 
-    loop = asyncio.get_event_loop()
-    changes = loop.run_until_complete(find_and_normalize(event_id=args.event, limit=args.limit, apply=args.apply))
+    changes = asyncio.run(find_and_normalize(event_id=args.event, limit=args.limit, apply=args.apply))
 
     print(f"Found {len(changes)} events that would be normalized.")
     for c in changes:

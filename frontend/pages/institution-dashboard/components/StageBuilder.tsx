@@ -224,7 +224,6 @@ const REGISTRATION_PROFILE_FIELDS = [
     { key: 'degree', label: 'Degree / Program', category: 'Education', defaultState: 'OPTIONAL' as const },
     { key: 'branch', label: 'Branch / Department', category: 'Education', defaultState: 'OPTIONAL' as const },
     { key: 'graduation_year', label: 'Graduation Year', category: 'Education', defaultState: 'OPTIONAL' as const },
-    { key: 'roll_number', label: 'Roll Number', category: 'Education', defaultState: 'OPTIONAL' as const },
     { key: 'cgpa', label: 'CGPA / Marks', category: 'Education', defaultState: 'OPTIONAL' as const },
 
     { key: 'company', label: 'Company', category: 'Professional', defaultState: 'OPTIONAL' as const },
@@ -383,10 +382,6 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
         const start = startDate ? new Date(startDate) : null;
         const end = endDate ? new Date(endDate) : null;
 
-        if (end && end.getHours() === 0 && end.getMinutes() === 0 && !String(endDate).includes('T')) {
-            end.setHours(23, 59, 59, 999);
-        }
-
         if (start && now < start) return 'Upcoming';
         if (end && now > end) return 'Completed';
         return 'Active';
@@ -397,8 +392,9 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
     };
 
     const addStage = () => {
-        const startDate = new Date().toISOString().split('T')[0];
-        const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const now = new Date();
+        const startDate = now.toISOString().slice(0, 16);
+        const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16);
         
         const newStage: IStage = {
             id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9) + Date.now().toString(36),
@@ -597,23 +593,23 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
 
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Start Date</label>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Start Date & Time</label>
                                                     <input 
-                                                        type="date" 
-                                                        value={stage.start_date}
-                                                        min={new Date().toISOString().split('T')[0]}
+                                                        type="datetime-local" 
+                                                        value={stage.start_date || ''}
+                                                        min={new Date().toISOString().slice(0, 16)}
                                                         onChange={(e) => updateStage(stage.id, { start_date: e.target.value })}
-                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none"
+                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm"
                                                     />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">End Date</label>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">End Date & Time</label>
                                                     <input 
-                                                        type="date" 
-                                                        value={stage.end_date}
-                                                        min={stage.start_date || new Date().toISOString().split('T')[0]}
+                                                        type="datetime-local" 
+                                                        value={stage.end_date || ''}
+                                                        min={stage.start_date || new Date().toISOString().slice(0, 16)}
                                                         onChange={(e) => updateStage(stage.id, { end_date: e.target.value })}
-                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none"
+                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm"
                                                     />
                                                 </div>
                                             </div>

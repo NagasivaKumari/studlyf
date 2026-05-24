@@ -19,7 +19,6 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 465))
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Studlyf Notifications")
-SMART_EMAIL_PROVIDER = os.getenv("SMART_EMAIL_PROVIDER", "smtp") # Options: resend, smtp, google
 Verified_Domain_Email = os.getenv("VERIFIED_DOMAIN_EMAIL", "notifications@studlyf.com")
 
 import asyncio
@@ -36,38 +35,11 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
     
     email_from = os.getenv("EMAIL_FROM_NAME", "Studlyf Notifications")
 
-    # --- SMART PROVIDER LOGIC ---
-    provider = os.getenv("SMART_EMAIL_PROVIDER", "smtp").lower()
     verified_from = os.getenv("VERIFIED_DOMAIN_EMAIL", "notifications@studlyf.com")
     email_from_name = os.getenv("EMAIL_FROM_NAME", "Studlyf Notifications")
-
-    # Fallback to Resend if configured and requested
-    if provider == "resend":
-        resend_key = os.getenv("RESEND_API_KEY")
-        if resend_key:
-            try:
-                import importlib
-                resend = importlib.import_module("resend")
-                resend.api_key = resend_key
-                
-                params = {
-                    "from": f"{email_from_name} <{verified_from}>",
-                    "to": [to_email],
-                    "subject": subject,
-                    "html": body_html,
-                }
-                
-                try:
-                    resend.Emails.send(params)
-                except:
-                    params["from"] = "Studlyf <onboarding@resend.dev>"
-                    resend.Emails.send(params)
-                    
-                logger.info(f"[RESEND SUCCESS] Email delivered to {to_email}")
-                return True
-            except Exception as e:
-                logger.error(f"[RESEND ERROR] Failed to send via Resend: {str(e)}")
-                # Fall through to SMTP if Resend fails
+    provider = os.getenv("SMART_EMAIL_PROVIDER", "smtp").lower()
+    if provider != "smtp":
+        logger.warning(f"[EMAIL DEBUG] SMART_EMAIL_PROVIDER='{provider}' ignored; SMTP-only mode enforced")
     
     # Reload env inside the function to ensure we always have the absolute latest values from the file
     root_env = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
@@ -87,6 +59,8 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
 
     def categorize_error(e: Exception) -> str:
         err_str = str(e).lower()
+        if "network is unreachable" in err_str or "errno 101" in err_str:
+            return "NETWORK_UNREACHABLE"
         if "authentication" in err_str or "login" in err_str:
             return "AUTHENTICATION_FAILURE"
         if "timeout" in err_str:
@@ -142,6 +116,7 @@ async def send_notification_email(to_email: str, subject: str, body_html: str):
                 # CRITICAL: Print the full stack trace for SMTP errors to help debug
                 import traceback
                 traceback.print_exc()
+
         return False
 
     return await asyncio.to_thread(send_sync_email)

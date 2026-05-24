@@ -168,6 +168,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [regLoading, setRegLoading] = useState(false);
     const [regActionBusy, setRegActionBusy] = useState<string | null>(null);
     const [expandedRegId, setExpandedRegId] = useState<string | null>(null);
+    const [notifyingApproved, setNotifyingApproved] = useState(false);
 
     const fetchRegistrations = async () => {
         if (!eventId || activeTab !== 'registrations') return;
@@ -234,6 +235,28 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             alert('Network error while updating registration status.');
         } finally {
             setRegActionBusy(null);
+        }
+    };
+
+    const handleNotifyApproved = async () => {
+        if (!eventId) return;
+        if (!confirm(`Send notification email to all ${regStats.approved} approved participants?`)) return;
+        setNotifyingApproved(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/notify-approved`, {
+                method: 'POST',
+                headers: { ...authHeaders() },
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(`Notification sent to ${data.sent} approved participants.`);
+            } else {
+                alert('Failed: ' + (data.detail || 'Unknown error'));
+            }
+        } catch (err) {
+            alert('Network error.');
+        } finally {
+            setNotifyingApproved(false);
         }
     };
 
@@ -551,16 +574,22 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         if (!eventId || !event) return;
         setSaving(true);
         
-        // Validate stage dates before saving
-        const today = new Date().toISOString().split('T')[0];
+        // Validate stage dates — only for stages whose dates actually changed
+        const originalStages: IStage[] = Array.isArray(event?.stages) ? event.stages : [];
+        const origStageMap = new Map(originalStages.map((s: any) => [s.id, s]));
+        const today = new Date();
         for (const s of stages) {
             if (!s.start_date || !s.end_date) continue;
-            if (s.start_date < today) {
+            const orig = origStageMap.get(s.id);
+            const isNew = !orig;
+            const dateChanged = !orig || orig.start_date !== s.start_date || orig.end_date !== s.end_date;
+            if (!isNew && !dateChanged) continue;
+            if (new Date(s.start_date) < today) {
                 alert(`Stage "${s.name}" start date (${s.start_date}) cannot be in the past.`);
                 setSaving(false);
                 return;
             }
-            if (s.end_date < s.start_date) {
+            if (new Date(s.end_date) < new Date(s.start_date)) {
                 alert(`Stage "${s.name}" end date (${s.end_date}) cannot be before start date (${s.start_date}).`);
                 setSaving(false);
                 return;
@@ -1719,6 +1748,20 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             <option value="WAITLISTED">Waitlisted</option>
                             <option value="REJECTED">Rejected</option>
                         </select>
+                        {regStats.approved > 0 && (
+                            <button
+                                onClick={handleNotifyApproved}
+                                disabled={notifyingApproved}
+                                className="px-5 py-4 bg-purple-50 hover:bg-[#6C3BFF] hover:text-white border border-purple-100 text-[#6C3BFF] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-40"
+                            >
+                                {notifyingApproved ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                    <Send size={14} />
+                                )}
+                                Notify {regStats.approved} Approved
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -1732,152 +1775,129 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     )}
 
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="bg-slate-50/50 border-b border-slate-100">
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest w-6"></th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Applicant & Identity</th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Academics & Location</th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Credentials</th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Verification Control</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {registrations.length > 0 ? (
-                                    registrations.map((reg) => {
-                                        const prof = reg.profile_snapshot || {};
-                                        const customAnswers = reg.custom_answers || {};
-                                        const isExpanded = expandedRegId === reg._id;
-                                        const isActionBusy = regActionBusy === reg._id;
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-slate-50/50 border-b border-slate-100">
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-6"></th>
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Applicant</th>
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Education & Contact</th>
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {registrations.length > 0 ? (
+                                        registrations.map((reg) => {
+                                            const prof = reg.profile_snapshot || {};
+                                            const customAnswers = reg.custom_answers || {};
+                                            const isExpanded = expandedRegId === reg._id;
+                                            const isActionBusy = regActionBusy === reg._id;
 
-                                        return (
-                                            <React.Fragment key={reg._id}>
-                                                <tr className="hover:bg-slate-50/30 transition-colors group">
-                                                    <td className="px-10 py-8">
-                                                        <button 
-                                                            onClick={() => setExpandedRegId(isExpanded ? null : reg._id)}
-                                                            className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-[#6C3BFF] transition-all"
-                                                            title={isExpanded ? "Collapse Details" : "Expand Custom Answers & Profile"}
-                                                        >
-                                                            <ChevronRight 
-                                                                size={16} 
-                                                                className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`} 
-                                                            />
-                                                        </button>
-                                                    </td>
-                                                    <td className="px-10 py-8">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="w-12 h-12 bg-purple-50 text-[#6C3BFF] border border-purple-100 rounded-2xl flex items-center justify-center font-black text-base shadow-inner shrink-0 uppercase">
-                                                                {(prof.full_name || 'U').charAt(0)}
-                                                            </div>
-                                                            <div>
-                                                                <p className="font-black text-slate-900 text-base tracking-tight leading-none mb-1.5">{prof.full_name || 'Anonymous User'}</p>
-                                                                <p className="text-xs font-bold text-slate-500 leading-none mb-2">{prof.email || '—'}</p>
-                                                                <p className="text-[10px] font-black text-[#6C3BFF] uppercase tracking-wide leading-none">{prof.college || 'No college listed'}</p>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-10 py-8">
-                                                        <div className="space-y-1">
-                                                            <p className="text-sm font-bold text-slate-700 leading-tight">
-                                                                {prof.degree || 'Degree unspecified'} 
-                                                                {prof.branch ? ` • ${prof.branch}` : ''}
-                                                            </p>
-                                                            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wide">
-                                                                <span>Year: {prof.graduation_year || '—'}</span>
-                                                                <span>•</span>
-                                                                <span>CGPA: {prof.cgpa || '—'}</span>
-                                                            </div>
-                                                            {prof.location && <p className="text-[10px] font-bold text-slate-400">Location: {prof.location}</p>}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-10 py-8">
-                                                        <div className="flex flex-wrap gap-2.5">
-                                                            {prof.resume_url ? (
-                                                                <a 
-                                                                    href={prof.resume_url} 
-                                                                    target="_blank" 
-                                                                    rel="noopener noreferrer" 
-                                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#6C3BFF]/5 text-[#6C3BFF] rounded-xl text-[9px] font-black uppercase tracking-wider border border-[#6C3BFF]/10 shadow-sm hover:bg-[#6C3BFF] hover:text-white transition-all duration-300"
-                                                                >
-                                                                    <FileText size={12} /> Resume
-                                                                </a>
-                                                            ) : (
-                                                                <span className="text-[10px] font-bold text-slate-300 italic">No Resume</span>
-                                                            )}
-                                                            {prof.linkedin_url && (
-                                                                <a 
-                                                                    href={prof.linkedin_url} 
-                                                                    target="_blank" 
-                                                                    rel="noopener noreferrer" 
-                                                                    className="flex items-center justify-center p-1.5 bg-slate-50 text-slate-400 hover:text-[#6C3BFF] hover:bg-[#6C3BFF]/5 rounded-xl border border-slate-100 hover:border-[#6C3BFF]/10 transition-all duration-300"
-                                                                    title="LinkedIn Profile"
-                                                                >
-                                                                    <LinkIcon size={12} />
-                                                                </a>
-                                                            )}
-                                                            {prof.github_url && (
-                                                                <a 
-                                                                    href={prof.github_url} 
-                                                                    target="_blank" 
-                                                                    rel="noopener noreferrer" 
-                                                                    className="flex items-center justify-center p-1.5 bg-slate-50 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl border border-slate-100 transition-all duration-300"
-                                                                    title="GitHub Portfolio"
-                                                                >
-                                                                    <Share2 size={12} />
-                                                                </a>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-10 py-8">
-                                                        <span className={`px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${
-                                                            reg.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
-                                                            reg.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100/50' :
-                                                            reg.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
-                                                            'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
-                                                        }`}>
-                                                            {reg.status === 'PENDING_APPROVAL' ? 'Pending Action' : reg.status}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-10 py-8 text-right">
-                                                        <div className="flex justify-end gap-2 items-center">
-                                                            <button
-                                                                disabled={isActionBusy}
-                                                                onClick={() => handleUpdateRegistrationStatus(reg._id, 'APPROVED')}
-                                                                className={`px-4 py-2 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-100 text-emerald-700 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm ${
-                                                                    reg.status === 'APPROVED' ? 'opacity-30 pointer-events-none' : ''
-                                                                }`}
+                                            return (
+                                                <React.Fragment key={reg._id}>
+                                                    <tr className="hover:bg-slate-50/30 transition-colors group">
+                                                        <td className="px-8 py-5">
+                                                            <button 
+                                                                onClick={() => setExpandedRegId(isExpanded ? null : reg._id)}
+                                                                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-[#6C3BFF] transition-all"
+                                                                title={isExpanded ? "Collapse Details" : "Expand Custom Answers & Profile"}
                                                             >
-                                                                {isActionBusy && regActionBusy === reg._id ? <Loader2 size={10} className="animate-spin inline mr-1" /> : null}
-                                                                Approve
+                                                                <ChevronRight 
+                                                                    size={14} 
+                                                                    className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`} 
+                                                                />
                                                             </button>
-                                                            <button
-                                                                disabled={isActionBusy}
-                                                                onClick={() => handleUpdateRegistrationStatus(reg._id, 'REJECTED')}
-                                                                className={`px-4 py-2 bg-red-50 hover:bg-red-600 hover:text-white border border-red-100 text-red-700 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm ${
-                                                                    reg.status === 'REJECTED' ? 'opacity-30 pointer-events-none' : ''
-                                                                }`}
-                                                            >
-                                                                Reject
-                                                            </button>
-                                                            <button
-                                                                disabled={isActionBusy}
-                                                                onClick={() => handleUpdateRegistrationStatus(reg._id, 'WAITLISTED')}
-                                                                className={`px-4 py-2 bg-indigo-50 hover:bg-indigo-600 hover:text-white border border-indigo-100 text-indigo-700 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm ${
-                                                                    reg.status === 'WAITLISTED' ? 'opacity-30 pointer-events-none' : ''
-                                                                }`}
-                                                            >
-                                                                Waitlist
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
+                                                        </td>
+                                                        <td className="px-8 py-5">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 bg-purple-50 text-[#6C3BFF] border border-purple-100 rounded-xl flex items-center justify-center font-black text-sm shadow-inner shrink-0 uppercase">
+                                                                    {(prof.full_name || 'U').charAt(0)}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="font-bold text-slate-900 text-sm leading-tight mb-0.5 truncate max-w-[200px]">{prof.full_name || 'Anonymous User'}</p>
+                                                                    <p className="text-[11px] font-medium text-slate-500 truncate max-w-[200px]">{prof.email || '—'}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-8 py-5">
+                                                            <div className="text-sm">
+                                                                <p className="font-semibold text-slate-700 leading-tight">
+                                                                    {prof.college || 'No college'}
+                                                                </p>
+                                                                <p className="text-[11px] text-slate-400 mt-0.5">
+                                                                    {prof.degree || ''}{prof.degree && prof.branch ? ' • ' : ''}{prof.branch || ''}
+                                                                    {prof.graduation_year ? ` • ${prof.graduation_year}` : ''}
+                                                                    {prof.cgpa ? ` • CGPA: ${prof.cgpa}` : ''}
+                                                                </p>
+                                                                {prof.location && (
+                                                                    <p className="text-[11px] text-slate-400 mt-0.5">{prof.location}</p>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-8 py-5">
+                                                            <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${
+                                                                reg.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
+                                                                reg.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100/50' :
+                                                                reg.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
+                                                                'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
+                                                            }`}>
+                                                                {reg.status === 'PENDING_APPROVAL' ? 'Pending' : reg.status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-8 py-5 text-right">
+                                                            <div className="flex justify-end gap-1.5 items-center">
+                                                                {prof.resume_url && (
+                                                                    <a href={prof.resume_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-[#6C3BFF] rounded-lg border border-slate-100 hover:border-[#6C3BFF]/20 transition-all" title="Resume">
+                                                                        <FileText size={12} />
+                                                                    </a>
+                                                                )}
+                                                                {prof.linkedin_url && (
+                                                                    <a href={prof.linkedin_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-[#6C3BFF] rounded-lg border border-slate-100 hover:border-[#6C3BFF]/20 transition-all" title="LinkedIn">
+                                                                        <LinkIcon size={12} />
+                                                                    </a>
+                                                                )}
+                                                                {prof.github_url && (
+                                                                    <a href={prof.github_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-lg border border-slate-100 transition-all" title="GitHub">
+                                                                        <Share2 size={12} />
+                                                                    </a>
+                                                                )}
+                                                                <div className="w-px h-6 bg-slate-200 mx-1"></div>
+                                                                <button
+                                                                    disabled={isActionBusy}
+                                                                    onClick={() => handleUpdateRegistrationStatus(reg._id, 'APPROVED')}
+                                                                    className={`px-3 py-1.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-100 text-emerald-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                                                        reg.status === 'APPROVED' ? 'opacity-30 pointer-events-none' : ''
+                                                                    }`}
+                                                                >
+                                                                    {isActionBusy && regActionBusy === reg._id ? <Loader2 size={9} className="animate-spin inline mr-1" /> : null}
+                                                                    Approve
+                                                                </button>
+                                                                <button
+                                                                    disabled={isActionBusy}
+                                                                    onClick={() => handleUpdateRegistrationStatus(reg._id, 'REJECTED')}
+                                                                    className={`px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white border border-red-100 text-red-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                                                        reg.status === 'REJECTED' ? 'opacity-30 pointer-events-none' : ''
+                                                                    }`}
+                                                                >
+                                                                    Reject
+                                                                </button>
+                                                                <button
+                                                                    disabled={isActionBusy}
+                                                                    onClick={() => handleUpdateRegistrationStatus(reg._id, 'WAITLISTED')}
+                                                                    className={`px-3 py-1.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white border border-indigo-100 text-indigo-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                                                        reg.status === 'WAITLISTED' ? 'opacity-30 pointer-events-none' : ''
+                                                                    }`}
+                                                                >
+                                                                    Waitlist
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
                                                 
                                                 {/* 5. Custom Answers & Detailed Profile Expansion Panel */}
                                                 {isExpanded && (
                                                     <tr>
-                                                        <td colSpan={6} className="px-10 py-10 bg-slate-50 border-t border-b border-slate-100 shadow-inner">
+                                                        <td colSpan={5} className="px-10 py-10 bg-slate-50 border-t border-b border-slate-100 shadow-inner">
                                                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                                                                 {/* Full Global Profile info */}
                                                                 <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">

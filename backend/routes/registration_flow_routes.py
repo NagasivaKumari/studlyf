@@ -73,7 +73,6 @@ DEFAULT_FIELDS_METADATA = {
     "degree": {"label": "Degree", "category": "Education", "default": "OPTIONAL", "type": "text"},
     "branch": {"label": "Branch / Department", "category": "Education", "default": "OPTIONAL", "type": "text"},
     "graduation_year": {"label": "Graduation Year", "category": "Education", "default": "OPTIONAL", "type": "number"},
-    "roll_number": {"label": "Roll Number", "category": "Education", "default": "OPTIONAL", "type": "text"},
     "cgpa": {"label": "CGPA", "category": "Education", "default": "OPTIONAL", "type": "text"},
 
     "company": {"label": "Company", "category": "Professional", "default": "OPTIONAL", "type": "text"},
@@ -120,8 +119,6 @@ LEGACY_FIELD_KEY_ALIASES = {
     "department": "branch",
     "graduation_year": "graduation_year",
     "grad_year": "graduation_year",
-    "roll_number": "roll_number",
-    "rollno": "roll_number",
     "cgpa": "cgpa",
     "gender": "gender",
     "dob": "dob",
@@ -157,7 +154,6 @@ PROFILE_DEFAULTS_BASE = {
     "degree": "OPTIONAL",
     "branch": "OPTIONAL",
     "graduation_year": "OPTIONAL",
-    "roll_number": "OPTIONAL",
     "cgpa": "OPTIONAL",
     "company": "HIDDEN",
     "job_title": "HIDDEN",
@@ -178,7 +174,6 @@ PROFILE_TYPE_DEFAULT_OVERRIDES = {
         "degree": "OPTIONAL",
         "branch": "OPTIONAL",
         "graduation_year": "OPTIONAL",
-        "roll_number": "OPTIONAL",
         "cgpa": "OPTIONAL",
         "company": "HIDDEN",
         "job_title": "HIDDEN",
@@ -192,7 +187,6 @@ PROFILE_TYPE_DEFAULT_OVERRIDES = {
         "degree": "HIDDEN",
         "branch": "HIDDEN",
         "graduation_year": "HIDDEN",
-        "roll_number": "HIDDEN",
         "cgpa": "HIDDEN",
         "company": "OPTIONAL",
         "job_title": "OPTIONAL",
@@ -205,7 +199,6 @@ PROFILE_TYPE_DEFAULT_OVERRIDES = {
         "degree": "HIDDEN",
         "branch": "HIDDEN",
         "graduation_year": "HIDDEN",
-        "roll_number": "HIDDEN",
         "cgpa": "HIDDEN",
         "company": "HIDDEN",
         "job_title": "HIDDEN",
@@ -220,7 +213,6 @@ PROFILE_TYPE_DEFAULT_OVERRIDES = {
         "degree": "HIDDEN",
         "branch": "HIDDEN",
         "graduation_year": "HIDDEN",
-        "roll_number": "HIDDEN",
         "cgpa": "HIDDEN",
         "organization_name": "REQUIRED",
         "company": "OPTIONAL",
@@ -234,7 +226,6 @@ PROFILE_TYPE_DEFAULT_OVERRIDES = {
         "degree": "HIDDEN",
         "branch": "HIDDEN",
         "graduation_year": "HIDDEN",
-        "roll_number": "HIDDEN",
         "cgpa": "HIDDEN",
         "organization_name": "REQUIRED",
         "company": "OPTIONAL",
@@ -312,7 +303,6 @@ class UserProfileSchema(BaseModel):
     degree: Optional[str] = None
     branch: Optional[str] = None
     graduation_year: Optional[int] = None
-    roll_number: Optional[str] = None
     cgpa: Optional[str] = None
     company: Optional[str] = None
     job_title: Optional[str] = None
@@ -354,7 +344,6 @@ async def fetch_legacy_profile(user_id: str) -> dict:
             "degree": user.get("degree", ""),
             "branch": user.get("branch", ""),
             "graduation_year": user.get("graduation_year") or user.get("endYear"),
-            "roll_number": user.get("roll_number", ""),
             "cgpa": user.get("cgpa", ""),
             "company": user.get("company", ""),
             "job_title": user.get("job_title", ""),
@@ -446,8 +435,6 @@ async def update_global_profile(data: UserProfileSchema, user: dict = Depends(ge
         sync_users["college"] = update_data["college"]
         sync_users["college_name"] = update_data["college"]
         sync_users["institution"] = update_data["college"]
-    if "roll_number" in update_data:
-        sync_users["roll_number"] = update_data["roll_number"]
     if "company" in update_data:
         sync_users["company"] = update_data["company"]
     if "job_title" in update_data:
@@ -557,10 +544,10 @@ async def get_registration_form_config(event_id: str, user: dict = Depends(get_a
         settings = event.get("registration_settings") or {}
         profile_fields_config = normalize_profile_fields_config(settings.get("profile_fields_config") or {})
 
-        # Load user global profile first; defaults can depend on profile_type.
-        profile = await user_profiles_col.find_one({"user_id": user["user_id"]})
-        if not profile:
-            profile = await fetch_legacy_profile(user["user_id"])
+        # Load user global profile; merge new profile on top of legacy for maximum prefill
+        legacy = await fetch_legacy_profile(user["user_id"])
+        new_profile = await user_profiles_col.find_one({"user_id": user["user_id"]})
+        profile = {**legacy, **(new_profile or {})}
 
         # Fill missing defaults based on profile type, while preserving explicit admin config.
         defaults_map = compute_default_profile_config(profile.get("profile_type", "student"))
@@ -907,31 +894,127 @@ async def update_registration_status_admin(
             {"event_id": str(event_id), "user_id": reg["user_id"]},
             {"$set": {"status": participant_status, "updated_at": datetime.now(timezone.utc)}}
         )
-        
-        # OPTIONAL: Send email notifications via queue
-        try:
-            from services.email_queue_service import enqueue_email
-            email_tpl = "event_shortlisted" if new_status == "APPROVED" else "event_rejected"
-            # Attempt queuing notification
-            await enqueue_email(
-                recipient=reg["profile_snapshot"].get("email"),
-                subject=f"Registration Status Update - {event.get('title')}",
-                template_name=email_tpl,
-                variables={
-                    "event_title": event.get("title"),
-                    "full_name": reg["profile_snapshot"].get("full_name"),
-                    "organization_name": event.get("organization", "StudLyf Host")
-                }
-            )
-        except Exception as e:
-            logger.warning(f"Failed to queue email notification: {e}")
-            
+
         return {"status": "success", "message": f"Candidate status updated to {new_status} and propagated."}
-        
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/events/{event_id}/notify-approved")
+async def notify_approved_participants(event_id: str, user: dict = Depends(get_auth_user)):
+    """Send email notification to all APPROVED participants about next stage."""
+    try:
+        try:
+            ev_id = ObjectId(event_id)
+        except Exception:
+            ev_id = event_id
+
+        event = await events_col.find_one({"_id": ev_id}) if isinstance(ev_id, ObjectId) else await events_col.find_one({"event_id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        if str(event.get("institution_id")) != str(user.get("institution_id")):
+            raise HTTPException(status_code=403, detail="Permission denied")
+
+        from services.email_queue_service import enqueue_email
+        from services.email_template_service import get_active_template, render_template
+
+        frontend_url = os.getenv("FRONTEND_URL", "")
+        app_logo_url = f"{frontend_url}/images/studlyf.png" if frontend_url else ""
+        org_name = event.get("organization_name") or event.get("institution_name") or "Organization"
+        event_title = event.get("title", "Event")
+
+        # Find next upcoming stage
+        now = datetime.now(timezone.utc)
+        upcoming = []
+        for stg in (event.get("stages") or []):
+            if not isinstance(stg, dict):
+                continue
+            if str(stg.get("type", "")).upper() == "REGISTRATION":
+                continue
+            s = stg.get("start_date") or stg.get("startDate") or ""
+            if s:
+                try:
+                    sd = datetime.fromisoformat(s)
+                    if sd.tzinfo is None:
+                        sd = sd.replace(tzinfo=timezone.utc)
+                    upcoming.append((sd, stg.get("name", ""), s))
+                except Exception:
+                    pass
+        upcoming.sort(key=lambda x: x[0])
+        next_stage_name = upcoming[0][1] if upcoming else ""
+        next_stage_active = now >= upcoming[0][0] if upcoming else False
+
+        approved = await registrations_col.find(
+            {"event_id": str(event_id), "status": "APPROVED"}
+        ).to_list(length=50000)
+
+        sent = 0
+        errors = []
+        for reg in approved:
+            try:
+                prof = reg.get("profile_snapshot") or {}
+                email = prof.get("email", "")
+                if not email:
+                    continue
+                p_name = prof.get("full_name", "Participant")
+
+                if next_stage_name and next_stage_active:
+                    msg = f"Your application for <strong>{event_title}</strong> has been approved. You have been shortlisted for <strong>{next_stage_name}</strong> which is now <strong>active</strong>. Please proceed to participate."
+                elif next_stage_name:
+                    msg = f"Your application for <strong>{event_title}</strong> has been approved. The next stage <strong>{next_stage_name}</strong> will open shortly. You will be notified when it is ready."
+                else:
+                    msg = f"Your application for <strong>{event_title}</strong> has been approved. You can now participate in the event."
+
+                inst_id = str(event.get("institution_id", ""))
+                tpl = await get_active_template(str(event.get("_id")), inst_id, "approval_rejection_update")
+                context = {
+                    "participant_name": p_name,
+                    "event_title": event_title,
+                    "application_status": "Approved",
+                    "status_message": msg,
+                }
+
+                if tpl:
+                    subj, body_html = render_template(tpl, context)
+                else:
+                    subj = f"Approved — {event_title}"
+                    logo_html = f'<img src="{app_logo_url}" alt="Studlyf" style="max-height:32px;margin-bottom:24px;" />' if app_logo_url else ""
+                    body_html = f"""<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 0 24px;">
+                        {logo_html}
+                        <div style="background: #f8f7ff; border-radius: 16px; padding: 32px; border: 1px solid #e8e5ff;">
+                            <p style="font-size: 13px; color: #6C3BFF; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0;">Approved</p>
+                            <p style="font-size: 20px; color: #0f172a; font-weight: 700; margin: 0 0 16px 0;">Hi {p_name},</p>
+                            <p style="font-size: 15px; color: #334155; line-height: 1.7; margin: 0 0 20px 0;">{msg}</p>
+                            <table style="width:100%;">
+                                <tr>
+                                    <td style="padding: 12px 16px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
+                                        <p style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Event</p>
+                                        <p style="font-size: 15px; color: #0f172a; font-weight: 600; margin: 0;">{event_title}</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            <a href="{frontend_url}/events/{event_id}" style="display: block; text-align: center; padding: 14px 28px; background-color: #6C3BFF; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 14px; margin-top: 20px;">Go to Event</a>
+                        </div>
+                        <div style="text-align: center; padding: 24px 0 0 0;">
+                            <p style="font-size: 12px; color: #94a3b8; margin: 0;">Sent by <strong style="color: #64748b;">Studlyf</strong> on behalf of {org_name}</p>
+                        </div>
+                    </div>"""
+
+                await enqueue_email(email, subj, body_html, idempotency_key=f"notify_approved_{reg['_id']}")
+                sent += 1
+            except Exception as e:
+                errors.append({"registration_id": str(reg.get("_id")), "error": str(e)})
+
+        return {"status": "success", "sent": sent, "errors": errors}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/events/{event_id}/export-csv")
 async def export_registrations_csv(event_id: str, user: dict = Depends(get_auth_user)):
