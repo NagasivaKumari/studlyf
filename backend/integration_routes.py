@@ -2918,23 +2918,30 @@ async def update_event_details(event_id: str, update_data: dict, user: dict = De
                         del s["config"]["judgeIds"]
                 
                 # Validate stage dates — only for stages whose dates actually changed
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                start = (s.get("start_date") or "").strip()
-                end = (s.get("end_date") or "").strip()
+                today = datetime.now(timezone.utc)
+                start_str = (s.get("start_date") or "").strip()
+                end_str = (s.get("end_date") or "").strip()
                 old_s = old_stages.get(s.get("id"), {})
                 old_start = str(old_s.get("start_date") or "").strip()
                 old_end = str(old_s.get("end_date") or "").strip()
                 is_new = s.get("id") not in old_stages
-                if is_new or start != old_start:
-                    if start and start < today:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Stage '{s.get('name', 'Untitled')}' start date ({start}) cannot be in the past."
-                        )
-                if (is_new or start != old_start or end != old_end) and start and end and end < start:
+                if is_new or start_str != old_start:
+                    if start_str:
+                        try:
+                            start_dt = datetime.fromisoformat(start_str)
+                            if start_dt.tzinfo is None:
+                                start_dt = start_dt.replace(tzinfo=timezone.utc)
+                        except Exception:
+                            start_dt = None
+                        if start_dt and start_dt < today:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Stage '{s.get('name', 'Untitled')}' start date ({start_str}) cannot be in the past."
+                            )
+                if (is_new or start_str != old_start or end_str != old_end) and start_str and end_str and end_str < start_str:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Stage '{s.get('name', 'Untitled')}' end date ({end}) cannot be before start date ({start})."
+                        detail=f"Stage '{s.get('name', 'Untitled')}' end date ({end_str}) cannot be before start date ({start_str})."
                     )
                 
                 # Synchronize registration deadline from stages
@@ -3037,6 +3044,49 @@ async def upload_event_media(
         )
     except Exception as e:
         logger.warning(f"[SYNC] Failed to update opportunity media: {e}")
+
+    return {"url": url, "field": field}
+
+
+@router.post("/institution/upload-media")
+async def upload_institution_media(
+    file: UploadFile = File(...),
+    field: str = Form(...),
+    user: dict = Depends(get_auth_user)
+):
+    """Uploads a logo or banner image for the institution profile."""
+    inst_id = user.get("institution_id", "").strip()
+    if not inst_id:
+        raise HTTPException(status_code=400, detail="User has no institution_id")
+
+    if field not in ("logo_url", "banner_url"):
+        raise HTTPException(status_code=400, detail="field must be 'logo_url' or 'banner_url'")
+
+    ext = os.path.splitext(file.filename or "image.jpg")[1].lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
+
+    INST_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads", "institutions")
+    os.makedirs(INST_UPLOAD_DIR, exist_ok=True)
+
+    prefix = "logo" if field == "logo_url" else "banner"
+    fname = f"{prefix}_{uuid.uuid4()}{ext}"
+    fpath = os.path.join(INST_UPLOAD_DIR, fname)
+    with open(fpath, "wb") as f:
+        f.write(content)
+
+    BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
+    url = f"{BASE_URL}/uploads/institutions/{fname}"
+
+    from db import institutions_col
+    await institutions_col.update_one(
+        {"institution_id": inst_id},
+        {"$set": {field: url}}
+    )
 
     return {"url": url, "field": field}
 
@@ -3711,7 +3761,7 @@ async def bulk_shortlist_quiz(
     payload: dict = Body(...),
     user: dict = Depends(get_auth_user),
 ):
-    """Admin marks selected participants as shortlisted and sends unlock emails."""
+    """Admin marks selected participants as shortlisted (no email — use notify endpoint for email)."""
     await assert_institution_owns_event(event_id, user)
     from services.email_queue_service import enqueue_email
     from services.email_template_service import render_stage_custom_email, get_active_template, render_template
@@ -3723,18 +3773,6 @@ async def bulk_shortlist_quiz(
     ev = await events_col.find_one({"_id": ObjectId(event_id)})
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
-
-    # Find stage owning this quiz
-    stage_comm = None
-    stage_name = None
-    for s in (ev.get("stages") or []):
-        if not isinstance(s, dict):
-            continue
-        cfg = s.get("config") if isinstance(s.get("config"), dict) else {}
-        if str(cfg.get("quiz_id") or "") == str(quiz_id):
-            stage_comm = s.get("communication") if isinstance(s.get("communication"), dict) else {}
-            stage_name = s.get("name", "")
-            break
 
     org_name = ev.get("organization_name") or ev.get("institution_name") or "Organization"
     event_title = ev.get("title", "Event")
@@ -3776,50 +3814,6 @@ async def bulk_shortlist_quiz(
             except Exception:
                 pass
 
-            # Email
-            email = str(p.get("email") or "").strip()
-            if email and stage_comm and stage_comm.get("send_email_on_unlock") is not False:
-                p_name = p.get("name") or p.get("full_name") or "Participant"
-                team_id = p.get("team_id")
-                team_name = None
-                if team_id:
-                    tdoc = await teams_col.find_one({"_id": ObjectId(str(team_id))})
-                    if tdoc:
-                        team_name = tdoc.get("team_name")
-                context = {
-                    "team_name": team_name or p_name,
-                    "event_title": event_title,
-                    "event_name": event_title,
-                    "organization_name": org_name,
-                    "stage_name": stage_name or "Next Stage",
-                    "participant_name": p_name,
-                    "event_link": f"{frontend_url}/events/{event_id}",
-                    "stage_link": f"{frontend_url}/events/{event_id}",
-                    "stage_unlock_time": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
-                    "stage_deadline": stage_name or "TBD",
-                }
-                subject_override = stage_comm.get("email_subject_override")
-                body_markdown = stage_comm.get("email_body_markdown")
-                if subject_override or body_markdown:
-                    subj, html_body = render_stage_custom_email(subject_override, body_markdown, context)
-                else:
-                    institution_id = ev.get("institution_id", "")
-                    tmpl = await get_active_template(event_id, institution_id, "stage_advancement")
-                    if tmpl:
-                        subj, html_body = render_template(tmpl, context)
-                    else:
-                        from routes.opportunity_routes import _stage_unlock_email_html
-                        subj = f"Qualified for {stage_name or 'Next Stage'} — {event_title}"
-                        html_body = _stage_unlock_email_html(
-                            p_name, event_title, org_name,
-                            stage_name or "Next Stage",
-                            context["stage_unlock_time"],
-                            context["stage_link"],
-                        )
-                await enqueue_email(email, subj, html_body, metadata={
-                    "event_id": event_id, "quiz_id": quiz_id, "type": "stage_advancement",
-                })
-
             shortlisted_count += 1
         except Exception as e:
             errors.append({"user_id": uid, "error": str(e)})
@@ -3827,6 +3821,150 @@ async def bulk_shortlist_quiz(
     return {
         "status": "success",
         "shortlisted_count": shortlisted_count,
+        "errors": errors,
+    }
+
+
+@router.post("/events/{event_id}/quizzes/{quiz_id}/notify-shortlisted")
+async def notify_shortlisted_participants(
+    event_id: str, quiz_id: str,
+    user: dict = Depends(get_auth_user),
+):
+    """Send email notification to all currently shortlisted participants with next-stage info."""
+    await assert_institution_owns_event(event_id, user)
+    from services.email_queue_service import enqueue_email
+    from services.email_template_service import get_active_template, render_template
+    from db import institutions_col
+
+    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Find stage owning this quiz
+    stage_name = ""
+    for s in (ev.get("stages") or []):
+        if not isinstance(s, dict):
+            continue
+        cfg = s.get("config") if isinstance(s.get("config"), dict) else {}
+        if str(cfg.get("quiz_id") or "") == str(quiz_id):
+            stage_name = s.get("name", "")
+            break
+
+    org_name = ev.get("organization_name") or ev.get("institution_name") or "Organization"
+    event_title = ev.get("title", "Event")
+    frontend_url = os.getenv("FRONTEND_URL", "")
+    institution_id = str(ev.get("institution_id", ""))
+
+    # Studlyf platform logo for email
+    app_logo_url = f"{frontend_url}/images/studlyf.png" if frontend_url else ""
+
+    # Find next upcoming stage (skip REGISTRATION)
+    now = datetime.now(timezone.utc)
+    upcoming_stages = []
+    for stg in (ev.get("stages") or []):
+        if not isinstance(stg, dict):
+            continue
+        stg_type = str(stg.get("type", "")).upper()
+        if stg_type == "REGISTRATION":
+            continue
+        s = stg.get("start_date") or stg.get("startDate") or ""
+        if s:
+            try:
+                start_dt = datetime.fromisoformat(s)
+                if start_dt.tzinfo is None:
+                    start_dt = start_dt.replace(tzinfo=timezone.utc)
+                upcoming_stages.append((start_dt, stg.get("name", ""), s, stg_type))
+            except Exception:
+                pass
+    upcoming_stages.sort(key=lambda x: x[0])
+    next_stage_name = upcoming_stages[0][1] if upcoming_stages else ""
+    next_stage_start = upcoming_stages[0][2] if upcoming_stages else ""
+    next_stage_active = now >= upcoming_stages[0][0] if upcoming_stages else False
+
+    # Gather all shortlisted participants
+    shortlisted = await participants_col.find(
+        {"event_id": event_id, "status": "shortlisted"}
+    ).to_list(length=1000)
+
+    sent_count = 0
+    errors = []
+
+    for p in shortlisted:
+        try:
+            email = str(p.get("email") or "").strip()
+            if not email:
+                continue
+
+            p_name = p.get("name") or p.get("full_name") or "Participant"
+
+            # Build email content based on next stage status
+            if next_stage_active:
+                status_msg = f"You have been shortlisted for <strong>{next_stage_name}</strong> which is now <strong>active</strong>. Please proceed to submit your work."
+            elif next_stage_name:
+                status_msg = f"You have been shortlisted for <strong>{next_stage_name}</strong>. The stage opens on <strong>{datetime.fromisoformat(next_stage_start).strftime('%B %d, %Y at %I:%M %p') if next_stage_start else 'soon'}</strong>. You will be notified when it is ready."
+            else:
+                status_msg = f"Congratulations! You have been shortlisted for <strong>{event_title}</strong>."
+
+            context = {
+                "participant_name": p_name,
+                "event_title": event_title,
+                "event_name": event_title,
+                "organization_name": org_name,
+                "stage_name": next_stage_name or stage_name or "Next Stage",
+                "application_status": "Shortlisted",
+                "status_message": status_msg,
+                "event_link": f"{frontend_url}/events/{event_id}",
+                "stage_link": f"{frontend_url}/events/{event_id}",
+            }
+
+            # Try template or fallback
+            tpl = await get_active_template(event_id, institution_id, "stage_advancement")
+            if tpl:
+                subj, body_html = render_template(tpl, context)
+            else:
+                stage_label = next_stage_name or stage_name or "Next Stage"
+                subj = f"Shortlisted for {stage_label} — {event_title}"
+                logo_html = f'<img src="{app_logo_url}" alt="Studlyf" style="max-height:32px;margin-bottom:24px;" />' if app_logo_url else ""
+                body_html = f"""<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 0 24px;">
+                    {logo_html}
+                    <div style="background: #f8f7ff; border-radius: 16px; padding: 32px; border: 1px solid #e8e5ff;">
+                        <p style="font-size: 13px; color: #6C3BFF; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0;">Stage Update</p>
+                        <p style="font-size: 20px; color: #0f172a; font-weight: 700; margin: 0 0 16px 0;">Hi {p_name},</p>
+                        <p style="font-size: 15px; color: #334155; line-height: 1.7; margin: 0 0 20px 0;">{status_msg}</p>
+                        <table style="width:100%; margin-bottom: 24px;">
+                            <tr>
+                                <td style="padding: 12px 16px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
+                                    <p style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Event</p>
+                                    <p style="font-size: 15px; color: #0f172a; font-weight: 600; margin: 0;">{event_title}</p>
+                                </td>
+                            </tr>
+                            <tr><td style="height: 8px;"></td></tr>
+                            <tr>
+                                <td style="padding: 12px 16px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
+                                    <p style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Stage</p>
+                                    <p style="font-size: 15px; color: #0f172a; font-weight: 600; margin: 0;">{stage_label}</p>
+                                </td>
+                            </tr>
+                        </table>
+                        <a href="{frontend_url}/events/{event_id}" style="display: block; text-align: center; padding: 14px 28px; background-color: #6C3BFF; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 14px;">Go to Event</a>
+                    </div>
+                    <div style="text-align: center; padding: 24px 0 0 0;">
+                        <p style="font-size: 12px; color: #94a3b8; margin: 0;">Sent by <strong style="color: #64748b;">Studlyf</strong> on behalf of {org_name}</p>
+                    </div>
+                </div>"""
+
+            await enqueue_email(
+                email, subj, body_html,
+                idempotency_key=f"notify_shortlisted_{p['_id']}",
+                metadata={"event_id": event_id, "quiz_id": quiz_id, "type": "stage_advancement"},
+            )
+            sent_count += 1
+        except Exception as e:
+            errors.append({"user_id": p.get("user_id"), "error": str(e)})
+
+    return {
+        "status": "success",
+        "sent_count": sent_count,
         "errors": errors,
     }
 

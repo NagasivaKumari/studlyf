@@ -33,7 +33,9 @@ const AssessmentReviewModal: React.FC<AssessmentReviewModalProps> = ({ isOpen, o
     const [error, setError] = useState('');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [shortlisting, setShortlisting] = useState(false);
+    const [notifying, setNotifying] = useState(false);
     const [shortlistDone, setShortlistDone] = useState(false);
+    const [notifyDone, setNotifyDone] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
     const fetchResults = useCallback(async () => {
@@ -62,6 +64,7 @@ const AssessmentReviewModal: React.FC<AssessmentReviewModalProps> = ({ isOpen, o
             fetchResults();
             setSelectedIds(new Set());
             setShortlistDone(false);
+            setNotifyDone(false);
         }
     }, [isOpen, fetchResults]);
 
@@ -106,6 +109,29 @@ const AssessmentReviewModal: React.FC<AssessmentReviewModalProps> = ({ isOpen, o
             setError(e.message);
         } finally {
             setShortlisting(false);
+        }
+    };
+
+    const handleNotifyShortlisted = async () => {
+        setNotifying(true);
+        setError('');
+        try {
+            const res = await fetch(
+                `${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes/${quizId}/notify-shortlisted`,
+                {
+                    method: 'POST',
+                    headers: { ...authHeaders() },
+                }
+            );
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Notify failed');
+            }
+            setNotifyDone(true);
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setNotifying(false);
         }
     };
 
@@ -270,11 +296,29 @@ const AssessmentReviewModal: React.FC<AssessmentReviewModalProps> = ({ isOpen, o
                                     <AlertCircle size={12} /> {error}
                                 </span>
                             )}
+                            {notifyDone && (
+                                <span className="flex items-center gap-1 text-xs text-emerald-600 mr-auto">
+                                    <CheckCircle2 size={12} /> Notification sent
+                                </span>
+                            )}
                             <button
                                 onClick={onClose}
                                 className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-colors"
                             >
                                 Close
+                            </button>
+                            <button
+                                onClick={handleNotifyShortlisted}
+                                disabled={notifying || shortlistDone === false}
+                                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-600 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2"
+                                title="Send email to all currently shortlisted participants"
+                            >
+                                {notifying ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                    <Send size={14} />
+                                )}
+                                Notify All
                             </button>
                             <button
                                 onClick={handleShortlist}
@@ -283,10 +327,8 @@ const AssessmentReviewModal: React.FC<AssessmentReviewModalProps> = ({ isOpen, o
                             >
                                 {shortlisting ? (
                                     <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                    <Send size={14} />
-                                )}
-                                Shortlist & Notify ({selectedIds.size})
+                                ) : null}
+                                Shortlist ({selectedIds.size})
                             </button>
                         </div>
                     </motion.div>

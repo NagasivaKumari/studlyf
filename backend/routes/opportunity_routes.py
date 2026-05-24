@@ -245,6 +245,7 @@ async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(
         raise HTTPException(status_code=400, detail="answers must be a list")
 
     total, correct = 0, 0
+    total_marks, earned_marks = 0.0, 0.0
     coding_pending = False
     coding_answers = []
     for i, q in enumerate(quiz.get("questions") or []):
@@ -253,18 +254,24 @@ async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(
         qtype = str(q.get("type") or "").upper()
         if qtype == "SINGLE_CHOICE":
             total += 1
+            q_marks = float(q.get("marks") if q.get("marks") is not None else 1.0)
+            total_marks += q_marks
             expected = q.get("correctOptionIndex")
             got = None
             if i < len(answers) and isinstance(answers[i], dict):
                 got = answers[i].get("selectedIndex")
             if isinstance(expected, int) and isinstance(got, int) and expected == got:
                 correct += 1
+                earned_marks += q_marks
         elif qtype == "CODING":
             coding_pending = True
             if i < len(answers) and isinstance(answers[i], dict):
                 coding_answers.append({"q_index": i, "code": answers[i].get("code") or "", "language": answers[i].get("language") or q.get("language")})
 
-    score = int(round((correct / total) * 100)) if total > 0 else 0
+    if total_marks > 0:
+        score = int(round(max(0.0, earned_marks) / total_marks * 100))
+    else:
+        score = int(round((correct / total) * 100)) if total > 0 else 0
     pass_mark = int(quiz.get("pass_mark") or 70)
     passed = (score >= pass_mark) and (not coding_pending)
 

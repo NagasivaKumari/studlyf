@@ -50,15 +50,13 @@ const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, 
                         id: q.id || String(idx + 1),
                         text: q.text || '',
                         type: q.type || 'SINGLE_CHOICE',
+                        marks: typeof q.marks === 'number' ? q.marks : 1,
                         options: Array.isArray(q.options) ? [...q.options] : ['', '', '', ''],
                         correctOptionIndex: typeof q.correctOptionIndex === 'number' ? q.correctOptionIndex : null,
                         language: q.language || 'python',
                         starterCode: q.starterCode || '',
                         sampleInput: q.sampleInput || '',
                         sampleOutput: q.sampleOutput || '',
-                        marks: q.marks || 1,
-                        negativeMarks: q.negative_marks ?? q.negativeMarks ?? 0,
-                        difficulty: q.difficulty || 'Easy',
                     })));
                 } else {
                     setQuestions([
@@ -238,7 +236,7 @@ const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, 
                                                         rows={2}
                                                     />
                                                 </div>
-                                                <div className="w-full md:w-64 space-y-3">
+                                                <div className="w-full md:w-48 space-y-3">
                                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Type</label>
                                                     <select 
                                                         value={q.type}
@@ -248,6 +246,16 @@ const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, 
                                                         <option value="SINGLE_CHOICE">Single choice</option>
                                                         <option value="CODING">Coding</option>
                                                     </select>
+                                                </div>
+                                                <div className="w-full md:w-28 space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Marks</label>
+                                                    <input 
+                                                        type="number"
+                                                        min={1}
+                                                        value={q.marks}
+                                                        onChange={(e) => updateQuestion(q.id, 'marks', Math.max(1, parseInt(e.target.value) || 1))}
+                                                        className="w-full px-6 py-5 bg-slate-50 border border-slate-50 rounded-[1.8rem] font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-[#6C3BFF]/5 transition-all text-center"
+                                                    />
                                                 </div>
                                             </div>
 
