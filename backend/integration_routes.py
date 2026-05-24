@@ -3054,7 +3054,7 @@ async def upload_institution_media(
     field: str = Form(...),
     user: dict = Depends(get_auth_user)
 ):
-    """Uploads a logo or banner image for the institution profile."""
+    """Uploads a logo or banner image for the institution profile stored as base64 in MongoDB."""
     inst_id = user.get("institution_id", "").strip()
     if not inst_id:
         raise HTTPException(status_code=400, detail="User has no institution_id")
@@ -3070,25 +3070,24 @@ async def upload_institution_media(
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
 
-    INST_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads", "institutions")
-    os.makedirs(INST_UPLOAD_DIR, exist_ok=True)
-
-    prefix = "logo" if field == "logo_url" else "banner"
-    fname = f"{prefix}_{uuid.uuid4()}{ext}"
-    fpath = os.path.join(INST_UPLOAD_DIR, fname)
-    with open(fpath, "wb") as f:
-        f.write(content)
-
-    BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
-    url = f"{BASE_URL}/uploads/institutions/{fname}"
+    import base64
+    mime = "image/png"
+    if ext in [".jpg", ".jpeg"]:
+        mime = "image/jpeg"
+    elif ext == ".webp":
+        mime = "image/webp"
+    elif ext == ".gif":
+        mime = "image/gif"
+    b64 = base64.b64encode(content).decode("utf-8")
+    data_url = f"data:{mime};base64,{b64}"
 
     from db import institutions_col
     await institutions_col.update_one(
         {"institution_id": inst_id},
-        {"$set": {field: url}}
+        {"$set": {field: data_url}}
     )
 
-    return {"url": url, "field": field}
+    return {"url": data_url, "field": field}
 
 
 @router.post("/events/{event_id}/stages")
