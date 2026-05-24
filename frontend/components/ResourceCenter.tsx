@@ -1,30 +1,44 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, BookOpen, FileText, Video, Play, Lightbulb } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ArrowRight, BookOpen, FileText, Video, Lightbulb, X } from 'lucide-react';
+
+interface ResourceItem {
+    type: string;
+    title: string;
+    desc: string;
+    content: string;
+    image: string;
+    icon: JSX.Element;
+    height: string;
+    cardBg: string;
+    glowColor: string;
+    link: string;
+}
 
 const ResourceCenter: React.FC = () => {
-    const navigate = useNavigate();
+    const [selectedResource, setSelectedResource] = useState<ResourceItem | null>(null);
 
-    const resources = [
+    const resources: ResourceItem[] = [
         {
             type: 'CASE STUDY',
             title: 'Elm Partners with Studlyf to Build a Graduate Development Program',
             desc: 'Elm is recognized for fostering a creative work environment that encourages...',
             image: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&q=80&w=800',
             icon: <BookOpen size={14} />,
-            height: 'h-[380px]',
+            height: 'h-[360px]',
             cardBg: 'bg-gradient-to-br from-[#1E40AF] to-[#3B82F6]',
             glowColor: 'border-sky-400/50 hover:shadow-sky-400/20 text-sky-400 bg-sky-500/10',
+            content: 'A quick peek into how creative teams use rapid prototyping and live feedback loops to build more engaging graduate programs.',
             link: 'https://example.com/case-study/elm-partners'
         },
         {
             type: 'REPORT',
-            title: 'What product leaders are getting wrong about generative AI',
-            desc: 'Generative AI is reshaping industries at an unprecedented pace...',
+            title: 'Generative AI Leadership Playbook',
+            desc: 'Data-driven leaders are rethinking product strategy in every industry.',
+            content: 'Takeaway notes, market signals, and tactical steps for product teams adopting AI-powered workflows.',
             image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&q=80&w=800',
             icon: <FileText size={14} />,
-            height: 'h-[300px]',
+            height: 'h-[360px]',
             cardBg: 'bg-[#1A0F0A]',
             glowColor: 'border-emerald-400/50 hover:shadow-emerald-400/20 text-emerald-400 bg-emerald-500/10',
             link: 'https://example.com/report/generative-ai'
@@ -35,18 +49,20 @@ const ResourceCenter: React.FC = () => {
             desc: 'Siemens SI has partnered with Studlyf to launch the Data Empowerment...',
             image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=800',
             icon: <BookOpen size={14} />,
-            height: 'h-[400px]',
+            height: 'h-[360px]',
             cardBg: 'bg-[#4C1D95]',
             glowColor: 'border-amber-400/50 hover:shadow-amber-400/20 text-amber-400 bg-amber-500/10',
+            content: 'A practical case example showing how analytics and collaboration can fuel better decision-making inside a large manufacturing business.',
             link: 'https://example.com/case-study/siemens-data'
         },
         {
             type: 'WEBINAR',
             title: 'What AI Agents can and can not do',
             desc: "Whether you're a developer, product manager, or just curious...",
+            content: 'A quick summary of agent capabilities, limits, and the ideal situations for human + AI collaboration.',
             image: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&q=80&w=800',
             icon: <Video size={14} />,
-            height: 'h-[310px]',
+            height: 'h-[360px]',
             cardBg: 'bg-[#051937]',
             glowColor: 'border-indigo-400/50 hover:shadow-indigo-400/20 text-indigo-400 bg-indigo-500/10',
             link: 'https://example.com/webinar/ai-agents'
@@ -55,9 +71,10 @@ const ResourceCenter: React.FC = () => {
             type: 'CASE STUDY',
             title: 'How Agentic AI works: MCP explained',
             desc: 'A deep dive into the underlying architecture of agentic workflows.',
+            content: 'An example of how agent orchestration can simplify complex business processes while keeping humans in control.',
             image: 'https://images.unsplash.com/photo-1620712943543-bcc4628c9757?auto=format&fit=crop&q=80&w=1400',
             icon: <BookOpen size={14} />,
-            height: 'h-[380px]',
+            height: 'h-[360px]',
             cardBg: 'bg-[#004DFF]',
             glowColor: 'border-rose-400/50 hover:shadow-rose-400/20 text-rose-400 bg-rose-500/10',
             link: 'https://example.com/case-study/agentic-ai'
@@ -66,9 +83,10 @@ const ResourceCenter: React.FC = () => {
             type: 'MEDIA',
             title: '2025 State of AI at work report',
             desc: 'The adoption of AI is accelerating...',
+            content: 'A concise report snapshot covering AI adoption, skills demand, and workplace transformation in the next year.',
             image: 'https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&q=80&w=800',
             icon: <FileText size={14} />,
-            height: 'h-[280px]',
+            height: 'h-[360px]',
             cardBg: 'bg-[#C084FC]',
             glowColor: 'border-teal-400/50 hover:shadow-teal-400/20 text-teal-400 bg-teal-500/10',
             link: 'https://example.com/media/ai-work-report'
@@ -163,15 +181,15 @@ const ResourceCenter: React.FC = () => {
                         initial="hidden"
                         whileInView="visible"
                         viewport={{ once: true, margin: "-100px" }}
-                        className="columns-1 md:columns-2 lg:columns-3 gap-8 space-y-8"
+                        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
                     >
                         {resources.map((res, idx) => (
                             <motion.div
                                 key={idx}
                                 variants={itemVariants}
                                 whileHover={{ y: -12, transition: { duration: 0.4, ease: "easeOut" } }}
-                                onClick={() => window.open(res.link, '_blank')}
-                                className={`break-inside-avoid group relative ${res.cardBg} rounded-[3rem] overflow-hidden transition-all duration-500 shadow-2xl flex flex-col border-x border-b cursor-pointer ${res.glowColor.split(' ')[0]} ${res.height}`}
+                                onClick={() => setSelectedResource(res)}
+                                className={`group relative ${res.cardBg} rounded-[3rem] overflow-hidden transition-all duration-500 shadow-2xl flex flex-col border-x border-b cursor-pointer ${res.glowColor.split(' ')[0]} ${res.height}`}
                             >
                                 {/* Permanent Background Glow Layer */}
                                 <div className="absolute inset-0 z-0 opacity-40">
@@ -214,6 +232,54 @@ const ResourceCenter: React.FC = () => {
                             </motion.div>
                         ))}
                     </motion.div>
+
+                    {selectedResource && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/70" onClick={() => setSelectedResource(null)}>
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.96 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ duration: 0.25 }}
+                                onClick={(event) => event.stopPropagation()}
+                                className="w-full max-w-5xl rounded-[2rem] overflow-hidden bg-white shadow-2xl border border-slate-200"
+                            >
+                                <div className="flex items-start justify-between gap-4 p-6 bg-slate-950 text-white">
+                                    <div>
+                                        <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Raw structure preview</p>
+                                        <h3 className="mt-2 text-2xl font-bold">{selectedResource.title}</h3>
+                                        <p className="mt-2 text-sm text-slate-300">{selectedResource.type}</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setSelectedResource(null)}
+                                        className="rounded-full border border-slate-700 bg-slate-900/80 p-2 text-slate-200 transition hover:bg-slate-900"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] p-6 bg-slate-50">
+                                    <div className="rounded-[1.5rem] overflow-hidden border border-slate-200 shadow-sm">
+                                        <img src={selectedResource.image} alt={selectedResource.title} className="w-full h-96 object-cover" />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
+                                            <p className="text-sm text-slate-500 uppercase tracking-[0.35em]">Description</p>
+                                            <p className="mt-3 text-slate-700 leading-relaxed">{selectedResource.desc}</p>
+                                        </div>
+                                        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
+                                            <p className="text-sm text-slate-500 uppercase tracking-[0.35em]">Raw content</p>
+                                            <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-lime-100">
+{`type: ${selectedResource.type}
+title: ${selectedResource.title}
+desc: ${selectedResource.desc}
+content: ${selectedResource.content}
+image: ${selectedResource.image}`}
+                                            </pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
 
                     {/* ✨ Premium Animated Footer Button */}
                     <div className="mt-10 flex justify-center">
