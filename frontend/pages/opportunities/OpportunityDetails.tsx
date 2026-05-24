@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { 
@@ -151,6 +151,11 @@ const OpportunityDetails: React.FC = () => {
     
     // Decoupled global profile onboarding states
     const [registrationStatus, setRegistrationStatus] = useState<string>('NOT_REGISTERED');
+    const effectiveRegStatus = useMemo(() => {
+        if (registrationStatus === 'APPROVED') return 'APPROVED';
+        if (myApplication && ['shortlisted', 'accepted', 'approved'].includes(String(myApplication.status).toLowerCase())) return 'APPROVED';
+        return registrationStatus;
+    }, [registrationStatus, myApplication]);
     const [formConfig, setFormConfig] = useState<any>(null);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [uploadingField, setUploadingField] = useState<string | null>(null);
@@ -700,7 +705,7 @@ const OpportunityDetails: React.FC = () => {
         const event_hub_id = String(opportunity.event_link_id || opportunity.event_id || id);
         const oppPath = id ? `/opportunities/${encodeURIComponent(String(id))}` : '';
         const isSubmissionStage = stype === 'SUBMISSION' || sname.includes('SUBMISSION');
-        const regStatusStr = (registrationStatus || 'NOT_REGISTERED').toUpperCase();
+        const regStatusStr = (effectiveRegStatus || 'NOT_REGISTERED').toUpperCase();
         const isRegistrationStage = stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION');
 
         if (isRegistrationStage) {
@@ -1010,39 +1015,39 @@ const OpportunityDetails: React.FC = () => {
                 {/* Onboarding Lock & Congratulations Banners */}
                 {user && (
                     <div className={`mb-6 p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all duration-300 shadow-sm
-                        ${registrationStatus === 'APPROVED' ? 'bg-purple-50/50 border-purple-200 text-purple-900' :
-                          registrationStatus === 'PENDING_APPROVAL' ? 'bg-amber-50/60 border-amber-200 text-amber-900' :
-                          registrationStatus === 'REJECTED' ? 'bg-rose-50 border-rose-200 text-rose-900' :
+                        ${effectiveRegStatus === 'APPROVED' ? 'bg-purple-50/50 border-purple-200 text-purple-900' :
+                          effectiveRegStatus === 'PENDING_APPROVAL' ? 'bg-amber-50/60 border-amber-200 text-amber-900' :
+                          effectiveRegStatus === 'REJECTED' ? 'bg-rose-50 border-rose-200 text-rose-900' :
                           'bg-slate-50 border-slate-200 text-slate-700'}`}
                     >
                         <div className="flex items-center gap-4">
                             <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm shrink-0
-                                ${registrationStatus === 'APPROVED' ? 'bg-[#6C3BFF]' :
-                                  registrationStatus === 'PENDING_APPROVAL' ? 'bg-amber-500' :
-                                  registrationStatus === 'REJECTED' ? 'bg-rose-500' :
+                                ${effectiveRegStatus === 'APPROVED' ? 'bg-[#6C3BFF]' :
+                                  effectiveRegStatus === 'PENDING_APPROVAL' ? 'bg-amber-500' :
+                                  effectiveRegStatus === 'REJECTED' ? 'bg-rose-500' :
                                   'bg-slate-500'}`}
                             >
-                                {registrationStatus === 'APPROVED' ? <CheckCircle2 size={24} /> :
-                                 registrationStatus === 'PENDING_APPROVAL' ? <Clock size={24} /> :
-                                 registrationStatus === 'REJECTED' ? <XCircle size={24} /> :
+                                {effectiveRegStatus === 'APPROVED' ? <CheckCircle2 size={24} /> :
+                                 effectiveRegStatus === 'PENDING_APPROVAL' ? <Clock size={24} /> :
+                                 effectiveRegStatus === 'REJECTED' ? <XCircle size={24} /> :
                                  <Users size={24} />}
                             </div>
                             <div>
                                 <h3 className="font-black text-sm uppercase tracking-wider">
-                                    {registrationStatus === 'APPROVED' ? 'Registration Approved' :
-                                     registrationStatus === 'PENDING_APPROVAL' ? 'Registration Pending Host Review' :
-                                     registrationStatus === 'REJECTED' ? 'Registration Rejected' :
+                                    {effectiveRegStatus === 'APPROVED' ? 'Registration Approved' :
+                                     effectiveRegStatus === 'PENDING_APPROVAL' ? 'Registration Pending Host Review' :
+                                     effectiveRegStatus === 'REJECTED' ? 'Registration Rejected' :
                                      'Registration Required'}
                                 </h3>
                                 <p className="text-xs font-semibold opacity-95 mt-1">
-                                    {registrationStatus === 'APPROVED' ? 'Congratulations! You are officially registered. All event assessment stages are unlocked.' :
-                                     registrationStatus === 'PENDING_APPROVAL' ? 'Your registration is under manual host evaluation. Downstream stages will unlock upon approval.' :
-                                     registrationStatus === 'REJECTED' ? 'Unfortunately, your application did not meet the host criteria. Contact organizers for feedback.' :
+                                    {effectiveRegStatus === 'APPROVED' ? 'Congratulations! You are officially registered. All event assessment stages are unlocked.' :
+                                     effectiveRegStatus === 'PENDING_APPROVAL' ? 'Your registration is under manual host evaluation. Downstream stages will unlock upon approval.' :
+                                     effectiveRegStatus === 'REJECTED' ? 'Unfortunately, your application did not meet the host criteria. Contact organizers for feedback.' :
                                      'Complete the decoupled global registration form to unlock stages and timeline assessments.'}
                                 </p>
                             </div>
                         </div>
-                        {registrationStatus === 'NOT_REGISTERED' && (
+                        {effectiveRegStatus === 'NOT_REGISTERED' && (
                             <button
                                 type="button"
                                 onClick={() => setShowRegistrationModal(true)}
@@ -1063,7 +1068,7 @@ const OpportunityDetails: React.FC = () => {
                                 const startDate = stage.startDate || stage.start_date ? new Date(stage.startDate || stage.start_date) : null;
                                 const endDate = stage.endDate || stage.end_date ? new Date(stage.endDate || stage.end_date) : null;
                                 const status = computeStageStatus(stage);
-                                const regStatusStr = (registrationStatus || 'NOT_REGISTERED').toUpperCase();
+                                const regStatusStr = (effectiveRegStatus || 'NOT_REGISTERED').toUpperCase();
                                 const isRegistration = (String(stage.type || '').toUpperCase() === 'REGISTRATION') || (String(stage.name || '').toUpperCase().includes('REGISTER'));
                                 const canInteract = (status === 'active') && (isRegistration || regStatusStr === 'APPROVED');
 
