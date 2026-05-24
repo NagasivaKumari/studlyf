@@ -88,6 +88,49 @@ const EventQuizPage: React.FC = () => {
         return () => clearInterval(timer);
     }, [quiz, durationSeconds]);
 
+    const submit = useCallback(async () => {
+        if (!eventId || !quizId || submittedRef.current) return;
+        submittedRef.current = true;
+        setSaving(true);
+        try {
+            const payload: Record<string, any> = {};
+            Object.keys(answers).forEach((qIdx) => {
+                const answer = answers[qIdx];
+                if (answer !== undefined && answer !== null && answer !== '') {
+                    payload[qIdx] = answer;
+                }
+            });
+
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes/${quizId}/submit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({
+                    answers: payload,
+                    time_spent: durationSeconds - timeLeft,
+                }),
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || 'Failed to submit quiz');
+            }
+
+            const data = await res.json();
+            if (data.passed) {
+                alert(`Quiz submitted! Score: ${data.score}%. You qualified!`);
+            } else {
+                alert(`Quiz submitted. Score: ${data.score}%.`);
+            }
+            navigate(`/events/${eventId}`);
+        } catch (err: any) {
+            submittedRef.current = false;
+            console.error('Quiz submission error:', err);
+            alert(err.message || 'Failed to submit quiz');
+        } finally {
+            setSaving(false);
+        }
+    }, [eventId, quizId, answers, durationSeconds, timeLeft, navigate]);
+
     // Auto-submit when time hits 0
     useEffect(() => {
         if (timeLeft === 0 && !submittedRef.current && quiz && !saving) {
@@ -102,29 +145,6 @@ const EventQuizPage: React.FC = () => {
     };
 
     const canSubmit = useMemo(() => Array.isArray(quiz?.questions) && quiz.questions.length > 0, [quiz?.questions]);
-
-    const submit = useCallback(async () => {
-        if (!eventId || !quizId || submittedRef.current) return;
-        submittedRef.current = true;
-        setSaving(true);
-        setError('');
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/opportunities/events/${eventId}/quizzes/${quizId}/submit`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ answers }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data?.detail || 'Failed to submit quiz');
-            alert(`Submitted. Score: ${data.score}% | ${data.passed ? 'Qualified' : 'Not qualified'}`);
-            navigate(`/events/${eventId}`);
-        } catch (e: any) {
-            setError(e?.message || 'Submit failed');
-            submittedRef.current = false;
-        } finally {
-            setSaving(false);
-        }
-    }, [eventId, quizId, answers, navigate]);
 
     if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Loading quiz...</div>;
     if (error) return <div className="min-h-screen flex items-center justify-center text-red-600 font-semibold">{error}</div>;

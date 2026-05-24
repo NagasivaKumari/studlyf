@@ -3010,7 +3010,7 @@ async def upload_event_media(
     field: str = Form(...),
     user: dict = Depends(get_auth_user)
 ):
-    """Uploads a logo or banner image for an existing event and updates its record."""
+    """Uploads a logo or banner image for an existing event stored as base64 in MongoDB."""
     await assert_institution_owns_event(event_id, user)
     from db import events_col, opportunities_col
 
@@ -3021,31 +3021,33 @@ async def upload_event_media(
     if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 
-    EVENTS_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads", "events")
-    os.makedirs(EVENTS_UPLOAD_DIR, exist_ok=True)
-
-    prefix = "logo" if field == "logo_url" else "banner"
-    fname = f"{prefix}_{uuid.uuid4()}{ext}"
-    fpath = os.path.join(EVENTS_UPLOAD_DIR, fname)
     content = await file.read()
-    with open(fpath, "wb") as f:
-        f.write(content)
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
 
-    BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
-    url = f"{BASE_URL}/uploads/events/{fname}"
+    import base64
+    mime = "image/png"
+    if ext in [".jpg", ".jpeg"]:
+        mime = "image/jpeg"
+    elif ext == ".webp":
+        mime = "image/webp"
+    elif ext == ".gif":
+        mime = "image/gif"
+    b64 = base64.b64encode(content).decode("utf-8")
+    data_url = f"data:{mime};base64,{b64}"
 
-    await events_col.update_one(_event_id_query(event_id), {"$set": {field: url}})
+    await events_col.update_one(_event_id_query(event_id), {"$set": {field: data_url}})
 
     # Sync to linked opportunity
     try:
         await opportunities_col.update_many(
             {"event_link_id": str(event_id)},
-            {"$set": {field: url}}
+            {"$set": {field: data_url}}
         )
     except Exception as e:
         logger.warning(f"[SYNC] Failed to update opportunity media: {e}")
 
-    return {"url": url, "field": field}
+    return {"url": data_url, "field": field}
 
 
 @router.post("/institution/upload-media")
