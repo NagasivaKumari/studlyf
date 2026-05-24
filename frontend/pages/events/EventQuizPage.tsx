@@ -93,11 +93,11 @@ const EventQuizPage: React.FC = () => {
         submittedRef.current = true;
         setSaving(true);
         try {
-            const payload: Record<string, any> = {};
+            const payload: any[] = [];
             Object.keys(answers).forEach((qIdx) => {
                 const answer = answers[qIdx];
                 if (answer !== undefined && answer !== null && answer !== '') {
-                    payload[qIdx] = answer;
+                    payload[Number(qIdx)] = answer;
                 }
             });
 
