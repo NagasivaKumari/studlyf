@@ -1112,7 +1112,33 @@ const OpportunityDetails: React.FC = () => {
                 )}
 
                 {/* Hero card — reference layout */}
-                <article className="bg-white rounded-2xl border border-slate-200 shadow-sm border-t-4 border-purple-600 overflow-hidden mb-8">
+                <article className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden mb-8">
+                    {/* Premium Hero Banner Section */}
+                    <div className="relative w-full h-48 md:h-64 overflow-hidden bg-slate-900 group">
+                        {opportunity.banner_url ? (
+                            <img 
+                                src={getImageUrl(opportunity.banner_url)} 
+                                alt="Event Banner" 
+                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                                onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                                    if (fallback) fallback.style.display = 'flex';
+                                }}
+                            />
+                        ) : null}
+                        <div 
+                            className="absolute inset-0 w-full h-full bg-gradient-to-tr from-purple-900 via-indigo-950 to-slate-900 flex items-center justify-center"
+                            style={{ display: opportunity.banner_url ? 'none' : 'flex' }}
+                        >
+                            <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_30%_20%,#6C3BFF_0%,transparent_50%),radial-gradient(circle_at_70%_60%,#FF3B9A_0%,transparent_50%)]"></div>
+                            <div className="relative z-10 flex flex-col items-center text-center px-6">
+                                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-300 mb-2">Interactive Event Onboarding</span>
+                                <h2 className="text-xl md:text-2xl font-black text-white uppercase tracking-wider">{opportunity.title}</h2>
+                            </div>
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent pointer-events-none"></div>
+                    </div>
                     <div className="p-6 md:p-8">
                         <div className="flex flex-wrap items-start justify-between gap-4">
                             <div className="flex items-center gap-2 text-sm font-bold">

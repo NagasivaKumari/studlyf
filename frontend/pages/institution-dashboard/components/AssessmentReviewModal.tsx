@@ -11,6 +11,8 @@ interface QuizResult {
     team_id: string | null;
     team_name: string | null;
     score: number;
+    correct?: number;
+    total?: number;
     pass_mark: number;
     passed: boolean;
     submitted_at: string;
@@ -254,9 +256,10 @@ const AssessmentReviewModal: React.FC<AssessmentReviewModalProps> = ({ isOpen, o
                                                     </td>
                                                     <td className="py-3 pr-3">
                                                         <span className={`font-black ${r.passed ? 'text-emerald-600' : 'text-red-500'}`}>
-                                                            {r.score}%
+                                                            {r.correct !== undefined && r.total !== undefined ? `${r.correct}/${r.total}` : `${r.score}%`}
                                                         </span>
-                                                        <span className="text-slate-400"> / {r.pass_mark}%</span>
+                                                        <span className="text-slate-400"> ({r.score}%)</span>
+                                                        <span className="text-[10px] text-slate-400 block mt-0.5">Cutoff: {r.pass_mark}%</span>
                                                     </td>
                                                     <td className="py-3 pr-3">
                                                         {r.passed ? (
@@ -309,7 +312,7 @@ const AssessmentReviewModal: React.FC<AssessmentReviewModalProps> = ({ isOpen, o
                             </button>
                             <button
                                 onClick={handleNotifyShortlisted}
-                                disabled={notifying || shortlistDone === false}
+                                disabled={notifying || !results.some(r => r.participant_status === 'shortlisted' || r.participant_status === 'accepted')}
                                 className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-600 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2"
                                 title="Send email to all currently shortlisted participants"
                             >

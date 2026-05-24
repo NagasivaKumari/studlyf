@@ -154,16 +154,28 @@ async def view_opportunity(
 @router.get("/events/{event_id}/quizzes/{quiz_id}")
 async def learner_view_quiz(event_id: str, quiz_id: str, user: dict = Depends(get_auth_user)):
     """Learner access to quiz with stage visibility enforcement."""
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
     uid = str(user.get("user_id") or "")
     if not uid:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    quiz = await quizzes_col.find_one({"_id": ObjectId(quiz_id), "event_id": str(event_id)})
+
+    from bson.errors import InvalidId
+    quiz_query = {"_id": ObjectId(quiz_id), "$or": [{"event_id": resolved_eid}]}
+    try:
+        quiz_query["$or"].append({"event_id": ObjectId(resolved_eid)})
+    except (InvalidId, ValueError):
+        pass
+    quiz = await quizzes_col.find_one(quiz_query)
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
-    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+
+    ev = await events_col.find_one({"_id": ObjectId(resolved_eid)})
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
-    p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
+
+    participants_query = {"$and": [{"user_id": uid}, {"$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}]}]}
+    p = await participants_col.find_one(participants_query)
     if not p:
         raise HTTPException(status_code=403, detail="Register/apply first to access this quiz")
 
@@ -192,7 +204,7 @@ async def learner_view_quiz(event_id: str, quiz_id: str, user: dict = Depends(ge
             continue
         cfg = s.get("config") if isinstance(s.get("config"), dict) else {}
         if str(cfg.get("quiz_id") or "") == str(quiz_id):
-            await check_stage_unlock_rules(event_id, uid, s)
+            await check_stage_unlock_rules(resolved_eid, uid, s)
             break
 
     # Hide answers
@@ -206,7 +218,7 @@ async def learner_view_quiz(event_id: str, quiz_id: str, user: dict = Depends(ge
 
     return {
         "_id": str(quiz["_id"]),
-        "event_id": str(event_id),
+        "event_id": str(resolved_eid),
         "title": quiz.get("title"),
         "duration": quiz.get("duration"),
         "pass_mark": quiz.get("pass_mark", 70),
@@ -221,16 +233,28 @@ async def learner_view_quiz(event_id: str, quiz_id: str, user: dict = Depends(ge
 @router.post("/events/{event_id}/quizzes/{quiz_id}/submit")
 async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(...), user: dict = Depends(get_auth_user)):
     """Learner submits quiz attempt; auto-score single-choice and queue coding for review."""
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
     uid = str(user.get("user_id") or "")
     if not uid:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    quiz = await quizzes_col.find_one({"_id": ObjectId(quiz_id), "event_id": str(event_id)})
+
+    from bson.errors import InvalidId
+    quiz_query = {"_id": ObjectId(quiz_id), "$or": [{"event_id": resolved_eid}]}
+    try:
+        quiz_query["$or"].append({"event_id": ObjectId(resolved_eid)})
+    except (InvalidId, ValueError):
+        pass
+    quiz = await quizzes_col.find_one(quiz_query)
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
-    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+
+    ev = await events_col.find_one({"_id": ObjectId(resolved_eid)})
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
-    p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
+
+    participants_query = {"$and": [{"user_id": uid}, {"$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}]}]}
+    p = await participants_col.find_one(participants_query)
     if not p:
         raise HTTPException(status_code=400, detail="You must register/apply before attempting the assessment")
 
@@ -246,7 +270,7 @@ async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(
             continue
         cfg = s.get("config") if isinstance(s.get("config"), dict) else {}
         if str(cfg.get("quiz_id") or "") == str(quiz_id):
-            await check_stage_unlock_rules(event_id, uid, s)
+            await check_stage_unlock_rules(resolved_eid, uid, s)
             break
 
     answers = payload.get("answers") or []
@@ -289,6 +313,8 @@ async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(
         "score": score,
         "pass_mark": pass_mark,
         "passed": passed,
+        "correct": correct,
+        "total": total,
         "coding_pending_review": coding_pending,
         "coding_answers": coding_answers,
         "submitted_at": datetime.utcnow().isoformat(),

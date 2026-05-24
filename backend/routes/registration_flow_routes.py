@@ -557,11 +557,13 @@ async def get_registration_form_config(event_id: str, user: dict = Depends(get_a
                 
         custom_questions = event.get("custom_questions") or []
             
-        reg = await registrations_col.find_one({"event_id": str(event_id), "user_id": user["user_id"]})
+        reg_query = {"user_id": user["user_id"], "$or": [{"event_id": str(event_id)}, {"event_id": ObjectId(event_id)}]}
+        reg = await registrations_col.find_one(reg_query)
         reg_status = reg.get("status", "NOT_REGISTERED") if reg else "NOT_REGISTERED"
         
         if reg_status == "NOT_REGISTERED":
-            participant = await participants_col.find_one({"event_id": str(event_id), "user_id": user["user_id"]})
+            participant_query = {"user_id": user["user_id"], "$or": [{"event_id": str(event_id)}, {"event_id": ObjectId(event_id)}]}
+            participant = await participants_col.find_one(participant_query)
             if participant:
                 ps = (participant.get("status") or "").lower()
                 if ps in ("shortlisted", "registered", "approved", "accepted"):
@@ -751,11 +753,17 @@ async def submit_event_registration(event_id: str, request: ApplyRegistrationReq
             "updated_at": datetime.now(timezone.utc)
         }
         
-        await participants_col.update_one(
-            {"event_id": str(event_id), "user_id": user["user_id"]},
-            {"$set": participant_doc},
-            upsert=True
-        )
+        existing_p = await participants_col.find_one({
+            "user_id": user["user_id"],
+            "$or": [{"event_id": str(event_id)}, {"event_id": ObjectId(event_id)}]
+        })
+        if existing_p:
+            await participants_col.update_one(
+                {"_id": existing_p["_id"]},
+                {"$set": participant_doc}
+            )
+        else:
+            await participants_col.insert_one(participant_doc)
         
         return {
             "status": "success",

@@ -2950,9 +2950,34 @@ async def update_event_details(event_id: str, update_data: dict, user: dict = De
                     if reg_end:
                         update_data["registrationDeadline"] = reg_end
 
+    # Self-Healing Media Preservation Guard: preserve existing logo/banner if missing or empty in payload
+    ev_in_db = await events_col.find_one(_event_id_query(event_id))
+    if ev_in_db:
+        # Determine if payload has a valid logo
+        payload_logo = update_data.get("logo_url") or update_data.get("logoUrl") or update_data.get("logo") or update_data.get("image_url")
+        db_logo = ev_in_db.get("logo_url") or ev_in_db.get("logoUrl") or ev_in_db.get("logo") or ev_in_db.get("image_url")
+        if not payload_logo and db_logo:
+            update_data["logo_url"] = db_logo
+            update_data["logoUrl"] = db_logo
+            update_data["image_url"] = db_logo
+        elif payload_logo:
+            update_data["logo_url"] = payload_logo
+            update_data["logoUrl"] = payload_logo
+            update_data["image_url"] = payload_logo
+
+        # Determine if payload has a valid banner
+        payload_banner = update_data.get("banner_url") or update_data.get("bannerUrl") or update_data.get("banner")
+        db_banner = ev_in_db.get("banner_url") or ev_in_db.get("bannerUrl") or ev_in_db.get("banner")
+        if not payload_banner and db_banner:
+            update_data["banner_url"] = db_banner
+            update_data["bannerUrl"] = db_banner
+        elif payload_banner:
+            update_data["banner_url"] = payload_banner
+            update_data["bannerUrl"] = payload_banner
+
     await events_col.update_one(_event_id_query(event_id), {"$set": update_data})
     
-        # Sync stage config pass_mark to linked quiz documents
+    # Sync stage config pass_mark to linked quiz documents
     if isinstance(update_data.get("stages"), list):
         from db import quizzes_col
         for s in update_data["stages"]:
@@ -2981,14 +3006,10 @@ async def update_event_details(event_id: str, update_data: dict, user: dict = De
             opp_update["title"] = update_data["title"]
         if "description" in update_data:
             opp_update["description"] = update_data["description"]
-        if "logo_url" in update_data:
+        if update_data.get("logo_url"):
             opp_update["logo_url"] = update_data["logo_url"]
-        elif "logo" in update_data:
-            opp_update["logo_url"] = update_data["logo"]
-        if "banner_url" in update_data:
+        if update_data.get("banner_url"):
             opp_update["banner_url"] = update_data["banner_url"]
-        elif "banner" in update_data:
-            opp_update["banner_url"] = update_data["banner"]
             
         if opp_update:
             await opportunities_col.update_many({"event_link_id": str(event_id)}, {"$set": opp_update})
@@ -3582,14 +3603,23 @@ async def create_event_quiz(event_id: str, quiz_data: dict, user: dict = Depends
 async def submit_event_quiz(event_id: str, quiz_id: str, payload: dict = Body(...), user: dict = Depends(get_auth_user)):
     """Learner submits an event quiz attempt (auto-evaluates single-choice)."""
     from db import quizzes_col, participants_col, events_col, opportunity_applications_col
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
     uid = str(user.get("user_id") or "")
     if not uid:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    quiz = await quizzes_col.find_one({"_id": ObjectId(quiz_id), "event_id": str(event_id)})
+    from bson.errors import InvalidId
+    quiz_query = {"_id": ObjectId(quiz_id), "$or": [{"event_id": resolved_eid}]}
+    try:
+        quiz_query["$or"].append({"event_id": ObjectId(resolved_eid)})
+    except (InvalidId, ValueError):
+        pass
+    quiz = await quizzes_col.find_one(quiz_query)
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
-    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+        
+    ev = await events_col.find_one({"_id": ObjectId(resolved_eid)})
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -3599,7 +3629,7 @@ async def submit_event_quiz(event_id: str, quiz_id: str, payload: dict = Body(..
     for stg in (ev.get("stages") or []):
         if isinstance(stg, dict) and (stg.get("config") or {}).get("quiz_id") == quiz_id:
             target_stage = stg
-            await check_stage_unlock_rules(event_id, uid, stg)
+            await check_stage_unlock_rules(resolved_eid, uid, stg)
             break
 
     # Stage visibility check (same as learner GET endpoint)
@@ -3608,13 +3638,15 @@ async def submit_event_quiz(event_id: str, quiz_id: str, payload: dict = Body(..
         if vis == "private":
             raise HTTPException(status_code=403, detail="This round is private")
         if vis == "shortlisted only":
-            p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
+            participants_query = {"$and": [{"user_id": uid}, {"$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}]}]}
+            p = await participants_col.find_one(participants_query)
             if p:
                 st = str(p.get("status") or "").lower()
                 if st not in ("shortlisted", "accepted"):
                     raise HTTPException(status_code=403, detail="This round is only for shortlisted participants")
 
-    p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
+    participants_query = {"$and": [{"user_id": uid}, {"$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}]}]}
+    p = await participants_col.find_one(participants_query)
     if not p:
         raise HTTPException(status_code=400, detail="You must register/apply before attempting the assessment")
 
@@ -3689,6 +3721,8 @@ async def submit_event_quiz(event_id: str, quiz_id: str, payload: dict = Body(..
         "score": score,
         "pass_mark": pass_mark,
         "passed": passed,
+        "correct": correct,
+        "total": total,
         "coding_pending_review": coding_pending,
         "coding_answers": coding_answers,
         "submitted_at": datetime.utcnow().isoformat(),
@@ -3713,12 +3747,20 @@ async def get_quiz_results(event_id: str, quiz_id: str, user: dict = Depends(get
     """Admin view: all quiz attempts with participant details."""
     await assert_institution_owns_event(event_id, user)
     from db import quizzes_col
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
 
-    quiz = await quizzes_col.find_one({"_id": ObjectId(quiz_id), "event_id": event_id})
+    from bson.errors import InvalidId
+    quiz_query = {"_id": ObjectId(quiz_id), "$or": [{"event_id": resolved_eid}]}
+    try:
+        quiz_query["$or"].append({"event_id": ObjectId(resolved_eid)})
+    except (InvalidId, ValueError):
+        pass
+    quiz = await quizzes_col.find_one(quiz_query)
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
 
-    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+    ev = await events_col.find_one({"_id": ObjectId(resolved_eid)})
     stage_name = ""
     stage_index = -1
     for idx, s in enumerate(ev.get("stages") or []):
@@ -3728,7 +3770,8 @@ async def get_quiz_results(event_id: str, quiz_id: str, user: dict = Depends(get
             break
 
     results = []
-    cursor = participants_col.find({"event_id": event_id})
+    participants_query = {"$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}]}
+    cursor = participants_col.find(participants_query)
     async for p in cursor:
         uid = str(p.get("user_id") or "")
         attempts = p.get("quiz_attempts") or []
@@ -3736,6 +3779,14 @@ async def get_quiz_results(event_id: str, quiz_id: str, user: dict = Depends(get
         if not matching:
             continue
         last = matching[-1]
+        correct = last.get("correct")
+        total_q = last.get("total")
+        if correct is None or total_q is None:
+            total_questions_list = quiz.get("questions") or []
+            total_q = len(total_questions_list)
+            score = last.get("score") or 0
+            correct = int(round((score / 100) * total_q)) if total_q > 0 else 0
+
         results.append({
             "user_id": uid,
             "name": p.get("name") or p.get("full_name") or "Unknown",
@@ -3743,6 +3794,8 @@ async def get_quiz_results(event_id: str, quiz_id: str, user: dict = Depends(get
             "team_id": str(p["_id"]) if p.get("team_id") else None,
             "team_name": p.get("team_name"),
             "score": last.get("score"),
+            "correct": correct,
+            "total": total_q,
             "pass_mark": last.get("pass_mark"),
             "passed": last.get("passed", False),
             "submitted_at": last.get("submitted_at"),
@@ -3769,6 +3822,8 @@ async def bulk_shortlist_quiz(
 ):
     """Admin marks selected participants as shortlisted (no email — use notify endpoint for email)."""
     await assert_institution_owns_event(event_id, user)
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
     from services.email_queue_service import enqueue_email
     from services.email_template_service import render_stage_custom_email, get_active_template, render_template
 
@@ -3776,7 +3831,7 @@ async def bulk_shortlist_quiz(
     if not isinstance(user_ids, list) or not user_ids:
         raise HTTPException(status_code=400, detail="user_ids list is required")
 
-    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+    ev = await events_col.find_one({"_id": ObjectId(resolved_eid)})
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -3788,19 +3843,20 @@ async def bulk_shortlist_quiz(
 
     for uid in user_ids:
         try:
-            p = await participants_col.find_one({"event_id": event_id, "user_id": uid})
+            participants_query = {"$and": [{"user_id": uid}, {"$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}]}]}
+            p = await participants_col.find_one(participants_query)
             if not p:
                 errors.append({"user_id": uid, "error": "Participant not found"})
                 continue
 
             # Mark as shortlisted
             await participants_col.update_many(
-                {"event_id": event_id, "user_id": uid},
+                {"$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}], "user_id": uid},
                 {"$set": {"status": "shortlisted", "updated_at": datetime.utcnow()}},
             )
 
             # Also update opportunity application if exists
-            opp = await opportunities_col.find_one({"event_link_id": str(event_id)})
+            opp = await opportunities_col.find_one({"event_link_id": str(resolved_eid)})
             if opp:
                 await opportunity_applications_col.update_many(
                     {"opportunity_id": str(opp["_id"]), "user_id": uid},
@@ -3815,7 +3871,7 @@ async def bulk_shortlist_quiz(
                     "message": f'You qualified for the next stage in "{event_title}".',
                     "is_read": False,
                     "created_at": datetime.utcnow().isoformat(),
-                    "meta": {"event_id": event_id, "quiz_id": quiz_id},
+                    "meta": {"event_id": resolved_eid, "quiz_id": quiz_id},
                 })
             except Exception:
                 pass
@@ -3838,11 +3894,13 @@ async def notify_shortlisted_participants(
 ):
     """Send email notification to all currently shortlisted participants with next-stage info."""
     await assert_institution_owns_event(event_id, user)
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
     from services.email_queue_service import enqueue_email
     from services.email_template_service import get_active_template, render_template
     from db import institutions_col
 
-    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+    ev = await events_col.find_one({"_id": ObjectId(resolved_eid)})
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -3888,9 +3946,8 @@ async def notify_shortlisted_participants(
     next_stage_active = now >= upcoming_stages[0][0] if upcoming_stages else False
 
     # Gather all shortlisted participants
-    shortlisted = await participants_col.find(
-        {"event_id": event_id, "status": "shortlisted"}
-    ).to_list(length=1000)
+    participants_query = {"status": "shortlisted", "$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}]}
+    shortlisted = await participants_col.find(participants_query).to_list(length=1000)
 
     sent_count = 0
     errors = []
@@ -3935,17 +3992,29 @@ async def notify_shortlisted_participants(
                             </td>
                         </tr>
                     </table>
-                    <a href="{frontend_url}/events/{event_id}" style="display: block; text-align: center; padding: 14px 28px; background-color: #6C3BFF; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 14px;">Go to Event</a>
+                    <a href="{frontend_url}/events/{resolved_eid}" style="display: block; text-align: center; padding: 14px 28px; background-color: #6C3BFF; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 14px;">Go to Event</a>
                 </div>
                 <div style="text-align: center; padding: 24px 0 0 0;">
                     <p style="font-size: 12px; color: #94a3b8; margin: 0;">Sent by <strong style="color: #64748b;">Studlyf</strong> on behalf of {org_name}</p>
                 </div>
             </div>"""
 
+            # Dispatch in-app notification
+            from db import notifications_col
+            await notifications_col.insert_one({
+                "user_id": str(p.get("user_id")),
+                "title": f"Shortlisted for {stage_label}",
+                "content": f"Congratulations! You have been shortlisted for {stage_label} in {event_title}.",
+                "is_read": False,
+                "created_at": datetime.utcnow().isoformat(),
+                "type": "stage_advancement",
+                "event_id": resolved_eid,
+            })
+
             await enqueue_email(
                 email, subj, body_html,
                 idempotency_key=f"notify_shortlisted_{p['_id']}",
-                metadata={"event_id": event_id, "quiz_id": quiz_id, "type": "stage_advancement"},
+                metadata={"event_id": resolved_eid, "quiz_id": quiz_id, "type": "stage_advancement"},
             )
             sent_count += 1
         except Exception as e:
@@ -3966,6 +4035,8 @@ async def extend_participant_deadline(
 ):
     """Extend stage deadline for a specific participant + send notification email."""
     await assert_institution_owns_event(event_id, user)
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
     from services.email_queue_service import enqueue_email
 
     user_id = payload.get("user_id", "").strip()
@@ -3980,7 +4051,7 @@ async def extend_participant_deadline(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid new_deadline format (use ISO8601)")
 
-    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+    ev = await events_col.find_one({"_id": ObjectId(resolved_eid)})
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -3990,7 +4061,8 @@ async def extend_participant_deadline(
 
     stage = stages[stage_index]
 
-    p = await participants_col.find_one({"event_id": event_id, "user_id": user_id})
+    participants_query = {"user_id": user_id, "$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}]}
+    p = await participants_col.find_one(participants_query)
     if not p:
         raise HTTPException(status_code=404, detail="Participant not found")
 
@@ -4022,14 +4094,14 @@ async def extend_participant_deadline(
                 "organization_name": org_name,
                 "stage_name": stage_name,
                 "participant_name": p_name,
-                "event_link": f"{frontend_url}/events/{event_id}",
-                "stage_link": f"{frontend_url}/events/{event_id}",
+                "event_link": f"{frontend_url}/events/{resolved_eid}",
+                "stage_link": f"{frontend_url}/events/{resolved_eid}",
                 "stage_unlock_time": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
                 "stage_deadline": new_deadline.strftime("%Y-%m-%d %H:%M UTC"),
                 "extension_reason": reason,
             }
             institution_id = ev.get("institution_id", "")
-            tmpl = await get_active_template(event_id, institution_id, "stage_advancement")
+            tmpl = await get_active_template(resolved_eid, institution_id, "stage_advancement")
             if tmpl:
                 subj, html_body = render_template(tmpl, context)
             else:
@@ -4039,10 +4111,10 @@ async def extend_participant_deadline(
 <p>Hi {p_name},</p>
 <p>Your deadline for <strong>{stage_name}</strong> has been extended to <strong>{new_deadline.strftime('%Y-%m-%d %H:%M UTC')}</strong>.</p>
 <p>Reason: {reason}</p>
-<p>Access your event hub: <a href="{frontend_url}/events/{event_id}">{frontend_url}/events/{event_id}</a></p>
+<p>Access your event hub: <a href="{frontend_url}/events/{resolved_eid}">{frontend_url}/events/{resolved_eid}</a></p>
 <br><p style="color:#666;font-size:12px">Team Studlyf / On behalf of {org_name}</p></div>"""
             await enqueue_email(email, subj, html_body, metadata={
-                "event_id": event_id, "type": "deadline_extension", "stage_index": stage_index,
+                "event_id": resolved_eid, "type": "deadline_extension", "stage_index": stage_index,
             })
         except Exception as e:
             logger.error(f"[DEADLINE-EXTEND] Email error: {e}")
@@ -4052,7 +4124,7 @@ async def extend_participant_deadline(
         f"Deadline extended for {p_name} on {stage_name} until {new_deadline.strftime('%Y-%m-%d %H:%M UTC')}.",
         ntype="info",
         title="Deadline Extended",
-        meta={"event_id": event_id, "stage_index": stage_index, "user_id": user_id},
+        meta={"event_id": resolved_eid, "stage_index": stage_index, "user_id": user_id},
     )
 
     return {
@@ -4067,18 +4139,19 @@ async def extend_participant_deadline(
 async def list_coding_attempts(event_id: str, quiz_id: str, user: dict = Depends(get_auth_user)):
     """Institution view: pending coding evaluations for a quiz."""
     await assert_institution_owns_event(event_id, user)
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
     rows = []
-    cursor = participants_col.find(
-        {
-            "event_id": str(event_id),
-            "quiz_attempts": {
-                "$elemMatch": {
-                    "quiz_id": str(quiz_id),
-                    "coding_pending_review": True,
-                }
-            },
-        }
-    )
+    participants_query = {
+        "$or": [{"event_id": str(resolved_eid)}, {"event_id": ObjectId(resolved_eid)}],
+        "quiz_attempts": {
+            "$elemMatch": {
+                "quiz_id": str(quiz_id),
+                "coding_pending_review": True,
+            }
+        },
+    }
+    cursor = participants_col.find(participants_query)
     async for p in cursor:
         attempts = p.get("quiz_attempts") or []
         latest = None
@@ -4113,10 +4186,13 @@ async def evaluate_coding_attempt(
 ):
     """Institution action: manually score coding attempt and decide shortlist outcome."""
     await assert_institution_owns_event(event_id, user)
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
     score = int(payload.get("score", 0))
     passed = bool(payload.get("passed", False))
     remarks = str(payload.get("remarks") or "").strip()
-    participant = await participants_col.find_one({"event_id": str(event_id), "user_id": str(participant_user_id)})
+    participants_query = {"user_id": str(participant_user_id), "$or": [{"event_id": str(resolved_eid)}, {"event_id": ObjectId(resolved_eid)}]}
+    participant = await participants_col.find_one(participants_query)
     if not participant:
         raise HTTPException(status_code=404, detail="Participant not found")
 
@@ -4145,7 +4221,7 @@ async def evaluate_coding_attempt(
     )
 
     if passed:
-        opp = await opportunities_col.find_one({"event_link_id": str(event_id)})
+        opp = await opportunities_col.find_one({"event_link_id": str(resolved_eid)})
         if opp:
             await opportunity_applications_col.update_many(
                 {"opportunity_id": str(opp["_id"]), "user_id": str(participant_user_id)},
@@ -4158,7 +4234,7 @@ async def evaluate_coding_attempt(
             "message": f"Your coding round was reviewed. Result: {'Qualified' if passed else 'Not qualified'}",
             "is_read": False,
             "created_at": datetime.utcnow().isoformat(),
-            "meta": {"event_id": str(event_id), "quiz_id": str(quiz_id), "manual_score": score, "passed": passed},
+            "meta": {"event_id": str(resolved_eid), "quiz_id": str(quiz_id), "manual_score": score, "passed": passed},
         }
     )
     return {"status": "success", "passed": passed, "score": score}
