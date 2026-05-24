@@ -61,6 +61,7 @@ import { motion, AnimatePresence as FramerAnimatePresence } from 'framer-motion'
 import LeaderboardPage from './LeaderboardPage';
 import { useNavigate } from 'react-router-dom';
 import StageBuilder from './components/StageBuilder';
+import AssessmentReviewModal from './components/AssessmentReviewModal';
 import QuizDesignerModal from './components/QuizDesignerModal';
 import JudgeInviteModal from './components/JudgeInviteModal';
 import EvaluationMatrixView from './components/EvaluationMatrixView';
@@ -128,12 +129,23 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string; type: string } | null>(null);
     const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
     const [quizStageId, setQuizStageId] = useState<string | null>(null);
+    const [reviewQuiz, setReviewQuiz] = useState<{ quizId: string; quizTitle: string; stageName: string } | null>(null);
     const [codingAttempts, setCodingAttempts] = useState<Record<string, any[]>>({});
     const [editDescription, setEditDescription] = useState(false);
     const [reviewingParticipantId, setReviewingParticipantId] = useState<string | null>(null);
     const [portalReviewNotice, setPortalReviewNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
     const [stageSubmissions, setStageSubmissions] = useState<ISubmission[]>([]);
-    const [submissionSubTab, setSubmissionSubTab] = useState<'projects' | 'assets'>('projects');
+    const [submissionSubTab, setSubmissionSubTab] = useState<'projects' | 'assets' | 'assessments'>('projects');
+    const [selectedSubTabQuizStageId, setSelectedSubTabQuizStageId] = useState<string>('');
+    const [quizResults, setQuizResults] = useState<any[]>([]);
+    const [quizResultsLoading, setQuizResultsLoading] = useState(false);
+    const [quizResultsError, setQuizResultsError] = useState('');
+    const [quizResultsSearch, setQuizResultsSearch] = useState('');
+    const [quizSelectedIds, setQuizSelectedIds] = useState<Set<string>>(new Set());
+    const [quizShortlisting, setQuizShortlisting] = useState(false);
+    const [quizNotifying, setQuizNotifying] = useState(false);
+    const [quizShortlistDone, setQuizShortlistDone] = useState(false);
+    const [quizNotifyDone, setQuizNotifyDone] = useState(false);
     const [judgeAssignmentModal, setJudgeAssignmentModal] = useState<{ isOpen: boolean; submissionId: string | null }>({ isOpen: false, submissionId: null });
     const [availableJudges, setAvailableJudges] = useState<any[]>([]);
     const [isJudgeInviteOpen, setIsJudgeInviteOpen] = useState(false);
@@ -155,6 +167,133 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [bulkNotifySelectedTemplate, setBulkNotifySelectedTemplate] = useState<string>('default');
     const [bulkNotifyMinScore, setBulkNotifyMinScore] = useState<string>('');
     const [showBulkPreview, setShowBulkPreview] = useState(false);
+
+    // ─── DECOUPLED REGISTRATION SYSTEM STATES ──────────────────────────────────────
+    const [registrations, setRegistrations] = useState<any[]>([]);
+    const [regStats, setRegStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, waitlisted: 0 });
+    const [regPage, setRegPage] = useState(1);
+    const [regTotalPages, setRegTotalPages] = useState(1);
+    const [regSearch, setRegSearch] = useState('');
+    const [regStatusFilter, setRegStatusFilter] = useState('');
+    const [regLoading, setRegLoading] = useState(false);
+    const [regActionBusy, setRegActionBusy] = useState<string | null>(null);
+    const [expandedRegId, setExpandedRegId] = useState<string | null>(null);
+    const [notifyingApproved, setNotifyingApproved] = useState(false);
+
+    const fetchRegistrations = async () => {
+        if (!eventId || activeTab !== 'registrations') return;
+        setRegLoading(true);
+        try {
+            const queryParams = new URLSearchParams({
+                page: String(regPage),
+                limit: '10',
+                search: regSearch,
+                status_filter: regStatusFilter
+            });
+            const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/participants?${queryParams.toString()}`, {
+                headers: authHeaders()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setRegistrations(data.registrations || []);
+                setRegStats(data.stats || { total: 0, approved: 0, pending: 0, rejected: 0, waitlisted: 0 });
+                setRegTotalPages(data.total_pages || 1);
+            }
+        } catch (err) {
+            console.error('Failed to fetch registrations:', err);
+        } finally {
+            setRegLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchRegistrations();
+    }, [eventId, activeTab, regPage, regStatusFilter, refreshCounter]);
+
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            if (activeTab === 'registrations') {
+                setRegPage(1);
+                fetchRegistrations();
+            }
+        }, 350);
+        return () => clearTimeout(handler);
+    }, [regSearch]);
+
+    const handleUpdateRegistrationStatus = async (registrationId: string, newStatus: string) => {
+        if (!eventId) return;
+        setRegActionBusy(registrationId);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/participants/${registrationId}/status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...authHeaders()
+                },
+                body: JSON.stringify({ status_update: newStatus })
+            });
+            if (res.ok) {
+                setRefreshCounter(prev => prev + 1);
+                setShowSaveSuccess(true);
+                setTimeout(() => setShowSaveSuccess(false), 2000);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(`Failed to update status: ${err.detail || 'Unknown error'}`);
+            }
+        } catch (err) {
+            console.error('Error updating registration status:', err);
+            alert('Network error while updating registration status.');
+        } finally {
+            setRegActionBusy(null);
+        }
+    };
+
+    const handleNotifyApproved = async () => {
+        if (!eventId) return;
+        if (!confirm(`Send notification email to all ${regStats.approved} approved participants?`)) return;
+        setNotifyingApproved(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/notify-approved`, {
+                method: 'POST',
+                headers: { ...authHeaders() },
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(`Notification sent to ${data.sent} approved participants.`);
+            } else {
+                alert('Failed: ' + (data.detail || 'Unknown error'));
+            }
+        } catch (err) {
+            alert('Network error.');
+        } finally {
+            setNotifyingApproved(false);
+        }
+    };
+
+    const handleExportRegistrationsCsv = async () => {
+        if (!eventId) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/export-csv`, {
+                headers: authHeaders()
+            });
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `registrations_${eventId}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } else {
+                alert('Failed to export CSV. Please try again.');
+            }
+        } catch (err) {
+            console.error('Export CSV error:', err);
+            alert('Network error during export.');
+        }
+    };
 
     const normalizeStageType = (rawType?: string) => {
         const cleaned = String(rawType || '').trim();
@@ -365,53 +504,120 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         fetchData();
     }, [eventId, refreshCounter]);
 
-    const fetchBundle = async (val: number) => {
+    const fetchBundle = async (tVal: number) => {
+        if (!eventId || activeTab !== 'submissions') return;
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/qualified-bundle?threshold=${val}`, { headers: { ...authHeaders() } });
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/qualified-bundle?threshold=${tVal}`, {
+                headers: { ...authHeaders() }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setBundleData(data);
+            }
+        } catch (e) {
+            console.error('Failed to fetch evaluation bundle:', e);
+        }
+    };
+
+    const fetchSubTabQuizResults = async (qStageId: string) => {
+        const stage = stages.find(s => s.id === qStageId);
+        const quizId = stage?.config?.quiz_id;
+        if (!quizId || !eventId) return;
+        setQuizResultsLoading(true);
+        setQuizResultsError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes/${quizId}/results`, {
+                headers: { ...authHeaders() }
+            });
+            if (!res.ok) throw new Error('Failed to load quiz results');
             const data = await res.json();
-            setBundleData(data);
-        } catch (err) {
-            console.error("Failed to fetch bundle");
+            setQuizResults(data.results || []);
+        } catch (e: any) {
+            setQuizResultsError(e.message);
+        } finally {
+            setQuizResultsLoading(false);
+        }
+    };
+
+    const toggleQuizSelect = (uid: string) => {
+        setQuizSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(uid)) next.delete(uid);
+            else next.add(uid);
+            return next;
+        });
+    };
+
+    const toggleQuizSelectAll = (filteredItems: any[]) => {
+        if (quizSelectedIds.size === filteredItems.length) {
+            setQuizSelectedIds(new Set());
+        } else {
+            setQuizSelectedIds(new Set(filteredItems.map(r => r.user_id)));
+        }
+    };
+
+    const handleQuizShortlist = async () => {
+        const ids = Array.from(quizSelectedIds);
+        if (!ids.length || !eventId || !selectedSubTabQuizStageId) return;
+        const stage = stages.find(s => s.id === selectedSubTabQuizStageId);
+        const quizId = stage?.config?.quiz_id;
+        if (!quizId) return;
+        setQuizShortlisting(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes/${quizId}/shortlist`, {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_ids: ids }),
+            });
+            if (!res.ok) throw new Error('Shortlist failed');
+            setQuizShortlistDone(true);
+            fetchSubTabQuizResults(selectedSubTabQuizStageId);
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setQuizShortlisting(false);
+        }
+    };
+
+    const handleQuizNotifyShortlisted = async () => {
+        if (!eventId || !selectedSubTabQuizStageId) return;
+        const stage = stages.find(s => s.id === selectedSubTabQuizStageId);
+        const quizId = stage?.config?.quiz_id;
+        if (!quizId) return;
+        setQuizNotifying(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes/${quizId}/notify-shortlisted`, {
+                method: 'POST',
+                headers: { ...authHeaders() },
+            });
+            if (!res.ok) throw new Error('Notification dispatch failed');
+            setQuizNotifyDone(true);
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setQuizNotifying(false);
         }
     };
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedThreshold(threshold);
-        }, 500);
-        return () => clearTimeout(timer);
-    }, [threshold]);
-
-    useEffect(() => {
-        if (!eventId) return;
-        if (activeTab === 'participants') {
-            fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/participants`, { headers: { ...authHeaders() } })
-                .then((res) => res.json())
-                .then((data) => setParticipants(Array.isArray(data) ? data : []))
-                .catch(() => setParticipants([]));
+        const quizStages = stages.filter(s => s.type === 'QUIZ' && s.config?.quiz_id);
+        if (quizStages.length > 0 && !selectedSubTabQuizStageId) {
+            setSelectedSubTabQuizStageId(quizStages[0].id);
         }
-    }, [eventId, activeTab]);
+    }, [stages, selectedSubTabQuizStageId]);
 
     useEffect(() => {
-        if(activeTab === 'participants' || activeTab === 'submissions') {
+        if (activeTab === 'submissions' && submissionSubTab === 'assessments' && selectedSubTabQuizStageId) {
+            fetchSubTabQuizResults(selectedSubTabQuizStageId);
+            setQuizSelectedIds(new Set());
+            setQuizShortlistDone(false);
+            setQuizNotifyDone(false);
+        }
+    }, [activeTab, submissionSubTab, selectedSubTabQuizStageId, eventId, refreshCounter]);
+
+    useEffect(() => {
+        if (eventId && activeTab === 'submissions') {
             fetchBundle(debouncedThreshold);
-        }
-        if(activeTab === 'teams') {
-            fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams`, { headers: { ...authHeaders() } })
-                .then(res => res.json())
-                .then(data => setTeams(Array.isArray(data) ? data : []))
-                .catch(() => setTeams([]));
-        }
-        if(activeTab === 'submissions') {
-            fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/submissions`, { headers: { ...authHeaders() } })
-                .then(res => res.json())
-                .then(data => setSubmissions(Array.isArray(data) ? data : []))
-                .catch(() => setSubmissions([]));
-
-            fetch(`${API_BASE_URL}/api/opportunities/events/${eventId}/stage-submissions`, { headers: { ...authHeaders() } })
-                .then(res => res.json())
-                .then(data => setStageSubmissions(Array.isArray(data) ? data : []))
-                .catch(() => setStageSubmissions([]));
         }
     }, [eventId, activeTab, debouncedThreshold, refreshCounter]);
 
@@ -473,14 +679,53 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const handleSaveEvent = async () => {
         if (!eventId || !event) return;
         setSaving(true);
+        
+        // Validate stage dates — only for stages whose dates actually changed
+        const originalStages: IStage[] = Array.isArray(event?.stages) ? event.stages : [];
+        const origStageMap = new Map(originalStages.map((s: any) => [s.id, s]));
+        const today = new Date();
+        for (const s of stages) {
+            if (!s.start_date || !s.end_date) continue;
+            const orig = origStageMap.get(s.id);
+            const isNew = !orig;
+            const dateChanged = !orig || orig.start_date !== s.start_date || orig.end_date !== s.end_date;
+            if (!isNew && !dateChanged) continue;
+            if (new Date(s.start_date) < today) {
+                alert(`Stage "${s.name}" start date (${s.start_date}) cannot be in the past.`);
+                setSaving(false);
+                return;
+            }
+            if (new Date(s.end_date) < new Date(s.start_date)) {
+                alert(`Stage "${s.name}" end date (${s.end_date}) cannot be before start date (${s.start_date}).`);
+                setSaving(false);
+                return;
+            }
+        }
+
+        // Synchronize registration stage custom questions directly to event.custom_questions
+        const regStage = stages.find(s => normalizeStageType(s.type) === 'REGISTRATION');
+        let finalEvent = { ...event };
+        if (regStage) {
+            const configFields = Array.isArray(regStage.config?.fields) ? regStage.config.fields : [];
+            finalEvent.custom_questions = configFields.map((field: any, idx: number) => ({
+                id: field.id || `custom-${idx}`,
+                label: field.label || 'Question',
+                type: field.type || 'text',
+                required: field.required !== false,
+                placeholder: field.placeholder || '',
+                description: field.helpText || field.description || '',
+                options: field.options || []
+            }));
+        }
+
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ ...event, stages, judging_criteria: criteria })
+                body: JSON.stringify({ ...finalEvent, stages, judging_criteria: criteria })
             });
-            if(res.ok) {
-                const updatedEvent = { ...event, stages, judging_criteria: criteria };
+            if (res.ok) {
+                const updatedEvent = { ...finalEvent, stages, judging_criteria: criteria };
                 setEvent(updatedEvent);
                 setHasUnsavedChanges(false);
                 setShowSaveSuccess(true);
@@ -495,7 +740,6 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     if (syncRes.ok) {
                         const syncData = await syncRes.json();
                         console.log('DIRECT SYNC: Force update successful:', syncData);
-                        // Removed alert and reload to prevent logout/flicker
                     } else {
                         const errorData = await syncRes.json().catch(() => ({}));
                         console.error('DIRECT SYNC: Force update failed:', errorData);
@@ -517,6 +761,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     // Helper to resolve dynamic or absolute image URLs to the correct backend host
     const getImageUrl = (url: string | undefined) => {
         if (!url) return '';
+        if (/^https?:\/\//i.test(url)) return url;
         if (url.includes('/uploads/')) {
             const path = url.substring(url.indexOf('/uploads/'));
             return `${API_BASE_URL}${path}`;
@@ -557,17 +802,13 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     };
 
     const handleBack = () => {
-        // Try the provided onBack function first
         if (onBack && typeof onBack === 'function') {
             onBack();
             return;
         }
-        
-        // Fallback to browser history
         if (window.history.length > 1) {
             navigate(-1);
         } else {
-            // Final fallback to events page
             navigate('/institution-dashboard/events');
         }
     };
@@ -582,7 +823,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         setIsCreatingQuiz(true);
         try {
             const stage = stages.find((s) => s.id === quizStageId);
-            const bodyPayload: Record<string, any> = { ...quizData, stage_id: quizStageId };
+            const bodyPayload: Record<string, any> = { 
+                ...quizData, 
+                stage_id: quizStageId,
+                quiz_id: stage?.config?.quiz_id || undefined
+            };
             if (stage?.config?.pass_mark != null) {
                 bodyPayload.pass_mark = Number(stage.config.pass_mark);
             }
@@ -599,7 +844,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             const qid = String(j.quiz_id);
             setStages((prev) =>
                 prev.map((s) =>
-                    s.id === quizStageId ? { ...s, config: { ...(s.config || {}), quiz_id: qid, pass_mark: passMark } } : s
+                    s.id === quizStageId ? { ...s, config: { ...(s.config || {}), quiz_id: qid, pass_mark: bodyPayload.pass_mark || stage?.config?.pass_mark || 70 } } : s
                 )
             );
             setIsQuizModalOpen(false);
@@ -1084,6 +1329,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
         { id: 'basic', label: 'Basic Info', icon: Info },
         { id: 'stages', label: 'Stages & Timeline', icon: Clock },
+        { id: 'registrations', label: 'Registrations', icon: UserPlus },
         { id: 'teams', label: 'Teams', icon: Layers },
         { id: 'submissions', label: 'Submissions', icon: FileText },
         { id: 'criteria', label: 'Scoring Rubrics', icon: ShieldCheck },
@@ -1113,6 +1359,218 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             return matchesSearch && matchesDomain && matchesJudge;
         });
 
+        if (submissionSubTab === 'assessments') {
+            const quizStages = stages.filter(s => s.type === 'QUIZ' && s.config?.quiz_id);
+            const passedCount = quizResults.filter(r => r.passed).length;
+            const filteredQuizzes = quizResults.filter(r =>
+                !quizResultsSearch || 
+                r.name.toLowerCase().includes(quizResultsSearch.toLowerCase()) || 
+                r.email.toLowerCase().includes(quizResultsSearch.toLowerCase())
+            );
+
+            return (
+                <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="p-12 bg-slate-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
+                        <div className="relative z-10">
+                            <h3 className="text-4xl font-black tracking-tight mb-4">Submission Management</h3>
+                            <p className="text-slate-400 font-bold max-w-xl leading-relaxed">Review submissions, assign judges, and evaluate in real-time.</p>
+                        </div>
+                        <div className="absolute -right-20 -top-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px]"></div>
+                    </div>
+
+                    <div className="flex bg-slate-100 p-1.5 rounded-[2.2rem] shadow-inner border border-slate-200/50 w-fit mx-4">
+                        <button 
+                            type="button"
+                            onClick={() => setSubmissionSubTab('projects')}
+                            className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'projects' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                            Projects & Deliverables
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={() => setSubmissionSubTab('assessments')}
+                            className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'assessments' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                            Quizzes & Assessments
+                        </button>
+                    </div>
+
+                    {quizStages.length === 0 ? (
+                        <div className="text-center py-20 bg-slate-50 border border-dashed border-slate-200 rounded-[3rem] p-10 mx-4">
+                            <div className="w-16 h-16 bg-purple-50 text-[#6C3BFF] rounded-3xl flex items-center justify-center mx-auto mb-4">
+                                <HelpCircle size={32} />
+                            </div>
+                            <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight">No Quiz Rounds Configured</h4>
+                            <p className="text-sm text-slate-400 mt-2 max-w-sm mx-auto">Configure a Quiz or Assessment round in the "Stages & Timeline" builder to start reviewing attempts.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-8 px-4">
+                            <div className="flex flex-wrap items-center justify-between gap-6">
+                                <div className="flex flex-wrap items-center gap-4">
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Select Quiz Stage</label>
+                                        <select 
+                                            value={selectedSubTabQuizStageId}
+                                            onChange={(e) => setSelectedSubTabQuizStageId(e.target.value)}
+                                            className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 transition-all min-w-[240px]"
+                                        >
+                                            {quizStages.map(qs => (
+                                                <option key={qs.id} value={qs.id}>{qs.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Search Participants</label>
+                                        <div className="relative">
+                                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                            <input 
+                                                type="text" 
+                                                placeholder="Search by name or email..." 
+                                                value={quizResultsSearch}
+                                                onChange={(e) => setQuizResultsSearch(e.target.value)}
+                                                className="pl-14 pr-8 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all w-80"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-4 self-end">
+                                    {quizNotifyDone && (
+                                        <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-bold bg-emerald-50 px-4 py-2.5 rounded-xl border border-emerald-100 animate-in fade-in">
+                                            <CheckCircle2 size={14} /> Notification sent
+                                        </span>
+                                    )}
+                                    <button 
+                                        type="button"
+                                        onClick={handleQuizNotifyShortlisted}
+                                        disabled={quizNotifying || !quizResults.some(r => r.participant_status === 'shortlisted' || r.participant_status === 'accepted')}
+                                        className="px-6 py-4 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-600 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                        title="Send email to all currently shortlisted participants"
+                                    >
+                                        {quizNotifying ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                        Notify All
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={handleQuizShortlist}
+                                        disabled={quizSelectedIds.size === 0 || quizShortlisting}
+                                        className="px-8 py-4 bg-[#6C3BFF] hover:bg-purple-700 disabled:opacity-40 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-purple-200"
+                                    >
+                                        {quizShortlisting && <Loader2 size={14} className="animate-spin" />}
+                                        Shortlist ({quizSelectedIds.size})
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Summary bar */}
+                            <div className="flex flex-wrap items-center gap-6 px-8 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium text-slate-500 animate-in fade-in">
+                                <span>Total Attempts: <strong className="text-slate-800">{quizResults.length}</strong></span>
+                                <span>Passed Cutoff: <strong className="text-emerald-600">{passedCount}</strong></span>
+                                <span>Failed: <strong className="text-red-500">{quizResults.length - passedCount}</strong></span>
+                                {quizShortlistDone && (
+                                    <span className="flex items-center gap-1 text-emerald-600 font-bold ml-auto">
+                                        <CheckCircle2 size={14} /> Shortlisted
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
+                                {quizResultsLoading ? (
+                                    <div className="flex items-center justify-center py-20">
+                                        <Loader2 size={32} className="animate-spin text-[#6C3BFF]" />
+                                    </div>
+                                ) : quizResultsError ? (
+                                    <div className="p-10 text-center text-red-500 font-bold flex items-center justify-center gap-2">
+                                        <AlertCircle size={20} />
+                                        {quizResultsError}
+                                    </div>
+                                ) : quizResults.length === 0 ? (
+                                    <div className="text-center py-20 text-slate-400 font-bold">
+                                        No quiz attempts submitted yet for this stage.
+                                    </div>
+                                ) : (
+                                    <table className="w-full text-left">
+                                        <thead>
+                                            <tr className="bg-slate-50/50">
+                                                <th className="px-10 py-6 w-10">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={filteredQuizzes.length > 0 && quizSelectedIds.size === filteredQuizzes.length}
+                                                        onChange={() => toggleQuizSelectAll(filteredQuizzes)}
+                                                        className="w-5 h-5 rounded border-2 border-slate-200 text-purple-600 focus:ring-purple-500"
+                                                    />
+                                                </th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Participant</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Score / Cutoff</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Result</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Submitted At</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50">
+                                            {filteredQuizzes.map((r) => {
+                                                const isShortlisted = r.participant_status === 'shortlisted' || r.participant_status === 'accepted';
+                                                return (
+                                                    <tr key={r.user_id} className={`hover:bg-slate-50/30 transition-colors group ${isShortlisted ? 'bg-emerald-50/20' : ''}`}>
+                                                        <td className="px-10 py-8">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={quizSelectedIds.has(r.user_id)}
+                                                                onChange={() => toggleQuizSelect(r.user_id)}
+                                                                disabled={isShortlisted}
+                                                                className="w-5 h-5 rounded border-2 border-slate-200 text-[#6C3BFF] focus:ring-[#6C3BFF] disabled:opacity-30"
+                                                            />
+                                                        </td>
+                                                        <td className="px-10 py-8">
+                                                            <div className="flex flex-col">
+                                                                <span className="font-black text-slate-900 text-lg tracking-tight">{r.name}</span>
+                                                                <span className="text-[10px] font-bold text-slate-400 mt-1">{r.email}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-10 py-8">
+                                                            <div className="flex flex-col">
+                                                                <span className={`text-lg font-black ${r.passed ? 'text-emerald-600' : 'text-red-500'}`}>
+                                                                    {r.correct !== undefined && r.total !== undefined ? `${r.correct}/${r.total}` : `${r.score}%`}
+                                                                </span>
+                                                                <span className="text-[10px] font-bold text-slate-400 mt-1">({r.score}%) • Cutoff {r.pass_mark}%</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-10 py-8">
+                                                            {r.passed ? (
+                                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-wider border border-emerald-100">
+                                                                    <CheckCircle2 size={12} /> Pass
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-600 rounded-full text-[10px] font-black uppercase tracking-wider border border-red-100">
+                                                                    <XCircle size={12} /> Fail
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-10 py-8 text-sm font-bold text-slate-500">
+                                                            {r.submitted_at ? new Date(r.submitted_at).toLocaleString() : '-'}
+                                                        </td>
+                                                        <td className="px-10 py-8">
+                                                            {isShortlisted ? (
+                                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                                                    <CheckCircle2 size={12} /> Shortlisted
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider">{r.participant_status}</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         return (
             <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="p-12 bg-slate-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
@@ -1121,6 +1579,23 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         <p className="text-slate-400 font-bold max-w-xl leading-relaxed">Review submissions, assign judges, and evaluate in real-time.</p>
                     </div>
                     <div className="absolute -right-20 -top-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px]"></div>
+                </div>
+
+                <div className="flex bg-slate-100 p-1.5 rounded-[2.2rem] shadow-inner border border-slate-200/50 w-fit mx-4">
+                    <button 
+                        type="button"
+                        onClick={() => setSubmissionSubTab('projects')}
+                        className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'projects' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                        Projects & Deliverables
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={() => setSubmissionSubTab('assessments')}
+                        className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'assessments' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                        Quizzes & Assessments
+                    </button>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-6 px-4">
@@ -1527,6 +2002,394 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         </div>
     );
 
+    const renderTabContent_Registrations = () => {
+        return (
+            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 font-sans">
+                {/* 1. Header Command Card */}
+                <div className="p-12 bg-slate-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+                    <div className="relative z-10 space-y-4">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <span className="px-4 py-1.5 bg-[#6C3BFF] text-white rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(108,59,255,0.4)]">
+                                Onboarding Panel
+                            </span>
+                            <span className="px-4 py-1.5 bg-white/10 backdrop-blur-md text-[#6C3BFF] rounded-full text-[10px] font-black uppercase tracking-[0.2em] border border-[#6C3BFF]/20">
+                                Active Registrations Engine
+                            </span>
+                        </div>
+                        <h3 className="text-4xl lg:text-5xl font-black tracking-tighter leading-tight">Registration Pipeline</h3>
+                        <p className="text-slate-400 font-bold max-w-xl leading-relaxed">
+                            Review core credentials, evaluate additional answers, and coordinate shortlisted profiles.
+                        </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4 shrink-0 relative z-10">
+                        <button 
+                            onClick={handleExportRegistrationsCsv}
+                            className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 group"
+                        >
+                            <Download size={18} className="text-[#6C3BFF] group-hover:scale-110 transition-transform" /> 
+                            Export CSV Roster
+                        </button>
+                    </div>
+                    <div className="absolute -right-20 -top-20 w-80 h-80 bg-[#6C3BFF]/10 rounded-full blur-[100px]"></div>
+                </div>
+
+                {/* 2. Metrics Roster Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+                    {[
+                        { label: 'Total Applicants', val: regStats.total, icon: Users, color: 'text-[#6C3BFF]', bg: 'bg-purple-50 border-purple-100/50' },
+                        { label: 'Approved', val: regStats.approved, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50 border-emerald-100/50' },
+                        { label: 'Pending Approval', val: regStats.pending, icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50 border-amber-100/50' },
+                        { label: 'Waitlisted', val: regStats.waitlisted, icon: Timer, color: 'text-indigo-500', bg: 'bg-indigo-50 border-indigo-100/50' },
+                        { label: 'Rejected', val: regStats.rejected, icon: XCircle, color: 'text-red-500', bg: 'bg-red-50 border-red-100/50' }
+                    ].map((m, i) => (
+                        <div key={i} className={`p-8 bg-white border ${m.bg} rounded-[2.5rem] shadow-sm flex flex-col justify-between group hover:shadow-md transition-all`}>
+                            <div className="flex items-center justify-between mb-4">
+                                <div className={`w-12 h-12 rounded-2xl bg-white/80 ${m.color} flex items-center justify-center shadow-inner group-hover:scale-110 transition-all`}>
+                                    <m.icon size={22} />
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-2">{m.label}</p>
+                                <p className="text-3xl font-black text-slate-900 leading-none">{m.val}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* 3. Search and Action Filters Command Bar */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-4">
+                    <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
+                        <div className="relative w-full md:w-80">
+                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input 
+                                type="text" 
+                                placeholder="Search by name, email, or college..." 
+                                value={regSearch}
+                                onChange={(e) => setRegSearch(e.target.value)}
+                                className="w-full pl-14 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all"
+                            />
+                        </div>
+                        <select 
+                            value={regStatusFilter}
+                            onChange={(e) => {
+                                setRegStatusFilter(e.target.value);
+                                setRegPage(1);
+                            }}
+                            className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 transition-all min-w-[200px]"
+                        >
+                            <option value="">All Verification States</option>
+                            <option value="APPROVED">Approved Only</option>
+                            <option value="PENDING_APPROVAL">Pending Verification</option>
+                            <option value="WAITLISTED">Waitlisted</option>
+                            <option value="REJECTED">Rejected</option>
+                        </select>
+                        {regStats.approved > 0 && (
+                            <button
+                                onClick={handleNotifyApproved}
+                                disabled={notifyingApproved}
+                                className="px-5 py-4 bg-purple-50 hover:bg-[#6C3BFF] hover:text-white border border-purple-100 text-[#6C3BFF] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-40"
+                            >
+                                {notifyingApproved ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                    <Send size={14} />
+                                )}
+                                Notify {regStats.approved} Approved
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* 4. Applications Table Panel */}
+                <div className="bg-white rounded-[3.5rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20 relative">
+                    {regLoading && (
+                        <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-30 flex flex-col items-center justify-center py-20">
+                            <Loader2 className="w-12 h-12 text-[#6C3BFF] animate-spin mb-4" />
+                            <p className="text-xs font-black text-slate-500 uppercase tracking-widest animate-pulse">Syncing application data...</p>
+                        </div>
+                    )}
+
+                    <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-slate-50/50 border-b border-slate-100">
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-6"></th>
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Applicant</th>
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Education & Contact</th>
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {registrations.length > 0 ? (
+                                        registrations.map((reg) => {
+                                            const prof = reg.profile_snapshot || {};
+                                            const customAnswers = reg.custom_answers || {};
+                                            const isExpanded = expandedRegId === reg._id;
+                                            const isActionBusy = regActionBusy === reg._id;
+
+                                            return (
+                                                <React.Fragment key={reg._id}>
+                                                    <tr className="hover:bg-slate-50/30 transition-colors group">
+                                                        <td className="px-8 py-5">
+                                                            <button 
+                                                                onClick={() => setExpandedRegId(isExpanded ? null : reg._id)}
+                                                                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-[#6C3BFF] transition-all"
+                                                                title={isExpanded ? "Collapse Details" : "Expand Custom Answers & Profile"}
+                                                            >
+                                                                <ChevronRight 
+                                                                    size={14} 
+                                                                    className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`} 
+                                                                />
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-8 py-5">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 bg-purple-50 text-[#6C3BFF] border border-purple-100 rounded-xl flex items-center justify-center font-black text-sm shadow-inner shrink-0 uppercase">
+                                                                    {(prof.full_name || 'U').charAt(0)}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="font-bold text-slate-900 text-sm leading-tight mb-0.5 truncate max-w-[200px]">{prof.full_name || 'Anonymous User'}</p>
+                                                                    <p className="text-[11px] font-medium text-slate-500 truncate max-w-[200px]">{prof.email || '—'}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-8 py-5">
+                                                            <div className="text-sm">
+                                                                <p className="font-semibold text-slate-700 leading-tight">
+                                                                    {prof.college || 'No college'}
+                                                                </p>
+                                                                <p className="text-[11px] text-slate-400 mt-0.5">
+                                                                    {prof.degree || ''}{prof.degree && prof.branch ? ' • ' : ''}{prof.branch || ''}
+                                                                    {prof.graduation_year ? ` • ${prof.graduation_year}` : ''}
+                                                                    {prof.cgpa ? ` • CGPA: ${prof.cgpa}` : ''}
+                                                                </p>
+                                                                {prof.location && (
+                                                                    <p className="text-[11px] text-slate-400 mt-0.5">{prof.location}</p>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-8 py-5">
+                                                            <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${
+                                                                reg.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
+                                                                reg.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100/50' :
+                                                                reg.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
+                                                                'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
+                                                            }`}>
+                                                                {reg.status === 'PENDING_APPROVAL' ? 'Pending' : reg.status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-8 py-5 text-right">
+                                                            <div className="flex justify-end gap-1.5 items-center">
+                                                                {prof.resume_url && (
+                                                                    <a href={prof.resume_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-[#6C3BFF] rounded-lg border border-slate-100 hover:border-[#6C3BFF]/20 transition-all" title="Resume">
+                                                                        <FileText size={12} />
+                                                                    </a>
+                                                                )}
+                                                                {prof.linkedin_url && (
+                                                                    <a href={prof.linkedin_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-[#6C3BFF] rounded-lg border border-slate-100 hover:border-[#6C3BFF]/20 transition-all" title="LinkedIn">
+                                                                        <LinkIcon size={12} />
+                                                                    </a>
+                                                                )}
+                                                                {prof.github_url && (
+                                                                    <a href={prof.github_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-lg border border-slate-100 transition-all" title="GitHub">
+                                                                        <Share2 size={12} />
+                                                                    </a>
+                                                                )}
+                                                                <div className="w-px h-6 bg-slate-200 mx-1"></div>
+                                                                <button
+                                                                    disabled={isActionBusy}
+                                                                    onClick={() => handleUpdateRegistrationStatus(reg._id, 'APPROVED')}
+                                                                    className={`px-3 py-1.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-100 text-emerald-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                                                        reg.status === 'APPROVED' ? 'opacity-30 pointer-events-none' : ''
+                                                                    }`}
+                                                                >
+                                                                    {isActionBusy && regActionBusy === reg._id ? <Loader2 size={9} className="animate-spin inline mr-1" /> : null}
+                                                                    Approve
+                                                                </button>
+                                                                <button
+                                                                    disabled={isActionBusy}
+                                                                    onClick={() => handleUpdateRegistrationStatus(reg._id, 'REJECTED')}
+                                                                    className={`px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white border border-red-100 text-red-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                                                        reg.status === 'REJECTED' ? 'opacity-30 pointer-events-none' : ''
+                                                                    }`}
+                                                                >
+                                                                    Reject
+                                                                </button>
+                                                                <button
+                                                                    disabled={isActionBusy}
+                                                                    onClick={() => handleUpdateRegistrationStatus(reg._id, 'WAITLISTED')}
+                                                                    className={`px-3 py-1.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white border border-indigo-100 text-indigo-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                                                        reg.status === 'WAITLISTED' ? 'opacity-30 pointer-events-none' : ''
+                                                                    }`}
+                                                                >
+                                                                    Waitlist
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                
+                                                {/* 5. Custom Answers & Detailed Profile Expansion Panel */}
+                                                {isExpanded && (
+                                                    <tr>
+                                                        <td colSpan={5} className="px-10 py-10 bg-slate-50 border-t border-b border-slate-100 shadow-inner">
+                                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                                                                {/* Full Global Profile info */}
+                                                                <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">
+                                                                    <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
+                                                                        <div className="w-2 h-6 bg-[#6C3BFF] rounded-full"></div>
+                                                                        <h4 className="text-base font-black text-slate-800 uppercase tracking-wider">Candidate Profile Snapshot</h4>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-2 gap-6 text-sm">
+                                                                        <div className="space-y-1">
+                                                                            <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Graduation Year</span>
+                                                                            <p className="font-bold text-slate-800">{prof.graduation_year || '—'}</p>
+                                                                        </div>
+                                                                        <div className="space-y-1">
+                                                                            <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Phone Number</span>
+                                                                            <p className="font-bold text-slate-800">{prof.phone || '—'}</p>
+                                                                        </div>
+                                                                        <div className="space-y-1">
+                                                                            <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Gender</span>
+                                                                            <p className="font-bold text-slate-800 uppercase tracking-wider text-xs">{prof.gender || '—'}</p>
+                                                                        </div>
+                                                                        <div className="space-y-1">
+                                                                            <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">CGPA</span>
+                                                                            <p className="font-bold text-slate-800">{prof.cgpa || '—'}</p>
+                                                                        </div>
+                                                                        <div className="space-y-1 col-span-2">
+                                                                            <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Academics</span>
+                                                                            <p className="font-bold text-slate-800">
+                                                                                {prof.degree || 'Degree unspecified'} {prof.branch ? `(${prof.branch})` : ''}
+                                                                            </p>
+                                                                        </div>
+                                                                        {prof.skills && prof.skills.length > 0 && (
+                                                                            <div className="col-span-2 space-y-2">
+                                                                                <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Candidate Skills</span>
+                                                                                <div className="flex flex-wrap gap-1.5">
+                                                                                    {(Array.isArray(prof.skills) ? prof.skills : String(prof.skills).split(',')).map((s: string, sIdx: number) => (
+                                                                                        <span key={sIdx} className="px-3 py-1 bg-purple-50 text-[#6C3BFF] border border-purple-100/30 rounded-lg text-[10px] font-bold">
+                                                                                            {String(s).trim()}
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Custom stage questions and answers */}
+                                                                <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">
+                                                                    <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
+                                                                        <div className="w-2 h-6 bg-[#6C3BFF] rounded-full"></div>
+                                                                        <h4 className="text-base font-black text-slate-800 uppercase tracking-wider font-sans">Dynamic Challenge Responses</h4>
+                                                                    </div>
+                                                                    <div className="space-y-6 max-h-[300px] overflow-y-auto pr-2 no-scrollbar">
+                                                                        {event.custom_questions && event.custom_questions.length > 0 ? (
+                                                                            event.custom_questions.map((q: any, qIdx: number) => {
+                                                                                const ans = customAnswers[q.id];
+                                                                                const isFile = String(ans || '').startsWith('http');
+                                                                                return (
+                                                                                    <div key={qIdx} className="space-y-1.5">
+                                                                                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider">{q.label}</p>
+                                                                                        {isFile ? (
+                                                                                            <a 
+                                                                                                href={ans} 
+                                                                                                target="_blank" 
+                                                                                                rel="noopener noreferrer" 
+                                                                                                className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-[#6C3BFF] border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-inner transition-all"
+                                                                                            >
+                                                                                                <Download size={14} /> View File Attachment
+                                                                                            </a>
+                                                                                        ) : (
+                                                                                            <p className="text-sm font-bold text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                                                                                {ans ? String(ans) : <span className="text-slate-300 italic">No answer supplied</span>}
+                                                                                            </p>
+                                                                                        )}
+                                                                                    </div>
+                                                                                );
+                                                                            })
+                                                                        ) : Object.keys(customAnswers).length > 0 ? (
+                                                                            Object.entries(customAnswers).map(([k, v]: any, qIdx: number) => {
+                                                                                const isFile = String(v || '').startsWith('http');
+                                                                                return (
+                                                                                    <div key={qIdx} className="space-y-1.5">
+                                                                                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider">{k}</p>
+                                                                                        {isFile ? (
+                                                                                            <a 
+                                                                                                href={v} 
+                                                                                                target="_blank" 
+                                                                                                rel="noopener noreferrer" 
+                                                                                                className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-[#6C3BFF] border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-inner transition-all"
+                                                                                            >
+                                                                                                <Download size={14} /> View Attachment
+                                                                                            </a>
+                                                                                        ) : (
+                                                                                            <p className="text-sm font-bold text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                                                                                {v ? String(v) : <span className="text-slate-300 italic">No answer</span>}
+                                                                                            </p>
+                                                                                        )}
+                                                                                    </div>
+                                                                                );
+                                                                            })
+                                                                        ) : (
+                                                                            <div className="py-12 text-center text-slate-300 font-black text-xs uppercase tracking-widest opacity-60">
+                                                                                No custom questions answered.
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    })
+                                ) : (
+                                    <tr>
+                                        <td colSpan={6} className="px-10 py-32 text-center">
+                                            <div className="flex flex-col items-center opacity-30">
+                                                <Users size={64} className="text-slate-300 mb-6" />
+                                                <h4 className="text-lg font-black text-slate-400 uppercase tracking-widest leading-none mb-2">No Applications Found</h4>
+                                                <p className="text-sm font-medium text-slate-400">Adjust your search parameters or verification state criteria.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* 6. Pagination Footer Controls */}
+                    {regTotalPages > 1 && (
+                        <div className="px-10 py-6 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                Page {regPage} of {regTotalPages}
+                            </span>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    disabled={regPage === 1 || regLoading}
+                                    onClick={() => setRegPage(prev => Math.max(1, prev - 1))}
+                                    className="px-5 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-500 disabled:opacity-40 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                >
+                                    Previous
+                                </button>
+                                <button
+                                    disabled={regPage === regTotalPages || regLoading}
+                                    onClick={() => setRegPage(prev => Math.min(regTotalPages, prev + 1))}
+                                    className="px-5 py-2.5 bg-[#6C3BFF] hover:bg-[#5a2ee6] text-white disabled:opacity-40 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md shadow-purple-500/10"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     const renderTabContent = () => {
         switch (activeTab) {
             case 'dashboard':
@@ -1670,7 +2533,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 </button>
                             </div>
                         )}
-                        <StageBuilder stages={stages} onUpdate={setStages} onConfigureQuiz={openQuizForStage} availableJudges={institutionJudges} />
+                        <StageBuilder stages={stages} onUpdate={setStages} onConfigureQuiz={openQuizForStage} onReviewQuiz={(quizId, quizTitle, stageName) => setReviewQuiz({ quizId, quizTitle, stageName })} availableJudges={institutionJudges} eventId={eventId || undefined} quizzes={quizzes} event={event} onUpdateEvent={(updatedEvent) => {
+                            setEvent(updatedEvent);
+                            setHasUnsavedChanges(true);
+                        }} />
                     </div>
                 );
             case 'teams':
@@ -1822,8 +2688,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         </div>
                     </div>
                 );
-            case 'participants':
             case 'registrations':
+                return renderTabContent_Registrations();
+            case 'participants':
                 if (hackathonSubmissions.length > 0) return renderTabContent_HackathonParticipants();
                 return (
                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -2573,6 +3440,20 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 onClose={() => setIsQuizModalOpen(false)} 
                 onSave={handleCreateQuiz}
                 loading={isCreatingQuiz}
+                initialQuizData={
+                    quizStageId 
+                        ? quizzes.find((q) => String(q._id || q.id) === String(stages.find((s) => s.id === quizStageId)?.config?.quiz_id))
+                        : null
+                }
+            />
+
+            <AssessmentReviewModal
+                isOpen={!!reviewQuiz}
+                onClose={() => setReviewQuiz(null)}
+                eventId={eventId || ''}
+                quizId={reviewQuiz?.quizId || ''}
+                quizTitle={reviewQuiz?.quizTitle || ''}
+                stageName={reviewQuiz?.stageName || ''}
             />
 
             {/* Asset Preview Modal */}

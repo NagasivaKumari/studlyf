@@ -27,6 +27,7 @@ import GetHiredSection from '../components/GetHiredSection';
 import { DevHeroSection } from '../components/DevHeroSection';
 import FeaturedColleges from '../components/FeaturedColleges';
 import OpportunitySlider from '../components/opportunities/OpportunitySlider';
+import PremiumStorytellingSection from '../components/PremiumStorytellingSection';
 // import { NeonBackground } from '../components/NeonBackground';
 
 // Removed DUMMY_COURSES to only show database content.
@@ -315,7 +316,7 @@ const DashboardHome: React.FC = () => {
                   className="text-lg sm:text-2xl font-black uppercase tracking-[0.2em] mb-4"
                 >
                   <span className="text-black">Welcome ! </span>
-                  <span className="text-[#7C3AED]">{user?.displayName || 'User'}</span>
+                  <span className="text-[#7C3AED]">{user?.full_name || 'User'}</span>
                 </motion.div>
                 <div className="scale-75 sm:scale-100 origin-center">
                   <TypewriterEffectSmooth words={typewriterWords} />
@@ -474,71 +475,70 @@ const DashboardHome: React.FC = () => {
         {user ? (
           <>
 
-          {myEvents.length > 0 && (
-            <section className="mb-16">
-              <div className="bg-white border border-purple-100 rounded-[2rem] p-6 sm:p-8 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#7C3AED] to-[#A78BFA]" />
-                <div className="flex items-end justify-between gap-6">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Your activities</p>
-                    <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 mt-2">My events & opportunities</h3>
-                    <p className="text-sm font-medium text-slate-500 mt-2">
-                      Track your stage progress across events and opportunities.
-                    </p>
+            {myEvents.length > 0 && (
+              <section className="mb-16">
+                <div className="bg-white border border-purple-100 rounded-[2rem] p-6 sm:p-8 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#7C3AED] to-[#A78BFA]" />
+                  <div className="flex items-end justify-between gap-6">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Your activities</p>
+                      <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 mt-2">My events & opportunities</h3>
+                      <p className="text-sm font-medium text-slate-500 mt-2">
+                        Track your stage progress across events and opportunities.
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="mt-6 space-y-4">
-                  {myEvents.map((ev: any) => (
-                    <div
-                      key={ev.event_id}
-                      onClick={() => {
-                        const path = ev.source === 'opportunity'
-                          ? `/opportunities/${ev.event_id}`
-                          : `/events/${ev.event_id}/hub`;
-                        navigate(path);
-                      }}
-                      className="p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-purple-200 hover:bg-white transition-all cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between gap-4 mb-3">
-                        <div className="min-w-0">
-                          <p className="font-black text-slate-900 truncate">{ev.event_title}</p>
-                          <p className="text-xs font-bold text-slate-500 mt-1">
-                            {ev.source === 'opportunity'
-                              ? `${ev.type} · ${ev.status}`
-                              : `${ev.current_stage || 'Registered'} · ${ev.stages_cleared}/${ev.total_stages} stages`}
-                          </p>
+                  <div className="mt-6 space-y-4">
+                    {myEvents.map((ev: any) => (
+                      <div
+                        key={ev.event_id}
+                        onClick={() => {
+                          const path = ev.source === 'opportunity'
+                            ? `/opportunities/${ev.event_id}`
+                            : `/events/${ev.event_id}/hub`;
+                          navigate(path);
+                        }}
+                        className="p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-purple-200 hover:bg-white transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between gap-4 mb-3">
+                          <div className="min-w-0">
+                            <p className="font-black text-slate-900 truncate">{ev.event_title}</p>
+                            <p className="text-xs font-bold text-slate-500 mt-1">
+                              {ev.source === 'opportunity'
+                                ? `${ev.type} · ${ev.status}`
+                                : `${ev.current_stage || 'Registered'} · ${ev.stages_cleared}/${ev.total_stages} stages`}
+                            </p>
+                          </div>
+                          {ev.source === 'event' && (
+                            <span className="shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-purple-50 text-purple-700 border-purple-200">
+                              {ev.progress_pct}%
+                            </span>
+                          )}
+                          {ev.source === 'opportunity' && (
+                            <span className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${ev.status === 'accepted' || ev.status === 'shortlisted'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : ev.status === 'rejected'
+                                  ? 'bg-red-50 text-red-700 border-red-200'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}>
+                              {ev.status}
+                            </span>
+                          )}
                         </div>
                         {ev.source === 'event' && (
-                          <span className="shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-purple-50 text-purple-700 border-purple-200">
-                            {ev.progress_pct}%
-                          </span>
-                        )}
-                        {ev.source === 'opportunity' && (
-                          <span className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
-                            ev.status === 'accepted' || ev.status === 'shortlisted'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : ev.status === 'rejected'
-                              ? 'bg-red-50 text-red-700 border-red-200'
-                              : 'bg-slate-100 text-slate-600 border-slate-200'
-                          }`}>
-                            {ev.status}
-                          </span>
+                          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full transition-all duration-500"
+                              style={{ width: `${ev.progress_pct}%` }}
+                            />
+                          </div>
                         )}
                       </div>
-                      {ev.source === 'event' && (
-                        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full transition-all duration-500"
-                            style={{ width: `${ev.progress_pct}%` }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </section>
-          )}
+              </section>
+            )}
           </>) : null}
 
         {/* Infinite Scrolling Logo (Left to Right) */}
@@ -558,15 +558,15 @@ const DashboardHome: React.FC = () => {
           <div className="flex w-max animate-slide-right flex-nowrap">
             {/* First half */}
             <div className="flex items-center gap-10 md:gap-20 pr-10 md:pr-20 flex-shrink-0">
-                      {[...Array(10)].map((_, i) => (
-                        <img key={`first-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
-                      ))}
-                    </div>
-                    {/* Second half (Duplicate for seamless loop) */}
-                    <div className="flex items-center gap-10 md:gap-20 pr-10 md:pr-20 flex-shrink-0">
-                      {[...Array(10)].map((_, i) => (
-                        <img key={`second-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
-                      ))}
+              {[...Array(10)].map((_, i) => (
+                <img key={`first-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
+              ))}
+            </div>
+            {/* Second half (Duplicate for seamless loop) */}
+            <div className="flex items-center gap-10 md:gap-20 pr-10 md:pr-20 flex-shrink-0">
+              {[...Array(10)].map((_, i) => (
+                <img key={`second-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
+              ))}
             </div>
           </div>
         </div>
@@ -700,6 +700,10 @@ const DashboardHome: React.FC = () => {
 
 
 
+      </div>
+
+      <div className="mb-20">
+        <PremiumStorytellingSection />
       </div>
 
       <div className="mb-20">

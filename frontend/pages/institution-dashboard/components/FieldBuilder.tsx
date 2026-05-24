@@ -45,20 +45,11 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ fields, onUpdate }) => {
         onUpdate([...fields, newField]);
     };
 
-    const isReservedField = (label: string) => {
-        const reserved = ['email', 'name', 'full name', 'first name', 'last name'];
-        return reserved.some(r => r.toLowerCase() === label.toLowerCase().trim());
-    };
-
     const removeField = (id: string) => {
         onUpdate(fields.filter(f => f.id !== id));
     };
 
     const updateField = (id: string, updates: Partial<Field>) => {
-        if (updates.label && isReservedField(updates.label)) {
-            alert('Email and Name fields are automatically populated from user profile. Please use a different field name.');
-            return;
-        }
         onUpdate(fields.map(f => f.id === id ? { ...f, ...updates } : f));
     };
 

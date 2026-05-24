@@ -110,6 +110,15 @@ async def startup_event():
     # Attempt database connection; allow failures to propagate so the
     # process fails fast when no real MongoDB is available.
     await db.connect()
+    
+    # Spawn background stage email queue worker
+    try:
+        from services.email_queue_service import start_email_queue_worker
+        asyncio.create_task(start_email_queue_worker())
+        logger.info("Background Stage Email Queue Worker spawned successfully")
+    except Exception as e:
+        logger.error(f"Failed to start background stage email queue worker: {e}")
+
     logger.info("Application startup completed successfully")
 
     # DB diagnostics dump
@@ -163,7 +172,6 @@ async def startup_event():
 
     # Launch certificate background worker
     try:
-        import asyncio
         from services.institutional_certificate_service import process_certificate_jobs
         asyncio.create_task(process_certificate_jobs())
         logger.info("Certificate generation background worker started")
@@ -612,7 +620,7 @@ from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
 from routes import student_features_routes
-from routes import event_certificate_routes
+from routes import event_certificate_routes, registration_flow_routes
 import hackathon_integration_routes
 import participant_card_routes
 from rate_limiter import rate_limit, check_rate_limit
@@ -688,6 +696,7 @@ app.include_router(hackathon_public_routes.router)
 app.include_router(participant_card_routes.router)
 app.include_router(event_certificate_routes.router)
 app.include_router(event_certificate_routes.verification_router)
+app.include_router(registration_flow_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -5411,12 +5420,16 @@ async def delete_experience(user_id: str, exp_index: int):
 
 @app.post("/api/auth/forgot-password")
 async def forgot_password(data: dict = Body(...)):
-    email = data.get("email")
+    import re
+
+    email = str(data.get("email") or "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
+    if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+        raise HTTPException(status_code=400, detail="A valid email address is required")
     
     # Check if user exists
-    user = await users_col.find_one({"email": email})
+    user = await users_col.find_one({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
     logger.info(f"[FORGOT PASSWORD DEBUG] Attempting reset for: {email}")
     logger.info(f"[FORGOT PASSWORD DEBUG] User found in database: {bool(user)}")
     
@@ -5429,8 +5442,12 @@ async def forgot_password(data: dict = Body(...)):
     expiry_ts = int(time() + 3600)  # 1 hour expiry (unix ts)
     try:
         # Use a dedicated collection for password resets
+        # Persist a token_hash to avoid unique-index conflicts on null values
+        import hashlib
+        token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
         await db.password_resets.insert_one({
             "token": token,
+            "token_hash": token_hash,
             "email": email,
             "expiry": expiry_ts,
             "created_at": datetime.now(timezone.utc)
@@ -5442,14 +5459,17 @@ async def forgot_password(data: dict = Body(...)):
     # Send email via template system
     from services.platform_notification_service import notify_password_reset
     reset_link = f"{frontend_url}/#/reset-password?token={token}"
-    user_doc = await users_col.find_one({"email": email})
+    user_doc = user or await users_col.find_one({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
     participant_name = (user_doc or {}).get("full_name") or (user_doc or {}).get("name") or "Participant"
-    await notify_password_reset(
+    sent_ok = await notify_password_reset(
         recipient_email=email,
         participant_name=participant_name,
         reset_link=reset_link,
         expiry_duration="1 hour",
     )
+    if not sent_ok:
+        logger.error(f"[FORGOT PASSWORD] Email delivery failed for {email}")
+        raise HTTPException(status_code=503, detail="Email service unavailable. Please try again shortly.")
     
     return {"status": "success", "message": "Reset link sent"}
 
