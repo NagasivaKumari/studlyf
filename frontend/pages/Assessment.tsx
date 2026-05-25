@@ -42,6 +42,12 @@ const HeatmapItem = ({ label, score, color }: { label: string; score: number; co
   </div>
 );
 
+const difficultyLabel = (difficulty: string) => {
+  if (difficulty === 'easy') return 'Beginner';
+  if (difficulty === 'medium') return 'Intermediate';
+  return 'Advanced';
+};
+
 const Assessment: React.FC = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState<'config' | 'prep' | 'active' | 'analysis' | 'results'>('config');
@@ -60,6 +66,14 @@ const Assessment: React.FC = () => {
   const [responses, setResponses] = useState<{ questionId: string; userAnswer: number | null }[]>([]);
   const [timer, setTimer] = useState(0);
   const [results, setResults] = useState<any>(null);
+  const assessmentProgress = questions.length > 0
+    ? Math.round(((step === 'results' ? questions.length : step === 'active' ? currentIndex + 1 : 0) / questions.length) * 100)
+    : 0;
+  const attemptStats = {
+    attemptsMade: responses.length,
+    completionRate: questions.length ? Math.round((responses.length / questions.length) * 100) : 0,
+    recentPerformance: results?.overall ?? 0,
+  };
 
   useEffect(() => { window.scrollTo(0, 0); }, [step]);
 
@@ -200,6 +214,19 @@ const Assessment: React.FC = () => {
                 <div className="inline-flex items-center gap-2 bg-[#7C3AED]/10 text-[#7C3AED] px-4 py-2 rounded-full mb-8"><Brain className="w-4 h-4" /><span className="text-[10px] font-black uppercase tracking-[0.2em]">Institutional Engine V2.1</span></div>
                 <h1 className="text-4xl sm:text-5xl font-black text-[#111827] mb-6 leading-[0.9] tracking-tighter uppercase italic"><span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B] inline-block">CLINICAL READY.</span></h1>
                 <p className="text-[#6B7280] text-sm sm:text-base font-medium leading-relaxed max-w-[320px] mx-auto lg:mx-0">Calibrate your assessment protocol by specifying your target role and institution.</p>
+                <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4 max-w-3xl">
+                  {[
+                    { label: 'Roles', value: roles.length.toString(), tone: 'text-[#7C3AED]' },
+                    { label: 'Companies', value: companies.length.toString(), tone: 'text-[#111827]' },
+                    { label: 'Flow', value: '3 steps', tone: 'text-emerald-600' },
+                    { label: 'Coverage', value: 'Adaptive', tone: 'text-sky-600' },
+                  ].map(card => (
+                    <div key={card.label} className="rounded-[1.5rem] border border-gray-100 bg-white p-4 shadow-sm">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{card.label}</div>
+                      <div className={`mt-3 text-2xl font-black ${card.tone}`}>{card.value}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="bg-white border border-gray-100 rounded-[2.5rem] p-8 sm:p-10 shadow-2xl space-y-6 relative max-w-[420px] mx-auto">
                 <div className="relative">
@@ -278,6 +305,18 @@ const Assessment: React.FC = () => {
 
           {step === 'active' && questions.length > 0 && (
             <motion.div key="active" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="max-w-4xl w-full mx-auto">
+              <div className="mb-8 rounded-[2rem] border border-gray-100 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-4 mb-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Assessment Progress</div>
+                    <div className="mt-1 text-sm font-bold text-gray-900">{assessmentProgress}% complete</div>
+                  </div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#7C3AED]">{difficultyLabel(questions[currentIndex].difficulty)}</div>
+                </div>
+                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                  <div className="h-full rounded-full bg-[#7C3AED] transition-all duration-500" style={{ width: `${assessmentProgress}%` }} />
+                </div>
+              </div>
               <div className="flex justify-between items-center mb-12">
                 {['Logic', 'Code', 'System Thinking'].map((section, idx) => (
                   <div key={section} className="flex flex-col items-center gap-1.5">
@@ -328,6 +367,19 @@ const Assessment: React.FC = () => {
                   <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-lg text-center"><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Proficiency</p><p className="text-4xl font-black text-gray-900">{results.overall}%</p></div>
                   <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-lg text-center"><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Alignment</p><p className="text-4xl font-black text-[#7C3AED]">{results.alignment}%</p></div>
                 </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  { label: 'Attempts made', value: attemptStats.attemptsMade, tone: 'text-[#7C3AED]' },
+                  { label: 'Completion rate', value: `${attemptStats.completionRate}%`, tone: 'text-emerald-600' },
+                  { label: 'Recent performance', value: `${attemptStats.recentPerformance}%`, tone: 'text-sky-600' },
+                  { label: 'Difficulty', value: difficultyLabel(questions[0]?.difficulty || 'medium'), tone: 'text-gray-900' },
+                ].map(card => (
+                  <div key={card.label} className="rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{card.label}</div>
+                    <div className={`mt-3 text-3xl font-black ${card.tone}`}>{card.value}</div>
+                  </div>
+                ))}
               </div>
               <div className="grid lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 bg-white rounded-[2.5rem] p-8 sm:p-10 border border-gray-100 shadow-sm space-y-8">

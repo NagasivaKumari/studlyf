@@ -119,11 +119,18 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
                 setStep(3);
                 setTimeout(() => onSwitchToLogin(), 3000);
             } else {
-                const data = await signupRes.json();
-                setError(data.detail || 'Registration failed.');
+                const raw = await signupRes.text();
+                let detail = 'Registration failed.';
+                try {
+                    const data = JSON.parse(raw);
+                    detail = data.detail || data.message || detail;
+                } catch {
+                    if (raw.trim()) detail = raw;
+                }
+                setError(detail);
             }
         } catch (err) {
-            setError('System error during registration.');
+            setError(`System error during registration. ${err instanceof Error ? err.message : ''}`.trim());
         } finally {
             setLoading(false);
         }
