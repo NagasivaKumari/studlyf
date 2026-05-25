@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, BookOpen, FileText, Video, Play, Lightbulb } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';

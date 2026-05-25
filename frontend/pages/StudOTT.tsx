@@ -32,7 +32,22 @@ const HERO_VIDEO = {
   tags: ['AI', 'Career Growth', 'Exclusive']
 };
 
-const DEFAULT_CATEGORIES: Record<string, { title: string, desc: string, videos: any[] }> = {
+interface VideoItem {
+  id: string | number;
+  url?: string;
+  title?: string;
+  subtitle?: string;
+  category?: string;
+  duration?: string;
+}
+
+interface CategoryData {
+  title: string;
+  desc: string;
+  videos: VideoItem[];
+}
+
+const DEFAULT_CATEGORIES: Record<string, CategoryData> = {
   'podcast': {
     title: 'Podcast',
     desc: 'Deep dives and unfiltered conversations with industry leaders and visionary founders.',
@@ -60,7 +75,7 @@ const DEFAULT_CATEGORIES: Record<string, { title: string, desc: string, videos: 
   }
 };
 
-const VideoCard = ({ vid, setActiveVideoUrl }: { vid: any, setActiveVideoUrl: (url: string) => void }) => {
+const VideoCard = ({ vid, setActiveVideoUrl }: { vid: VideoItem, setActiveVideoUrl: (url: string) => void }) => {
   const [title, setTitle] = useState(vid.title || '');
   const [author, setAuthor] = useState(vid.subtitle || '');
   const [isLoading, setIsLoading] = useState(!vid.title && !!vid.url);
@@ -68,7 +83,8 @@ const VideoCard = ({ vid, setActiveVideoUrl }: { vid: any, setActiveVideoUrl: (u
   useEffect(() => {
     if (vid.url && !vid.title) {
       // Stagger fetches slightly to avoid sudden burst of requests
-      const delay = (vid.id % 10) * 150;
+      const numericId = typeof vid.id === 'number' ? vid.id : 0;
+      const delay = (numericId % 10) * 150;
       const timer = setTimeout(() => {
         fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(vid.url)}&format=json`)
           .then(res => res.ok ? res.json() : null)
@@ -155,7 +171,7 @@ const VideoCard = ({ vid, setActiveVideoUrl }: { vid: any, setActiveVideoUrl: (u
 const StudOTT: React.FC = () => {
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
   const [activeMenu, setActiveMenu] = useState('home');
-  const [categories, setCategories] = useState<Record<string, any>>(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState<Record<string, CategoryData>>(DEFAULT_CATEGORIES);
   const [showIntro, setShowIntro] = useState(true);
   const introVideoRef = React.useRef<HTMLVideoElement>(null);
   const navigate = useNavigate();
@@ -498,7 +514,7 @@ const StudOTT: React.FC = () => {
                       className="flex overflow-x-auto gap-3 md:gap-4 pb-6 pt-2 snap-x snap-mandatory pr-12 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
                     >
                       {row.videos && row.videos.length > 0 ? (
-                        row.videos.map((vid: any) => (
+                        row.videos.map((vid: VideoItem) => (
                           <div key={vid.id} className="w-[160px] sm:w-[200px] lg:w-[240px] xl:w-[260px] snap-center shrink-0">
                             <VideoCard vid={vid} setActiveVideoUrl={setActiveVideoUrl} />
                           </div>
@@ -546,7 +562,7 @@ const StudOTT: React.FC = () => {
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
               {categories[activeMenu]?.videos && categories[activeMenu].videos.length > 0 ? (
-                categories[activeMenu].videos.map((vid: any, idx: number) => (
+                categories[activeMenu].videos.map((vid: VideoItem, idx: number) => (
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
