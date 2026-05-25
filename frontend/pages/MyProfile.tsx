@@ -1853,6 +1853,10 @@ const MyProfile: React.FC = () => {
               <div className="rounded-3xl border border-gray-100 bg-gray-50/80 p-4">
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Public URL</div>
                 <div className="mt-3 text-sm font-bold text-gray-900 break-all">{publicProfileUrl || 'Ready after save'}</div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button onClick={copyProfileLink} disabled={!publicProfileUrl} className="rounded-full border border-gray-200 bg-white px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy</button>
+                  <button onClick={shareProfile} disabled={!publicProfileUrl} className="rounded-full bg-[#7C3AED] px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-white hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1916,10 +1920,14 @@ const MyProfile: React.FC = () => {
           <div className="mt-6 rounded-3xl border border-[#7C3AED]/10 bg-[#F5F3FF]/70 p-5">
             <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#7C3AED]">Shareable Public Profile</div>
             <div className="mt-3 text-sm text-gray-700 leading-6">Generate a public URL, copy it instantly, or share it through your device's native share sheet.</div>
+                  <div className="mt-3 break-all rounded-2xl border border-white/80 bg-white/80 px-4 py-3 text-[10px] font-medium text-gray-700 shadow-sm">{publicProfileUrl || 'Save your profile to generate a public link.'}</div>
             <div className="mt-4 flex flex-col sm:flex-row gap-3">
               <button onClick={copyProfileLink} disabled={!publicProfileUrl} className="flex-1 rounded-2xl bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-gray-900 border border-gray-200 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy Profile Link</button>
               <button onClick={shareProfile} disabled={!publicProfileUrl} className="flex-1 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-[#7C3AED]/20 hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share Profile</button>
             </div>
+                  {publicProfileUrl && (
+                    <a href={publicProfileUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-[10px] font-black uppercase tracking-[0.2em] text-[#7C3AED] hover:text-[#6D28D9]">Open public profile</a>
+                  )}
           </div>
         </div>
       </div>

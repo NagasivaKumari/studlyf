@@ -87,7 +87,7 @@ const RightHoverPanel: React.FC = () => {
           ref={handleRef}
           aria-label="Open guide"
           onClick={(e) => { e.stopPropagation(); console.log('Guide open (fixed) clicked'); openGuide(); }}
-          className={`fixed right-6 top-1/2 transform -translate-y-1/2 z-[99999] flex items-center justify-center w-14 h-36 rounded-full bg-gradient-to-b from-purple-700 to-indigo-600 shadow-2xl text-white transition-all duration-500 ease-out cursor-pointer ${menuMounted ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100 pointer-events-auto hover:scale-105'}`}
+          className={`fixed right-4 bottom-5 z-[99999] flex items-center justify-center w-12 h-28 rounded-full bg-gradient-to-b from-purple-700 to-indigo-600 shadow-2xl text-white transition-all duration-500 ease-out cursor-pointer ${menuMounted ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100 pointer-events-auto hover:scale-105'}`}
         >
           <div className="rotate-90 tracking-wide text-sm">GUIDE</div>
         </button>
@@ -102,7 +102,7 @@ const RightHoverPanel: React.FC = () => {
             onClick={() => { console.log('backdrop clicked'); closeGuide(); }}
             aria-hidden
           />
-          <div className={`fixed right-6 top-1/2 transform -translate-y-1/2 z-[9999] transition-all duration-500 ease-[cubic-bezier(.16,1,.3,1)] ${menuClosing ? 'opacity-0 scale-90 translate-x-8' : 'opacity-100 scale-100 translate-x-0'}`}>
+          <div className={`fixed right-4 bottom-5 z-[9999] transition-all duration-500 ease-[cubic-bezier(.16,1,.3,1)] ${menuClosing ? 'opacity-0 scale-90 translate-y-8' : 'opacity-100 scale-100 translate-y-0'}`}>
           <style>{`
         @keyframes floatBob { 0% { transform: translateY(0);} 50% { transform: translateY(-6px);} 100% { transform: translateY(0);} }
         @keyframes pulseRing { 0% { box-shadow: 0 0 0 0 rgba(124,58,237,0.6);} 70% { box-shadow: 0 0 0 18px rgba(124,58,237,0);} 100% { box-shadow: 0 0 0 0 rgba(124,58,237,0);} }
