@@ -43,8 +43,11 @@ const LearnDropdown = ({ onItemClick }: { onItemClick: () => void }) => (
     <BentoCard onClick={onItemClick} to="/learn/courses-overview" title="Courses" desc="Role-focused tracks for elite engineering readiness." className="md:col-span-2 md:row-span-2 min-h-[160px] md:min-h-[180px]">
       <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=600" className="absolute bottom-0 right-0 w-1/2 h-full object-cover opacity-100 transition-all duration-700" alt="Courses" />
     </BentoCard>
-    <BentoCard onClick={onItemClick} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="md:col-span-2 md:row-span-2 min-h-[160px] md:min-h-[180px]">
-      <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-100 transition-all duration-700" alt="Corporate" />
+    <BentoCard onClick={onItemClick} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="md:col-span-1 md:row-span-2 min-h-[160px] md:min-h-[180px]">
+      <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-full h-1/2 object-cover opacity-100 transition-all duration-700 rounded-b-[1.5rem]" alt="Corporate" />
+    </BentoCard>
+    <BentoCard onClick={onItemClick} to="/studhub" title="STUDHub" desc="The central nervous system for your student growth." className="md:col-span-1 md:row-span-2 min-h-[160px] md:min-h-[180px] bg-[#6C2BFF]/5 hover:border-[#6C2BFF]/30">
+      <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-full h-1/2 object-cover opacity-100 transition-all duration-700 rounded-b-[1.5rem]" alt="STUDHub" />
     </BentoCard>
   </div>
 );
@@ -177,10 +180,10 @@ const Navigation: React.FC = () => {
                 ))}
 
                 <Link
-                  to="/ai-tools"
+                  to="/studott"
                   className="flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-white/80 hover:text-white"
                 >
-                  AI TOOLS
+                  STUDOTT
                 </Link>
                 <Link
                   to="/opportunities"
@@ -445,16 +448,16 @@ const Navigation: React.FC = () => {
                         </button>
 
                         <Link
-                          to="/ai-tools"
+                          to="/studott"
                           onClick={() => setMobileMenuOpen(false)}
                           className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-[#7C3AED]/30 transition-all hover:bg-[#7C3AED]/10 group text-left"
                         >
                           <div className="w-10 h-10 rounded-xl bg-[#7C3AED]/20 flex items-center justify-center text-[#A78BFA]">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-white uppercase tracking-wider">AI Tools</p>
-                            <p className="text-[10px] text-white/40">Latest AI protocols</p>
+                            <p className="text-sm font-bold text-white uppercase tracking-wider">STUDOTT</p>
+                            <p className="text-[10px] text-white/40">Student Streaming Platform</p>
                           </div>
                         </Link>
                       </div>
