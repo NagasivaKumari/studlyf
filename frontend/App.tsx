@@ -48,6 +48,10 @@ import LinkedListPage from './pages/LinkedListPage';
 import BSTPage from './pages/BSTPage';
 import HashTablePage from './pages/HashTablePage';
 import AITools from './pages/AITools';
+import StudOTT from './pages/StudOTT';
+import StudHub from './pages/StudHub';
+import StudentDiscounts from './pages/StudentDiscounts';
+import StudentSchemes from './pages/StudentSchemes';
 import InstitutionDashboard from './pages/institution-dashboard/InstitutionDashboard';
 import RoleFixer from './RoleFixer';
 import ForgotPassword from './pages/ForgotPassword';
@@ -420,6 +424,10 @@ const App: React.FC = () => {
             <Route path="/signup" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
             <Route path="/judge-invitation" element={<JudgeInvitation />} />
             <Route path="/ai-tools" element={<AITools />} />
+            <Route path="/studott" element={<StudOTT />} />
+            <Route path="/studhub" element={<StudHub />} />
+            <Route path="/student-discounts" element={<StudentDiscounts />} />
+            <Route path="/student-schemes" element={<StudentSchemes />} />
             <Route path="/verify/:id" element={<CertificateVerification />} />
             <Route path="/fix-role" element={<RoleFixer />} />
             <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
