@@ -40,6 +40,10 @@ async def force_update_all_opportunities(event_id: str):
             }
             if deadline:
                 update_data["deadline"] = deadline
+            if event.get("logo_url"):
+                update_data["logo_url"] = event["logo_url"]
+            if event.get("banner_url"):
+                update_data["banner_url"] = event["banner_url"]
 
             result = await opportunities_col.update_one(
                 {"_id": opportunity["_id"]},

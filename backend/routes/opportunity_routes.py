@@ -3,6 +3,7 @@ from typing import List, Optional
 from bson import ObjectId
 from datetime import datetime
 import asyncio
+import os
 
 from auth_institution import get_auth_user, get_auth_user_optional
 from services.opportunity_service import (
@@ -153,16 +154,28 @@ async def view_opportunity(
 @router.get("/events/{event_id}/quizzes/{quiz_id}")
 async def learner_view_quiz(event_id: str, quiz_id: str, user: dict = Depends(get_auth_user)):
     """Learner access to quiz with stage visibility enforcement."""
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
     uid = str(user.get("user_id") or "")
     if not uid:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    quiz = await quizzes_col.find_one({"_id": ObjectId(quiz_id), "event_id": str(event_id)})
+
+    from bson.errors import InvalidId
+    quiz_query = {"_id": ObjectId(quiz_id), "$or": [{"event_id": resolved_eid}]}
+    try:
+        quiz_query["$or"].append({"event_id": ObjectId(resolved_eid)})
+    except (InvalidId, ValueError):
+        pass
+    quiz = await quizzes_col.find_one(quiz_query)
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
-    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+
+    ev = await events_col.find_one({"_id": ObjectId(resolved_eid)})
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
-    p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
+
+    participants_query = {"$and": [{"user_id": uid}, {"$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}]}]}
+    p = await participants_col.find_one(participants_query)
     if not p:
         raise HTTPException(status_code=403, detail="Register/apply first to access this quiz")
 
@@ -184,6 +197,16 @@ async def learner_view_quiz(event_id: str, quiz_id: str, user: dict = Depends(ge
         if st not in ("shortlisted", "accepted"):
             raise HTTPException(status_code=403, detail="This round is only for shortlisted participants")
 
+    # Enforce unlock rules (depends_on)
+    from stage_access_control import check_stage_unlock_rules
+    for s in stages:
+        if not isinstance(s, dict):
+            continue
+        cfg = s.get("config") if isinstance(s.get("config"), dict) else {}
+        if str(cfg.get("quiz_id") or "") == str(quiz_id):
+            await check_stage_unlock_rules(resolved_eid, uid, s)
+            break
+
     # Hide answers
     q_out = []
     for q in (quiz.get("questions") or []):
@@ -195,35 +218,67 @@ async def learner_view_quiz(event_id: str, quiz_id: str, user: dict = Depends(ge
 
     return {
         "_id": str(quiz["_id"]),
-        "event_id": str(event_id),
+        "event_id": str(resolved_eid),
         "title": quiz.get("title"),
         "duration": quiz.get("duration"),
         "pass_mark": quiz.get("pass_mark", 70),
         "questions": q_out,
+        "already_submitted": any(
+            str(a.get("quiz_id") or "") == str(quiz_id)
+            for a in (p.get("quiz_attempts") or [])
+        ),
     }
 
 
 @router.post("/events/{event_id}/quizzes/{quiz_id}/submit")
 async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(...), user: dict = Depends(get_auth_user)):
     """Learner submits quiz attempt; auto-score single-choice and queue coding for review."""
+    from routes.registration_flow_routes import resolve_event_id
+    resolved_eid = await resolve_event_id(event_id)
     uid = str(user.get("user_id") or "")
     if not uid:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    quiz = await quizzes_col.find_one({"_id": ObjectId(quiz_id), "event_id": str(event_id)})
+
+    from bson.errors import InvalidId
+    quiz_query = {"_id": ObjectId(quiz_id), "$or": [{"event_id": resolved_eid}]}
+    try:
+        quiz_query["$or"].append({"event_id": ObjectId(resolved_eid)})
+    except (InvalidId, ValueError):
+        pass
+    quiz = await quizzes_col.find_one(quiz_query)
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
-    ev = await events_col.find_one({"_id": ObjectId(event_id)})
+
+    ev = await events_col.find_one({"_id": ObjectId(resolved_eid)})
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
-    p = await participants_col.find_one({"event_id": str(event_id), "user_id": uid})
+
+    participants_query = {"$and": [{"user_id": uid}, {"$or": [{"event_id": resolved_eid}, {"event_id": ObjectId(resolved_eid)}]}]}
+    p = await participants_col.find_one(participants_query)
     if not p:
         raise HTTPException(status_code=400, detail="You must register/apply before attempting the assessment")
+
+    # Prevent multiple attempts
+    existing_attempts = [a for a in (p.get("quiz_attempts") or []) if str(a.get("quiz_id") or "") == str(quiz_id)]
+    if existing_attempts:
+        raise HTTPException(status_code=400, detail="You have already submitted this assessment")
+
+    # Enforce unlock rules (depends_on)
+    from stage_access_control import check_stage_unlock_rules
+    for s in (ev.get("stages") or []):
+        if not isinstance(s, dict):
+            continue
+        cfg = s.get("config") if isinstance(s.get("config"), dict) else {}
+        if str(cfg.get("quiz_id") or "") == str(quiz_id):
+            await check_stage_unlock_rules(resolved_eid, uid, s)
+            break
 
     answers = payload.get("answers") or []
     if not isinstance(answers, list):
         raise HTTPException(status_code=400, detail="answers must be a list")
 
     total, correct = 0, 0
+    total_marks, earned_marks = 0.0, 0.0
     coding_pending = False
     coding_answers = []
     for i, q in enumerate(quiz.get("questions") or []):
@@ -232,18 +287,24 @@ async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(
         qtype = str(q.get("type") or "").upper()
         if qtype == "SINGLE_CHOICE":
             total += 1
+            q_marks = float(q.get("marks") if q.get("marks") is not None else 1.0)
+            total_marks += q_marks
             expected = q.get("correctOptionIndex")
             got = None
             if i < len(answers) and isinstance(answers[i], dict):
                 got = answers[i].get("selectedIndex")
             if isinstance(expected, int) and isinstance(got, int) and expected == got:
                 correct += 1
+                earned_marks += q_marks
         elif qtype == "CODING":
             coding_pending = True
             if i < len(answers) and isinstance(answers[i], dict):
                 coding_answers.append({"q_index": i, "code": answers[i].get("code") or "", "language": answers[i].get("language") or q.get("language")})
 
-    score = int(round((correct / total) * 100)) if total > 0 else 0
+    if total_marks > 0:
+        score = int(round(max(0.0, earned_marks) / total_marks * 100))
+    else:
+        score = int(round((correct / total) * 100)) if total > 0 else 0
     pass_mark = int(quiz.get("pass_mark") or 70)
     passed = (score >= pass_mark) and (not coding_pending)
 
@@ -252,45 +313,13 @@ async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(
         "score": score,
         "pass_mark": pass_mark,
         "passed": passed,
+        "correct": correct,
+        "total": total,
         "coding_pending_review": coding_pending,
         "coding_answers": coding_answers,
         "submitted_at": datetime.utcnow().isoformat(),
     }
     await participants_col.update_one({"_id": p["_id"]}, {"$push": {"quiz_attempts": attempt}, "$set": {"updated_at": datetime.utcnow()}})
-
-    if passed:
-        opp = await opportunities_col.find_one({"event_link_id": str(event_id)})
-        if opp:
-            await opportunity_applications_col.update_many(
-                {"opportunity_id": str(opp["_id"]), "user_id": uid},
-                {"$set": {"status": "shortlisted", "reviewed_at": datetime.utcnow()}},
-            )
-        await participants_col.update_many(
-            {"event_id": str(event_id), "user_id": uid},
-            {"$set": {"status": "shortlisted", "updated_at": datetime.utcnow()}},
-        )
-        try:
-            await notifications_col.insert_one(
-                {
-                    "user_id": uid,
-                    "type": "stage_shortlisted",
-                    "message": f'You qualified for the next stage in "{ev.get("title")}".',
-                    "is_read": False,
-                    "created_at": datetime.utcnow().isoformat(),
-                    "meta": {"event_id": str(event_id), "quiz_id": str(quiz_id), "score": score},
-                }
-            )
-            em = str(user.get("email") or "").strip()
-            if em:
-                asyncio.create_task(
-                    send_notification_email(
-                        em,
-                        f"Shortlisted: {ev.get('title')}",
-                        f"<html><body><p>You passed the assessment (score {score}%). You are shortlisted.</p></body></html>",
-                    )
-                )
-        except Exception:
-            pass
 
     return {"status": "success", "score": score, "passed": passed, "coding_pending_review": coding_pending}
 
@@ -991,4 +1020,36 @@ async def hackathon_project_submit(
     )
 
     return {"status": "success", "message": "Project submitted successfully", "data": submission_doc}
+
+
+def _stage_unlock_email_html(participant_name: str, event_title: str, org_name: str, stage_name: str, unlock_time: str, stage_link: str) -> str:
+    from html import escape
+    pn = escape(participant_name)
+    et = escape(event_title)
+    on = escape(org_name)
+    sn = escape(stage_name)
+    ut = escape(unlock_time)
+    sl = escape(stage_link)
+    return f"""<html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;margin:0;padding:0;">
+<div style="max-width:560px;margin:0 auto;padding:32px 20px;">
+<div style="background:linear-gradient(135deg,#6C3BFF,#8B5CF6);border-radius:16px 16px 0 0;padding:32px 24px;text-align:center;">
+<div style="font-size:40px;margin-bottom:8px;">🎉</div>
+<h1 style="color:#ffffff;font-size:20px;font-weight:800;margin:0;">Congratulations!</h1>
+<p style="color:rgba(255,255,255,0.85);font-size:14px;margin:8px 0 0;">You have successfully qualified for the next stage</p>
+</div>
+<div style="background:#ffffff;border-radius:0 0 16px 16px;padding:32px 24px;">
+<p style="font-size:15px;color:#0f172a;margin:0 0 16px;">Hi <strong>{pn}</strong>,</p>
+<p style="font-size:14px;color:#475569;line-height:1.6;margin:0 0 20px;">You have successfully qualified for the next stage of <strong>{et}</strong> hosted by <strong>{on}</strong>.</p>
+<div style="background:#f1f5f9;border-radius:12px;padding:16px;margin-bottom:20px;">
+<table style="width:100%;font-size:13px;">
+<tr><td style="color:#64748b;padding:4px 0;">Stage</td><td style="font-weight:600;padding:4px 0;">{sn}</td></tr>
+<tr><td style="color:#64748b;padding:4px 0;">Unlock Time</td><td style="font-weight:600;padding:4px 0;">{ut}</td></tr>
+</table>
+</div>
+<a href="{sl}" style="display:inline-block;background:#6C3BFF;color:#ffffff;font-size:14px;font-weight:700;padding:14px 28px;border-radius:12px;text-decoration:none;">Access Your Stage</a>
+<p style="font-size:12px;color:#94a3b8;margin-top:24px;">Best of luck for the next round.</p>
+<hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0 16px;">
+<p style="font-size:12px;color:#94a3b8;margin:0;">Regards,<br>Team Studlyf<br>On behalf of {on}</p>
+</div>
+</div></body></html>"""
 

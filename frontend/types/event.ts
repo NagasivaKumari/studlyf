@@ -13,6 +13,15 @@ export interface IStageConfig {
     pass_mark?: number;
 }
 
+export interface IStageCommunication {
+    send_email_on_unlock?: boolean;
+    email_subject_override?: string;
+    email_body_markdown?: string;
+    draft_email_subject_override?: string;
+    draft_email_body_markdown?: string;
+    has_unpublished_changes?: boolean;
+}
+
 export interface IStage {
     id: string;
     name: string;
@@ -20,10 +29,14 @@ export interface IStage {
     description: string;
     start_date: string;
     end_date: string;
+    result_time?: string;
+    depends_on?: string[];
     status?: 'Active' | 'Upcoming' | 'Completed';
+    stored_status?: 'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled';
     visibility?: 'Public' | 'Private' | 'Shortlisted Only';
     roundMode?: 'Online' | 'Offline' | 'Hybrid';
     config?: IStageConfig;
+    communication?: IStageCommunication;
 }
 
 export interface IEvent {

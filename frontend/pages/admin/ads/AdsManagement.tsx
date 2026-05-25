@@ -1,8 +1,50 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Plus, Trash2, Eye, EyeOff, Edit3, Upload, X, GripVertical, ImageIcon, Film, Check } from 'lucide-react';
-import { AdItem, AdCardType, renderCard, useFont, useCSS } from '../../../components/AdsCarousel';
-
 import { API_BASE_URL } from '../../../apiConfig';
+
+export type AdCardType = 'video' | 'image' | 'video_image';
+
+export interface AdItem {
+    _id?: string;
+    card_type: AdCardType;
+    eyebrow: string;
+    title: string;
+    description: string;
+    media_url: string;
+    media_type: 'video' | 'image';
+    secondary_media_url: string;
+    secondary_media_type: 'video' | 'image';
+    tag: string;
+    badge: string;
+    cta_text: string;
+    cta_link: string;
+    cta_style: string;
+    pills: string[];
+    color_scheme: string;
+    bg_color: string;
+    duration: string;
+    wide_side: string;
+    promo_tag: string;
+    promo_stats: any[];
+    order: number;
+    active: boolean;
+    show_cta?: boolean;
+}
+
+export const useFont = () => {};
+export const useCSS = () => {};
+
+export const renderCard = (ad: AdItem, idx: number) => {
+    return (
+        <div style={{ width: 400, padding: 24, background: '#1a1a1a', color: 'white', borderRadius: 20, fontFamily: 'sans-serif' }}>
+            {ad.media_url && <img src={ad.media_url} style={{ width: '100%', height: 200, objectFit: 'cover', borderRadius: 12, marginBottom: 16 }} alt="Preview" />}
+            <div style={{ fontSize: 12, color: '#a78bfa', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 8 }}>{ad.eyebrow}</div>
+            <h3 style={{ fontSize: 24, fontWeight: 'bold', margin: '0 0 12px 0' }}>{ad.title}</h3>
+            <p style={{ fontSize: 14, color: '#9ca3af', margin: '0 0 20px 0', lineHeight: 1.5 }}>{ad.description}</p>
+            <button style={{ padding: '10px 20px', background: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontWeight: 'bold', cursor: 'pointer' }}>{ad.cta_text}</button>
+        </div>
+    );
+};
 
 const API = `${API_BASE_URL}/api/ads`;
 

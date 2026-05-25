@@ -98,17 +98,12 @@ async def upload_event_media(
     user: dict = Depends(get_auth_user)
 ):
     """
-    Upload logo or banner for an event.
-    field should be 'logo_url' or 'banner_url'
+    Upload logo or banner for an event, encoded as base64 Data URI directly in MongoDB.
     """
     try:
         # Validate field parameter
         if field not in ['logo_url', 'banner_url']:
             raise HTTPException(status_code=400, detail="field must be 'logo_url' or 'banner_url'")
-        
-        # Create uploads directory if needed
-        upload_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "events")
-        os.makedirs(upload_dir, exist_ok=True)
         
         # Validate file extension
         await assert_institution_owns_event(event_id, user)
@@ -117,21 +112,23 @@ async def upload_event_media(
         if file_ext not in allowed_extensions:
             raise HTTPException(status_code=400, detail=f"File type {file_ext} not allowed. Use: {', '.join(allowed_extensions)}")
         
-        # Generate unique filename
-        filename = f"{event_id}_{field}_{uuid.uuid4()}{file_ext}"
-        filepath = os.path.join(upload_dir, filename)
-        
-        # Save file
+        # Read file contents and validate size
         file_content = await file.read()
         if len(file_content) > 10 * 1024 * 1024:  # 10MB limit
             raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
         
-        with open(filepath, "wb") as f:
-            f.write(file_content)
-        
-        # Get base URL from environment or construct it
-        base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
-        url = f"{base_url}/uploads/events/{filename}"
+        # Convert to base64 Data URI
+        import base64
+        mime_type = "image/png"
+        if file_ext in [".jpg", ".jpeg"]:
+            mime_type = "image/jpeg"
+        elif file_ext == ".webp":
+            mime_type = "image/webp"
+        elif file_ext == ".gif":
+            mime_type = "image/gif"
+            
+        b64_data = base64.b64encode(file_content).decode("utf-8")
+        data_uri = f"data:{mime_type};base64,{b64_data}"
         
         # Update event in DB
         try:
@@ -142,7 +139,7 @@ async def upload_event_media(
         # Try updating events collection first
         result = await events_col.update_one(
             {"_id": event_id_obj},
-            {"$set": {field: url}}
+            {"$set": {field: data_uri}}
         )
         
         from db import opportunities_col
@@ -152,7 +149,7 @@ async def upload_event_media(
             try:
                 await opportunities_col.update_many(
                     {"event_link_id": str(event_id)},
-                    {"$set": {field: url}}
+                    {"$set": {field: data_uri}}
                 )
             except Exception as e:
                 import logging
@@ -161,12 +158,12 @@ async def upload_event_media(
             # Fallback: if the event wasn't in events_col, check if it's a standalone opportunity
             opp_result = await opportunities_col.update_one(
                 {"_id": event_id_obj},
-                {"$set": {field: url}}
+                {"$set": {field: data_uri}}
             )
             if opp_result.matched_count == 0:
                 raise HTTPException(status_code=404, detail="Event not found")
         
-        return {"url": url, "status": "success", "field": field}
+        return {"url": data_uri, "status": "success", "field": field}
         
     except HTTPException:
         raise
