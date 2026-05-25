@@ -38,15 +38,9 @@ const LearnDropdown = ({ onItemClick }: { onItemClick: () => void }) => (
                 <div className="absolute inset-0 bg-gradient-to-r from-white via-white/20 to-transparent"></div>
             </div>
         </BentoCard>
-        <BentoCard onClick={onItemClick} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="md:col-span-2 h-[120px] bg-white shadow-sm">
+        <BentoCard onClick={onItemClick} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="md:col-span-2 md:row-span-2 min-h-[180px] md:min-h-[260px] bg-white shadow-sm overflow-hidden">
             <div className="absolute top-0 right-0 w-1/3 h-full overflow-hidden">
                 <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="w-full h-full object-cover group-hover:scale-110 transition-transform" alt="Corporate" />
-                <div className="absolute inset-0 bg-gradient-to-r from-white via-white/40 to-transparent"></div>
-            </div>
-        </BentoCard>
-        <BentoCard onClick={onItemClick} to="/blog" title="Blog" desc="Technical insights on system ownership." className="md:col-span-2 h-[120px] bg-white shadow-sm">
-            <div className="absolute top-0 right-0 w-1/3 h-full overflow-hidden">
-                <img src="https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=400" className="w-full h-full object-cover group-hover:scale-110 transition-transform" alt="Blog" />
                 <div className="absolute inset-0 bg-gradient-to-r from-white via-white/40 to-transparent"></div>
             </div>
         </BentoCard>
