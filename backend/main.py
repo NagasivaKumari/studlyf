@@ -79,6 +79,10 @@ if os.getenv("ENVIRONMENT", "development").lower() == "development":
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+        "http://localhost:3003",
+        "http://127.0.0.1:3003",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:8000"
@@ -89,9 +93,12 @@ origins = [origin for origin in origins if origin]
 # Remove duplicates
 origins = list(set(origins))
 
+origin_regex = r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):(3000|3001|3002|3003|5173|8000)$"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],

@@ -387,6 +387,62 @@ const MyProfile: React.FC = () => {
     }
   };
 
+  const profileCompletion = Math.min(100, calculateStrength());
+  const profileDisplayName = [formData.firstName, formData.lastName].filter(Boolean).join(' ') || user?.full_name || 'Your Profile';
+  const profileRole = formData.userType || user?.role || 'Contributor';
+  const profileHeadline = formData.bio || formData.careerGoal || 'A polished contributor profile for modern learning and hiring workflows.';
+  const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
+    ? `${window.location.origin}/profile/${user.user_id}`
+    : '';
+
+  const copyProfileLink = async () => {
+    if (!publicProfileUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicProfileUrl);
+      setSaveStatus({ type: 'success', message: 'Profile link copied to clipboard.' });
+      setTimeout(() => setSaveStatus(null), 2500);
+    } catch {
+      setSaveStatus({ type: 'error', message: 'Unable to copy the profile link.' });
+      setTimeout(() => setSaveStatus(null), 2500);
+    }
+  };
+
+  const shareProfile = async () => {
+    if (!publicProfileUrl) return;
+    const shareData = {
+      title: `${profileDisplayName} | Studlyf Profile`,
+      text: `View ${profileDisplayName}'s public profile on Studlyf.`,
+      url: publicProfileUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(publicProfileUrl);
+        setSaveStatus({ type: 'success', message: 'Share link copied to clipboard.' });
+        setTimeout(() => setSaveStatus(null), 2500);
+      }
+    } catch {
+      setSaveStatus({ type: 'error', message: 'Sharing was cancelled or unavailable.' });
+      setTimeout(() => setSaveStatus(null), 2500);
+    }
+  };
+
+  const activityTimeline = [
+    { title: 'Profile sync', detail: profileCompletion >= 80 ? 'Profile is ready for sharing and discovery.' : 'Profile still has a few sections to complete.', tone: profileCompletion >= 80 ? 'emerald' : 'amber' },
+    { title: 'Skill footprint', detail: `${formData.skills.length} skills currently curated in the profile workspace.`, tone: 'violet' },
+    { title: 'Project activity', detail: `${formData.projects.length} featured projects and ${formData.experienceList.length} work entries captured.`, tone: 'sky' },
+    { title: 'Public presence', detail: formData.profileVisible ? 'Profile visibility is enabled for public sharing.' : 'Profile visibility is currently limited.', tone: 'slate' },
+  ];
+
+  const achievementBadges = [
+    { label: 'Profile Builder', value: `${formData.projects.length + formData.experienceList.length} records` },
+    { label: 'Skill Stack', value: `${formData.skills.length} skills` },
+    { label: 'Resume Ready', value: formData.resume.fileName !== 'No resume uploaded' ? 'Active' : 'Pending' },
+    { label: 'Public Profile', value: publicProfileUrl ? 'Shareable' : 'Pending' },
+  ];
+
 
   const tabs = [
     { id: 'basic', label: 'Basic Details', icon: User, required: true },
@@ -1626,6 +1682,23 @@ const MyProfile: React.FC = () => {
             </div>
 
             <div className="space-y-10">
+               <div className="p-8 bg-[#F5F3FF]/60 rounded-[2.5rem] border border-[#7C3AED]/10 space-y-4">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <h4 className="text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.2em]">Public Profile</h4>
+                      <p className="text-sm font-medium text-gray-600 mt-2 max-w-2xl">This URL is what you can share publicly. It uses your user ID so your profile can be opened across devices without changing the backend contract.</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600 bg-emerald-50 px-3 py-2 rounded-full">
+                      <Globe className="w-3 h-3" /> Ready
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/70 bg-white px-4 py-3 text-sm font-medium text-gray-700 break-all shadow-sm">{publicProfileUrl || 'Save your profile to generate a public link.'}</div>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button onClick={copyProfileLink} disabled={!publicProfileUrl} className="flex-1 px-5 py-3 rounded-2xl bg-white border border-gray-200 text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy Profile Link</button>
+                    <button onClick={shareProfile} disabled={!publicProfileUrl} className="flex-1 px-5 py-3 rounded-2xl bg-[#7C3AED] text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share Profile</button>
+                  </div>
+               </div>
+
                <div className="p-8 bg-gray-50 rounded-[2.5rem] border border-gray-100 space-y-8">
                   <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Job Search Status</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1738,6 +1811,116 @@ const MyProfile: React.FC = () => {
         <div>
           <h1 className="text-3xl font-black uppercase tracking-tight text-gray-900 leading-tight">Edit Profile</h1>
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-1">Configure your professional identity</p>
+        </div>
+      </div>
+
+      <div className="mb-12 grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_20px_60px_rgba(15,23,42,0.06)]"
+        >
+          <div className="absolute inset-0 bg-gradient-to-br from-[#7C3AED]/6 via-transparent to-[#06B6D4]/8 pointer-events-none" />
+          <div className="relative flex flex-col lg:flex-row gap-8 lg:items-center">
+            <div className="flex items-start gap-5 flex-1">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-[2rem] overflow-hidden border border-white shadow-xl bg-gray-50 ring-4 ring-[#7C3AED]/10 flex items-center justify-center shrink-0">
+                {formData.profilePhoto ? <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" /> : <User className="w-10 h-10 text-gray-300" />}
+              </div>
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#7C3AED]/10 text-[#7C3AED] text-[10px] font-black uppercase tracking-[0.2em] mb-4">
+                  <Sparkles className="w-3 h-3" /> Profile Overview
+                </div>
+                <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900 leading-tight break-words">
+                  {profileDisplayName}
+                </h2>
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-500 font-medium">
+                  <span className="px-3 py-1 rounded-full bg-gray-50 border border-gray-100 text-gray-700">{profileRole}</span>
+                  {formData.location && <span className="inline-flex items-center gap-1"><MapPin className="w-4 h-4" /> {formData.location}</span>}
+                  {formData.domain && <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">{formData.domain}</span>}
+                </div>
+                <p className="mt-5 max-w-3xl text-sm sm:text-base leading-7 text-gray-600">{profileHeadline}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 w-full lg:w-[280px]">
+              <div className="rounded-3xl border border-gray-100 bg-gray-50/80 p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Profile Completion</div>
+                <div className="mt-3 text-3xl font-black text-gray-900">{profileCompletion}%</div>
+                <div className="mt-3 h-2 rounded-full bg-gray-200 overflow-hidden">
+                  <div className="h-full rounded-full bg-[#7C3AED]" style={{ width: `${profileCompletion}%` }} />
+                </div>
+              </div>
+              <div className="rounded-3xl border border-gray-100 bg-gray-50/80 p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Public URL</div>
+                <div className="mt-3 text-sm font-bold text-gray-900 break-all">{publicProfileUrl || 'Ready after save'}</div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+          {[
+            { label: 'Tests completed', value: Math.max(formData.resume.atsScore > 0 ? 1 : 0, formData.skills.length ? 1 : 0) + formData.certifications.length, tone: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { label: 'Contributions', value: formData.projects.length + formData.experienceList.length + formData.achievements.length, tone: 'text-[#7C3AED]', bg: 'bg-[#F5F3FF]' },
+            { label: 'Skills', value: formData.skills.length, tone: 'text-sky-600', bg: 'bg-sky-50' },
+            { label: 'Activity score', value: profileCompletion, tone: 'text-orange-600', bg: 'bg-orange-50' },
+          ].map(card => (
+            <div key={card.label} className="rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+              <div className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.2em] ${card.bg} ${card.tone}`}>{card.label}</div>
+              <div className="mt-4 text-3xl font-black text-gray-900">{card.value}</div>
+              <p className="mt-2 text-xs leading-5 text-gray-500">Tracked from your profile, resume, and portfolio activity.</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-12 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_20px_60px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-xl font-black uppercase tracking-tight text-gray-900">Activity Timeline</h3>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-1">Recent signals from your profile workspace</p>
+            </div>
+            <Calendar className="w-5 h-5 text-gray-300" />
+          </div>
+          <div className="space-y-4">
+            {activityTimeline.map((item, index) => (
+              <div key={item.title} className="flex gap-4 rounded-3xl border border-gray-100 bg-gray-50/60 p-4">
+                <div className={`w-3 h-3 rounded-full mt-2 shrink-0 ${item.tone === 'emerald' ? 'bg-emerald-500' : item.tone === 'amber' ? 'bg-amber-500' : item.tone === 'sky' ? 'bg-sky-500' : 'bg-gray-400'}`} />
+                <div className="min-w-0">
+                  <div className="text-sm font-black text-gray-900">{item.title}</div>
+                  <div className="text-sm text-gray-600 leading-6">{item.detail}</div>
+                  <div className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">0{index + 1}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_20px_60px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-xl font-black uppercase tracking-tight text-gray-900">Achievement Badges</h3>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-1">Profile milestones and visibility</p>
+            </div>
+            <Award className="w-5 h-5 text-[#7C3AED]" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {achievementBadges.map(badge => (
+              <div key={badge.label} className="rounded-3xl border border-gray-100 bg-[#FAFAFA] p-4 hover:border-[#7C3AED]/20 transition-colors">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{badge.label}</div>
+                <div className="mt-2 text-sm font-bold text-gray-900">{badge.value}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 rounded-3xl border border-[#7C3AED]/10 bg-[#F5F3FF]/70 p-5">
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#7C3AED]">Shareable Public Profile</div>
+            <div className="mt-3 text-sm text-gray-700 leading-6">Generate a public URL, copy it instantly, or share it through your device's native share sheet.</div>
+            <div className="mt-4 flex flex-col sm:flex-row gap-3">
+              <button onClick={copyProfileLink} disabled={!publicProfileUrl} className="flex-1 rounded-2xl bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-gray-900 border border-gray-200 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy Profile Link</button>
+              <button onClick={shareProfile} disabled={!publicProfileUrl} className="flex-1 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-[#7C3AED]/20 hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share Profile</button>
+            </div>
+          </div>
         </div>
       </div>
 

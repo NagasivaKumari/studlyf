@@ -39,6 +39,7 @@ import Checkout from './pages/Checkout';
 import MyCourses from './pages/MyCourses';
 import CareerOnboarding from './pages/CareerOnboarding';
 import CoursesOverview from './pages/CoursesOverview';
+import PublicProfile from './pages/PublicProfile';
 import TrackDetail from './pages/TrackDetail';
 import EnrollmentFlow from './pages/EnrollmentFlow';
 import StackPage from './pages/StackPage';
@@ -412,8 +413,27 @@ const App: React.FC = () => {
             />
 
 
+            <Route path="/about" element={<About />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/feature-preview/:id" element={<PublicRoute><FeaturePreview /></PublicRoute>} />
+            <Route path="/login" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
+            <Route path="/signup" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
+            <Route path="/judge-invitation" element={<JudgeInvitation />} />
+            <Route path="/ai-tools" element={<AITools />} />
+            <Route path="/verify/:id" element={<CertificateVerification />} />
+            <Route path="/fix-role" element={<RoleFixer />} />
+            <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+            <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+            <Route path="/verify-email" element={<PublicRoute><VerifyEmail /></PublicRoute>} />
+
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                {role === 'institution' ? <Navigate to="/institution-dashboard" replace /> : <Navigate to="/dashboard/learner" replace />}
+              </ProtectedRoute>
+            } />
             <Route path="/dashboard/learner" element={<ProtectedRoute><DashboardHome /></ProtectedRoute>} />
             <Route path="/dashboard/profile" element={<ProtectedRoute><LearnerDashboard /></ProtectedRoute>} />
+            <Route path="/profile/:userId" element={<PublicProfile />} />
             <Route path="/dashboard/partner" element={<ProtectedRoute><PartnerDashboard /></ProtectedRoute>} />
             <Route path="/dashboard/my-courses" element={<ProtectedRoute><MyCourses /></ProtectedRoute>} />
 
