@@ -528,6 +528,11 @@ async def create_institution_profile(profile: dict, user: dict = Depends(get_aut
     profile["institution_id"] = inst_id 
     profile["updated_at"] = datetime.utcnow()
 
+    # Remove empty fields that have unique sparse indexes to avoid duplicate key errors
+    for key in ("email", "name"):
+        if key in profile and not profile[key]:
+            del profile[key]
+
     if existing:
         await institutions_col.update_one(
             {"_id": existing["_id"]},
