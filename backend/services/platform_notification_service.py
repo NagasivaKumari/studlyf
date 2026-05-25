@@ -119,7 +119,7 @@ async def notify_password_reset(
     reset_link: str,
     expiry_duration: str = "1 hour",
 ):
-    await send_template_email(
+    return await send_template_email(
         template_type="password_reset",
         recipient=recipient_email,
         context={

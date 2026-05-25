@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { 
@@ -88,6 +88,9 @@ function applicationDecisionCopy(status: string | undefined) {
 
 const getImageUrl = (url: string | undefined) => {
     if (!url) return '';
+    // If the URL is already absolute, return as-is (don't rewrite)
+    if (/^https?:\/\//i.test(url)) return url;
+    // Normalize internal upload paths to API base
     if (url.includes('/uploads/')) {
         const path = url.substring(url.indexOf('/uploads/'));
         return `${API_BASE_URL}${path}`;
@@ -120,12 +123,47 @@ const OpportunityDetails: React.FC = () => {
         interest: ''
     });
     const [regAnswers, setRegAnswers] = useState<Record<string, string>>({});
+    const [uploadedFilenames, setUploadedFilenames] = useState<Record<string, string>>({});
     const [regFiles, setRegFiles] = useState<Record<string, File | null>>({});
     const [myApplication, setMyApplication] = useState<any>(null);
     const [related, setRelated] = useState<any[]>([]);
     const [favorited, setFavorited] = useState(false);
     const [descExpanded, setDescExpanded] = useState(false);
     const [activeSection, setActiveSection] = useState<'details' | 'dates' | 'prizes' | 'reviews' | 'faq' | 'submissions' | 'leaderboard'>('details');
+    const getFieldAllowedExtensions = (field: RegField) => {
+        const textToCheck = `${field.label} ${field.hint || ''}`.toLowerCase();
+        const hasPdf = textToCheck.includes('pdf');
+        const hasPpt = textToCheck.includes('ppt') || textToCheck.includes('powerpoint') || textToCheck.includes('pptx');
+        const hasDoc = textToCheck.includes('doc') || textToCheck.includes('docx') || textToCheck.includes('word');
+        const hasZip = textToCheck.includes('zip') || textToCheck.includes('rar');
+        const hasImage = textToCheck.includes('image') || textToCheck.includes('png') || textToCheck.includes('jpg') || textToCheck.includes('jpeg');
+
+        const allowed: string[] = [];
+        if (hasPdf) allowed.push('.pdf');
+        if (hasPpt) {
+            allowed.push('.ppt');
+            allowed.push('.pptx');
+        }
+        if (hasDoc) {
+            allowed.push('.doc');
+            allowed.push('.docx');
+        }
+        if (hasZip) {
+            allowed.push('.zip');
+            allowed.push('.rar');
+        }
+        if (hasImage) {
+            allowed.push('.png');
+            allowed.push('.jpg');
+            allowed.push('.jpeg');
+        }
+
+        if (allowed.length === 0) {
+            return ['.pdf', '.ppt', '.pptx', '.doc', '.docx', '.png', '.jpg', '.jpeg', '.zip'];
+        }
+        return allowed;
+    };
+
 
     const detailsRef = useRef<HTMLDivElement>(null);
     const datesRef = useRef<HTMLDivElement>(null);
@@ -144,6 +182,18 @@ const OpportunityDetails: React.FC = () => {
     const [stageRegistrationFields, setStageRegistrationFields] = useState<any>(null);
     const [prefilledFields, setPrefilledFields] = useState<Record<string, any>>({});
     const [loadingFields, setLoadingFields] = useState(false);
+    const [showRegistrationModal, setShowRegistrationModal] = useState(false);
+    
+    // Decoupled global profile onboarding states
+    const [registrationStatus, setRegistrationStatus] = useState<string>('NOT_REGISTERED');
+    const effectiveRegStatus = useMemo(() => {
+        if (registrationStatus === 'APPROVED') return 'APPROVED';
+        if (myApplication && ['shortlisted', 'accepted', 'approved'].includes(String(myApplication.status).toLowerCase())) return 'APPROVED';
+        return registrationStatus;
+    }, [registrationStatus, myApplication]);
+    const [formConfig, setFormConfig] = useState<any>(null);
+    const [currentStepIndex, setCurrentStepIndex] = useState(0);
+    const [uploadingField, setUploadingField] = useState<string | null>(null);
     const eventId = String(opportunity?.event_link_id || opportunity?.event_id || id || '');
 
     const computeStageStatus = (stage: any) => {
@@ -302,47 +352,66 @@ const OpportunityDetails: React.FC = () => {
         }
     }, [location.search]);
 
-        useEffect(() => {
-                if (!user || !eventId || isApplied) return;
+    useEffect(() => {
+        if (!user || !eventId) return;
         
-                setLoadingFields(true);
-                fetch(`${API_BASE_URL}/api/v1/stages/events/${eventId}/registration-fields`, {
-                    headers: authHeaders()
-                })
-                .then(res => {
-                    if (!res.ok) return null;
-                    return res.json().catch(() => null);
-                })
-                .then(data => {
-                    if (data?.status === 'success') {
-                        setStageRegistrationFields(data);
-                        const prefilled = {};
-                        data.prefilled_fields?.forEach((field: any) => {
-                            if (field.prefilled_value) {
-                                prefilled[field.id] = field.prefilled_value;
-                            }
-                        });
-                        setPrefilledFields(prefilled);
-                    }
-                })
-                .catch(() => { /* no registration stage — direct submission flow */ })
-                .finally(() => setLoadingFields(false));
-            }, [user, eventId, isApplied]);
+        setLoadingFields(true);
+        fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/form`, {
+            headers: authHeaders()
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data?.event_id) {
+                setFormConfig(data);
+                setRegistrationStatus(data.status);
+                
+                // Prefill answers state
+                const initialAnswers: Record<string, string> = {};
+                
+                // Prefill core profile fields
+                if (data.fields_definitions) {
+                    data.fields_definitions.forEach((fd: any) => {
+                        if (fd.prefilled_value) {
+                            initialAnswers[fd.id] = String(fd.prefilled_value);
+                        }
+                    });
+                }
+                
+                // Prefill custom questions if snapshots exist
+                if (data.registration?.custom_answers) {
+                    Object.assign(initialAnswers, data.registration.custom_answers);
+                }
+                
+                setRegAnswers(prev => ({ ...prev, ...initialAnswers }));
+            }
+        })
+        .catch(err => console.error("Error loading registration form config:", err))
+        .finally(() => setLoadingFields(false));
+    }, [user, eventId, isApplied]);
 
-    const registrationFields: RegField[] = Array.isArray(stageRegistrationFields?.custom_fields)
-        ? stageRegistrationFields.custom_fields.map((field: any) => ({
-            id: String(field.id || field.field_id || field.name || field.label),
-            label: String(field.label || field.name || 'Field'),
-            type: String(field.type || field.field_type || 'text'),
-            required: Boolean(field.required),
-            isFixed: Boolean(field.isFixed || field.prefilled),
-            options: Array.isArray(field.options) ? field.options : undefined,
-            hint: field.hint || field.placeholder || field.help_text || '',
-        }))
-        : Array.isArray(opportunity?.registrationFields)
-            ? opportunity.registrationFields
-            : [];
-    const useStageRegistration = Array.isArray(stageRegistrationFields?.custom_fields);
+    const registrationFields: RegField[] = formConfig?.fields_definitions
+        ? [
+            ...(formConfig.fields_definitions || []).map((field: any) => ({
+                id: String(field.id),
+                label: String(field.label),
+                type: String(field.type),
+                required: Boolean(field.required),
+                isFixed: true,
+                options: Array.isArray(field.options) ? field.options : undefined,
+                hint: field.hint || '',
+            })),
+            ...(formConfig.custom_questions || []).map((field: any) => ({
+                id: String(field.id),
+                label: String(field.label),
+                type: String(field.type),
+                required: Boolean(field.required),
+                isFixed: false,
+                options: Array.isArray(field.options) ? field.options : undefined,
+                hint: field.hint || '',
+            })),
+        ]
+        : [];
+    const useStageRegistration = Boolean(formConfig);
     const useInstitutionForm = registrationFields.length > 0;
 
     const buildLegacyPayload = () => {
@@ -371,10 +440,7 @@ const OpportunityDetails: React.FC = () => {
             let val = '';
 
             if (t === 'file' || t === 'upload') {
-                const file = regFiles[f.id];
-                val = file
-                    ? `https://studlyf-storage.s3.amazonaws.com/resumes/${file.name}`
-                    : '';
+                val = regAnswers[f.id] ?? '';
                 if (/resume|cv/i.test(f.label) && val) derivedResume = val;
             } else if (t === 'checkbox' && f.options && f.options.length > 0) {
                 const selected = f.options.filter((opt) => regAnswers[`${f.id}:${opt}`] === 'on');
@@ -407,6 +473,32 @@ const OpportunityDetails: React.FC = () => {
         };
     };
 
+    const handleFileUpload = async (fieldId: string, file: File) => {
+        setUploadingField(fieldId);
+        const uFormData = new FormData();
+        uFormData.append("file", file);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/registration/upload`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: uFormData
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setRegAnswers(prev => ({ ...prev, [fieldId]: data.url }));
+                setUploadedFilenames(prev => ({ ...prev, [fieldId]: file.name }));
+                alert("File uploaded successfully.");
+            } else {
+                alert(`Upload failed: ${data.detail || 'Unknown error'}`);
+            }
+        } catch (err) {
+            console.error("Upload error:", err);
+            alert("Failed to upload file.");
+        } finally {
+            setUploadingField(null);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) {
@@ -419,50 +511,47 @@ const OpportunityDetails: React.FC = () => {
             return;
         }
 
-        // NEW: Use the new registration endpoint if registrationFields are present
         if (useStageRegistration) {
-            const customFieldPayload: Record<string, any> = {};
-            let allRequiredFilled = true;
+            const profile_data: Record<string, any> = {};
+            const custom_answers: Record<string, any> = {};
 
-            registrationFields.forEach((field: any) => {
-                if (field.required) {
-                    if (field.type === 'file' && !regFiles[field.id]) {
-                        alert(`Please upload a file for: ${field.label}`);
-                        allRequiredFilled = false;
-                    } else if (!regAnswers[field.id]) {
-                        alert(`Please fill out: ${field.label}`);
-                        allRequiredFilled = false;
-                    }
+            // Populate core fields
+            if (formConfig?.fields_definitions) {
+                for (const fd of formConfig.fields_definitions) {
+                    profile_data[fd.id] = regAnswers[fd.id] || '';
                 }
-                customFieldPayload[field.id] = regAnswers[field.id] || '';
-            });
+            }
 
-            if (!allRequiredFilled) {
-                return;
+            // Populate custom fields
+            if (formConfig?.custom_questions) {
+                for (const q of formConfig.custom_questions) {
+                    custom_answers[q.id] = regAnswers[q.id] || '';
+                }
             }
 
             setSubmitting(true);
             try {
-                const response = await fetch(`${API_BASE_URL}/api/v1/stages/events/${eventId}/register`, {
+                const response = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/apply`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         ...authHeaders(),
                     },
                     body: JSON.stringify({
-                        custom_fields: customFieldPayload,
-                        institution_id: opportunity.createdBy || opportunity.institution_id,
+                        profile_data,
+                        custom_answers
                     }),
                 });
 
+                const data = await response.json();
                 if (response.ok) {
-                    const data = await response.json();
-                    setMyApplication(data.participant);
+                    setRegistrationStatus(data.reg_status);
                     setSubmitted(true);
                     setIsApplied(true);
+                    setShowRegistrationModal(false);
+                    alert("Registration submitted successfully!");
                 } else {
-                    const errorData = await response.json();
-                    alert(`Registration failed: ${errorData.detail || 'Unknown error'}`);
+                    alert(`Registration failed: ${data.detail || 'Unknown error'}`);
                 }
             } catch (err) {
                 console.error("Registration error:", err);
@@ -649,32 +738,24 @@ const OpportunityDetails: React.FC = () => {
         const event_hub_id = String(opportunity.event_link_id || opportunity.event_id || id);
         const oppPath = id ? `/opportunities/${encodeURIComponent(String(id))}` : '';
         const isSubmissionStage = stype === 'SUBMISSION' || sname.includes('SUBMISSION');
+        const regStatusStr = (effectiveRegStatus || 'NOT_REGISTERED').toUpperCase();
+        const isRegistrationStage = stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION');
 
-        if (stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION')) {
-            // Scroll to the registration / apply form
-            const formElement = document.querySelector('form') || document.querySelector('.sticky');
-            if (formElement) {
-                formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else {
-                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-            }
+        if (isRegistrationStage) {
+            if (regStatusStr === 'APPROVED') return;
+            setShowRegistrationModal(true);
             return;
         }
 
-        // Submission stages should open the portal directly so participants can submit.
-        if (isSubmissionStage) {
-            navigate(`${oppPath}?tab=submissions`);
-            return;
-        }
-
-        // Other stages still require registration first.
-        if (!isApplied) {
-            alert(`Please register/apply for "${opportunity.title}" first to participate in this stage!`);
-            const formElement = document.querySelector('form') || document.querySelector('.sticky');
-            if (formElement) {
-                formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Downstream timeline assessment locked unless APPROVED
+        if (regStatusStr !== 'APPROVED') {
+            if (regStatusStr === 'PENDING_APPROVAL') {
+                alert("Your registration is pending review by the host. Downstream stages will unlock as soon as your application is approved!");
+            } else if (regStatusStr === 'REJECTED') {
+                alert("Your registration has been rejected. You cannot participate in this opportunity.");
             } else {
-                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                alert("You must complete the registration first.");
+                setShowRegistrationModal(true);
             }
             return;
         }
@@ -696,7 +777,6 @@ const OpportunityDetails: React.FC = () => {
             }
             if (now > endDate) {
                 alert(`This stage has ended on ${endDate.toLocaleString()}. You can no longer participate.`);
-                // We might still want to let them view results (if FINAL stage), but for now, we alert.
                 if (stype !== 'FINAL' && !sname.includes('RESULT')) {
                     return;
                 }
@@ -712,11 +792,9 @@ const OpportunityDetails: React.FC = () => {
             if (quizId) {
                 navigate(`/events/${encodeURIComponent(event_hub_id)}/quiz/${quizId}`);
             } else {
-                // Fallback: direct to timeline in event hub
                 navigate(`/events/${encodeURIComponent(event_hub_id)}`);
             }
         } else {
-            // Default fallback: direct to event hub timeline
             navigate(`/events/${encodeURIComponent(event_hub_id)}`);
         }
     };
@@ -724,7 +802,16 @@ const OpportunityDetails: React.FC = () => {
     const venueLine = buildVenueLine(opportunity);
     const teamSize = teamSizeLabel(opportunity);
     const elig = eligibilityList(opportunity);
-    const logoSrc = getImageUrl(opportunity.logo_url || opportunity.institution_logo_url || '');
+    const logoSrc = getImageUrl(
+        opportunity.logo_url ||
+        opportunity.logoUrl ||
+        opportunity.institution_logo_url ||
+        opportunity.institutionLogoUrl ||
+        opportunity.organization_logo_url ||
+        opportunity.org_logo_url ||
+        opportunity.logo ||
+        ''
+    );
     const orgDisplay = opportunity.organization || opportunity.institution_profile_name || 'Host institution';
     const registeredCount = Number(opportunity.applicantsCount ?? opportunity.registeredCount ?? 0);
     const deadlineDate = (() => {
@@ -781,12 +868,45 @@ const OpportunityDetails: React.FC = () => {
     const hasContactSection = contactList.length > 0;
     const hasAttachmentsSection = attachmentsList.length > 0;
 
+    const stagesList = Array.isArray(opportunity?.stages) ? opportunity.stages : [];
+    
+    // Find Registration Stage
+    const regStage = stagesList.find((s: any) => 
+        String(s?.type || '').toUpperCase() === 'REGISTRATION' || 
+        String(s?.name || '').toLowerCase().includes('regist')
+    );
+    const derivedDeadline = regStage?.endDate || regStage?.end_date || regStage?.deadline || opportunity?.deadline;
+
+    // Find Event Start Date
+    let derivedStartDate = opportunity?.eventStartDate || opportunity?.start_date;
+    if (stagesList.length > 0) {
+        const startDates = stagesList
+            .map((s: any) => s?.startDate || s?.start_date)
+            .filter(Boolean)
+            .map((d: any) => new Date(d).getTime());
+        if (startDates.length > 0) {
+            derivedStartDate = new Date(Math.min(...startDates)).toISOString();
+        }
+    }
+
+    // Find Event End Date
+    let derivedEndDate = opportunity?.eventEndDate || opportunity?.end_date;
+    if (stagesList.length > 0) {
+        const endDates = stagesList
+            .map((s: any) => s?.endDate || s?.end_date)
+            .filter(Boolean)
+            .map((d: any) => new Date(d).getTime());
+        if (endDates.length > 0) {
+            derivedEndDate = new Date(Math.max(...endDates)).toISOString();
+        }
+    }
+
     const hasDatesSection =
-        Boolean(opportunity.deadline) ||
-        Boolean(opportunity.eventStartDate) ||
-        Boolean(opportunity.eventEndDate) ||
-        (Array.isArray(opportunity.stages) &&
-            opportunity.stages.some((s: any) => s?.startDate || s?.start_date || s?.endDate || s?.end_date || s?.deadline));
+        Boolean(derivedDeadline) ||
+        Boolean(derivedStartDate) ||
+        Boolean(derivedEndDate) ||
+        (stagesList.length > 0 &&
+            stagesList.some((s: any) => s?.startDate || s?.start_date || s?.endDate || s?.end_date || s?.deadline));
     const hasPrizesSection = Boolean(prizePoolLabel) || (Array.isArray(prizesList) && prizesList.length > 0);
     const hideLeaderboard =
         (() => {
@@ -958,6 +1078,53 @@ const OpportunityDetails: React.FC = () => {
                     </div>
                 ) : (
                 <>
+                {/* Onboarding Lock & Congratulations Banners */}
+                {user && (
+                    <div className={`mb-6 p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all duration-300 shadow-sm
+                        ${effectiveRegStatus === 'APPROVED' ? 'bg-purple-50/50 border-purple-200 text-purple-900' :
+                          effectiveRegStatus === 'PENDING_APPROVAL' ? 'bg-amber-50/60 border-amber-200 text-amber-900' :
+                          effectiveRegStatus === 'REJECTED' ? 'bg-rose-50 border-rose-200 text-rose-900' :
+                          'bg-slate-50 border-slate-200 text-slate-700'}`}
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm shrink-0
+                                ${effectiveRegStatus === 'APPROVED' ? 'bg-[#6C3BFF]' :
+                                  effectiveRegStatus === 'PENDING_APPROVAL' ? 'bg-amber-500' :
+                                  effectiveRegStatus === 'REJECTED' ? 'bg-rose-500' :
+                                  'bg-slate-500'}`}
+                            >
+                                {effectiveRegStatus === 'APPROVED' ? <CheckCircle2 size={24} /> :
+                                 effectiveRegStatus === 'PENDING_APPROVAL' ? <Clock size={24} /> :
+                                 effectiveRegStatus === 'REJECTED' ? <XCircle size={24} /> :
+                                 <Users size={24} />}
+                            </div>
+                            <div>
+                                <h3 className="font-black text-sm uppercase tracking-wider">
+                                    {effectiveRegStatus === 'APPROVED' ? 'Registration Approved' :
+                                     effectiveRegStatus === 'PENDING_APPROVAL' ? 'Registration Pending Host Review' :
+                                     effectiveRegStatus === 'REJECTED' ? 'Registration Rejected' :
+                                     'Registration Required'}
+                                </h3>
+                                <p className="text-xs font-semibold opacity-95 mt-1">
+                                    {effectiveRegStatus === 'APPROVED' ? 'Congratulations! You are officially registered. All event assessment stages are unlocked.' :
+                                     effectiveRegStatus === 'PENDING_APPROVAL' ? 'Your registration is under manual host evaluation. Downstream stages will unlock upon approval.' :
+                                     effectiveRegStatus === 'REJECTED' ? 'Unfortunately, your application did not meet the host criteria. Contact organizers for feedback.' :
+                                     'Complete the decoupled global registration form to unlock stages and timeline assessments.'}
+                                </p>
+                            </div>
+                        </div>
+                        {effectiveRegStatus === 'NOT_REGISTERED' && (
+                            <button
+                                type="button"
+                                onClick={() => setShowRegistrationModal(true)}
+                                className="px-5 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shrink-0 self-start md:self-auto"
+                            >
+                                Register Now
+                            </button>
+                        )}
+                    </div>
+                )}
+
                 {/* Stages Timeline */}
                 {Array.isArray(opportunity?.stages) && opportunity.stages.length > 0 && (
                     <div className="mb-8">
@@ -967,9 +1134,9 @@ const OpportunityDetails: React.FC = () => {
                                 const startDate = stage.startDate || stage.start_date ? new Date(stage.startDate || stage.start_date) : null;
                                 const endDate = stage.endDate || stage.end_date ? new Date(stage.endDate || stage.end_date) : null;
                                 const status = computeStageStatus(stage);
+                                const regStatusStr = (effectiveRegStatus || 'NOT_REGISTERED').toUpperCase();
                                 const isRegistration = (String(stage.type || '').toUpperCase() === 'REGISTRATION') || (String(stage.name || '').toUpperCase().includes('REGISTER'));
-                                const isSubmissionStage = (String(stage.type || '').toUpperCase() === 'SUBMISSION') || (String(stage.name || '').toUpperCase().includes('SUBMISSION'));
-                                const canInteract = (status === 'active') && (isApplied || isRegistration || isSubmissionStage);
+                                const canInteract = (status === 'active') && (isRegistration || regStatusStr === 'APPROVED');
 
                                 return (
                                     <React.Fragment key={stage.id || index}>
@@ -1011,7 +1178,33 @@ const OpportunityDetails: React.FC = () => {
                 )}
 
                 {/* Hero card — reference layout */}
-                <article className="bg-white rounded-2xl border border-slate-200 shadow-sm border-t-4 border-purple-600 overflow-hidden mb-8">
+                <article className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden mb-8">
+                    {/* Premium Hero Banner Section */}
+                    <div className="relative w-full h-48 md:h-64 overflow-hidden bg-slate-900 group">
+                        {opportunity.banner_url ? (
+                            <img 
+                                src={getImageUrl(opportunity.banner_url)} 
+                                alt="Event Banner" 
+                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                                onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                                    if (fallback) fallback.style.display = 'flex';
+                                }}
+                            />
+                        ) : null}
+                        <div 
+                            className="absolute inset-0 w-full h-full bg-gradient-to-tr from-purple-900 via-indigo-950 to-slate-900 flex items-center justify-center"
+                            style={{ display: opportunity.banner_url ? 'none' : 'flex' }}
+                        >
+                            <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_30%_20%,#6C3BFF_0%,transparent_50%),radial-gradient(circle_at_70%_60%,#FF3B9A_0%,transparent_50%)]"></div>
+                            <div className="relative z-10 flex flex-col items-center text-center px-6">
+                                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-300 mb-2">Interactive Event Onboarding</span>
+                                <h2 className="text-xl md:text-2xl font-black text-white uppercase tracking-wider">{opportunity.title}</h2>
+                            </div>
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent pointer-events-none"></div>
+                    </div>
                     <div className="p-6 md:p-8">
                         <div className="flex flex-wrap items-start justify-between gap-4">
                             <div className="flex items-center gap-2 text-sm font-bold">
@@ -1122,13 +1315,30 @@ const OpportunityDetails: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-                            {logoSrc ? (
-                                <div className="shrink-0 mx-auto md:mx-0">
-                                    <div className="w-28 h-28 md:w-36 md:h-36 rounded-full border-4 border-slate-100 shadow-md overflow-hidden bg-white">
-                                        <img src={logoSrc} alt="" className="w-full h-full object-cover" />
+                            <div className="shrink-0 mx-auto md:mx-0">
+                                <div className="w-28 h-28 md:w-36 md:h-36 rounded-full border-4 border-slate-100 shadow-md overflow-hidden bg-white flex items-center justify-center relative">
+                                    {logoSrc ? (
+                                        <img 
+                                            src={logoSrc} 
+                                            alt="" 
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                                // Log failing URL for diagnostics
+                                                try { console.warn('[LogoLoadError] failed to load', (e.currentTarget && e.currentTarget.src) || logoSrc); } catch (err) {}
+                                                e.currentTarget.style.display = 'none';
+                                                const sibling = e.currentTarget.nextElementSibling as HTMLElement;
+                                                if (sibling) sibling.style.display = 'flex';
+                                            }}
+                                        />
+                                    ) : null}
+                                    <div 
+                                        className="w-full h-full bg-purple-100 text-[#6C3BFF] font-black text-3xl md:text-4xl flex items-center justify-center uppercase shadow-inner"
+                                        style={{ display: logoSrc ? 'none' : 'flex' }}
+                                    >
+                                        {orgDisplay.charAt(0)}
                                     </div>
                                 </div>
-                            ) : null}
+                            </div>
                         </div>
 
                         {isApplied && !submitted ? (
@@ -1280,7 +1490,7 @@ const OpportunityDetails: React.FC = () => {
                                             
                                             let actionLabel = 'Unlock';
                                             if (stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION')) {
-                                                actionLabel = isApplied ? 'Registered' : 'Apply Now';
+                                                actionLabel = isApplied || effectiveRegStatus === 'APPROVED' ? 'Registered' : 'Apply Now';
                                             } else if (stype === 'TEAM_FORMATION' || sname.includes('TEAM')) {
                                                 actionLabel = 'Manage Team';
                                             } else if (stype === 'SUBMISSION' || sname.includes('SUBMISSION')) {
@@ -1294,7 +1504,7 @@ const OpportunityDetails: React.FC = () => {
                                             const stageStatus = computeStageStatus(s);
                                             const isReg = (String(s.type || '').toUpperCase() === 'REGISTRATION') || (String(s.name || '').toUpperCase().includes('REGISTER'));
                                             const isSubmissionStage = (String(s.type || '').toUpperCase() === 'SUBMISSION') || (String(s.name || '').toUpperCase().includes('SUBMISSION'));
-                                            const canAct = (stageStatus === 'active') && (isApplied || isReg || isSubmissionStage);
+                                            const canAct = (stageStatus === 'active') && (isApplied || isReg || isSubmissionStage || effectiveRegStatus === 'APPROVED');
 
                                             return (
                                                 <li
@@ -1393,8 +1603,8 @@ const OpportunityDetails: React.FC = () => {
                                                     Registration deadline
                                                 </p>
                                                 <p className="mt-1 font-black text-slate-900">
-                                                    {opportunity.deadline
-                                                        ? new Date(opportunity.deadline).toLocaleString('en-GB', {
+                                                    {derivedDeadline
+                                                        ? new Date(derivedDeadline).toLocaleString('en-GB', {
                                                               day: '2-digit',
                                                               month: 'short',
                                                               year: 'numeric',
@@ -1407,8 +1617,8 @@ const OpportunityDetails: React.FC = () => {
                                             <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Start date</p>
                                                 <p className="mt-1 font-black text-slate-900">
-                                                    {opportunity.eventStartDate
-                                                        ? new Date(opportunity.eventStartDate).toLocaleString('en-GB', {
+                                                    {derivedStartDate
+                                                        ? new Date(derivedStartDate).toLocaleString('en-GB', {
                                                               day: '2-digit',
                                                               month: 'short',
                                                               year: 'numeric',
@@ -1421,8 +1631,8 @@ const OpportunityDetails: React.FC = () => {
                                             <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">End date</p>
                                                 <p className="mt-1 font-black text-slate-900">
-                                                    {opportunity.eventEndDate
-                                                        ? new Date(opportunity.eventEndDate).toLocaleString('en-GB', {
+                                                    {derivedEndDate
+                                                        ? new Date(derivedEndDate).toLocaleString('en-GB', {
                                                               day: '2-digit',
                                                               month: 'short',
                                                               year: 'numeric',
@@ -1921,6 +2131,363 @@ const OpportunityDetails: React.FC = () => {
                 </div>
                 </>
                 )}
+
+            {/* Registration Modal */}
+            <AnimatePresence>
+                {showRegistrationModal && (
+                    <motion.div
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setShowRegistrationModal(false)}
+                    >
+                        <motion.div
+                            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-100">
+                                <div>
+                                    <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+                                        Decoupled Event Onboarding
+                                    </h2>
+                                    <p className="text-xs text-slate-500 mt-1">{opportunity?.title}</p>
+                                </div>
+                                <button
+                                    onClick={() => setShowRegistrationModal(false)}
+                                    className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+                                >
+                                    <span className="text-slate-500 font-bold">✕</span>
+                                </button>
+                            </div>
+
+                            {submitted ? (
+                                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                                    <CheckCircle2 size={48} className="text-emerald-500 mb-4" />
+                                    <h3 className="text-lg font-black text-slate-900">Registration Submitted!</h3>
+                                    <p className="text-sm text-slate-500 mt-2">
+                                        {registrationStatus === 'PENDING_APPROVAL' 
+                                            ? 'Your registration is under host review. Downstream timeline rounds will unlock once approved!'
+                                            : 'Your registration is approved. All competition assessment stages are unlocked!'}
+                                    </p>
+                                    <button
+                                        onClick={() => { setShowRegistrationModal(false); navigate(`/opportunities/${id}`); }}
+                                        className="mt-6 px-6 py-3 bg-[#6C3BFF] text-white rounded-xl font-black text-xs uppercase tracking-wider"
+                                    >
+                                        Go to Details
+                                    </button>
+                                </div>
+                            ) : (
+                                (() => {
+                                    const isProfessional = regAnswers['profile_type'] === 'Working Professional';
+
+                                    let identityFields = (formConfig?.fields_definitions || []).filter((fd: any) => fd.category === 'Identity');
+                                    let educationFields = (formConfig?.fields_definitions || []).filter((fd: any) => fd.category === 'Education');
+                                    const professionalFields = (formConfig?.fields_definitions || []).filter((fd: any) => fd.category === 'Professional');
+                                    const customQuestionsList = formConfig?.custom_questions || [];
+
+                                    if (isProfessional) {
+                                        // Move 'college' field (which acts as company name) from Education to Identity, and rename it
+                                        const collegeField = educationFields.find((fd: any) => fd.id === 'college');
+                                        if (collegeField) {
+                                            const updatedCollege = { 
+                                                ...collegeField, 
+                                                label: 'Current Company / Employer',
+                                                placeholder: 'e.g. Google, Stripe, Microsoft'
+                                            };
+                                            identityFields = [...identityFields, updatedCollege];
+                                        }
+                                        educationFields = educationFields.filter((fd: any) => fd.id !== 'college');
+                                    }
+
+                                    const activeSteps = [];
+                                    if (identityFields.length > 0) activeSteps.push({ id: 'identity', title: 'Identity', fields: identityFields, type: 'core' });
+                                    if (educationFields.length > 0 && !isProfessional) activeSteps.push({ id: 'education', title: 'Education', fields: educationFields, type: 'core' });
+                                    if (professionalFields.length > 0) activeSteps.push({ id: 'professional', title: 'Professional', fields: professionalFields, type: 'core' });
+                                    if (customQuestionsList.length > 0) activeSteps.push({ id: 'custom', title: 'Questions', fields: customQuestionsList, type: 'custom' });
+
+                                    if (activeSteps.length === 0) {
+                                        return (
+                                            <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-4">
+                                                <p className="text-sm text-slate-500 text-center py-8">
+                                                    No special registration fields are configured. Click submit to register.
+                                                </p>
+                                                <div className="flex gap-3 pt-4 border-t border-slate-100 justify-end">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowRegistrationModal(false)}
+                                                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        type="submit"
+                                                        disabled={submitting}
+                                                        className="px-6 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider"
+                                                    >
+                                                        {submitting ? <Loader2 size={14} className="animate-spin" /> : 'Register'}
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        );
+                                    }
+
+                                    const currentStep = activeSteps[currentStepIndex] || activeSteps[0];
+
+                                    return (
+                                        <>
+                                            {/* Wizard Progress Indicator */}
+                                            <div className="flex items-center justify-between px-6 py-3 bg-purple-50/50 border-b border-slate-100 shrink-0">
+                                                {activeSteps.map((stepItem, idx) => (
+                                                    <React.Fragment key={stepItem.id}>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all
+                                                                ${idx === currentStepIndex ? 'bg-[#6C3BFF] text-white ring-4 ring-purple-100' :
+                                                                  idx < currentStepIndex ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}
+                                                            >
+                                                                {idx < currentStepIndex ? '✓' : idx + 1}
+                                                            </div>
+                                                            <span className={`text-[11px] font-bold hidden sm:inline ${idx === currentStepIndex ? 'text-[#6C3BFF]' : 'text-slate-500'}`}>
+                                                                {stepItem.title}
+                                                            </span>
+                                                        </div>
+                                                        {idx < activeSteps.length - 1 && (
+                                                            <div className={`flex-1 h-0.5 mx-2 ${idx < currentStepIndex ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+                                                        )}
+                                                    </React.Fragment>
+                                                ))}
+                                            </div>
+
+                                            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+                                                <div className="space-y-4">
+                                                    {currentStep.fields.map((field: any) => {
+                                                        const isEmail = field.id === 'email';
+                                                        const isPrefilled = Boolean(field.prefilled_value);
+                                                        const allowedExts = field.type === 'file' ? getFieldAllowedExtensions(field) : [];
+                                                        const acceptAttr = allowedExts.join(',');
+                                                        const displayFormats = allowedExts.map(e => e.replace('.', '').toUpperCase()).join(', ');
+                                                        
+                                                        return (
+                                                            <div key={field.id} className="space-y-1.5">
+                                                                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                                                                    {field.label}
+                                                                    {field.required && <span className="text-rose-500">*</span>}
+                                                                    {isPrefilled && (
+                                                                        <span className="text-[9px] bg-purple-50 text-[#6C3BFF] border border-purple-100 px-1.5 py-0.5 rounded ml-auto font-bold">
+                                                                            Prefilled
+                                                                        </span>
+                                                                    )}
+                                                                </label>
+
+                                                                {field.id === 'profile_type' ? (
+                                                                    <div className="flex gap-4 mt-1.5">
+                                                                        {(['Student', 'Working Professional'] as const).map((typeOpt) => {
+                                                                            const isSelected = regAnswers[field.id] === typeOpt || (!regAnswers[field.id] && typeOpt === 'Student');
+                                                                            return (
+                                                                                <button
+                                                                                    key={typeOpt}
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        setRegAnswers(prev => ({ 
+                                                                                            ...prev, 
+                                                                                            [field.id]: typeOpt 
+                                                                                        }));
+                                                                                    }}
+                                                                                    className={`flex-1 py-3 px-4 rounded-xl border text-xs font-bold text-center transition-all duration-200 ${
+                                                                                        isSelected
+                                                                                            ? 'bg-[#6C3BFF]/5 text-[#6C3BFF] border-[#6C3BFF] ring-2 ring-purple-100 shadow-sm'
+                                                                                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-600 shadow-sm'
+                                                                                    }`}
+                                                                                >
+                                                                                    {typeOpt}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                ) : field.type === 'file' ? (
+                                                                    <div className="space-y-2">
+                                                                        <input
+                                                                            type="file"
+                                                                            id={`file-${field.id}`}
+                                                                            accept={acceptAttr}
+                                                                            className="hidden"
+                                                                            onChange={e => {
+                                                                                const file = e.target.files?.[0];
+                                                                                if (file) {
+                                                                                    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+                                                                                    if (!allowedExts.includes(ext)) {
+                                                                                        alert(`Only ${displayFormats} files are allowed.`);
+                                                                                        return;
+                                                                                    }
+                                                                                    handleFileUpload(field.id, file);
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        {uploadingField === field.id ? (
+                                                                            <div className="flex items-center gap-3 p-3 border border-[#6C3BFF]/30 rounded-xl bg-[#6C3BFF]/5 animate-pulse">
+                                                                                <Loader2 className="animate-spin text-[#6C3BFF]" size={18} />
+                                                                                <span className="text-xs text-[#6C3BFF] font-semibold animate-pulse">
+                                                                                    Uploading your file... Please wait.
+                                                                                </span>
+                                                                            </div>
+                                                                        ) : regAnswers[field.id] ? (
+                                                                            <div className="flex items-center justify-between gap-4 p-3 border border-emerald-200 rounded-xl bg-emerald-50/40 shadow-sm transition-all duration-200">
+                                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                                    <div className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg shrink-0">
+                                                                                        <Paperclip size={16} />
+                                                                                    </div>
+                                                                                    <div className="flex flex-col min-w-0">
+                                                                                        <span className="text-xs text-emerald-800 font-bold truncate">
+                                                                                            {uploadedFilenames[field.id] || String(regAnswers[field.id]).split('/').pop()}
+                                                                                        </span>
+                                                                                        <span className="text-[10px] text-emerald-600/80 font-semibold flex items-center gap-1">
+                                                                                            <CheckCircle2 size={10} /> Uploaded successfully
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                                    <label
+                                                                                        htmlFor={`file-${field.id}`}
+                                                                                        className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-[10px] font-bold cursor-pointer transition-colors shadow-sm"
+                                                                                    >
+                                                                                        Change
+                                                                                    </label>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => {
+                                                                                            setRegAnswers(prev => {
+                                                                                                const copy = { ...prev };
+                                                                                                delete copy[field.id];
+                                                                                                return copy;
+                                                                                            });
+                                                                                            setUploadedFilenames(prev => {
+                                                                                                const copy = { ...prev };
+                                                                                                delete copy[field.id];
+                                                                                                return copy;
+                                                                                            });
+                                                                                        }}
+                                                                                        className="p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors animate-fade-in"
+                                                                                        title="Remove file"
+                                                                                    >
+                                                                                        <XCircle size={16} />
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="flex items-center gap-3 p-3 border border-dashed border-slate-350 rounded-xl bg-slate-50/50 hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                                                                                <label
+                                                                                    htmlFor={`file-${field.id}`}
+                                                                                    className="px-4 py-2 bg-white border border-slate-250 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+                                                                                >
+                                                                                    <Upload size={14} /> Choose File
+                                                                                </label>
+                                                                                <span className="text-xs text-slate-400 font-medium">
+                                                                                    Accepts {displayFormats} only
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ) : field.type === 'textarea' || field.type === 'paragraph' ? (
+                                                                    <textarea
+                                                                        value={regAnswers[field.id] || ''}
+                                                                        onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.value }))}
+                                                                        readOnly={isEmail}
+                                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm resize-none min-h-[90px] focus:border-[#6C3BFF] transition-colors"
+                                                                    />
+                                                                ) : field.type === 'checkbox' ? (
+                                                                    <label className="flex items-center gap-3 text-sm text-slate-700 cursor-pointer">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={regAnswers[field.id] === 'true' || regAnswers[field.id] === 'on'}
+                                                                            onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.checked ? 'on' : '' }))}
+                                                                            className="rounded border-slate-300 text-[#6C3BFF] focus:ring-[#6C3BFF]"
+                                                                        />
+                                                                        {field.label}
+                                                                    </label>
+                                                                ) : field.type === 'select' || field.type === 'dropdown' ? (
+                                                                    <select
+                                                                        value={regAnswers[field.id] || ''}
+                                                                        onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.value }))}
+                                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm focus:border-[#6C3BFF] transition-colors"
+                                                                    >
+                                                                        <option value="">Select option</option>
+                                                                        {(field.options || []).map((o: string) => (
+                                                                            <option key={o} value={o}>{o}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    <input
+                                                                        type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                                                        value={regAnswers[field.id] || ''}
+                                                                        onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.value }))}
+                                                                        readOnly={isEmail}
+                                                                        placeholder={field.placeholder || (field.id === 'college' ? (isProfessional ? 'e.g. Google, Stripe' : 'e.g. Stanford University') : '')}
+                                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm focus:border-[#6C3BFF] transition-colors"
+                                                                    />
+                                                                )}
+                                                                {field.help_text && (
+                                                                    <p className="text-[10px] text-slate-400 font-medium">{field.help_text}</p>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {/* Action Buttons */}
+                                                <div className="flex justify-between items-center pt-4 border-t border-slate-100 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        disabled={currentStepIndex === 0}
+                                                        onClick={() => setCurrentStepIndex(p => Math.max(0, p - 1))}
+                                                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-colors disabled:opacity-30"
+                                                    >
+                                                        Back
+                                                    </button>
+                                                    
+                                                    {currentStepIndex < activeSteps.length - 1 ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const activeStep = activeSteps[currentStepIndex];
+                                                                let valid = true;
+                                                                for (const fd of activeStep.fields) {
+                                                                    if (fd.required && !regAnswers[fd.id]) {
+                                                                        alert(`${fd.label} is required.`);
+                                                                        valid = false;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                if (valid) {
+                                                                    setCurrentStepIndex(p => Math.min(activeSteps.length - 1, p + 1));
+                                                                }
+                                                            }}
+                                                            className="px-6 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+                                                        >
+                                                            Next
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            type="submit"
+                                                            disabled={submitting}
+                                                            className="px-6 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 disabled:opacity-40 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2"
+                                                        >
+                                                            {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
+                                                            {submitting ? 'Submitting...' : 'Submit Registration'}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </form>
+                                        </>
+                                    );
+                                })()
+                            )}
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Hackathon Submission Modal */}
 

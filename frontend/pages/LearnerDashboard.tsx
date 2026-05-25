@@ -306,7 +306,12 @@ const LearnerDashboard: React.FC = () => {
                         <span className="text-[9px] font-bold text-amber-500 uppercase tracking-widest bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">Starter</span>
                       )}
                     </div>
-                    <h3 className="text-2xl font-black text-[#111827] uppercase tracking-tighter mb-4">{cert.course_title}</h3>
+                    <h3 className="text-2xl font-black text-[#111827] uppercase tracking-tighter mb-2">{cert.course_title}</h3>
+                    {(cert.achievement_type || cert.category) && (
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F5F3FF] text-[#7C3AED] text-[10px] font-black uppercase tracking-[0.2em] mb-4">
+                        {cert.achievement_type || cert.category}
+                      </div>
+                    )}
                     <div className="space-y-2 mb-8">
                       <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">ID: <span className="text-[#111827] font-mono">{cert.certificate_id}</span></p>
                       <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Issued: <span className="text-[#111827]">{new Date(cert.issue_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</span></p>

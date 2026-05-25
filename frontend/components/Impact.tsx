@@ -74,8 +74,8 @@ const Impact = () => {
     ];
 
     const stats = [
-        { number: 3500, suffix: '+', label: 'Engineers Verified', delay: 0.3 },
-        { number: 3000, suffix: '+', label: 'Tracks Completed', delay: 0.3 },
+        { number: 5000, suffix: '+', label: 'Strong Community', delay: 0.3 },
+        { number: 15000, suffix: '+', label: 'Students Reached', delay: 0.3 },
         { number: 25, suffix: '+', label: 'Colleges Partnered', delay: 0.3 },
         { number: 86, suffix: '%', label: 'Hiring Success Rate', delay: 0.4 },
         { number: 15, suffix: '+', label: 'Startup Hiring Partners', delay: 0.5 },

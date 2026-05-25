@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Trash2, Save, HelpCircle, Target, Clock, AlertCircle } from 'lucide-react';
 
@@ -7,6 +7,9 @@ interface Question {
     id: string;
     text: string;
     type: 'SINGLE_CHOICE' | 'CODING';
+    marks: number | string;
+    negativeMarks?: number | string;
+    difficulty?: string;
     options?: string[];
     correctOptionIndex?: number | null;
     language?: string;
@@ -20,16 +23,57 @@ interface QuizDesignerModalProps {
     onClose: () => void;
     onSave: (quizData: any) => void;
     loading?: boolean;
+    initialQuizData?: any;
 }
 
-const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, onSave, loading }) => {
+const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, onSave, loading, initialQuizData }) => {
     const [title, setTitle] = useState('New Assessment Round');
     const [questions, setQuestions] = useState<Question[]>([
-        { id: '1', text: '', type: 'SINGLE_CHOICE', options: ['', '', '', ''], correctOptionIndex: null }
+        { id: '1', text: '', type: 'SINGLE_CHOICE', marks: 1, negativeMarks: 0, difficulty: 'Easy', options: ['', '', '', ''], correctOptionIndex: null }
     ]);
-    const [duration, setDuration] = useState(30);
+    const [duration, setDuration] = useState<number | ''>(30);
+    const hasInitialized = React.useRef(false);
 
-    const normalizeQuestion = (q: Question): Question => {
+    useEffect(() => {
+        if (!isOpen) {
+            hasInitialized.current = false;
+            return;
+        }
+
+        if (isOpen && !hasInitialized.current) {
+            hasInitialized.current = true;
+            if (initialQuizData) {
+                setTitle(initialQuizData.title || 'New Assessment Round');
+                setDuration(initialQuizData.duration || 30);
+                if (Array.isArray(initialQuizData.questions) && initialQuizData.questions.length > 0) {
+                    setQuestions(initialQuizData.questions.map((q: any, idx: number) => ({
+                        id: q.id || String(idx + 1),
+                        text: q.text || '',
+                        type: q.type || 'SINGLE_CHOICE',
+                        marks: typeof q.marks === 'number' ? q.marks : 1,
+                        options: Array.isArray(q.options) ? [...q.options] : ['', '', '', ''],
+                        correctOptionIndex: typeof q.correctOptionIndex === 'number' ? q.correctOptionIndex : null,
+                        language: q.language || 'python',
+                        starterCode: q.starterCode || '',
+                        sampleInput: q.sampleInput || '',
+                        sampleOutput: q.sampleOutput || '',
+                    })));
+                } else {
+                    setQuestions([
+                        { id: '1', text: '', type: 'SINGLE_CHOICE', marks: 1, negativeMarks: 0, difficulty: 'Easy', options: ['', '', '', ''], correctOptionIndex: null }
+                    ]);
+                }
+            } else {
+                setTitle('New Assessment Round');
+                setDuration(30);
+                setQuestions([
+                    { id: '1', text: '', type: 'SINGLE_CHOICE', marks: 1, negativeMarks: 0, difficulty: 'Easy', options: ['', '', '', ''], correctOptionIndex: null }
+                ]);
+            }
+        }
+    }, [isOpen, initialQuizData]);
+
+    const normalizeQuestion = (q: Question): any => {
         if (q.type === 'SINGLE_CHOICE') {
             return {
                 ...q,
@@ -40,6 +84,9 @@ const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, 
                 starterCode: undefined,
                 sampleInput: undefined,
                 sampleOutput: undefined,
+                marks: Math.max(1, parseInt(String(q.marks)) || 1),
+                negative_marks: Math.max(0, parseFloat(String(q.negativeMarks)) || 0),
+                difficulty: q.difficulty || 'Easy'
             };
         }
         // CODING
@@ -51,13 +98,16 @@ const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, 
             starterCode: q.starterCode || '',
             sampleInput: q.sampleInput || '',
             sampleOutput: q.sampleOutput || '',
+            marks: Math.max(1, parseInt(String(q.marks)) || 1),
+            negative_marks: Math.max(0, parseFloat(String(q.negativeMarks)) || 0),
+            difficulty: q.difficulty || 'Easy'
         };
     };
 
     const addQuestion = () => {
         setQuestions([
             ...questions,
-            { id: Date.now().toString(), text: '', type: 'SINGLE_CHOICE', options: ['', '', '', ''], correctOptionIndex: null },
+            { id: Date.now().toString(), text: '', type: 'SINGLE_CHOICE', marks: 1, negativeMarks: 0, difficulty: 'Easy', options: ['', '', '', ''], correctOptionIndex: null },
         ]);
     };
 
@@ -141,7 +191,10 @@ const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, 
                                     <input 
                                         type="number"
                                         value={duration}
-                                        onChange={(e) => setDuration(parseInt(e.target.value))}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setDuration(val === '' ? '' : parseInt(val) || 0);
+                                        }}
                                         className="w-full pl-14 pr-8 py-5 bg-slate-50 border border-slate-50 rounded-[1.8rem] font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-[#6C3BFF]/5 transition-all"
                                     />
                                 </div>
@@ -183,7 +236,7 @@ const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, 
                                                         rows={2}
                                                     />
                                                 </div>
-                                                <div className="w-full md:w-64 space-y-3">
+                                                <div className="w-full md:w-48 space-y-3">
                                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Type</label>
                                                     <select 
                                                         value={q.type}
@@ -192,6 +245,53 @@ const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, 
                                                     >
                                                         <option value="SINGLE_CHOICE">Single choice</option>
                                                         <option value="CODING">Coding</option>
+                                                    </select>
+                                                </div>
+                                                <div className="w-full md:w-28 space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Marks</label>
+                                                    <input 
+                                                        type="number"
+                                                        min={1}
+                                                        value={q.marks}
+                                                        onChange={(e) => updateQuestion(q.id, 'marks', Math.max(1, parseInt(e.target.value) || 1))}
+                                                        className="w-full px-6 py-5 bg-slate-50 border border-slate-50 rounded-[1.8rem] font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-[#6C3BFF]/5 transition-all text-center"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Scoring & Metadata Grid */}
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-slate-50/50 rounded-3xl border border-slate-100/50">
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Marks (Score Points)</label>
+                                                    <input 
+                                                        type="number"
+                                                        min={1}
+                                                        value={q.marks ?? 1}
+                                                        onChange={(e) => updateQuestion(q.id, 'marks', e.target.value)}
+                                                        className="w-full px-8 py-4 bg-white border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 focus:ring-[#6C3BFF]/5 transition-all"
+                                                    />
+                                                </div>
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Negative Marks (Penalty)</label>
+                                                    <input 
+                                                        type="number"
+                                                        min={0}
+                                                        step={0.25}
+                                                        value={q.negativeMarks ?? 0}
+                                                        onChange={(e) => updateQuestion(q.id, 'negativeMarks', e.target.value)}
+                                                        className="w-full px-8 py-4 bg-white border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 focus:ring-[#6C3BFF]/5 transition-all"
+                                                    />
+                                                </div>
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Difficulty Level</label>
+                                                    <select 
+                                                        value={q.difficulty || 'Easy'}
+                                                        onChange={(e) => updateQuestion(q.id, 'difficulty', e.target.value)}
+                                                        className="w-full px-8 py-4 bg-white border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none transition-all appearance-none"
+                                                    >
+                                                        <option value="Easy">Easy</option>
+                                                        <option value="Medium">Medium</option>
+                                                        <option value="Hard">Hard</option>
                                                     </select>
                                                 </div>
                                             </div>
@@ -310,7 +410,7 @@ const QuizDesignerModal: React.FC<QuizDesignerModalProps> = ({ isOpen, onClose, 
                     <div className="p-10 border-t border-slate-50 flex justify-end gap-6 bg-slate-50/20">
                         <button onClick={onClose} className="px-10 py-5 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all">Discard</button>
                         <button 
-                            onClick={() => onSave({ title, questions: questions.map(normalizeQuestion), duration })}
+                            onClick={() => onSave({ title, questions: questions.map(normalizeQuestion), duration: Number(duration) || 30 })}
                             disabled={loading}
                             className="px-12 py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#6C3BFF] transition-all shadow-2xl shadow-black/10 flex items-center gap-3 disabled:opacity-50"
                         >

@@ -64,7 +64,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
                 if (data.user.role === 'super_admin' || data.user.role === 'admin') navigate('/admin');
                 else if (data.user.role === 'institution') navigate('/institution-dashboard');
                 else if (data.user.role === 'judge') navigate('/judge-portal');
-                else navigate('/opportunities');
+                else navigate('/dashboard/learner');
             } else {
                 const detail = data.detail || 'Login failed. Please check your credentials.';
                 setError(detail);
