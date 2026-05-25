@@ -109,7 +109,6 @@ const Navigation: React.FC = () => {
   const { user, role, logout } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const isHomePage = pathname === '/';
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeMobileOverlay, setActiveMobileOverlay] = useState<string | null>(null);
@@ -148,16 +147,12 @@ const Navigation: React.FC = () => {
           <motion.div
             initial={{ y: -40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className={`relative z-[110] h-12 sm:h-16 px-4 sm:px-7 lg:px-10 flex items-center justify-between transition-colors duration-300 ${
-              isHomePage
-                ? 'bg-[#7C3AED]/95 backdrop-blur-xl rounded-[1.1rem] sm:rounded-[1.75rem] shadow-[0_18px_40px_rgba(124,58,237,0.26)] border border-white/15'
-                : 'bg-white/75 backdrop-blur-2xl rounded-[1.1rem] sm:rounded-[1.75rem] shadow-[0_18px_45px_rgba(15,23,42,0.08)] border border-white/50 ring-1 ring-white/60'
-            }`}
+            className="relative z-[110] h-12 sm:h-16 bg-[#7C3AED]/95 backdrop-blur-xl rounded-[1.1rem] sm:rounded-[1.75rem] px-4 sm:px-7 lg:px-10 flex items-center justify-between shadow-[0_18px_40px_rgba(124,58,237,0.26)] border border-white/15"
           >
             <div className="flex items-center lg:w-[250px] gap-4">
               <button
                 onClick={toggleMobileMenu}
-                className={`lg:hidden p-1 rounded-lg transition-colors ${isHomePage ? 'text-white hover:bg-white/10' : 'text-gray-800 hover:bg-black/5'}`}
+                className="lg:hidden text-white p-1 hover:bg-white/10 rounded-lg transition-colors"
               >
                 {mobileMenuOpen ? (
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -177,15 +172,7 @@ const Navigation: React.FC = () => {
                   <button
                     key={id}
                     onMouseEnter={() => handleMouseEnter(id)}
-                    className={`flex items-center space-x-2 transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] ${
-                      activeMenu === id
-                        ? isHomePage
-                          ? 'text-white'
-                          : 'text-slate-950'
-                        : isHomePage
-                          ? 'text-white/80 hover:text-white'
-                          : 'text-slate-700 hover:text-slate-950'
-                    }`}
+                    className={`flex items-center space-x-2 transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] ${activeMenu === id ? 'text-white' : 'text-white/80'} hover:text-white`}
                   >
                     <span>{id === 'jobprep' ? 'Job Prep' : id.charAt(0).toUpperCase() + id.slice(1)}</span>
                     <motion.svg animate={{ rotate: activeMenu === id ? 180 : 0 }} className="w-3.5 h-3.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" /></motion.svg>
@@ -193,13 +180,13 @@ const Navigation: React.FC = () => {
                 ))}
                 <Link
                   to="/studott"
-                  className={`flex items-center transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] ${isHomePage ? 'text-white/80 hover:text-white' : 'text-slate-700 hover:text-slate-950'}`}
+                  className="flex items-center transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] text-white/80 hover:text-white"
                 >
                   STUDOTT
                 </Link>
                 <Link
                   to="/opportunities"
-                  className={`flex items-center transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] ${isHomePage ? 'text-white/80 hover:text-white' : 'text-slate-700 hover:text-slate-950'}`}
+                  className="flex items-center transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] text-white/80 hover:text-white"
                 >
                   OPPORTUNITIES
                 </Link>
@@ -211,10 +198,10 @@ const Navigation: React.FC = () => {
                 <div className="flex items-center gap-5">
                   <Link
                     to="/learn/cart"
-                    className={`relative p-2 rounded-lg transition-colors group ${isHomePage ? 'hover:bg-white/10' : 'hover:bg-slate-900/5'}`}
+                    className="relative p-2 hover:bg-white/10 rounded-lg transition-colors group"
                     title="View Cart"
                   >
-                    <ShoppingCart className={`w-5 h-5 ${isHomePage ? 'text-white' : 'text-slate-900'}`} />
+                    <ShoppingCart className="w-5 h-5 text-white" />
                   </Link>
 
                   {(role === 'admin' || role === 'super_admin') && (
@@ -230,9 +217,9 @@ const Navigation: React.FC = () => {
                   <div className="relative hidden sm:block" ref={userDropdownRef}>
                     <button
                       onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                      className={`flex items-center justify-center w-10 h-10 rounded-full transition-all mr-2 group/profile cursor-pointer outline-none ${isHomePage ? 'bg-white/20 border border-white/30 hover:bg-white/30' : 'bg-white/80 border border-slate-200 hover:bg-white shadow-sm'}`}
+                      className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 border border-white/30 hover:bg-white/30 transition-all mr-2 group/profile cursor-pointer outline-none"
                     >
-                      <User className={`w-5 h-5 transition-colors ${isHomePage ? 'text-white group-hover/profile:text-[#A78BFA]' : 'text-slate-900 group-hover/profile:text-[#7C3AED]'}`} />
+                      <User className="w-5 h-5 text-white group-hover/profile:text-[#A78BFA] transition-colors" />
                     </button>
                     
                     <AnimatePresence>
@@ -304,14 +291,14 @@ const Navigation: React.FC = () => {
                 <div className="flex items-center gap-2 sm:gap-4">
                   <button
                     onClick={() => navigate('/login')}
-                        className={`hidden sm:block text-[10px] font-bold uppercase tracking-[0.25em] px-4 ${isHomePage ? 'text-white/80 hover:text-white' : 'text-slate-700 hover:text-slate-950'}`}
+                    className="hidden sm:block text-white/80 text-[10px] font-bold uppercase tracking-[0.25em] hover:text-white px-4"
                   >
                     Login
                   </button>
                   <motion.button
                     onClick={() => navigate('/signup')}
                     whileHover={{ scale: 0.96, backgroundColor: '#f9fafb' }}
-                    className="bg-white text-[#7C3AED] px-4 py-2 sm:px-8 sm:py-2.5 rounded-lg sm:rounded-xl font-bold text-[8px] sm:text-[9px] uppercase tracking-[0.15em] sm:tracking-[0.22em] shadow-xl whitespace-nowrap"
+                    className="bg-white text-[#7C3AED] px-4 py-2 sm:px-10 sm:py-2.5 rounded-lg sm:rounded-xl font-bold text-[8px] sm:text-[9px] uppercase tracking-[0.15em] sm:tracking-[0.25em] shadow-xl whitespace-nowrap"
                   >
                     Get Started
                   </motion.button>

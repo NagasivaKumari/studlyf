@@ -1,8 +1,8 @@
 
 import React from 'react';
-import MetaMaskHero from '../components/MetaMaskHero';
-import MetaMaskSpotlight from '../components/MetaMaskSpotlight';
-import MetaMaskHighlights from '../components/MetaMaskHighlights';
+import LandingHero from '../components/LandingHero';
+import HomepageSpotlight from '../components/HomepageSpotlight';
+import ColorfulHighlights from '../components/ColorfulHighlights';
 import WhatIsStudlyf from '../components/WhatIsStudlyf';
 import VoicesThatInspire from '../components/VoicesThatInspire';
 import OldVsNewSection from '../components/OldVsNewSection';
@@ -13,21 +13,22 @@ import FeaturedInstitutions from '../components/FeaturedInstitutions';
 import OurPartners from '../components/OurPartners';
 import FAQ from '../components/FAQ';
 import LandingNavbar from '../components/LandingNavbar';
-import Footer from '../components/Footer';
+import PurpleNavbar from '../components/PurpleNavbar';
 
 
 
 const Home: React.FC = () => {
   return (
-    <div className="min-h-screen bg-[#FFF8EF] text-slate-950">
-      <div className="relative min-h-screen overflow-hidden pt-12 sm:pt-20">
+    <div className="bg-white min-h-screen">
+      <div className="min-h-screen flex flex-col relative overflow-hidden pt-12 sm:pt-20 pb-24">
         <LandingNavbar />
-        <MetaMaskHero />
+        <LandingHero />
+        <PurpleNavbar />
       </div>
 
-      <MetaMaskSpotlight />
+      <HomepageSpotlight />
 
-      <MetaMaskHighlights />
+      <ColorfulHighlights />
 
       {/* Scrollable content starts here */}
       <WhatIsStudlyf />
@@ -39,7 +40,6 @@ const Home: React.FC = () => {
       <FAQ />
       <FeaturedInstitutions />
       <OurPartners />
-      <Footer />
     </div>
   );
 };
