@@ -163,4 +163,60 @@
 /* label sits above orbs/shimmer */
 .glow-label { position: relative; z-index: 5; }
 
+/* ── Custom Scrollbar Styling for Modal Content ─────────────────── */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.6);
+  border-radius: 4px;
+  transition: background-color 0.3s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.9);
+}
+
+/* ── Smooth scroll behavior for entire page ─────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── Modal scroll enhancement ─────────────────── */
+.modal-scrollable {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.modal-scrollable::-webkit-scrollbar {
+  width: 10px;
+}
+
+.modal-scrollable::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.1);
+  border-radius: 5px;
+}
+
+.modal-scrollable::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.5), rgba(59, 130, 246, 0.5));
+  border-radius: 5px;
+  transition: all 0.3s ease;
+}
+
+.modal-scrollable::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.8), rgba(59, 130, 246, 0.8));
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
+}
+
 
