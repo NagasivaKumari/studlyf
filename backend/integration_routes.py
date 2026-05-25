@@ -503,9 +503,15 @@ async def create_institution_profile(profile: dict, user: dict = Depends(get_aut
     if not profile.get("name") or not str(profile.get("name", "")).strip():
         raise HTTPException(status_code=400, detail="Institution name is required")
 
-    # Preserve existing logo and banner if they exist in DB but are missing/empty in request payload
+    # Try to find existing institution by institution_id, then by user email
     existing = await institutions_col.find_one({"institution_id": inst_id})
+    if not existing:
+        user_email = str(user.get("email") or "").strip().lower()
+        if user_email:
+            existing = await institutions_col.find_one({"email": user_email})
+
     if existing:
+        # Preserve existing logo and banner if missing in request
         if not profile.get("logo_url") and existing.get("logo_url"):
             profile["logo_url"] = existing["logo_url"]
         if not profile.get("banner_url") and existing.get("banner_url"):
@@ -517,24 +523,29 @@ async def create_institution_profile(profile: dict, user: dict = Depends(get_aut
         
     profile["institution_id"] = inst_id 
     profile["updated_at"] = datetime.utcnow()
-    
-    try:
+
+    if existing:
         await institutions_col.update_one(
-            {"institution_id": inst_id},
-            {"$set": profile},
-            upsert=True
+            {"_id": existing["_id"]},
+            {"$set": profile}
         )
-    except Exception as e:
-        if "duplicate key" in str(e).lower():
-            raise HTTPException(status_code=409, detail="An institution with this name already exists")
-        raise HTTPException(status_code=500, detail=f"Failed to save profile: {str(e)}")
+    else:
+        try:
+            await institutions_col.insert_one(profile)
+        except Exception as e:
+            if "duplicate key" in str(e).lower():
+                raise HTTPException(status_code=409, detail="An institution with this name already exists. Please choose a different name.")
+            raise HTTPException(status_code=500, detail=f"Failed to save profile: {str(e)}")
     return {"status": "success"}
 
 @router.get("/profile/{institution_id}")
-async def get_institution_profile(institution_id: str):
+async def get_institution_profile(institution_id: str, user: dict = Depends(get_auth_user)):
     """Retrieves the full profile of an institution including team and social links."""
     profile = await institutions_col.find_one({"institution_id": institution_id})
     if not profile:
+        user_email = str(user.get("email") or "").strip().lower()
+        if user_email:
+            profile = await institutions_col.find_one({"email": user_email})
         # Don't return fallback - return 404 to force proper institution setup
         raise HTTPException(status_code=404, detail="Institution profile not found. Please complete institution setup.")
     
