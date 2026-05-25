@@ -3044,7 +3044,7 @@ async def upload_event_media(
     return {"url": data_url, "field": field}
 
 
-@router.post("/institution/upload-media")
+@router.post("/upload-media")
 async def upload_institution_media(
     file: UploadFile = File(...),
     field: str = Form(...),
