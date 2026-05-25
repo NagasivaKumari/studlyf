@@ -529,9 +529,9 @@ const CoursesOverview: React.FC = () => {
             {[...Array(20)].map((_, i) => (
               <img 
                 key={i} 
-                src="/images/studlyf.png" 
+                src="/images/studlyf1.jpg" 
                 alt="STUDLYF" 
-                className="h-8 md:h-10 w-auto object-contain opacity-90"
+                className="h-8 md:h-10 w-auto object-contain px-2"
               />
             ))}
           </motion.div>

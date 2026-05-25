@@ -68,6 +68,22 @@ class DatabaseManager:
         if self.db is None:
             return
         try:
+            # Clean up duplicates in institutions collection to prevent E11000 duplicate key errors
+            for field in ["name", "institution_id", "email"]:
+                try:
+                    pipeline = [
+                        {"$match": {field: {"$ne": None}}},
+                        {"$group": {"_id": f"${field}", "ids": {"$push": "$_id"}, "count": {"$sum": 1}}},
+                        {"$match": {"count": {"$gt": 1}}}
+                    ]
+                    async for doc in self.db.institutions.aggregate(pipeline):
+                        # Keep the first document, delete the duplicates
+                        ids_to_delete = doc["ids"][1:]
+                        logger.info(f"Removing duplicate institutions for {field} '{doc['_id']}': {ids_to_delete}")
+                        await self.db.institutions.delete_many({"_id": {"$in": ids_to_delete}})
+                except Exception as clean_err:
+                    logger.error(f"Cleanup of duplicate institution {field} failed: {clean_err}")
+
             # ── Users ──
             await self.db.users.create_index("user_id", unique=True)
             await self.db.users.create_index("email", unique=True)
@@ -284,6 +300,9 @@ hackathon_selections_col = db["hackathon_selections"]
 hackathon_event_config_col = db["hackathon_event_config"]
 # Institution Event Packages (dynamic event-package feature)
 institution_event_packages_col = db["institution_event_packages"]
+
+# Certificate Management
+cert_templates_col = db["cert_templates"]
 
 # ─── GRIDFS BUCKET (persistent file storage, survives Render restarts) ────────
 # Usage: await gridfs_bucket.upload_from_stream(filename, data) → ObjectId

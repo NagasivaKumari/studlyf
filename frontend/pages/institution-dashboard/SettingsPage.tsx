@@ -486,7 +486,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                 setTimeout(() => setSaveSuccess(false), 3000);
             } else {
                 const errorData = await res.json().catch(() => ({}));
-                alert(`Sync Failed: ${res.status}.`);
+                alert(errorData.detail || `Save failed (${res.status})`);
             }
         } catch (err) {
             alert("Network error. Is the backend running?");
