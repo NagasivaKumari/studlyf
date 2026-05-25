@@ -273,7 +273,43 @@ async def admin_required(x_admin_email: str = Header(None)):
             detail="Forbidden: invalid super-admin header (configure SUPER_ADMIN_EMAILS).",
         )
     return x_admin_email
-from db import db, courses_col, modules_col, theories_col, videos_col, quizzes_col, projects_col, progress_col, cart_col, enrollments_col, interviews_col, certificates_col, sdl_projects_col, sdl_members_col, sdl_tasks_col, sdl_comments_col, sdl_join_requests_col, users_col, ads_col, mentors_col, companies_col, payments_col, audit_logs_col, resumes_col, institutions_col, events_col, participants_col, teams_col, submissions_col, judges_col, scores_col, notifications_col, leaderboard_col
+from db import (
+    db,
+    courses_col,
+    modules_col,
+    theories_col,
+    videos_col,
+    quizzes_col,
+    projects_col,
+    progress_col,
+    cart_col,
+    enrollments_col,
+    interviews_col,
+    certificates_col,
+    event_certificates_col,
+    sdl_projects_col,
+    sdl_members_col,
+    sdl_tasks_col,
+    sdl_comments_col,
+    sdl_join_requests_col,
+    users_col,
+    ads_col,
+    mentors_col,
+    companies_col,
+    payments_col,
+    audit_logs_col,
+    resumes_col,
+    institutions_col,
+    events_col,
+    participants_col,
+    teams_col,
+    submissions_col,
+    judges_col,
+    scores_col,
+    notifications_col,
+    leaderboard_col,
+    event_judges_col,
+)
 
 @app.get('/portal/{event_id}', response_class=HTMLResponse)
 async def serve_portal(event_id: str):
@@ -4874,8 +4910,31 @@ async def get_user_certificates(user_id: str):
     results = []
     async for doc in certificates_col.find({"user_id": user_id}):
         doc["_id"] = str(doc["_id"])
+        doc.setdefault(
+            "student_name",
+            doc.get("student_name") or doc.get("participant_name") or doc.get("recipient_name") or "Participant",
+        )
+        doc.setdefault("course_title", doc.get("course_title") or doc.get("event_title") or "Certificate")
+        doc.setdefault("issue_date", doc.get("issue_date") or doc.get("issued_date") or datetime.utcnow().isoformat())
         results.append(doc)
 
+    async for doc in event_certificates_col.find({"user_id": user_id}):
+        doc["_id"] = str(doc["_id"])
+        issued_value = doc.get("issued_date") or doc.get("issued_at")
+        if isinstance(issued_value, datetime):
+            issued_value = issued_value.isoformat()
+        results.append({
+            "_id": doc["_id"],
+            "certificate_id": doc.get("certificate_id"),
+            "user_id": doc.get("user_id"),
+            "student_name": doc.get("participant_name") or doc.get("student_name") or doc.get("recipient_name") or "Participant",
+            "course_title": doc.get("event_title") or "Event Certificate",
+            "issue_date": issued_value or datetime.utcnow().isoformat(),
+            "template_id": "event_certificate",
+            "achievement_type": doc.get("achievement_type") or doc.get("achievement_key") or doc.get("category") or "Participation",
+            "event_id": doc.get("event_id"),
+            "is_dummy": False,
+        })
     if not results:
         # Return a single dummy certificate so the UI always has something to show
         results = [{
@@ -4893,6 +4952,9 @@ async def get_user_certificates(user_id: str):
 async def get_certificate_html(user_id: str, cert_id: str):
     """Generate certificate HTML for preview / PDF download."""
     cert = await certificates_col.find_one({"user_id": user_id, "certificate_id": cert_id})
+    event_cert = None
+    if not cert:
+        event_cert = await event_certificates_col.find_one({"user_id": user_id, "certificate_id": cert_id})
 
     student_name = "Studlyf Learner"
     course_title = "Studlyf Starter Certificate"
@@ -4914,6 +4976,18 @@ async def get_certificate_html(user_id: str, cert_id: str):
             )
             from fastapi.responses import HTMLResponse
             return HTMLResponse(content=html)
+    elif event_cert:
+        student_name = event_cert.get("participant_name", student_name)
+        course_title = f"{event_cert.get('event_title', course_title)} - {event_cert.get('achievement_type', 'Participation')}"
+        issued_value = event_cert.get("issued_date") or event_cert.get("issued_at")
+        if isinstance(issued_value, datetime):
+            issued_value = issued_value.strftime("%d %B %Y")
+        elif issued_value:
+            try:
+                issued_value = datetime.fromisoformat(str(issued_value).replace("Z", "+00:00")).strftime("%d %B %Y")
+            except Exception:
+                issued_value = str(issued_value)
+        issue_date = issued_value or issue_date
 
     # Default dummy template
     html = DUMMY_CERTIFICATE_HTML.format(

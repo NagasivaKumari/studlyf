@@ -502,7 +502,7 @@ async def upload_registration_file(file: UploadFile = File(...), user: dict = De
     """Decoupled asset upload layer for resumes and dynamic file custom answers."""
     try:
         file_ext = os.path.splitext(file.filename)[1].lower()
-        allowed_exts = {".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg", ".zip"}
+        allowed_exts = {".pdf", ".ppt", ".pptx", ".doc", ".docx", ".png", ".jpg", ".jpeg", ".zip"}
         if file_ext not in allowed_exts:
             raise HTTPException(status_code=400, detail=f"File extension {file_ext} not allowed.")
             

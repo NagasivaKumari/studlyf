@@ -16,6 +16,7 @@ async def generate_event_certificates(
     event_id: str,
     achievement_type: str = "participation",
     user_id: str = None,
+    template_id: str | None = None,
     user: dict = Depends(get_auth_user),
 ):
     role = str(user.get("role") or "").lower()
@@ -42,6 +43,7 @@ async def generate_event_certificates(
         event_id=event_id,
         achievement_type=achievement_type,
         event_code=event_code[:6].upper(),
+        template_id=template_id,
     )
 
     return {
