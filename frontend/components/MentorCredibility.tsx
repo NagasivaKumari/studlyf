@@ -155,7 +155,7 @@ const MentorCredibility: React.FC = () => {
                         <h2 className="text-5xl md:text-7xl font-['Poppins'] font-extrabold text-black mb-6 tracking-tight uppercase leading-[1.1]">
                             OUR MENTORS<br />
                             ARE FROM<br />
-                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B]">50K+ MNCS</span>
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B]">50+ MNCS</span>
                         </h2>
                     </motion.div>
                     <motion.p
@@ -180,7 +180,7 @@ const MentorCredibility: React.FC = () => {
                                 transition={{ duration: 0.5 }}
                                 className="flex justify-center"
                             >
-                                <div 
+                                <div
                                     className="w-24 h-24 bg-white/60 backdrop-blur-md rounded-full shadow-lg border border-white flex items-center justify-center p-4 cursor-pointer hover:scale-110 transition-transform duration-300"
                                     onClick={() => document.getElementById('enquiry-form')?.scrollIntoView({ behavior: 'smooth' })}
                                 >
@@ -202,7 +202,7 @@ const MentorCredibility: React.FC = () => {
                     <div className="grid grid-cols-3 gap-6">
                         {companyLogos.slice(0, 12).map((logo) => (
                             <div key={logo.name} className="flex flex-col items-center gap-2">
-                                <div 
+                                <div
                                     className="w-20 h-20 bg-white/60 backdrop-blur-md rounded-full shadow-md border border-white flex items-center justify-center p-3 cursor-pointer hover:scale-110 transition-transform duration-300"
                                     onClick={() => document.getElementById('enquiry-form')?.scrollIntoView({ behavior: 'smooth' })}
                                 >
