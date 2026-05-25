@@ -1,4 +1,4 @@
-import Example, { ExampleColorContext } from "../components/Example";
+import Example from "../components/Example";
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
@@ -614,89 +614,8 @@ const DashboardHome: React.FC = () => {
 
 
 
-        {/* Product Brief Section */}
-        <section className="mb-16 mt-12 px-4 sm:px-0 relative overflow-hidden py-16 bg-[#FAFAFA] rounded-[3rem] border border-black/5" >
-          {/* Vibrant Ambient Glows from User Palette */}
-          <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[60%] bg-[#0891B2]/12 rounded-full blur-[140px] pointer-events-none" />
-          <div className="absolute bottom-[0%] right-[-15%] w-[45%] h-[55%] bg-[#059669]/12 rounded-full blur-[120px] pointer-events-none" />
-          <div className="absolute top-[10%] right-[10%] w-[40%] h-[50%] bg-[#7C3AED]/15 rounded-full blur-[130px] pointer-events-none" />
-          <div className="absolute bottom-[-20%] left-[20%] w-[50%] h-[60%] bg-[#D97706]/08 rounded-full blur-[150px] pointer-events-none" />
-          <div className="absolute top-[40%] left-[40%] w-[35%] h-[45%] bg-[#E11D48]/10 rounded-full blur-[110px] pointer-events-none" />
-
-          <div className="flex flex-col items-center text-center relative z-10">
-            {/* Product Brief Header */}
-            <div className="flex flex-col items-center gap-3 mb-8">
-              <h2 className="text-2xl sm:text-4xl font-black text-black uppercase tracking-tighter inline-block relative w-fit">
-                Product Brief
-                <motion.div
-                  initial={{ width: 0 }}
-                  whileInView={{ width: '100%' }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 1, ease: "circOut", delay: 0.2 }}
-                  className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 h-1 bg-[#A78BFA] rounded-full"
-                />
-              </h2>
-            </div>
-
-            {/* Tab Buttons — each with its own accent colour when active */}
-            <div className="mb-4 flex flex-wrap justify-center gap-4">
-              {['Cognition', 'Protocol', 'Verification', 'Blueprint', 'Clinical', 'Evidence'].map((label) => {
-                const detail = briefDetails[label];
-                const isActive = activeBrief === label;
-                return (
-                  <Button
-                    key={label}
-                    onClick={() => setActiveBrief(label)}
-                    className={`px-6 h-10 rounded-full border transition-all duration-300 font-bold text-xs shadow-sm flex items-center gap-2 ${isActive
-                      ? 'text-white scale-110 shadow-lg border-transparent'
-                      : 'bg-white text-black border-black/10 hover:bg-neutral-50 shadow-sm'
-                      }`}
-                    style={isActive ? { background: detail.gradient, boxShadow: `0 8px 30px -8px ${detail.accent}80` } : {}}
-                  >
-                    <span>{detail.icon}</span> {label}
-                  </Button>
-                );
-              })}
-            </div>
-
-            {/* Dynamic Content Display with Background */}
-            <div
-              className="max-w-[1300px] w-full mx-auto min-h-[480px] relative rounded-[2.5rem] overflow-hidden flex items-center justify-center transition-all duration-700 py-6 px-4 sm:px-8 -mt-2"
-            >
-              <div className="relative z-10 w-full h-full max-w-7xl flex items-center justify-center">
-                <AnimatePresence mode="wait">
-                  {activeBrief && briefDetails[activeBrief] && (
-                    <motion.div
-                      key={activeBrief}
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 1.02 }}
-                      transition={{ duration: 0.5, ease: "easeOut" }}
-                      className="relative w-full min-h-[420px] rounded-[2rem] overflow-hidden flex items-center justify-center p-4 sm:p-8"
-                      style={{
-                        background: briefDetails[activeBrief].gradient,
-                      }}
-                    >
-
-                      <div className="relative z-10 flex flex-col items-center justify-center w-full">
-                        {/* Replacing Product Brief content with Example phone UI */}
-                        <ExampleColorContext.Provider value={{
-                          gradient: briefDetails[activeBrief].gradient,
-                          accent: briefDetails[activeBrief].accent,
-                          headline: briefDetails[activeBrief].headline,
-                          text: briefDetails[activeBrief].desc as string,
-                          image: briefDetails[activeBrief].image,
-                        }}>
-                          <Example />
-                        </ExampleColorContext.Provider>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* Explore STUDLYF Ecosystem Section */}
+        <Example />
 
 
 
