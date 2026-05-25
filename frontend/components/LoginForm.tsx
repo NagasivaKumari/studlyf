@@ -56,7 +56,12 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
 
                 // If we were deep-linked into a page, return there after auth.
                 if (next && next.startsWith('/')) {
-                    navigate(next);
+                    // Ignore opportunity deep-links for post-login landing and prefer dashboard
+                    if (next.startsWith('/opportunities')) {
+                        navigate('/dashboard');
+                    } else {
+                        navigate(next);
+                    }
                     return;
                 }
 
@@ -64,7 +69,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
                 if (data.user.role === 'super_admin' || data.user.role === 'admin') navigate('/admin');
                 else if (data.user.role === 'institution') navigate('/institution-dashboard');
                 else if (data.user.role === 'judge') navigate('/judge-portal');
-                else navigate('/opportunities');
+                else navigate('/dashboard');
             } else {
                 const detail = data.detail || 'Login failed. Please check your credentials.';
                 setError(detail);

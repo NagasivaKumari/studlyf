@@ -42,6 +42,7 @@ import MyCourses from './pages/MyCourses';
 import FeaturePreview from './pages/FeaturePreview';
 import CareerOnboarding from './pages/CareerOnboarding';
 import CoursesOverview from './pages/CoursesOverview';
+import PublicProfile from './pages/PublicProfile';
 import TrackDetail from './pages/TrackDetail';
 import EnrollmentFlow from './pages/EnrollmentFlow';
 import StackPage from './pages/StackPage';
@@ -316,11 +317,12 @@ const App: React.FC = () => {
 
             <Route path="/dashboard" element={
               <ProtectedRoute>
-                {role === 'institution' ? <Navigate to="/institution-dashboard" replace /> : <Navigate to="/opportunities" replace />}
+                {role === 'institution' ? <Navigate to="/institution-dashboard" replace /> : <Navigate to="/dashboard/learner" replace />}
               </ProtectedRoute>
             } />
             <Route path="/dashboard/learner" element={<ProtectedRoute><DashboardHome /></ProtectedRoute>} />
             <Route path="/dashboard/profile" element={<ProtectedRoute><LearnerDashboard /></ProtectedRoute>} />
+            <Route path="/profile/:userId" element={<PublicProfile />} />
             <Route path="/dashboard/partner" element={<ProtectedRoute><PartnerDashboard /></ProtectedRoute>} />
             <Route path="/dashboard/my-courses" element={<ProtectedRoute><MyCourses /></ProtectedRoute>} />
             <Route path="/institution-dashboard/*" element={<ProtectedRoute><InstitutionDashboard /></ProtectedRoute>} />
