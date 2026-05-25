@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { HelpCircle, Zap, Layers, Clock, CheckCircle } from 'lucide-react';
 
 const faqData = [
   {
@@ -70,50 +71,54 @@ const FAQItem: React.FC<FAQItemProps> = ({ question, answer, isOpen, toggle }) =
 const FAQ: React.FC = () => {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
+  const left = faqData.slice(0, Math.ceil(faqData.length / 2));
+  const right = faqData.slice(Math.ceil(faqData.length / 2));
+
+  const iconMap: any = [HelpCircle, Zap, Layers, Clock, CheckCircle];
+
   return (
     <section className="bg-white py-12 sm:py-20 px-6">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="text-center mb-10 sm:mb-14">
-          <motion.h2
-            initial={{ opacity: 0, y: 10 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.4em] mb-3"
-          >
-            FAQ
-          </motion.h2>
-          <motion.h3
-            initial={{ opacity: 0, y: 10 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.1 }}
-            className="font-display text-4xl sm:text-5xl italic text-[#0F172A]"
-          >
-            The Standard, <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B] inline-block">CLARIFIED.</span>
-          </motion.h3>
+          <motion.h2 initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.4em] mb-3">FAQ</motion.h2>
+          <motion.h3 initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="font-display text-3xl sm:text-4xl italic text-[#0F172A]">Answers that matter.</motion.h3>
         </div>
 
-        <div className="bg-white rounded-[1.5rem] sm:rounded-[2rem] border border-gray-100 p-1 sm:p-8 shadow-sm">
-          {faqData.map((item, index) => (
-            <FAQItem
-              key={index}
-              question={item.question}
-              answer={item.answer}
-              isOpen={openIndex === index}
-              toggle={() => setOpenIndex(openIndex === index ? null : index)}
-            />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[left, right].map((col, colIdx) => (
+            <div key={colIdx} className="space-y-4">
+              {col.map((item, i) => {
+                const globalIdx = colIdx === 0 ? i : left.length + i;
+                const Icon = iconMap[globalIdx % iconMap.length];
+                const isOpen = openIndex === globalIdx;
+                return (
+                  <div key={globalIdx} className="rounded-2xl border border-gray-100 shadow-sm bg-white overflow-hidden">
+                    <button onClick={() => setOpenIndex(isOpen ? null : globalIdx)} className={`w-full flex items-center gap-4 p-4 md:p-5 text-left ${isOpen ? 'bg-white' : 'hover:bg-gray-50'} transition` }>
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#7C3AED] to-[#06B6D4] text-white flex items-center justify-center">
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <div className={`font-bold text-sm md:text-base ${isOpen ? 'text-[#111827]' : 'text-[#0F172A]'}`}>{item.question}</div>
+                        <div className="text-[12px] text-[#6B7280] mt-1 hidden md:block">{item.answer.slice(0, 80)}...</div>
+                      </div>
+                      <div className={`text-[#7C3AED] font-black`}>{isOpen ? '−' : '+'}</div>
+                    </button>
+                    <AnimatePresence>
+                      {isOpen && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.28 }} className="p-4 pt-0">
+                          <p className="text-sm text-[#475569] leading-relaxed">{item.answer}</p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
           ))}
         </div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          className="mt-12 text-center"
-        >
-          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">
-            More queries? <a href="#" className="text-[#7C3AED] hover:underline">Contact the Audit Team</a>
-          </p>
+        <motion.div initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mt-8 text-center">
+          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">More queries? <a href="#" className="text-[#7C3AED] hover:underline">Contact the Audit Team</a></p>
         </motion.div>
       </div>
     </section>
