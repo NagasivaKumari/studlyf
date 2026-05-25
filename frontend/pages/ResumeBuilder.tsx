@@ -1230,7 +1230,7 @@ export default function ResumeBuilder() {
                                         </div>
                                     ))}
                                 </div>
-                            </motion.div>
+                            </div>
                         </AccordionItem>
 
                 <AccordionItem
