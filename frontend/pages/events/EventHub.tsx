@@ -186,7 +186,7 @@ const EventHub: React.FC = () => {
         }
     };
 
-    const handleFileUpload = async (stageId: string, file: File) => {
+    const handleFileUpload = async (stageId: string, file: File, fieldId: string, field: any) => {
         setSubmitting(stageId);
         setSubmissionError(null);
         
@@ -198,11 +198,45 @@ const EventHub: React.FC = () => {
             return;
         }
 
-        // Check file extension
-        const allowedExtensions = ['.pdf', '.ppt', '.pptx', '.doc', '.docx', '.zip', '.rar', '.txt', '.jpg', '.jpeg', '.png', '.gif'];
+        // Check file extension dynamically based on question context
+        let allowedExtensions = ['.pdf', '.ppt', '.pptx', '.doc', '.docx', '.zip', '.rar', '.txt', '.jpg', '.jpeg', '.png', '.gif'];
+        if (field) {
+            const textToCheck = `${field.label || ''} ${field.description || ''} ${field.placeholder || ''}`.toLowerCase();
+            const hasPdf = textToCheck.includes('pdf');
+            const hasPpt = textToCheck.includes('ppt') || textToCheck.includes('powerpoint') || textToCheck.includes('pptx');
+            const hasDoc = textToCheck.includes('doc') || textToCheck.includes('docx') || textToCheck.includes('word');
+            const hasZip = textToCheck.includes('zip') || textToCheck.includes('rar');
+            const hasImage = textToCheck.includes('image') || textToCheck.includes('png') || textToCheck.includes('jpg') || textToCheck.includes('jpeg');
+
+            const customAllowed: string[] = [];
+            if (hasPdf) customAllowed.push('.pdf');
+            if (hasPpt) {
+                customAllowed.push('.ppt');
+                customAllowed.push('.pptx');
+            }
+            if (hasDoc) {
+                customAllowed.push('.doc');
+                customAllowed.push('.docx');
+            }
+            if (hasZip) {
+                customAllowed.push('.zip');
+                customAllowed.push('.rar');
+            }
+            if (hasImage) {
+                customAllowed.push('.png');
+                customAllowed.push('.jpg');
+                customAllowed.push('.jpeg');
+            }
+
+            if (customAllowed.length > 0) {
+                allowedExtensions = customAllowed;
+            }
+        }
+
         const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
         if (!allowedExtensions.includes(fileExt)) {
-            setSubmissionError(`File type ${fileExt} is not allowed. Allowed types: ${allowedExtensions.join(', ')}`);
+            const displayFormats = allowedExtensions.map(e => e.replace('.', '').toUpperCase()).join(', ');
+            setSubmissionError(`File type ${fileExt} is not allowed. Only ${displayFormats} files are accepted.`);
             setSubmitting(null);
             return;
         }
@@ -221,7 +255,11 @@ const EventHub: React.FC = () => {
             });
             
             if (res.ok) {
+                const data = await res.json();
                 alert("File uploaded successfully!");
+                // Update local state so that the filename is immediately displayed on the screen
+                const fileUrl = data.file_url || data.url || file.name;
+                setSubmissionData(prev => ({ ...prev, [`${stageId}-${fieldId}`]: fileUrl }));
                 await fetchData();
             } else {
                 const err = await res.json();
@@ -657,27 +695,104 @@ const EventHub: React.FC = () => {
                                                                         value={String(submissionData[key] || '')}
                                                                         onChange={(e) => setSubmissionData(prev => ({ ...prev, [key]: e.target.value }))}
                                                                     />
-                                                                ) : fieldType === 'file' ? (
-                                                                    <div className="relative border-2 border-dashed rounded-2xl p-6 text-center bg-purple-50/30 border-purple-100 hover:border-purple-300 cursor-pointer transition-all"
-                                                                        onClick={() => document.getElementById(`dyn-file-${field.id}`)?.click()}
-                                                                    >
-                                                                        <Upload size={24} className="mx-auto mb-2 text-purple-400" />
-                                                                        <p className="text-xs font-black uppercase tracking-widest text-purple-600">
-                                                                            {submissionData[key] ? 'File selected' : 'Choose file'}
-                                                                        </p>
-                                                                        <input
-                                                                            id={`dyn-file-${field.id}`}
-                                                                            type="file"
-                                                                            className="hidden"
-                                                                            onChange={(e) => {
-                                                                                const f = e.target.files?.[0];
-                                                                                if (f && submissionStage) {
-                                                                                    handleFileUpload(submissionStage.id, f);
-                                                                                }
-                                                                            }}
-                                                                        />
-                                                                    </div>
-                                                                ) : fieldType === 'checkbox' ? (
+                                                                ) : fieldType === 'file' ? (() => {
+                                                                    const textToCheck = `${field.label || ''} ${field.description || ''} ${field.placeholder || ''}`.toLowerCase();
+                                                                    const hasPdf = textToCheck.includes('pdf');
+                                                                    const hasPpt = textToCheck.includes('ppt') || textToCheck.includes('powerpoint') || textToCheck.includes('pptx');
+                                                                    const hasDoc = textToCheck.includes('doc') || textToCheck.includes('docx') || textToCheck.includes('word');
+                                                                    const hasZip = textToCheck.includes('zip') || textToCheck.includes('rar');
+                                                                    const hasImage = textToCheck.includes('image') || textToCheck.includes('png') || textToCheck.includes('jpg') || textToCheck.includes('jpeg');
+
+                                                                    const allowed: string[] = [];
+                                                                    if (hasPdf) allowed.push('.pdf');
+                                                                    if (hasPpt) {
+                                                                        allowed.push('.ppt');
+                                                                        allowed.push('.pptx');
+                                                                    }
+                                                                    if (hasDoc) {
+                                                                        allowed.push('.doc');
+                                                                        allowed.push('.docx');
+                                                                    }
+                                                                    if (hasZip) {
+                                                                        allowed.push('.zip');
+                                                                        allowed.push('.rar');
+                                                                    }
+                                                                    if (hasImage) {
+                                                                        allowed.push('.png');
+                                                                        allowed.push('.jpg');
+                                                                        allowed.push('.jpeg');
+                                                                    }
+
+                                                                    const allowedExts = allowed.length > 0 ? allowed : ['.pdf', '.ppt', '.pptx', '.doc', '.docx', '.zip', '.rar', '.txt', '.jpg', '.jpeg', '.png', '.gif'];
+                                                                    const acceptAttr = allowedExts.join(',');
+                                                                    const displayFormats = allowedExts.map(e => e.replace('.', '').toUpperCase()).join(', ');
+
+                                                                    return (
+                                                                        <div className="space-y-2">
+                                                                            <input
+                                                                                id={`dyn-file-${field.id}`}
+                                                                                type="file"
+                                                                                accept={acceptAttr}
+                                                                                className="hidden"
+                                                                                onChange={(e) => {
+                                                                                    const f = e.target.files?.[0];
+                                                                                    if (f && submissionStage) {
+                                                                                        const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase();
+                                                                                        if (!allowedExts.includes(ext)) {
+                                                                                            setSubmissionError(`Only ${displayFormats} files are allowed.`);
+                                                                                            return;
+                                                                                        }
+                                                                                        handleFileUpload(submissionStage.id, f, field.id, field);
+                                                                                    }
+                                                                                }}
+                                                                            />
+                                                                            {submitting === submissionStage!.id ? (
+                                                                                <div className="flex items-center gap-3 p-4 border border-purple-200 rounded-2xl bg-purple-50/20 animate-pulse">
+                                                                                    <Loader2 className="animate-spin text-purple-600" size={18} />
+                                                                                    <span className="text-xs text-purple-600 font-semibold">
+                                                                                        Uploading your asset... Please wait.
+                                                                                    </span>
+                                                                                </div>
+                                                                            ) : submissionData[key] ? (
+                                                                                <div className="flex items-center justify-between gap-4 p-4 border border-emerald-250 rounded-2xl bg-emerald-50/30 transition-all duration-200 shadow-sm">
+                                                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                                                        <div className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg shrink-0">
+                                                                                            <FileText size={16} />
+                                                                                        </div>
+                                                                                        <div className="flex flex-col min-w-0">
+                                                                                            <span className="text-xs text-emerald-800 font-bold truncate">
+                                                                                                {typeof submissionData[key] === 'string' ? String(submissionData[key]).split('/').pop() : 'Attached File'}
+                                                                                            </span>
+                                                                                            <span className="text-[10px] text-emerald-600/80 font-semibold flex items-center gap-1 mt-0.5">
+                                                                                                <CheckCircle2 size={10} /> Uploaded successfully
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => document.getElementById(`dyn-file-${field.id}`)?.click()}
+                                                                                        className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-[10px] font-bold cursor-pointer transition-colors shadow-sm shrink-0"
+                                                                                    >
+                                                                                        Change File
+                                                                                    </button>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div 
+                                                                                    className="relative border-2 border-dashed rounded-2xl p-6 text-center bg-purple-50/10 border-purple-100 hover:border-purple-300 hover:bg-purple-50/20 cursor-pointer transition-all"
+                                                                                    onClick={() => document.getElementById(`dyn-file-${field.id}`)?.click()}
+                                                                                >
+                                                                                    <Upload size={24} className="mx-auto mb-2 text-purple-400" />
+                                                                                    <p className="text-xs font-black uppercase tracking-widest text-purple-600">
+                                                                                        Choose file
+                                                                                    </p>
+                                                                                    <span className="text-[10px] text-slate-400 font-semibold block mt-1">
+                                                                                        Accepts {displayFormats} only
+                                                                                    </span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })() : fieldType === 'checkbox' ? (
                                                                     <label className="flex items-center gap-3 cursor-pointer">
                                                                         <input
                                                                             type="checkbox"

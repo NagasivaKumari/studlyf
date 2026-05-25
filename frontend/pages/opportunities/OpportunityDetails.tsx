@@ -123,12 +123,47 @@ const OpportunityDetails: React.FC = () => {
         interest: ''
     });
     const [regAnswers, setRegAnswers] = useState<Record<string, string>>({});
+    const [uploadedFilenames, setUploadedFilenames] = useState<Record<string, string>>({});
     const [regFiles, setRegFiles] = useState<Record<string, File | null>>({});
     const [myApplication, setMyApplication] = useState<any>(null);
     const [related, setRelated] = useState<any[]>([]);
     const [favorited, setFavorited] = useState(false);
     const [descExpanded, setDescExpanded] = useState(false);
     const [activeSection, setActiveSection] = useState<'details' | 'dates' | 'prizes' | 'reviews' | 'faq' | 'submissions' | 'leaderboard'>('details');
+    const getFieldAllowedExtensions = (field: RegField) => {
+        const textToCheck = `${field.label} ${field.hint || ''}`.toLowerCase();
+        const hasPdf = textToCheck.includes('pdf');
+        const hasPpt = textToCheck.includes('ppt') || textToCheck.includes('powerpoint') || textToCheck.includes('pptx');
+        const hasDoc = textToCheck.includes('doc') || textToCheck.includes('docx') || textToCheck.includes('word');
+        const hasZip = textToCheck.includes('zip') || textToCheck.includes('rar');
+        const hasImage = textToCheck.includes('image') || textToCheck.includes('png') || textToCheck.includes('jpg') || textToCheck.includes('jpeg');
+
+        const allowed: string[] = [];
+        if (hasPdf) allowed.push('.pdf');
+        if (hasPpt) {
+            allowed.push('.ppt');
+            allowed.push('.pptx');
+        }
+        if (hasDoc) {
+            allowed.push('.doc');
+            allowed.push('.docx');
+        }
+        if (hasZip) {
+            allowed.push('.zip');
+            allowed.push('.rar');
+        }
+        if (hasImage) {
+            allowed.push('.png');
+            allowed.push('.jpg');
+            allowed.push('.jpeg');
+        }
+
+        if (allowed.length === 0) {
+            return ['.pdf', '.ppt', '.pptx', '.doc', '.docx', '.png', '.jpg', '.jpeg', '.zip'];
+        }
+        return allowed;
+    };
+
 
     const detailsRef = useRef<HTMLDivElement>(null);
     const datesRef = useRef<HTMLDivElement>(null);
@@ -405,10 +440,7 @@ const OpportunityDetails: React.FC = () => {
             let val = '';
 
             if (t === 'file' || t === 'upload') {
-                const file = regFiles[f.id];
-                val = file
-                    ? `https://studlyf-storage.s3.amazonaws.com/resumes/${file.name}`
-                    : '';
+                val = regAnswers[f.id] ?? '';
                 if (/resume|cv/i.test(f.label) && val) derivedResume = val;
             } else if (t === 'checkbox' && f.options && f.options.length > 0) {
                 const selected = f.options.filter((opt) => regAnswers[`${f.id}:${opt}`] === 'on');
@@ -454,6 +486,7 @@ const OpportunityDetails: React.FC = () => {
             const data = await res.json();
             if (res.ok) {
                 setRegAnswers(prev => ({ ...prev, [fieldId]: data.url }));
+                setUploadedFilenames(prev => ({ ...prev, [fieldId]: file.name }));
                 alert("File uploaded successfully.");
             } else {
                 alert(`Upload failed: ${data.detail || 'Unknown error'}`);
@@ -835,12 +868,45 @@ const OpportunityDetails: React.FC = () => {
     const hasContactSection = contactList.length > 0;
     const hasAttachmentsSection = attachmentsList.length > 0;
 
+    const stagesList = Array.isArray(opportunity?.stages) ? opportunity.stages : [];
+    
+    // Find Registration Stage
+    const regStage = stagesList.find((s: any) => 
+        String(s?.type || '').toUpperCase() === 'REGISTRATION' || 
+        String(s?.name || '').toLowerCase().includes('regist')
+    );
+    const derivedDeadline = regStage?.endDate || regStage?.end_date || regStage?.deadline || opportunity?.deadline;
+
+    // Find Event Start Date
+    let derivedStartDate = opportunity?.eventStartDate || opportunity?.start_date;
+    if (stagesList.length > 0) {
+        const startDates = stagesList
+            .map((s: any) => s?.startDate || s?.start_date)
+            .filter(Boolean)
+            .map((d: any) => new Date(d).getTime());
+        if (startDates.length > 0) {
+            derivedStartDate = new Date(Math.min(...startDates)).toISOString();
+        }
+    }
+
+    // Find Event End Date
+    let derivedEndDate = opportunity?.eventEndDate || opportunity?.end_date;
+    if (stagesList.length > 0) {
+        const endDates = stagesList
+            .map((s: any) => s?.endDate || s?.end_date)
+            .filter(Boolean)
+            .map((d: any) => new Date(d).getTime());
+        if (endDates.length > 0) {
+            derivedEndDate = new Date(Math.max(...endDates)).toISOString();
+        }
+    }
+
     const hasDatesSection =
-        Boolean(opportunity.deadline) ||
-        Boolean(opportunity.eventStartDate) ||
-        Boolean(opportunity.eventEndDate) ||
-        (Array.isArray(opportunity.stages) &&
-            opportunity.stages.some((s: any) => s?.startDate || s?.start_date || s?.endDate || s?.end_date || s?.deadline));
+        Boolean(derivedDeadline) ||
+        Boolean(derivedStartDate) ||
+        Boolean(derivedEndDate) ||
+        (stagesList.length > 0 &&
+            stagesList.some((s: any) => s?.startDate || s?.start_date || s?.endDate || s?.end_date || s?.deadline));
     const hasPrizesSection = Boolean(prizePoolLabel) || (Array.isArray(prizesList) && prizesList.length > 0);
     const hideLeaderboard =
         (() => {
@@ -1537,8 +1603,8 @@ const OpportunityDetails: React.FC = () => {
                                                     Registration deadline
                                                 </p>
                                                 <p className="mt-1 font-black text-slate-900">
-                                                    {opportunity.deadline
-                                                        ? new Date(opportunity.deadline).toLocaleString('en-GB', {
+                                                    {derivedDeadline
+                                                        ? new Date(derivedDeadline).toLocaleString('en-GB', {
                                                               day: '2-digit',
                                                               month: 'short',
                                                               year: 'numeric',
@@ -1551,8 +1617,8 @@ const OpportunityDetails: React.FC = () => {
                                             <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Start date</p>
                                                 <p className="mt-1 font-black text-slate-900">
-                                                    {opportunity.eventStartDate
-                                                        ? new Date(opportunity.eventStartDate).toLocaleString('en-GB', {
+                                                    {derivedStartDate
+                                                        ? new Date(derivedStartDate).toLocaleString('en-GB', {
                                                               day: '2-digit',
                                                               month: 'short',
                                                               year: 'numeric',
@@ -1565,8 +1631,8 @@ const OpportunityDetails: React.FC = () => {
                                             <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">End date</p>
                                                 <p className="mt-1 font-black text-slate-900">
-                                                    {opportunity.eventEndDate
-                                                        ? new Date(opportunity.eventEndDate).toLocaleString('en-GB', {
+                                                    {derivedEndDate
+                                                        ? new Date(derivedEndDate).toLocaleString('en-GB', {
                                                               day: '2-digit',
                                                               month: 'short',
                                                               year: 'numeric',
@@ -2200,6 +2266,9 @@ const OpportunityDetails: React.FC = () => {
                                                     {currentStep.fields.map((field: any) => {
                                                         const isEmail = field.id === 'email';
                                                         const isPrefilled = Boolean(field.prefilled_value);
+                                                        const allowedExts = field.type === 'file' ? getFieldAllowedExtensions(field) : [];
+                                                        const acceptAttr = allowedExts.join(',');
+                                                        const displayFormats = allowedExts.map(e => e.replace('.', '').toUpperCase()).join(', ');
                                                         
                                                         return (
                                                             <div key={field.id} className="space-y-1.5">
@@ -2239,26 +2308,87 @@ const OpportunityDetails: React.FC = () => {
                                                                         })}
                                                                     </div>
                                                                 ) : field.type === 'file' ? (
-                                                                    <div className="flex items-center gap-4 p-3 border border-slate-200 rounded-xl bg-slate-50/50">
+                                                                    <div className="space-y-2">
                                                                         <input
                                                                             type="file"
                                                                             id={`file-${field.id}`}
+                                                                            accept={acceptAttr}
                                                                             className="hidden"
                                                                             onChange={e => {
                                                                                 const file = e.target.files?.[0];
-                                                                                if (file) handleFileUpload(field.id, file);
+                                                                                if (file) {
+                                                                                    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+                                                                                    if (!allowedExts.includes(ext)) {
+                                                                                        alert(`Only ${displayFormats} files are allowed.`);
+                                                                                        return;
+                                                                                    }
+                                                                                    handleFileUpload(field.id, file);
+                                                                                }
                                                                             }}
                                                                         />
-                                                                        <label
-                                                                            htmlFor={`file-${field.id}`}
-                                                                            className="px-4 py-2 bg-white border border-slate-250 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
-                                                                        >
-                                                                            <Upload size={14} /> Upload Asset
-                                                                        </label>
-                                                                        <span className="text-xs text-slate-500 truncate max-w-xs font-semibold">
-                                                                            {uploadingField === field.id ? 'Uploading files...' :
-                                                                             regAnswers[field.id] ? String(regAnswers[field.id]).split('/').pop() : 'No file uploaded'}
-                                                                        </span>
+                                                                        {uploadingField === field.id ? (
+                                                                            <div className="flex items-center gap-3 p-3 border border-[#6C3BFF]/30 rounded-xl bg-[#6C3BFF]/5 animate-pulse">
+                                                                                <Loader2 className="animate-spin text-[#6C3BFF]" size={18} />
+                                                                                <span className="text-xs text-[#6C3BFF] font-semibold animate-pulse">
+                                                                                    Uploading your file... Please wait.
+                                                                                </span>
+                                                                            </div>
+                                                                        ) : regAnswers[field.id] ? (
+                                                                            <div className="flex items-center justify-between gap-4 p-3 border border-emerald-200 rounded-xl bg-emerald-50/40 shadow-sm transition-all duration-200">
+                                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                                    <div className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg shrink-0">
+                                                                                        <Paperclip size={16} />
+                                                                                    </div>
+                                                                                    <div className="flex flex-col min-w-0">
+                                                                                        <span className="text-xs text-emerald-800 font-bold truncate">
+                                                                                            {uploadedFilenames[field.id] || String(regAnswers[field.id]).split('/').pop()}
+                                                                                        </span>
+                                                                                        <span className="text-[10px] text-emerald-600/80 font-semibold flex items-center gap-1">
+                                                                                            <CheckCircle2 size={10} /> Uploaded successfully
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                                    <label
+                                                                                        htmlFor={`file-${field.id}`}
+                                                                                        className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-[10px] font-bold cursor-pointer transition-colors shadow-sm"
+                                                                                    >
+                                                                                        Change
+                                                                                    </label>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => {
+                                                                                            setRegAnswers(prev => {
+                                                                                                const copy = { ...prev };
+                                                                                                delete copy[field.id];
+                                                                                                return copy;
+                                                                                            });
+                                                                                            setUploadedFilenames(prev => {
+                                                                                                const copy = { ...prev };
+                                                                                                delete copy[field.id];
+                                                                                                return copy;
+                                                                                            });
+                                                                                        }}
+                                                                                        className="p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors animate-fade-in"
+                                                                                        title="Remove file"
+                                                                                    >
+                                                                                        <XCircle size={16} />
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="flex items-center gap-3 p-3 border border-dashed border-slate-350 rounded-xl bg-slate-50/50 hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                                                                                <label
+                                                                                    htmlFor={`file-${field.id}`}
+                                                                                    className="px-4 py-2 bg-white border border-slate-250 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+                                                                                >
+                                                                                    <Upload size={14} /> Choose File
+                                                                                </label>
+                                                                                <span className="text-xs text-slate-400 font-medium">
+                                                                                    Accepts {displayFormats} only
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 ) : field.type === 'textarea' || field.type === 'paragraph' ? (
                                                                     <textarea

@@ -23,7 +23,7 @@ from services.email_service import (
 from services.institutional_analytics_service import analytics_service
 from services.institutional_certificate_service import certificate_service
 from services.leaderboard_service import leaderboard_service
-from db import leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col
+from db import leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col, event_certificates_col
 from bson import ObjectId
 from services.audit_service import log_admin_action
 from notification_helpers import notify_institution
@@ -500,6 +500,14 @@ async def create_institution_profile(profile: dict, user: dict = Depends(get_aut
     from db import institutions_col
     inst_id = str(profile.get("institution_id", "unknown")).strip()
     
+    # Preserve existing logo and banner if they exist in DB but are missing/empty in request payload
+    existing = await institutions_col.find_one({"institution_id": inst_id})
+    if existing:
+        if not profile.get("logo_url") and existing.get("logo_url"):
+            profile["logo_url"] = existing["logo_url"]
+        if not profile.get("banner_url") and existing.get("banner_url"):
+            profile["banner_url"] = existing["banner_url"]
+
     # CRITICAL: Remove MongoDB's internal _id to avoid immutable field errors
     if "_id" in profile:
         del profile["_id"]
@@ -1702,7 +1710,7 @@ async def export_leaderboard_pdf(event_id: str):
     )
 
 @router.post("/finalize-event/{event_id}")
-async def finalize_event(event_id: str):
+async def finalize_event(event_id: str, template_id: str | None = None):
     """
     Triggers final results processing and bulk leaderboard generation.
     Transitions event status from LIVE to ENDED.
@@ -1754,101 +1762,66 @@ async def finalize_event(event_id: str):
         {"$set": {"status": "ENDED", "finalized_at": datetime.utcnow()}}
     )
 
-    # 4. Generate Certificates for Winners
-    await generate_event_certificates(event_id, final_rankings)
+    # 4. Generate rank-based certificates for all qualified participants
+    issued_certificates = await certificate_service.issue_ranked_event_certificates(event_id, final_rankings, send_email=True, template_id=template_id)
 
-    await log_admin_action("admin@institution.com", "EVENT_FINALIZED", f"Finalized event {event_id} and generated certificates.")
-    return {"status": "success", "results": final_rankings}
+    await log_admin_action("admin@institution.com", "EVENT_FINALIZED", f"Finalized event {event_id} and generated {len(issued_certificates)} certificates.")
+    return {"status": "success", "results": final_rankings, "certificates_issued": len(issued_certificates)}
 
 async def generate_event_certificates(event_id: str, rankings: list):
-    """Generates individual certificates for all members of the top teams."""
-    from db import certificates_col, teams_col, events_col
-    import uuid
-    
-    event = await events_col.find_one({"_id": ObjectId(event_id)})
-    event_type = event.get("event_type", "")
-    
-    cert_entries = []
-    for rank_data in rankings:
-        # Fetch the team to get all member names
-        team = await teams_col.find_one({"team_name": rank_data["team_name"], "event_id": event_id})
-        members = team.get("members", []) if team else [{"full_name": rank_data["team_name"]}]
-        
-        for member in members:
-            certificate_id = f"STUD-{datetime.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
-            cert_entries.append({
-                "certificate_id": certificate_id,
-                "verification_code": uuid.uuid4().hex[:12].upper(),
-                "event_id": event_id,
-                "event_title": event.get("title"),
-                "event_type": event_type,
-                "recipient_name": member.get("full_name", "Participant"),
-                "team_name": rank_data["team_name"],
-                "rank": rank_data["rank"],
-                "category": "Winner" if rank_data["rank"] <= 3 else "Participant",
-                "issued_date": datetime.utcnow().isoformat(),
-                "verification_url": f"{BASE_URL}/verify-certificate/{certificate_id}",
-                "status": "ISSUED"
+    """Backward-compatible wrapper for rank-based certificate issuance."""
+    return await certificate_service.issue_ranked_event_certificates(event_id, rankings, send_email=True)
+
+
+@router.get("/institution/certificates/{institution_id}")
+async def list_institution_certificates(institution_id: str, user: dict = Depends(get_auth_user)):
+    """Return all event certificates issued for an institution."""
+    assert_institution_scope(institution_id, user)
+
+    results = []
+
+    legacy_certs = await certificates_col.find({"institution_id": str(institution_id)}).sort("issue_date", -1).to_list(length=None)
+    for cert in legacy_certs:
+        issue_value = cert.get("issue_date") or cert.get("issued_date")
+        if isinstance(issue_value, datetime):
+            issue_value = issue_value.isoformat()
+        results.append({
+            "_id": str(cert.get("_id", "")),
+            "student_name": cert.get("student_name") or cert.get("recipient_name") or cert.get("full_name") or "Participant",
+            "event_title": cert.get("event_title") or "Event",
+            "certificate_id": cert.get("certificate_id"),
+            "issue_date": issue_value or datetime.utcnow().isoformat(),
+            "category": cert.get("category") or cert.get("achievement_type") or "Participation",
+            "event_id": cert.get("event_id"),
+            "verification_url": cert.get("verification_url"),
+        })
+
+    event_ids = []
+    async for event in events_col.find({"institution_id": str(institution_id)}, {"_id": 1}):
+        event_ids.append(str(event["_id"]))
+
+    if event_ids:
+        certs = await event_certificates_col.find({"event_id": {"$in": event_ids}}).sort("issued_at", -1).to_list(length=None)
+        for cert in certs:
+            issued_value = cert.get("issued_date") or cert.get("issued_at")
+            if isinstance(issued_value, datetime):
+                issued_value = issued_value.isoformat()
+            results.append({
+                "_id": str(cert.get("_id", "")),
+                "student_name": cert.get("participant_name") or cert.get("student_name") or cert.get("recipient_name") or "Participant",
+                "event_title": cert.get("event_title") or "Event",
+                "certificate_id": cert.get("certificate_id"),
+                "issue_date": issued_value or datetime.utcnow().isoformat(),
+                "category": cert.get("achievement_type") or cert.get("category") or "Participation",
+                "event_id": cert.get("event_id"),
+                "verification_url": cert.get("verification_url"),
             })
-    
-    if cert_entries:
-        await certificates_col.insert_many(cert_entries)
-        
-        # [REAL-TIME NOTIFICATION] Notify Recipients via Email
-        for cert in cert_entries:
-            # We need the recipient's email. Since it's not in the cert_entry, 
-            # we try to find it from the user's record or use a fallback.
-            recipient_email = None
-            # Heuristic: try to find user by name or look up in participants
-            participant = await participants_col.find_one({"full_name": cert["recipient_name"], "event_id": event_id})
-            if participant:
-                recipient_email = participant.get("email")
-            
-            if recipient_email:
-                subject = f"Congratulations! Your Certificate for {cert['event_title']} is ready"
-                body = get_certificate_template(
-                    user_name=cert['recipient_name'],
-                    event_name=cert['event_title'],
-                    rank=str(cert.get('rank')) if cert.get('rank') else None,
-                    category=cert.get('category', 'Participant')
-                )
-                asyncio.create_task(send_notification_email(recipient_email, subject, body))
 
-                issued_subject = f"Certificate Issued: {cert['event_title']}"
-                certificate_issue_date = cert.get("issued_date") or cert.get("issued_at") or datetime.utcnow().isoformat()
-                issued_body = get_certificate_issued_template(
-                    participant_name=cert['recipient_name'],
-                    event_title=cert['event_title'],
-                    organization_name=(event or {}).get("organisation") or (event or {}).get("organization") or "Studlyf",
-                    certificate_id=cert.get("certificate_id", ""),
-                    issued_date=certificate_issue_date,
-                    certificate_download_link=f"{BASE_URL}/download-certificate/{cert.get('certificate_id', '')}",
-                    verification_url=cert.get("verification_url") or f"{BASE_URL}/verify-certificate/{cert.get('certificate_id', '')}",
-                )
-                asyncio.create_task(send_notification_email(recipient_email, issued_subject, issued_body))
+    if not results:
+        return []
 
-                if cert.get("rank") and int(cert.get("rank") or 0) <= 3:
-                    winner_subject = f"Winner Announcement: {cert['event_title']}"
-                    winner_body = get_winner_announcement_template(
-                        participant_name=cert['recipient_name'],
-                        event_title=cert['event_title'],
-                        organization_name=(event or {}).get("organisation") or (event or {}).get("organization") or "Studlyf",
-                        rank=str(cert.get('rank')),
-                        prize_details=f"Rank {cert.get('rank')} achiever in {cert['event_title']}",
-                        results_link=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/events/{event_id}",
-                    )
-                    asyncio.create_task(send_notification_email(recipient_email, winner_subject, winner_body))
-
-                feedback_subject = f"We'd love your feedback on {cert['event_title']}"
-                feedback_body = get_feedback_request_template(
-                    participant_name=cert['recipient_name'],
-                    event_title=cert['event_title'],
-                    organization_name=(event or {}).get("organisation") or (event or {}).get("organization") or "Studlyf",
-                    feedback_link=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/events/{event_id}?tab=feedback",
-                )
-                asyncio.create_task(send_notification_email(recipient_email, feedback_subject, feedback_body))
-    
-    return {"status": "Event finalized and leaderboard generated successfully"}
+    results.sort(key=lambda item: item.get("issue_date") or "", reverse=True)
+    return results
 
 @router.get("/export-summary/{institution_id}")
 async def export_institution_summary_csv(institution_id: str, user: dict = Depends(get_auth_user)):
@@ -3718,6 +3691,7 @@ async def submit_event_quiz(event_id: str, quiz_id: str, payload: dict = Body(..
 
     attempt = {
         "quiz_id": str(quiz_id),
+        "answers": answers,
         "score": score,
         "pass_mark": pass_mark,
         "passed": passed,
@@ -3801,6 +3775,8 @@ async def get_quiz_results(event_id: str, quiz_id: str, user: dict = Depends(get
             "submitted_at": last.get("submitted_at"),
             "participant_status": p.get("status", "registered"),
             "coding_pending_review": last.get("coding_pending_review", False),
+            "answers": last.get("answers", []),
+            "coding_answers": last.get("coding_answers", []),
         })
 
     return {
@@ -3811,6 +3787,15 @@ async def get_quiz_results(event_id: str, quiz_id: str, user: dict = Depends(get
         "stage_index": stage_index,
         "results": results,
         "total_attempts": len(results),
+        "questions": [
+            {
+                "text": q.get("text"),
+                "type": q.get("type"),
+                "options": q.get("options"),
+                "correctOptionIndex": q.get("correctOptionIndex"),
+            }
+            for q in (quiz.get("questions") or [])
+        ],
     }
 
 
@@ -4275,18 +4260,25 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
         if not upload_file or not upload_file.filename:
             return None
         ext = os.path.splitext(upload_file.filename)[1].lower()
-        if ext not in ['.jpg', '.jpeg', '.png', '.webp']:
+        if ext not in ['.jpg', '.jpeg', '.png', '.webp', '.gif']:
             return None
             
-        fname = f"{prefix}_{uuid.uuid4()}{ext}"
-        fpath = os.path.join(EVENTS_UPLOAD_DIR, fname)
-        
-        # Ensure we read the file correctly
+        # Read the file content
         content = await upload_file.read()
-        with open(fpath, "wb") as f:
-            f.write(content)
+        if len(content) > 10 * 1024 * 1024: # 10MB limit
+            raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
             
-        return f"{BASE_URL}/uploads/events/{fname}"
+        import base64
+        mime = "image/png"
+        if ext in [".jpg", ".jpeg"]:
+            mime = "image/jpeg"
+        elif ext == ".webp":
+            mime = "image/webp"
+        elif ext == ".gif":
+            mime = "image/gif"
+            
+        b64 = base64.b64encode(content).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
 
     # Process files
     logo_file = form.get('logo_file')
@@ -4508,18 +4500,25 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
         if not upload_file or not upload_file.filename:
             return None
         ext = os.path.splitext(upload_file.filename)[1].lower()
-        if ext not in ['.jpg', '.jpeg', '.png', '.webp']:
+        if ext not in ['.jpg', '.jpeg', '.png', '.webp', '.gif']:
             return None
             
-        fname = f"{prefix}_{uuid.uuid4()}{ext}"
-        fpath = os.path.join(EVENTS_UPLOAD_DIR, fname)
-        
-        # Ensure we read the file correctly
+        # Read the file content
         content = await upload_file.read()
-        with open(fpath, "wb") as f:
-            f.write(content)
+        if len(content) > 10 * 1024 * 1024: # 10MB limit
+            raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
             
-        return f"{BASE_URL}/uploads/events/{fname}"
+        import base64
+        mime = "image/png"
+        if ext in [".jpg", ".jpeg"]:
+            mime = "image/jpeg"
+        elif ext == ".webp":
+            mime = "image/webp"
+        elif ext == ".gif":
+            mime = "image/gif"
+            
+        b64 = base64.b64encode(content).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
 
     # Process files
     logo_file = form.get('logo_file')

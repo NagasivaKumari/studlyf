@@ -12,12 +12,14 @@ except Exception:
     HAS_WEASYPRINT = False
 from datetime import datetime, timezone
 from bson import ObjectId
-from db import event_certificates_col
+from db import event_certificates_col, cert_templates_col
 from services.email_template_service import get_active_template, render_template
 
 
 ACHIEVEMENT_TYPES = {
     "participation": "Participation",
+    "runner_up": "Runner Up",
+    "second_runner_up": "Second Runner Up",
     "finalist": "Finalist",
     "winner": "Winner",
     "top_performer": "Top Performer",
@@ -32,6 +34,70 @@ def generate_certificate_id(event_code: str = "HACK") -> str:
     year = datetime.utcnow().year
     seq = uuid.uuid4().int % 100000
     return f"STUD-{event_code}-{year}-{seq:05d}"
+
+
+def resolve_rank_achievement(rank: int | None) -> str:
+    if rank == 1:
+        return "winner"
+    if rank == 2:
+        return "runner_up"
+    if rank == 3:
+        return "second_runner_up"
+    return "participation"
+
+
+def _event_has_final_terminal_stage(event: dict) -> bool:
+    stages = event.get("stages") or []
+    if not isinstance(stages, list) or not stages:
+        return False
+
+    last_stage = stages[-1] or {}
+    last_stage_type = str(last_stage.get("type") or "").upper().strip()
+    last_stage_name = str(last_stage.get("name") or "").upper().strip()
+    return last_stage_type == "FINAL" or last_stage_name == "FINAL"
+
+
+def _build_certificate_record(
+    *,
+    cert_id: str,
+    event_id: str,
+    user_id: str,
+    participant_name: str,
+    event_title: str,
+    organization_name: str,
+    event_date: str,
+    achievement_type: str,
+    achievement_label: str,
+    verification_code: str,
+    verification_url: str,
+    issued_date: str,
+    institution_id: str | None = None,
+    template_id: str | None = None,
+    rank: int | None = None,
+    team_id: str | None = None,
+    pdf_path: str | None = None,
+) -> dict:
+    return {
+        "certificate_id": cert_id,
+        "event_id": event_id,
+        "institution_id": institution_id,
+        "template_id": template_id,
+        "user_id": user_id,
+        "participant_name": participant_name,
+        "event_title": event_title,
+        "organization_name": organization_name,
+        "event_date": event_date,
+        "achievement_type": achievement_label,
+        "achievement_key": achievement_type,
+        "rank": rank,
+        "team_id": team_id,
+        "issued_at": datetime.utcnow(),
+        "issued_date": issued_date,
+        "verification_code": verification_code,
+        "verification_url": verification_url,
+        "pdf_path": pdf_path,
+        "immutable_flag": True,
+    }
 
 
 class InstitutionalCertificateService:
@@ -151,6 +217,10 @@ class InstitutionalCertificateService:
         event_date: str,
         achievement_type: str = "participation",
         event_code: str = "HACK",
+        institution_id: str | None = None,
+        rank: int | None = None,
+        team_id: str | None = None,
+        template_id: str | None = None,
     ) -> dict:
         cert_id = generate_certificate_id(event_code)
         v_code = hashlib.sha256(f"{cert_id}:{event_id}:{user_id}".encode()).hexdigest()[:12].upper()
@@ -160,23 +230,38 @@ class InstitutionalCertificateService:
         issue_date = datetime.utcnow().strftime("%B %d, %Y")
         achievement_label = ACHIEVEMENT_TYPES.get(achievement_type, "Participation")
 
-        template_path = os.path.join(os.path.dirname(__file__), '../templates/professional_certificate.html')
-        self._ensure_template(template_path)
-        template = self.jinja_env.get_template('professional_certificate.html')
+        html = None
+        if template_id:
+            tmpl_doc = await cert_templates_col.find_one({"template_id": template_id})
+            if tmpl_doc and tmpl_doc.get("html_content"):
+                try:
+                    html = tmpl_doc["html_content"].format(
+                        student_name=participant_name,
+                        course_title=event_title,
+                        issue_date=issue_date,
+                        certificate_id=cert_id,
+                    )
+                except Exception:
+                    html = None
 
-        html = template.render(
-            participant_name=participant_name,
-            event_title=event_title,
-            organization_name=organization_name,
-            event_date=event_date,
-            certificate_id=cert_id,
-            issued_date=issue_date,
-            qr_blob=qr_blob,
-            verification_url=v_url,
-            cert_short_id=cert_id[-10:],
-            organizer_signature=organization_name,
-            studlyf_signature="Studlyf Authorized Signature",
-        )
+        if not html:
+            template_path = os.path.join(os.path.dirname(__file__), '../templates/professional_certificate.html')
+            self._ensure_template(template_path)
+            template = self.jinja_env.get_template('professional_certificate.html')
+
+            html = template.render(
+                participant_name=participant_name,
+                event_title=event_title,
+                organization_name=organization_name,
+                event_date=event_date,
+                certificate_id=cert_id,
+                issued_date=issue_date,
+                qr_blob=qr_blob,
+                verification_url=v_url,
+                cert_short_id=cert_id[-10:],
+                organizer_signature=organization_name,
+                studlyf_signature="Studlyf Authorized Signature",
+            )
 
         pdf_path = None
         if HAS_WEASYPRINT:
@@ -184,27 +269,177 @@ class InstitutionalCertificateService:
             os.makedirs("artifacts/certs", exist_ok=True)
             HTML(string=html).write_pdf(pdf_path)
 
-        record = {
-            "certificate_id": cert_id,
-            "event_id": event_id,
-            "user_id": user_id,
-            "participant_name": participant_name,
-            "event_title": event_title,
-            "organization_name": organization_name,
-            "event_date": event_date,
-            "achievement_type": achievement_label,
-            "achievement_key": achievement_type,
-            "issued_at": datetime.utcnow(),
-            "issued_date": issue_date,
-            "verification_code": v_code,
-            "verification_url": v_url,
-            "pdf_path": pdf_path,
-            "immutable_flag": True,
-        }
+        record = _build_certificate_record(
+            cert_id=cert_id,
+            event_id=event_id,
+            user_id=user_id,
+            participant_name=participant_name,
+            event_title=event_title,
+            organization_name=organization_name,
+            event_date=event_date,
+            achievement_type=achievement_type,
+            achievement_label=achievement_label,
+            verification_code=v_code,
+            verification_url=v_url,
+            issued_date=issue_date,
+            institution_id=institution_id,
+            template_id=template_id,
+            rank=rank,
+            team_id=team_id,
+            pdf_path=pdf_path,
+        )
         await event_certificates_col.insert_one(record)
         record["_id"] = str(record["_id"])
 
         return record
+
+    async def issue_ranked_event_certificates(self, event_id: str, rankings: list, send_email: bool = True, template_id: str | None = None) -> list:
+        from db import events_col, participants_col, teams_col, users_col
+        from services.email_template_service import get_active_template, render_template
+        from services.email_service import (
+            send_notification_email,
+            get_certificate_issued_template,
+            get_winner_announcement_template,
+            get_feedback_request_template,
+        )
+
+        event = await events_col.find_one({"_id": ObjectId(event_id)})
+        if not event:
+            return []
+
+        if not _event_has_final_terminal_stage(event):
+            return []
+
+        event_title = event.get("title", "Untitled Event")
+        org_name = event.get("organisation") or event.get("organization") or "Unknown"
+        event_date = event.get("eventDate") or event.get("start_date") or datetime.utcnow().strftime("%B %d, %Y")
+        institution_id = str(event.get("institution_id", ""))
+        event_code = (event.get("eventCode") or event.get("event_type") or "HACK")[:6].upper()
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        template_id = template_id or event.get("template_id")
+
+        template = await get_active_template(event_id, institution_id, "certificate_issued")
+        issued_records: list = []
+
+        for rank_data in rankings or []:
+            rank = rank_data.get("rank")
+            achievement_type = resolve_rank_achievement(rank)
+            team_id = rank_data.get("team_id")
+            participant_id = rank_data.get("participant_id")
+            recipients: list[dict] = []
+
+            if team_id:
+                team_doc = None
+                try:
+                    team_doc = await teams_col.find_one({"_id": ObjectId(str(team_id))})
+                except Exception:
+                    team_doc = await teams_col.find_one({"_id": team_id})
+                if team_doc:
+                    for member in team_doc.get("members", []) or []:
+                        member_user_id = str(member.get("user_id") or member.get("id") or member.get("_id") or "")
+                        if not member_user_id:
+                            continue
+                        member_name = member.get("name") or member.get("full_name") or team_doc.get("team_name") or "Participant"
+                        member_email = member.get("email") or ""
+                        if not member_email:
+                            user_doc = await users_col.find_one({"user_id": member_user_id})
+                            member_email = (user_doc or {}).get("email", "")
+                            member_name = (user_doc or {}).get("full_name") or (user_doc or {}).get("name") or member_name
+                        recipients.append({"user_id": member_user_id, "name": member_name, "email": member_email})
+            elif participant_id:
+                participant_doc = None
+                try:
+                    participant_doc = await participants_col.find_one({"_id": ObjectId(str(participant_id))})
+                except Exception:
+                    participant_doc = await participants_col.find_one({"_id": participant_id})
+                if participant_doc:
+                    participant_user_id = str(participant_doc.get("user_id") or "")
+                    if participant_user_id:
+                        participant_name = participant_doc.get("name") or participant_doc.get("full_name") or "Participant"
+                        participant_email = participant_doc.get("email") or ""
+                        if not participant_email:
+                            user_doc = await users_col.find_one({"user_id": participant_user_id})
+                            participant_email = (user_doc or {}).get("email", "")
+                            participant_name = (user_doc or {}).get("full_name") or (user_doc or {}).get("name") or participant_name
+                        recipients.append({"user_id": participant_user_id, "name": participant_name, "email": participant_email})
+
+            for recipient in recipients:
+                existing = await event_certificates_col.find_one({
+                    "event_id": event_id,
+                    "user_id": recipient["user_id"],
+                    "achievement_key": achievement_type,
+                })
+                if existing:
+                    continue
+
+                record = await self.issue_event_certificate(
+                    event_id=event_id,
+                    user_id=recipient["user_id"],
+                    participant_name=recipient["name"],
+                    event_title=event_title,
+                    organization_name=org_name,
+                    event_date=event_date,
+                    achievement_type=achievement_type,
+                    event_code=event_code,
+                    institution_id=institution_id,
+                    template_id=template_id,
+                    rank=rank,
+                    team_id=str(team_id) if team_id else None,
+                )
+                issued_records.append(record)
+
+                if not send_email or not recipient.get("email"):
+                    continue
+
+                try:
+                    context = {
+                        "participant_name": recipient["name"],
+                        "event_title": event_title,
+                        "organization_name": org_name,
+                        "event_date": event_date,
+                        "certificate_id": record["certificate_id"],
+                        "issued_date": record["issued_date"],
+                        "certificate_download_link": f"{frontend_url}/certificates/certificate_{record['certificate_id']}.pdf",
+                        "verification_url": record["verification_url"],
+                    }
+                    subj, body = render_template(template, context) if template else (
+                        f"Certificate Issued: {event_title}",
+                        get_certificate_issued_template(
+                            participant_name=recipient["name"],
+                            event_title=event_title,
+                            organization_name=org_name,
+                            certificate_id=record["certificate_id"],
+                            issued_date=record["issued_date"],
+                            certificate_download_link=f"{frontend_url}/certificates/certificate_{record['certificate_id']}.pdf",
+                            verification_url=record["verification_url"],
+                        ),
+                    )
+                    await send_notification_email(recipient["email"], subj, body)
+
+                    if rank == 1:
+                        winner_subject = f"Winner Announcement: {event_title}"
+                        winner_body = get_winner_announcement_template(
+                            participant_name=recipient["name"],
+                            event_title=event_title,
+                            organization_name=org_name,
+                            rank=str(rank),
+                            prize_details=f"Rank {rank} achiever in {event_title}",
+                            results_link=f"{frontend_url}/events/{event_id}",
+                        )
+                        await send_notification_email(recipient["email"], winner_subject, winner_body)
+
+                    feedback_subject = f"We'd love your feedback on {event_title}"
+                    feedback_body = get_feedback_request_template(
+                        participant_name=recipient["name"],
+                        event_title=event_title,
+                        organization_name=org_name,
+                        feedback_link=f"{frontend_url}/events/{event_id}?tab=feedback",
+                    )
+                    await send_notification_email(recipient["email"], feedback_subject, feedback_body)
+                except Exception as e:
+                    print(f"[CERT EMAIL FAIL] {recipient['user_id']}: {e}")
+
+        return issued_records
 
     async def get_certificate(self, certificate_id: str) -> dict:
         cert = await event_certificates_col.find_one({"certificate_id": certificate_id})
@@ -227,14 +462,13 @@ class InstitutionalCertificateService:
         return certs
 
 
-async def enqueue_certificate_job(event_id: str, achievement_type: str = "participation", event_code: str = "HACK") -> str:
+async def enqueue_certificate_job(event_id: str, achievement_type: str = "participation", event_code: str = "HACK", template_id: str | None = None) -> str:
     """Create a certificate generation job in the queue. Returns job_id."""
-    from db import certificate_jobs_col
-    from bson import ObjectId as _oid
     result = await certificate_jobs_col.insert_one({
         "event_id": event_id,
         "achievement_type": achievement_type,
         "event_code": event_code,
+        "template_id": template_id,
         "status": "pending",
         "processed": 0,
         "total": 0,
@@ -264,6 +498,7 @@ async def process_certificate_jobs():
             event_id = job["event_id"]
             achievement_type = job.get("achievement_type", "participation")
             event_code = job.get("event_code", "HACK")
+            template_id = job.get("template_id")
             event = await events_col.find_one({"_id": ObjectId(event_id)}) if event_id else None
             if not event:
                 await certificate_jobs_col.update_one(
@@ -282,6 +517,28 @@ async def process_certificate_jobs():
             cursor = participants_col.find({"event_id": event_id})
             total = await participants_col.count_documents({"event_id": event_id})
             processed = 0
+            batch_size = 100
+            pending_records: list[dict] = []
+            pending_email_jobs: list[tuple[str, str, str]] = []
+
+            async def flush_pending_batch():
+                nonlocal pending_records, pending_email_jobs, processed
+                if not pending_records:
+                    return
+                await event_certificates_col.insert_many(pending_records)
+                for email, subj, body in pending_email_jobs:
+                    try:
+                        from services.email_service import send_notification_email
+                        await send_notification_email(email, subj, body)
+                    except Exception as e:
+                        print(f"[CERT BG EMAIL FAIL] batch-send: {e}")
+                processed += len(pending_records)
+                await certificate_jobs_col.update_one(
+                    {"_id": job["_id"]},
+                    {"$set": {"processed": processed, "updated_at": datetime.utcnow()}},
+                )
+                pending_records = []
+                pending_email_jobs = []
 
             async for participant in cursor:
                 pid = participant.get("user_id")
@@ -297,8 +554,12 @@ async def process_certificate_jobs():
 
                 pname = participant.get("name") or participant.get("participant_name") or "Participant"
                 puser = await users_col.find_one({"user_id": pid})
-
-                record = await certificate_service.issue_event_certificate(
+                cert_id = generate_certificate_id(event_code[:6].upper())
+                v_code = hashlib.sha256(f"{cert_id}:{event_id}:{pid}".encode()).hexdigest()[:12].upper()
+                v_url = f"{frontend_url}/verify/{cert_id}"
+                issue_date = datetime.utcnow().strftime("%B %d, %Y")
+                record = _build_certificate_record(
+                    cert_id=cert_id,
                     event_id=event_id,
                     user_id=pid,
                     participant_name=pname,
@@ -306,8 +567,14 @@ async def process_certificate_jobs():
                     organization_name=org_name,
                     event_date=event_date,
                     achievement_type=achievement_type,
-                    event_code=event_code[:6].upper(),
+                    achievement_label=ACHIEVEMENT_TYPES.get(achievement_type, "Participation"),
+                    verification_code=v_code,
+                    verification_url=v_url,
+                    issued_date=issue_date,
+                    institution_id=institution_id,
+                    template_id=template_id,
                 )
+                pending_records.append(record)
 
                 try:
                     pemail = (puser or {}).get("email", "").strip()
@@ -317,22 +584,20 @@ async def process_certificate_jobs():
                             "event_title": event_title,
                             "organization_name": org_name,
                             "event_date": event_date,
-                            "certificate_id": record["certificate_id"],
-                            "issued_date": record["issued_date"],
-                            "certificate_download_link": f"{frontend_url}/certificates/certificate_{record['certificate_id']}.pdf",
-                            "verification_url": record["verification_url"],
+                            "certificate_id": cert_id,
+                            "issued_date": issue_date,
+                            "certificate_download_link": f"{frontend_url}/certificates/certificate_{cert_id}.pdf",
+                            "verification_url": v_url,
                         }
                         subj, body = render_template(template, context)
-                        from services.email_service import send_notification_email
-                        await send_notification_email(pemail, subj, body)
+                        pending_email_jobs.append((pemail, subj, body))
                 except Exception as e:
                     print(f"[CERT BG EMAIL FAIL] {pid}: {e}")
 
-                processed += 1
-                await certificate_jobs_col.update_one(
-                    {"_id": job["_id"]},
-                    {"$set": {"processed": processed, "updated_at": datetime.utcnow()}},
-                )
+                if len(pending_records) >= batch_size:
+                    await flush_pending_batch()
+
+            await flush_pending_batch()
 
             await certificate_jobs_col.update_one(
                 {"_id": job["_id"]},

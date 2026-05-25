@@ -301,6 +301,9 @@ hackathon_event_config_col = db["hackathon_event_config"]
 # Institution Event Packages (dynamic event-package feature)
 institution_event_packages_col = db["institution_event_packages"]
 
+# Certificate Management
+cert_templates_col = db["cert_templates"]
+
 # ─── GRIDFS BUCKET (persistent file storage, survives Render restarts) ────────
 # Usage: await gridfs_bucket.upload_from_stream(filename, data) → ObjectId
 #        await gridfs_bucket.open_download_stream(file_id) → stream
