@@ -499,7 +499,10 @@ async def create_institution_profile(profile: dict, user: dict = Depends(get_aut
     """Saves a new institution profile to MongoDB. Requires authentication."""
     from db import institutions_col
     inst_id = str(profile.get("institution_id", "unknown")).strip()
-    
+
+    if not profile.get("name") or not str(profile.get("name", "")).strip():
+        raise HTTPException(status_code=400, detail="Institution name is required")
+
     # Preserve existing logo and banner if they exist in DB but are missing/empty in request payload
     existing = await institutions_col.find_one({"institution_id": inst_id})
     if existing:
@@ -515,11 +518,16 @@ async def create_institution_profile(profile: dict, user: dict = Depends(get_aut
     profile["institution_id"] = inst_id 
     profile["updated_at"] = datetime.utcnow()
     
-    await institutions_col.update_one(
-        {"institution_id": inst_id},
-        {"$set": profile},
-        upsert=True
-    )
+    try:
+        await institutions_col.update_one(
+            {"institution_id": inst_id},
+            {"$set": profile},
+            upsert=True
+        )
+    except Exception as e:
+        if "duplicate key" in str(e).lower():
+            raise HTTPException(status_code=409, detail="An institution with this name already exists")
+        raise HTTPException(status_code=500, detail=f"Failed to save profile: {str(e)}")
     return {"status": "success"}
 
 @router.get("/profile/{institution_id}")
