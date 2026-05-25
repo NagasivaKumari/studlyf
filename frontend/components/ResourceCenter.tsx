@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+pull the code pimport React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, BookOpen, FileText, Video, Lightbulb, X } from 'lucide-react';
 
@@ -234,15 +234,16 @@ const ResourceCenter: React.FC = () => {
                     </motion.div>
 
                     {selectedResource && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/70" onClick={() => setSelectedResource(null)}>
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/70" onClick={() => setSelectedResource(null)}>
                             <motion.div
                                 initial={{ opacity: 0, scale: 0.96 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 transition={{ duration: 0.25 }}
                                 onClick={(event) => event.stopPropagation()}
-                                className="w-full max-w-5xl max-h-[90vh] rounded-[2rem] overflow-hidden bg-white shadow-2xl border border-slate-200"
+                                className="w-full max-w-5xl h-[90vh] rounded-[2rem] overflow-hidden bg-white shadow-2xl border border-slate-200 flex flex-col"
                             >
-                                <div className="flex items-start justify-between gap-4 p-6 bg-slate-950 text-white">
+                                {/* Header - Fixed */}
+                                <div className="flex items-start justify-between gap-4 p-6 bg-slate-950 text-white flex-shrink-0">
                                     <div>
                                         <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Raw structure preview</p>
                                         <h3 className="mt-2 text-2xl font-bold">{selectedResource.title}</h3>
@@ -250,41 +251,53 @@ const ResourceCenter: React.FC = () => {
                                     </div>
                                     <button
                                         onClick={() => setSelectedResource(null)}
-                                        className="rounded-full border border-slate-700 bg-slate-900/80 p-2 text-slate-200 transition hover:bg-slate-900"
+                                        className="rounded-full border border-slate-700 bg-slate-900/80 p-2 text-slate-200 transition hover:bg-slate-900 flex-shrink-0"
                                     >
                                         <X size={20} />
                                     </button>
                                 </div>
 
-                                <div className="grid gap-6 lg:grid-cols-[1.2fr_0.9fr] p-6 bg-slate-50">
-                                    <div className="space-y-4">
-                                        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
-                                            <p className="text-sm text-slate-500 uppercase tracking-[0.35em]">Description</p>
-                                            <p className="mt-3 text-slate-700 leading-relaxed">{selectedResource.desc}</p>
-                                        </div>
-                                        <div className="rounded-[1.5rem] border border-slate-200 bg-slate-950 p-6 shadow-sm">
-                                            <p className="text-sm text-slate-400 uppercase tracking-[0.35em]">Raw content</p>
-                                            <div className="mt-3 overflow-auto rounded-lg bg-slate-900 p-4 text-xs text-lime-100 max-h-[420px] whitespace-pre-wrap break-words">
+                                {/* Scrollable Content Area */}
+                                <div className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 scroll-smooth modal-scrollable">
+                                    <div className="grid gap-6 lg:grid-cols-[1.2fr_0.9fr] p-6">
+                                        <div className="space-y-4">
+                                            {/* Description Section */}
+                                            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
+                                                <p className="text-sm text-slate-500 uppercase tracking-[0.35em]">Description</p>
+                                                <p className="mt-3 text-slate-700 leading-relaxed">{selectedResource.desc}</p>
+                                            </div>
+                                            {/* Raw Content Section - Scrollable */}
+                                            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-950 p-6 shadow-sm flex flex-col max-h-[500px]">
+                                                <p className="text-sm text-slate-400 uppercase tracking-[0.35em] flex-shrink-0">Raw content</p>
+                                                <div className="mt-3 overflow-y-auto overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs text-lime-100 flex-1 whitespace-pre-wrap break-words custom-scrollbar">
 {`type: ${selectedResource.type}
 title: ${selectedResource.title}
 desc: ${selectedResource.desc}
 content: ${selectedResource.content}
 image: ${selectedResource.image}`}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-4">
+                                            {/* Image Section */}
+                                            <div className="rounded-[1.5rem] overflow-hidden border border-slate-200 shadow-sm">
+                                                <img src={selectedResource.image} alt={selectedResource.title} className="w-full h-96 object-cover" />
+                                            </div>
+                                            {/* Details Section */}
+                                            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm flex flex-col max-h-[300px]">
+                                                <p className="text-sm text-slate-500 uppercase tracking-[0.35em] flex-shrink-0">Details</p>
+                                                <div className="mt-3 overflow-y-auto flex-1 custom-scrollbar">
+                                                    <p className="text-slate-700 leading-relaxed">{selectedResource.content}</p>
+                                                    <p className="mt-4 text-xs uppercase tracking-[0.35em] text-slate-400">Source</p>
+                                                    <a href={selectedResource.link} target="_blank" rel="noreferrer" className="mt-2 block text-sm text-blue-600 hover:text-blue-500 break-all">{selectedResource.link}</a>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="space-y-4">
-                                        <div className="rounded-[1.5rem] overflow-hidden border border-slate-200 shadow-sm">
-                                            <img src={selectedResource.image} alt={selectedResource.title} className="w-full h-96 object-cover" />
-                                        </div>
-                                        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
-                                            <p className="text-sm text-slate-500 uppercase tracking-[0.35em]">Details</p>
-                                            <p className="mt-3 text-slate-700 leading-relaxed">{selectedResource.content}</p>
-                                            <p className="mt-4 text-xs uppercase tracking-[0.35em] text-slate-400">Source</p>
-                                            <a href={selectedResource.link} target="_blank" rel="noreferrer" className="mt-2 block text-sm text-blue-600 hover:text-blue-500 truncate">{selectedResource.link}</a>
-                                        </div>
-                                    </div>
                                 </div>
+
+                                {/* Scroll Indicator */}
+                                <div className="h-1 bg-gradient-to-r from-transparent via-slate-300 to-transparent flex-shrink-0" />
                             </motion.div>
                         </div>
                     )}
