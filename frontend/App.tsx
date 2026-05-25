@@ -52,6 +52,7 @@ import StudOTT from './pages/StudOTT';
 import StudHub from './pages/StudHub';
 import StudentDiscounts from './pages/StudentDiscounts';
 import StudentSchemes from './pages/StudentSchemes';
+import FeaturePreview from './pages/FeaturePreview';
 import InstitutionDashboard from './pages/institution-dashboard/InstitutionDashboard';
 import RoleFixer from './RoleFixer';
 import ForgotPassword from './pages/ForgotPassword';

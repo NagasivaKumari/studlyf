@@ -1,4 +1,4 @@
-pull the code pimport React, { useState } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, BookOpen, FileText, Video, Lightbulb, X } from 'lucide-react';
 
@@ -8,7 +8,7 @@ interface ResourceItem {
     desc: string;
     content: string;
     image: string;
-    icon: JSX.Element;
+    icon: React.ReactNode;
     height: string;
     cardBg: string;
     glowColor: string;
@@ -270,7 +270,7 @@ const ResourceCenter: React.FC = () => {
                                             <div className="rounded-[1.5rem] border border-slate-200 bg-slate-950 p-6 shadow-sm flex flex-col max-h-[500px]">
                                                 <p className="text-sm text-slate-400 uppercase tracking-[0.35em] flex-shrink-0">Raw content</p>
                                                 <div className="mt-3 overflow-y-auto overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs text-lime-100 flex-1 whitespace-pre-wrap break-words custom-scrollbar">
-{`type: ${selectedResource.type}
+                                                    {`type: ${selectedResource.type}
 title: ${selectedResource.title}
 desc: ${selectedResource.desc}
 content: ${selectedResource.content}
