@@ -534,7 +534,7 @@ const App: React.FC = () => {
         </Suspense>
       </main>
 
-      {isHome && <RightHoverPanel />}
+      <RightHoverPanel />
 
       {isHome && (
         <>

@@ -48,6 +48,12 @@ const difficultyLabel = (difficulty: string) => {
   return 'Advanced';
 };
 
+const difficultyTone = (difficulty: string) => {
+  if (difficulty === 'easy') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+  if (difficulty === 'medium') return 'bg-amber-50 text-amber-700 border-amber-100';
+  return 'bg-rose-50 text-rose-700 border-rose-100';
+};
+
 const Assessment: React.FC = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState<'config' | 'prep' | 'active' | 'analysis' | 'results'>('config');
@@ -71,8 +77,9 @@ const Assessment: React.FC = () => {
     : 0;
   const attemptStats = {
     attemptsMade: responses.length,
+    averageScore: results?.overall ?? 0,
     completionRate: questions.length ? Math.round((responses.length / questions.length) * 100) : 0,
-    recentPerformance: results?.overall ?? 0,
+    recentPerformance: results?.alignment ?? results?.overall ?? 0,
   };
 
   useEffect(() => { window.scrollTo(0, 0); }, [step]);
@@ -209,7 +216,7 @@ const Assessment: React.FC = () => {
         `}</style>
         <AnimatePresence mode="wait">
           {step === 'config' && (
-            <motion.div key="config" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="grid lg:grid-cols-2 gap-16 items-center">
+            <motion.div key="config" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="grid lg:grid-cols-2 gap-12 xl:gap-16 items-center">
               <div>
                 <div className="inline-flex items-center gap-2 bg-[#7C3AED]/10 text-[#7C3AED] px-4 py-2 rounded-full mb-8"><Brain className="w-4 h-4" /><span className="text-[10px] font-black uppercase tracking-[0.2em]">Institutional Engine V2.1</span></div>
                 <h1 className="text-4xl sm:text-5xl font-black text-[#111827] mb-6 leading-[0.9] tracking-tighter uppercase italic"><span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B] inline-block">CLINICAL READY.</span></h1>
@@ -228,7 +235,7 @@ const Assessment: React.FC = () => {
                   ))}
                 </div>
               </div>
-              <div className="bg-white border border-gray-100 rounded-[2.5rem] p-8 sm:p-10 shadow-2xl space-y-6 relative max-w-[420px] mx-auto">
+              <div className="bg-white border border-gray-100 rounded-[2.5rem] p-8 sm:p-10 shadow-[0_30px_90px_rgba(15,23,42,0.08)] space-y-6 relative max-w-[440px] mx-auto">
                 <div className="relative">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-4">Target Role</label>
                   <div className="relative">
@@ -287,6 +294,17 @@ const Assessment: React.FC = () => {
                     <span className="asm-label">Generate Protocol <ArrowRight className="w-3.5 h-3.5" /></span>
                   </button>
                 </div>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  {[
+                    { label: 'Average depth', value: 'Adaptive' },
+                    { label: 'Completion view', value: `${assessmentProgress}%` },
+                  ].map(item => (
+                    <div key={item.label} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{item.label}</div>
+                      <div className="mt-2 text-lg font-black text-gray-900">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </motion.div>
           )}
@@ -304,18 +322,25 @@ const Assessment: React.FC = () => {
           )}
 
           {step === 'active' && questions.length > 0 && (
-            <motion.div key="active" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="max-w-4xl w-full mx-auto">
-              <div className="mb-8 rounded-[2rem] border border-gray-100 bg-white p-4 shadow-sm">
-                <div className="flex items-center justify-between gap-4 mb-3">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Assessment Progress</div>
-                    <div className="mt-1 text-sm font-bold text-gray-900">{assessmentProgress}% complete</div>
+            <motion.div key="active" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="max-w-5xl w-full mx-auto">
+              <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  { label: 'Progress', value: `${assessmentProgress}%`, meta: `${currentIndex + 1} of ${questions.length || 0}` },
+                  { label: 'Difficulty', value: difficultyLabel(questions[currentIndex].difficulty), meta: questions[currentIndex].difficulty.toUpperCase() },
+                  { label: 'Attempts made', value: `${attemptStats.attemptsMade}`, meta: 'This session' },
+                  { label: 'Completion rate', value: `${attemptStats.completionRate}%`, meta: 'Answered so far' },
+                ].map(card => (
+                  <div key={card.label} className="rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{card.label}</div>
+                    <div className="mt-3 flex items-end justify-between gap-4">
+                      <div className="text-2xl font-black text-gray-900">{card.value}</div>
+                      <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${card.label === 'Difficulty' ? difficultyTone(questions[currentIndex].difficulty) : 'bg-gray-50 text-gray-500 border-gray-100'}`}>{card.meta}</div>
+                    </div>
+                    <div className="mt-4 h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-[#7C3AED] transition-all duration-500" style={{ width: card.label === 'Progress' ? `${assessmentProgress}%` : card.label === 'Completion rate' ? `${attemptStats.completionRate}%` : card.label === 'Difficulty' ? (questions[currentIndex].difficulty === 'easy' ? '34%' : questions[currentIndex].difficulty === 'medium' ? '67%' : '100%') : `${Math.min(100, attemptStats.attemptsMade * 20)}%` }} />
+                    </div>
                   </div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#7C3AED]">{difficultyLabel(questions[currentIndex].difficulty)}</div>
-                </div>
-                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                  <div className="h-full rounded-full bg-[#7C3AED] transition-all duration-500" style={{ width: `${assessmentProgress}%` }} />
-                </div>
+                ))}
               </div>
               <div className="flex justify-between items-center mb-12">
                 {['Logic', 'Code', 'System Thinking'].map((section, idx) => (
@@ -325,19 +350,27 @@ const Assessment: React.FC = () => {
                   </div>
                 ))}
               </div>
-              <div className="bg-white rounded-[2rem] p-8 sm:p-10 border border-gray-100 shadow-2xl relative">
-                <div className="flex justify-between items-center mb-8 sm:mb-12">
-                  <span className="bg-gray-900 text-white px-3 sm:px-4 py-1 sm:py-2 rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-widest">Question {currentIndex + 1} / {questions.length}</span>
+              <div className="bg-white rounded-[2.5rem] p-8 sm:p-10 border border-gray-100 shadow-[0_25px_80px_rgba(15,23,42,0.08)] relative">
+                <div className="flex flex-col gap-5 sm:flex-row sm:justify-between sm:items-center mb-8 sm:mb-12">
+                  <div className="space-y-3">
+                    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[9px] font-black uppercase tracking-[0.25em] ${difficultyTone(questions[currentIndex].difficulty)}`}>{difficultyLabel(questions[currentIndex].difficulty)} assessment</span>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Question {currentIndex + 1} / {questions.length}</div>
+                  </div>
                   <div className={`flex items-center gap-2 font-mono font-bold text-xs sm:text-sm ${timer < 10 ? 'text-red-500 animate-pulse' : 'text-[#7C3AED]'}`}>
                     <Timer className="w-4 h-4" /> {timer}s
                   </div>
                 </div>
                 <div className="space-y-6 sm:space-y-8">
-                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">{questions[currentIndex].question}</h3>
+                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight max-w-3xl">{questions[currentIndex].question}</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {['Adaptive', 'Scored', 'Timed'].map(tag => (
+                      <span key={tag} className="rounded-full border border-gray-100 bg-gray-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{tag}</span>
+                    ))}
+                  </div>
                   <div className="grid grid-cols-1 gap-4">
                     {questions[currentIndex].options?.map((opt, i) => (
                       <button key={i} onClick={() => handleNext(i)}
-                        className="w-full text-left p-4 sm:p-6 rounded-xl sm:rounded-2xl border-2 border-transparent bg-gray-50 hover:bg-white hover:border-[#7C3AED] hover:shadow-xl transition-all group flex items-center justify-between"
+                        className="w-full text-left p-4 sm:p-6 rounded-2xl sm:rounded-[1.75rem] border border-gray-100 bg-gray-50 hover:bg-white hover:border-[#7C3AED]/30 hover:shadow-[0_20px_50px_rgba(124,58,237,0.08)] transition-all group flex items-center justify-between"
                       >
                         <span className="font-bold text-xs sm:text-sm text-gray-700 group-hover:text-[#7C3AED] leading-snug">{opt}</span>
                         <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-[9px] font-black text-gray-400 group-hover:bg-[#7C3AED] group-hover:text-white group-hover:border-[#7C3AED] ml-4">{String.fromCharCode(65 + i)}</div>
@@ -358,12 +391,12 @@ const Assessment: React.FC = () => {
 
           {step === 'results' && results && (
             <motion.div key="results" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-12">
-              <div className="flex flex-col lg:flex-row gap-12 items-end">
+              <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr] items-stretch">
                 <div className="flex-grow">
                   <div className="flex items-center gap-2 text-green-500 mb-6"><ShieldCheck className="w-5 h-5" /><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Verified Clinical Verdict</span></div>
                   <h1 className="text-4xl sm:text-6xl font-black text-gray-900 leading-[0.8] tracking-tighter uppercase italic">Logic <br /><span className="text-[#7C3AED]">Certified.</span></h1>
                 </div>
-                <div className="grid grid-cols-2 gap-8 w-full lg:w-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full xl:w-auto">
                   <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-lg text-center"><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Proficiency</p><p className="text-4xl font-black text-gray-900">{results.overall}%</p></div>
                   <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-lg text-center"><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Alignment</p><p className="text-4xl font-black text-[#7C3AED]">{results.alignment}%</p></div>
                 </div>
@@ -371,6 +404,7 @@ const Assessment: React.FC = () => {
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {[
                   { label: 'Attempts made', value: attemptStats.attemptsMade, tone: 'text-[#7C3AED]' },
+                  { label: 'Average score', value: `${attemptStats.averageScore}%`, tone: 'text-emerald-600' },
                   { label: 'Completion rate', value: `${attemptStats.completionRate}%`, tone: 'text-emerald-600' },
                   { label: 'Recent performance', value: `${attemptStats.recentPerformance}%`, tone: 'text-sky-600' },
                   { label: 'Difficulty', value: difficultyLabel(questions[0]?.difficulty || 'medium'), tone: 'text-gray-900' },
@@ -378,12 +412,18 @@ const Assessment: React.FC = () => {
                   <div key={card.label} className="rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm">
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{card.label}</div>
                     <div className={`mt-3 text-3xl font-black ${card.tone}`}>{card.value}</div>
+                    <div className="mt-4 h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-[#7C3AED] transition-all duration-500" style={{ width: card.label === 'Attempts made' ? `${Math.min(100, attemptStats.attemptsMade * 20)}%` : card.label === 'Average score' ? `${Math.min(100, attemptStats.averageScore)}%` : card.label === 'Completion rate' ? `${attemptStats.completionRate}%` : card.label === 'Recent performance' ? `${attemptStats.recentPerformance}%` : questions[0]?.difficulty === 'easy' ? '34%' : questions[0]?.difficulty === 'medium' ? '67%' : '100%' }} />
+                    </div>
                   </div>
                 ))}
               </div>
               <div className="grid lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 bg-white rounded-[2.5rem] p-8 sm:p-10 border border-gray-100 shadow-sm space-y-8">
-                  <h4 className="text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.5em] mb-4">Authority Heatmap</h4>
+                  <div className="flex items-center justify-between gap-4">
+                    <h4 className="text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.5em]">Authority Heatmap</h4>
+                    <RadialProgress value={results.overall} label="overall" />
+                  </div>
                   <div className="grid sm:grid-cols-2 gap-12">
                     <div className="space-y-6">{results.heatmap.map((h: any, i: number) => (<HeatmapItem key={i} {...h} />))}</div>
                     <div className="bg-gray-50 rounded-[2.5rem] p-8 space-y-6">

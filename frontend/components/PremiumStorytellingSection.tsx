@@ -1,6 +1,9 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const PremiumStorytellingSection: React.FC = () => {
+  const navigate = useNavigate();
+
   return (
     <section className="py-20 px-6 bg-gradient-to-r from-[#1F2937] via-[#111827] to-[#0F172A] text-white">
       <div className="max-w-7xl mx-auto grid gap-12 lg:grid-cols-[1.2fr_0.8fr] items-center">
@@ -11,8 +14,20 @@ const PremiumStorytellingSection: React.FC = () => {
             Transform your experience into a compelling professional story with premium templates, smart prompts, and export-ready formatting designed for modern engineering portfolios.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4">
-            <button className="px-8 py-4 rounded-3xl bg-[#7C3AED] font-semibold text-white shadow-xl hover:bg-[#6D28D9] transition">Start Your Story</button>
-            <button className="px-8 py-4 rounded-3xl border border-white/20 text-white bg-white/5 hover:bg-white/10 transition">Explore Templates</button>
+            <button
+              type="button"
+              onClick={() => navigate('/job-prep/portfolio')}
+              className="px-8 py-4 rounded-3xl bg-[#7C3AED] font-semibold text-white shadow-xl hover:bg-[#6D28D9] transition"
+            >
+              Start Your Story
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/job-prep/portfolio?section=templates')}
+              className="px-8 py-4 rounded-3xl border border-white/20 text-white bg-white/5 hover:bg-white/10 transition"
+            >
+              Explore Templates
+            </button>
           </div>
         </div>
         <div className="rounded-[2rem] bg-white/5 border border-white/10 p-8 shadow-2xl backdrop-blur-xl">

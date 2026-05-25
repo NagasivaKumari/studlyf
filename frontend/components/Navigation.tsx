@@ -142,12 +142,12 @@ const Navigation: React.FC = () => {
 
   return (
     <>
-      <nav className="fixed top-0 z-[100] w-full px-2 py-4 sm:px-6 sm:py-6 lg:px-12">
+      <nav className="fixed top-0 z-[100] w-full px-2 py-2.5 sm:px-6 sm:py-4 lg:px-12">
         <div className="max-w-7xl mx-auto relative">
           <motion.div
             initial={{ y: -40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="relative z-[110] h-14 sm:h-20 bg-[#7C3AED] rounded-[1.25rem] sm:rounded-[2rem] px-4 sm:px-8 lg:px-12 flex items-center justify-between shadow-2xl shadow-[#7C3AED]/40 border border-[#7C3AED]/50"
+            className="relative z-[110] h-12 sm:h-16 bg-[#7C3AED]/95 backdrop-blur-xl rounded-[1.1rem] sm:rounded-[1.75rem] px-4 sm:px-7 lg:px-10 flex items-center justify-between shadow-[0_18px_40px_rgba(124,58,237,0.26)] border border-white/15"
           >
             <div className="flex items-center lg:w-[250px] gap-4">
               <button
@@ -172,29 +172,28 @@ const Navigation: React.FC = () => {
                   <button
                     key={id}
                     onMouseEnter={() => handleMouseEnter(id)}
-                    className={`flex items-center space-x-2 transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] ${activeMenu === id ? 'text-white' : 'text-white/80'} hover:text-white`}
+                    className={`flex items-center space-x-2 transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] ${activeMenu === id ? 'text-white' : 'text-white/80'} hover:text-white`}
                   >
                     <span>{id === 'jobprep' ? 'Job Prep' : id.charAt(0).toUpperCase() + id.slice(1)}</span>
                     <motion.svg animate={{ rotate: activeMenu === id ? 180 : 0 }} className="w-3.5 h-3.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" /></motion.svg>
                   </button>
                 ))}
-
                 <Link
                   to="/studott"
-                  className="flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-white/80 hover:text-white"
+                  className="flex items-center transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] text-white/80 hover:text-white"
                 >
                   STUDOTT
                 </Link>
                 <Link
                   to="/opportunities"
-                  className="flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-white/80 hover:text-white"
+                  className="flex items-center transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] text-white/80 hover:text-white"
                 >
                   OPPORTUNITIES
                 </Link>
               </div>
             </div>
 
-            <div className="flex items-center lg:w-[250px] justify-end shrink-0 gap-8">
+            <div className="flex items-center lg:w-[250px] justify-end shrink-0 gap-6">
               {user ? (
                 <div className="flex items-center gap-5">
                   <Link
@@ -283,8 +282,8 @@ const Navigation: React.FC = () => {
                               Sign Out
                             </button>
                           </div>
-                        </motion.div>
-                      )}
+                          </motion.div>
+                        )}
                     </AnimatePresence>
                   </div>
                 </div>
