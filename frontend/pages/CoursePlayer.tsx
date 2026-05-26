@@ -13,7 +13,7 @@ import {
   CheckCircle2, Menu, X, BookOpen, MessageCircle, StickyNote,
   AlignLeft, Code, Award, Trophy, ShieldAlert, Link, AlertTriangle
 } from 'lucide-react';
-import './CoursePlayerStyles.css';
+import { GENERATIVE_AI_CURRICULUM } from '../data/courseCurriculum';
 
 /* ═══════ Types ═══════ */
 interface Lesson {
@@ -71,330 +71,123 @@ const DUMMY_TRANSCRIPT: { time: string; text: string }[] = [
 /* ═══════ Coursera Content Database ═══════ */
 const COURSE_CONTENT_DB: Record<string, any> = {
   "0": {
-    overview: `### Module 1 Overview: What You'll Learn
-
-Welcome to the foundational module of this course! Here, we lay the groundwork for your understanding of key concepts, mental models, and real-world architectures.
-
-#### 🎯 Learning Objectives
-* 🧠 **Establish Core Principles**: Define the fundamental terminology, structures, and history of the topic.
-* ⚡ **Identify Key Paradigms**: Contrast classical theories with modern state-of-the-art frameworks.
-* 🛠️ **Real-World Applications**: Walk through case studies of how these concepts are deployed in industry today.
-
-#### ⏱️ Estimated Time Commitment
-* **Readings**: 15 minutes
-* **Practice Practice**: 10 minutes
-* **Graded Assessment**: 15 minutes`,
-
-    reading: `### Core Lesson: Understanding the Core Architecture
-
-In this lesson, we dive deep into the technical specifications and underlying mechanisms of modern systems. We will explore how different components interact to form a cohesive, reliable architecture.
-
-#### 1. The Architectural Hierarchy
-Every robust system is divided into layers, each possessing a specific responsibility:
-1. **User Interface / Presentation Layer**: Captures user input and renders visual feedback.
-2. **Application / Orchestration Layer**: Processes logic, handles states, and routes data.
-3. **Data / Storage Layer**: Ensures persistence, integrity, and quick retrieval of records.
-
-> "A well-designed system minimizes tight coupling and maximizes cohesive separation of concerns."
-
-#### 2. Key Challenges & Trade-offs
-When building at scale, engineers constantly balance three competing forces:
-* **Latency**: The time taken to process a request (aiming for sub-100ms).
-* **Throughput**: The number of requests handled per second.
-* **Consistency**: Ensuring all clients see the same data at the same time.
-
-\`\`\`javascript
-// Example of a simple decoupled API controller
-class SystemController {
-  async handleRequest(request) {
-    const input = this.sanitize(request.body);
-    const result = await this.orchestrator.process(input);
-    return this.respond(200, result);
-  }
-}
-\`\`\`
-
-#### Summary
-By isolating our business logic from direct data storage, we ensure our systems are resilient to infrastructure shifts and are easily testable.`,
-
+    overview: `### AI Foundations Overview\n\n${GENERIC_OVERVIEW('AI Foundations')}`,
+    reading: `### AI Foundations Reading\n\n${GENERIC_READING('AI Foundations')}`,
     practice: [
       {
-        question: "Which layer in the standard architectural hierarchy is responsible for processing logic and routing data?",
-        options: [
-          "Presentation Layer",
-          "Application / Orchestration Layer",
-          "Data Layer",
-          "Network Infrastructure Layer"
-        ],
-        correct: 1,
-        explanation: "The Application / Orchestration Layer handles business logic, state management, and coordinates data movement between the interface and database."
-      },
-      {
-        question: "What is the primary trade-off of introducing high-consistency measures in a distributed network?",
-        options: [
-          "Reduced UI styling options",
-          "Slightly increased latency during write operations",
-          "Loss of encryption features",
-          "Inability to run Javascript"
-        ],
-        correct: 1,
-        explanation: "Ensuring high consistency across multiple nodes requires synchronization protocols, which slightly increases write latency but guarantees data accuracy."
+        question: "Placeholder practice question for AI Foundations?",
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correct: 0,
+        explanation: "This is a placeholder practice question."
       }
     ],
-
     graded: [
       {
-        question: "What does the Turing Test primarily benchmark in an artificial system?",
-        options: [
-          "Mechanical processing speed",
-          "Human conversational imitation capability",
-          "Database query indexing efficiency",
-          "Graphic rendering frames per second"
-        ],
-        correct: 1,
-        explanation: "Proposed by Alan Turing in 1950, the Turing Test evaluates a machine's ability to exhibit natural language behavior indistinguishable from a human."
-      },
-      {
-        question: "In standard software architecture, what is the major drawback of 'tight coupling' between components?",
-        options: [
-          "It makes code run too fast.",
-          "It makes the system difficult to modify, test, and scale independently.",
-          "It requires specialized hardware.",
-          "It automatically deletes local storage."
-        ],
-        correct: 1,
-        explanation: "Tight coupling means components are heavily dependent on each other, meaning a change in one component breaks others, making testing and scaling highly difficult."
-      },
-      {
-        question: "Which of the following describes Narrow AI (Weak AI)?",
-        options: [
-          "An AI that possesses general consciousness and self-awareness.",
-          "An AI designed and trained exclusively for a specific specialized task.",
-          "An AI that can write novels and compose symphonies with human emotion.",
-          "An AI that operates outside of hardware bounds."
-        ],
-        correct: 1,
-        explanation: "Narrow AI is specialized to perform a single, specific task (such as speech translation, board games, or object detection) extremely well, but cannot generalize."
+        question: "Placeholder graded question for AI Foundations?",
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correct: 0,
+        explanation: "This is a placeholder graded question."
       }
     ]
   },
-
   "1": {
-    overview: `### Module 2 Overview: Deep Dive into Algorithmic Operations
-
-Now that you have established core architectural models, we will study modern algorithms, connectionist frameworks, and neural optimizations.
-
-#### 🎯 Learning Objectives
-* 📈 **Explore Neural Structures**: Analyze how artificial neurons accumulate weights and biases.
-* 🎛️ **Optimization Strategies**: Study Backpropagation, Gradient Descent, and cost functions.
-* 🛠️ **Practical Implementation**: Map how model adjustments are made to improve precision.
-
-#### ⏱️ Estimated Time Commitment
-* **Readings**: 18 minutes
-* **Practice Practice**: 12 minutes
-* **Graded Assessment**: 15 minutes`,
-
-    reading: `### Core Lesson: Connectionist Systems & Neural Training
-
-In connectionist systems, we do not program explicit logic rules. Instead, we define a mathematical architecture capable of learning representations from raw input.
-
-#### 1. The Anatomy of an Artificial Neuron
-An artificial neuron (perceptron) performs three primary mathematical operations:
-1. **Weighted Summation**: Multiplies inputs ($x_i$) by their corresponding weights ($w_i$) and adds a bias ($b$).
-   $$z = \\sum x_i w_i + b$$
-2. **Activation Function**: Applies a non-linear transform (like ReLU or Sigmoid) to the sum, introducing non-linearity to allow the model to learn complex shapes.
-   $$a = \\sigma(z)$$
-3. **Output Routing**: Passes the activation value to subsequent layers.
-
-#### 2. The Optimization Loop
-Training a model is an iterative cycle composed of four steps:
-* **Forward Pass**: Running input data through the layers to compute a prediction.
-* **Loss Calculation**: Measuring how far the prediction is from the actual truth using a cost function (e.g. Mean Squared Error).
-* **Backward Pass (Backpropagation)**: Calculating gradients of the loss function with respect to weights using the chain rule.
-* **Weight Update (Gradient Descent)**: Shifting weights slightly in the direction that minimizes loss:
-  $$w \\leftarrow w - \\alpha \\frac{\\partial L}{\\partial w}$$
-
-\`\`\`python
-# Simple Python implementation of gradient descent weight update
-def update_weights(weights, gradients, learning_rate):
-    for i in range(len(weights)):
-        weights[i] -= learning_rate * gradients[i]
-    return weights
-\`\`\`
-
-#### Summary
-Neural networks are function approximators. Through backpropagation and gradient descent, they systematically tune millions of parameters until they can map inputs to outputs with incredible accuracy.`,
-
+    overview: `### Prompt Mastery Overview\n\n${GENERIC_OVERVIEW('Prompt Mastery')}`,
+    reading: `### Prompt Mastery Reading\n\n${GENERIC_READING('Prompt Mastery')}`,
     practice: [
       {
-        question: "What is the purpose of an Activation Function in a neural network?",
-        options: [
-          "To delete unused variables and save memory",
-          "To introduce non-linearity, allowing the model to learn complex patterns",
-          "To directly connect the database to the neural net",
-          "To speed up database indexing"
-        ],
-        correct: 1,
-        explanation: "Without non-linear activation functions (like ReLU), a neural network of any depth would behave exactly like a simple linear model, unable to learn complex non-linear patterns."
-      },
-      {
-        question: "What does the learning rate (alpha) control in Gradient Descent?",
-        options: [
-          "The speed of network internet packets",
-          "The size of the steps taken toward the minimum of the loss function",
-          "The number of neurons in the hidden layer",
-          "The CPU cooling fan speed"
-        ],
-        correct: 1,
-        explanation: "The learning rate controls the step size taken during parameter updates. Too large can overshoot the minimum; too small will make training extremely slow."
+        question: "Placeholder practice question for Prompt Mastery?",
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correct: 0,
+        explanation: "This is a placeholder practice question."
       }
     ],
-
     graded: [
       {
-        question: "In neural training, what does 'Backpropagation' accomplish?",
-        options: [
-          "It reverses the flow of input data to display it on screen.",
-          "It computes the gradients of the loss function relative to each weight using the mathematical chain rule.",
-          "It deletes corrupted training images.",
-          "It checks if the computer is connected to the database."
-        ],
-        correct: 1,
-        explanation: "Backpropagation propagates the prediction error backward through the network to calculate how much each weight contributed to that error, providing the gradients needed for updates."
-      },
-      {
-        question: "Which of the following functions is a common non-linear activation function?",
-        options: [
-          "Linear Regression",
-          "Rectified Linear Unit (ReLU)",
-          "Binary Search",
-          "Merge Sort"
-        ],
-        correct: 1,
-        explanation: "ReLU is the most widely used activation function in modern deep neural networks due to its simplicity and computational efficiency: f(x) = max(0, x)."
-      },
-      {
-        question: "What happens during the 'Forward Pass' of a neural network?",
-        options: [
-          "The network updates its weights using gradient descent.",
-          "Input data is processed through layers to calculate a prediction output.",
-          "The model undergoes strict cybersecurity auditing.",
-          "The training data is shuffled randomly."
-        ],
-        correct: 1,
-        explanation: "The Forward Pass is the process of feeding inputs through the network's layers, performing activations, and generating a prediction or classification."
+        question: "Placeholder graded question for Prompt Mastery?",
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correct: 0,
+        explanation: "This is a placeholder graded question."
       }
     ]
   },
-
   "2": {
-    overview: `### Module 3 Overview: Deep Learning & Generative AI
-
-In this final core module, we transition to advanced Deep Learning, Recurrent Architectures, and the Transformer models that power modern Generative AI.
-
-#### 🎯 Learning Objectives
-* 🤖 **Understanding Transformers**: Analyze the Self-Attention mechanism that revolutionized language models.
-* 🌌 **Generative Models**: Differentiate between GANs, Diffusion, and Large Language Models (LLMs).
-* 🔐 **Ethics & Alignment**: Study bias mitigation and alignment techniques (like RLHF).
-
-#### ⏱️ Estimated Time Commitment
-* **Readings**: 20 minutes
-* **Practice Practice**: 12 minutes
-* **Graded Assessment**: 15 minutes`,
-
-    reading: `### Core Lesson: The Rise of Transformers & Generative AI
-
-Deep Learning took a historic leap in 2017 with the publication of the seminal paper *"Attention Is All You Need"* by Google researchers. This introduced the **Transformer** architecture, which completely replaced recurrent networks (RNNs) in modern natural language processing.
-
-#### 1. The Magic of Self-Attention
-Traditional sequential models processed language word-by-word. Transformers process entire sentences simultaneously using **Self-Attention**:
-* **Parallelization**: Massive training datasets can be processed concurrently across GPUs, accelerating training times.
-* **Contextual Relationships**: The model calculates attention scores between all words in a sentence, immediately understanding relationships regardless of distance (e.g. pronoun references).
-
-$$\\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$$
-
-#### 2. Paradigms of Generative AI
-Generative AI refers to algorithms that can be used to create new content, including audio, code, images, and text. Key architectures include:
-* **Large Language Models (LLMs)**: Autoregressive decoders trained to predict the next token in a sequence (e.g. GPT series, Llama).
-* **Generative Adversarial Networks (GANs)**: A generator and discriminator in a zero-sum game to create realistic assets (like images or voices).
-* **Diffusion Models**: Generate high-fidelity images by systematically removing noise from a canvas (e.g. Stable Diffusion, Midjourney).
-
-\`\`\`python
-# Conceptualizing autoregressive text generation
-def generate_text(prompt, model, max_tokens=10):
-    current_text = prompt
-    for _ in range(max_tokens):
-        next_token = model.predict_next_token(current_text)
-        current_text += \" \" + next_token
-    return current_text
-\`\`\`
-
-#### Summary
-Generative AI is reshaping industries by automating complex cognitive tasks. Understanding the mathematical mechanics of attention and prompt optimization is key to leveraging this technology effectively.`,
-
+    overview: `### AI Product Workflows Overview\n\n${GENERIC_OVERVIEW('AI Product Workflows')}`,
+    reading: `### AI Product Workflows Reading\n\n${GENERIC_READING('AI Product Workflows')}`,
     practice: [
       {
-        question: "What core mechanism introduced in 2017 allowed Transformers to process sentences in parallel instead of sequentially?",
-        options: [
-          "Recurrent Connections",
-          "Self-Attention Mechanism",
-          "Convolutional Filtering",
-          "Manual Logic Rule Injection"
-        ],
-        correct: 1,
-        explanation: "The Self-Attention mechanism allows the model to analyze relationships between all words in a sentence simultaneously, eliminating sequential bottlenecks and enabling massive parallel processing."
-      },
-      {
-        question: "What game-theoretic setup defines Generative Adversarial Networks (GANs)?",
-        options: [
-          "Cooperative multiplayer game",
-          "A zero-sum competition between a Generator and a Discriminator",
-          "A simple database index lookup",
-          "Single-player random search"
-        ],
-        correct: 1,
-        explanation: "GANs feature a Generator (creating fake data) competing against a Discriminator (identifying fake vs real data) in a competitive, zero-sum adversarial game until the generator creates perfect fakes."
+        question: "Placeholder practice question for AI Product Workflows?",
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correct: 0,
+        explanation: "This is a placeholder practice question."
       }
     ],
-
     graded: [
       {
-        question: "What does 'Autoregressive' text generation mean in Large Language Models?",
-        options: [
-          "The model generates the entire response in a single parallel step.",
-          "The model predicts the next token sequentially, feeding its own previous outputs back as input.",
-          "The model automatically restarts the computer after running.",
-          "The system searches Google for the answers."
-        ],
-        correct: 1,
-        explanation: "Autoregressive generation means the model outputs one token/word at a time, and then appends that token to the input prompt to predict the next token in the sequence."
-      },
+        question: "Placeholder graded question for AI Product Workflows?",
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correct: 0,
+        explanation: "This is a placeholder graded question."
+      }
+    ]
+  },
+  "3": {
+    overview: `### Hands-On AI Projects Overview\n\n${GENERIC_OVERVIEW('Hands-On AI Projects')}`,
+    reading: `### Hands-On AI Projects Reading\n\n${GENERIC_READING('Hands-On AI Projects')}`,
+    practice: [
       {
-        question: "Which paper introduced the revolutionary Transformer architecture?",
-        options: [
-          "Deep Learning in Neural Networks",
-          "Attention Is All You Need",
-          "Computing Machinery and Intelligence",
-          "ImageNet Classification with Deep CNNs"
-        ],
-        correct: 1,
-        explanation: "Google researchers published 'Attention Is All You Need' in 2017, introducing the attention mechanism and laying the foundation for modern LLMs."
-      },
+        question: "Placeholder practice question for Hands-On AI Projects?",
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correct: 0,
+        explanation: "This is a placeholder practice question."
+      }
+    ],
+    graded: [
       {
-        question: "What is the primary benefit of parallelization in Transformer training?",
-        options: [
-          "It makes the computer run cooler.",
-          "It allows massive datasets to be processed rapidly across clustered GPUs.",
-          "It completely eliminates the need for any programming code.",
-          "It restricts the model to only outputting integers."
-        ],
-        correct: 1,
-        explanation: "Because self-attention doesn't process text word-by-word sequentially, training can be distributed across thousands of processor cores concurrently, dramatically shortening training cycles."
+        question: "Placeholder graded question for Hands-On AI Projects?",
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correct: 0,
+        explanation: "This is a placeholder graded question."
+      }
+    ]
+  },
+  "4": {
+    overview: `### Job-ready Portfolio Overview\n\n${GENERIC_OVERVIEW('Job-ready Portfolio')}`,
+    reading: `### Job-ready Portfolio Reading\n\n${GENERIC_READING('Job-ready Portfolio')}`,
+    practice: [
+      {
+        question: "Placeholder practice question for Job-ready Portfolio?",
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correct: 0,
+        explanation: "This is a placeholder practice question."
+      }
+    ],
+    graded: [
+      {
+        question: "Placeholder graded question for Job-ready Portfolio?",
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correct: 0,
+        explanation: "This is a placeholder graded question."
       }
     ]
   }
 };
 
+/* Helper functions to generate overview and reading content */
+function GENERIC_OVERVIEW(moduleTitle) {
+  const mod = GENERATIVE_AI_CURRICULUM.find(m => m.title === moduleTitle);
+  if (!mod) return '';
+  return `${mod.title}\n\n${mod.description}\n\n**Duration:** ${mod.duration}`;
+}
+
+function GENERIC_READING(moduleTitle) {
+  const mod = GENERATIVE_AI_CURRICULUM.find(m => m.title === moduleTitle);
+  if (!mod) return '';
+  const lessons = mod.lessons.map(l => `- ${l}`).join('\n');
+  const topics = mod.topics.map(t => `- ${t}`).join('\n');
+  return `#### Lessons\n${lessons}\n\n#### Topics\n${topics}`;
+}
+
+/* ═══════ Component ═══════ */
 /* ═══════ Component ═══════ */
 const CoursePlayer: React.FC = () => {
   const { courseId } = useParams<{ courseId: string }>();

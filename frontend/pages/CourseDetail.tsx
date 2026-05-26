@@ -213,8 +213,8 @@ const CourseDetail: React.FC = () => {
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#8B5CF6] to-[#D946EF]">& Generative AI</span>
               </h1>
 
-              <p className="text-lg text-gray-300 mb-8 max-w-2xl leading-relaxed">
-                Your complete beginner-to-advanced roadmap to understand, build and apply AI in real-world scenarios using modern tools.
+              <p className="text-lg text-gray-300 mb-8 max-w-2xl leading-relaxed">Your complete beginner-to-advanced roadmap to understand, build and apply AI in real-world scenarios using modern tools.</p>
+        <img src="/images/ai_foundations_1779792498429.png" alt="AI Foundations" className="my-6 rounded-lg" />
               </p>
 
               <div className="flex flex-wrap gap-3 mb-10">
@@ -337,6 +337,7 @@ const CourseDetail: React.FC = () => {
               What You'll Get With <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C2BFF] to-[#A88CFF]">This Course</span>
             </h2>
             <p className="text-gray-600 text-lg">Everything you need to start, learn, and grow in AI — from basics to real-world applications.</p>
+        <img src="/images/prompt_mastery_1779792771105.png" alt="Prompt Mastery" className="my-6 rounded-lg" />
           </div>
 
           <div className="bg-white border border-gray-200 shadow-sm rounded-[2rem] p-8 md:p-12 relative overflow-hidden">
