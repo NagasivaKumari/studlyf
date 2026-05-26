@@ -1,528 +1,282 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Play, ExternalLink, ImageIcon } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Calendar, Users, ArrowRight, Sparkles } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
 
-/* ─── Google Font injection ─────────────────────── */
-export function useFont() {
-    useEffect(() => {
-        const id = 'ads-google-fonts';
-        if (document.getElementById(id)) return;
-        const l = document.createElement('link');
-        l.id = id; l.rel = 'stylesheet';
-        l.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500&family=Inter:wght@400;600;700;800&display=swap';
-        document.head.appendChild(l);
-    }, []);
-}
-
-/* ─── CSS injection ─────────────────────────────── */
-const ADS_CSS = `
-.ads-scroll-track {
-  display:flex; gap:16px; overflow-x:auto;
-  -webkit-overflow-scrolling:touch; scrollbar-width:none; cursor:grab; padding-right:48px;
-}
-.ads-scroll-track::-webkit-scrollbar { display:none; }
-.ads-scroll-track:active { cursor:grabbing; }
-
-.ads-card-active {
-  box-shadow: 0 24px 64px rgba(0,0,0,.14), 0 6px 20px rgba(0,0,0,.08) !important;
-  transform: translateY(-10px) scale(1.025) !important;
-}
-.ads-card-hover { transition: transform .35s cubic-bezier(.22,.68,0,1.2) !important; }
-.ads-card-hover:hover { transform: translateY(-8px) !important; }
-
-.ads-play-btn {
-  width:68px; height:68px; border-radius:50%;
-  background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.35);
-  display:flex; align-items:center; justify-content:center;
-  backdrop-filter:blur(8px); cursor:pointer;
-  transition:all .25s ease;
-}
-.ads-play-btn:hover { background:#C84B2F; border-color:#C84B2F; transform:scale(1.1); }
-
-.ads-dot-btn {
-  height:7px; border-radius:50%; border:none; background:#E5E7EB;
-  cursor:pointer; padding:0; transition:all .3s cubic-bezier(.22,.68,0,1.2);
-  width:7px;
-}
-.ads-dot-btn.dot-active {
-  background:#C84B2F; width:22px; border-radius:4px;
-}
-.ads-dot-btn:hover:not(.dot-active) { background:#ccc; transform:scale(1.2); }
-
-.ads-nav-btn {
-  width:42px; height:42px; border-radius:50%; border:1.5px solid #E5E7EB;
-  background:transparent; cursor:pointer; display:flex; align-items:center;
-  justify-content:center; transition:all .2s ease; color:#1A1410;
-}
-.ads-nav-btn:hover { background:#1A1410; border-color:#1A1410; color:#fff; }
-
-.ads-pulse-dot {
-  width:7px; height:7px; border-radius:50%; background:#4A6741;
-  animation:ads-pulse 1.6s ease-in-out infinite;
-}
-@keyframes ads-pulse {
-  0%,100% { opacity:1; transform:scale(1); }
-  50% { opacity:.4; transform:scale(.7); }
-}
-.ads-promo-bg { pointer-events:none; user-select:none;
-  position:absolute; bottom:-30px; right:-20px;
-  font-family:'Playfair Display',serif; font-size:11rem; font-weight:900;
-  color:rgba(255,255,255,.07); line-height:1; }
-
-@keyframes ads-pill-shimmer {
-  0%   { transform: translateX(-180%) skewX(-20deg); }
-  100% { transform: translateX(300%) skewX(-20deg); }
-}
-.ads-cta-pill {
-  position:relative; display:inline-flex; align-items:center; justify-content:center;
-  gap:8px; padding:12px 24px; font-size:.8rem; font-family:'Inter',sans-serif;
-  font-weight:700; letter-spacing:.04em; color:#fff; background:#7c3aed;
-  border:none; border-radius:9999px; cursor:pointer; outline:none; overflow:hidden;
-  margin-top:auto;
-  transition: transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .3s ease, background .3s ease;
-  box-shadow: 0 4px 16px rgba(124,58,237,0.35), 0 1px 0 rgba(255,255,255,0.12) inset;
-}
-.ads-cta-pill::before {
-  content:''; position:absolute; inset:0; border-radius:9999px;
-  background:linear-gradient(180deg,rgba(255,255,255,0.15) 0%,transparent 55%);
-  pointer-events:none; z-index:1;
-}
-.ads-cta-pill::after {
-  content:''; position:absolute; top:0; left:0; width:40%; height:100%;
-  background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,0.22) 50%,transparent 80%);
-  animation: ads-pill-shimmer 2.8s ease-in-out infinite;
-  pointer-events:none; z-index:2;
-}
-.ads-cta-pill:hover {
-  background:#6d28d9; transform:translateY(-2px) scale(1.03);
-  box-shadow: 0 0 0 4px rgba(139,92,246,0.15), 0 0 30px 8px rgba(139,92,246,0.35),
-    0 12px 30px rgba(109,40,217,0.4), 0 1px 0 rgba(255,255,255,0.15) inset;
-}
-.ads-cta-pill:active { transform:translateY(0) scale(0.97); }
-.ads-cta-pill:hover span:last-child { transform:translateX(4px); }
-`;
-
-export function useCSS() {
-    useEffect(() => {
-        const id = 'ads-carousel-css';
-        if (document.getElementById(id)) return;
-        const s = document.createElement('style');
-        s.id = id; s.textContent = ADS_CSS;
-        document.head.appendChild(s);
-    }, []);
-}
-
-/* ─── Types ─────────────────────────────────────── */
-export type AdCardType = 'video' | 'image' | 'video_image';
-export interface AdItem {
-    _id?: string;
-    card_type: AdCardType;
-    eyebrow: string;
+export interface SpotlightItem {
+    id: string;
     title: string;
     description: string;
-    media_url?: string;
-    media_type?: 'image' | 'video';
-    secondary_media_url?: string;
-    secondary_media_type?: 'image' | 'video';
-    tag?: string;
-    badge?: string;
-    cta_text: string;
-    cta_style: 'primary' | 'dark' | 'gold' | 'sage' | 'outline-light' | 'white';
-    pills?: string[];
-    color_scheme: 'dark' | 'light';
-    bg_color?: string;
-    duration?: string;
-    wide_side?: 'dark' | 'light';
-    promo_tag?: string;
-    promo_stats?: { num: string; label: string }[];
-    order: number;
-    active?: boolean;
-    show_cta?: boolean;
-    cta_link?: string;
+    image: string;
+    type: string;
+    cta: string;
+    date: string;
+    community: string;
+    color: string;
+    glow: string;
 }
 
-/* ─── Dummy data ─────────────────────────────────── */
-const DUMMY: AdItem[] = [];
-
-/* ─── BG colour map ─────────────────────────────── */
-const BG_MAP: Record<string, string> = {
-    blue: 'linear-gradient(135deg,#1a2744 0%,#2c4a7c 100%)',
-    green: 'linear-gradient(135deg,#1a3322 0%,#2d6645 100%)',
-    amber: 'linear-gradient(135deg,#3d2200 0%,#8a5200 100%)',
-    purple: 'linear-gradient(135deg,#1e0a3c 0%,#4a1a7c 100%)',
-    teal: 'linear-gradient(135deg,#062233 0%,#0e5a70 100%)',
-    rose: 'linear-gradient(135deg,#3d0a0a 0%,#7c2020 100%)',
-    'soft-blue': '#d0dff5',
-    'soft-green': '#d0e8d5',
-    'soft-amber': '#f5e8c8',
-};
-
-function bgStyle(color?: string): React.CSSProperties {
-    if (!color) return { background: '#1a1410' };
-    const val = BG_MAP[color] || '#1a1410';
-    return val.startsWith('linear') ? { backgroundImage: val } : { background: val };
-}
-
-/* ─── CTA button (purple pill style matching hero) ── */
-function CtaBtn({ text, link, style: _s = 'primary', fullWidth = false }: { text: string; link?: string; style?: string; fullWidth?: boolean }) {
-    const handleClick = () => {
-        if (link) {
-            window.open(link, '_blank', 'noopener,noreferrer');
-        } else {
-            const el = document.getElementById('contact-us');
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth' });
-            }
-        }
-    };
-
-    return (
-        <button onClick={handleClick} className="ads-cta-pill" style={{
-            width: fullWidth ? '100%' : 'fit-content',
-        }}>
-            <span style={{ position: 'relative', zIndex: 5 }}>{text}</span>
-            <span style={{ position: 'relative', zIndex: 5, display: 'inline-flex', alignItems: 'center', transition: 'transform 0.25s ease' }}>
-                <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                    <path d="M4 10h12M11 5l5 5-5 5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-            </span>
-        </button>
-    );
-}
-
-/* ─── YouTube Helper ───────────────────────────── */
-function getYoutubeEmbed(url?: string) {
-    if (!url) return null;
-    const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
-    return match ? `https://www.youtube-nocookie.com/embed/${match[1]}?autoplay=1&mute=1&loop=1&playlist=${match[1]}&controls=0&modestbranding=1` : null;
-}
-
-function resolveMediaUrl(url?: string): string {
-    if (!url) return '';
-    if (url.startsWith('https://launchpad-api.holistichealervedika.com')) {
-        return url.replace('https://launchpad-api.holistichealervedika.com', API_BASE_URL);
+const SPOTLIGHT_DATA: SpotlightItem[] = [
+    {
+        id: "event-1",
+        title: "Global AI Hackathon 2026",
+        description: "Join 2,000+ developers worldwide to build the next generation of AI agents. Compete for prizes and exclusive internships.",
+        image: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80",
+        type: "Hackathon",
+        cta: "Register Now",
+        date: "Oct 15 - Oct 17, 2026",
+        community: "STUDLYF × TechCorp",
+        color: "from-purple-600 to-indigo-600",
+        glow: "shadow-purple-500/30"
+    },
+    {
+        id: "event-2",
+        title: "Founder's Masterclass: Scaling SaaS",
+        description: "Learn how to scale your startup from zero to one. An exclusive workshop by industry leaders focusing on growth loops.",
+        image: "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80",
+        type: "Workshop",
+        cta: "Save Your Seat",
+        date: "Nov 5, 2026 • Live Virtual",
+        community: "Startup Hub",
+        color: "from-pink-600 to-rose-600",
+        glow: "shadow-pink-500/30"
+    },
+    {
+        id: "event-3",
+        title: "Web3 Builders Summit",
+        description: "The ultimate gathering for blockchain developers and crypto enthusiasts. Keynotes, technical deep-dives, and networking.",
+        image: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&w=1200&q=80",
+        type: "Community Event",
+        cta: "Explore Event",
+        date: "Dec 10, 2026 • Dubai",
+        community: "Web3 Foundation",
+        color: "from-blue-600 to-cyan-600",
+        glow: "shadow-blue-500/30"
+    },
+    {
+        id: "event-4",
+        title: "Open Source Contribution Month",
+        description: "Kickstart your open source journey. Find mentorship, contribute to massive projects, and build your developer portfolio.",
+        image: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80",
+        type: "Collaboration",
+        cta: "Join Initiative",
+        date: "Entire Month of January",
+        community: "STUDLYF Originals",
+        color: "from-emerald-600 to-teal-600",
+        glow: "shadow-emerald-500/30"
     }
-    if (url.startsWith('/uploads/')) {
-        return `${API_BASE_URL}${url}`;
-    }
-    return url;
-}
+];
 
-/* ─── Card components ──────────────────────────── */
-function VideoCard({ ad }: { ad: AdItem }) {
-    const resolvedMediaUrl = resolveMediaUrl(ad.media_url);
-    const isVideo = ad.media_type === 'video' || !!getYoutubeEmbed(resolvedMediaUrl) || !!resolvedMediaUrl?.match(/\.(mp4|webm|mov|ogg)$/i);
-    return (
-        <div className="ads-card-hover" style={{
-            flex: '0 0 380px', minHeight: 220,
-            borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1.3fr 1fr',
-            background: '#1A1410', boxShadow: '0 25px 50px rgba(0,0,0,0.15)'
-        }}>
-            <div style={{ position: 'relative', overflow: 'hidden' }}>
-                {isVideo ? (
-                    getYoutubeEmbed(resolvedMediaUrl) ? (
-                        <iframe
-                            src={getYoutubeEmbed(resolvedMediaUrl)!}
-                            style={{ width: '100%', height: '100%', border: 'none', objectFit: 'cover' }}
-                            allow="autoplay; encrypted-media"
-                            title={ad.title}
-                        />
-                    ) : (
-                             <video
-                                key={resolvedMediaUrl}
-                                src={resolvedMediaUrl}
-                                autoPlay={true}
-                                loop={true}
-                                muted={true}
-                                playsInline={true}
-                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
-                            />
-                        )
-                    ) : (
-                        <img src={resolvedMediaUrl} alt={ad.title} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-                    )}
-                {ad.tag && <div style={{
-                    position: 'absolute', top: 20, left: 20, background: '#7c3aed',
-                    color: '#fff', fontSize: '.68rem', fontWeight: 600, letterSpacing: '.1em',
-                    textTransform: 'uppercase', padding: '6px 14px', borderRadius: 4
-                }}>{ad.tag}</div>}
-            </div>
-            <div style={{
-                padding: '24px', background: '#1A1410',
-                color: '#FFFFFF', display: 'flex', flexDirection: 'column', gap: 12
-            }}>
-                <div style={{
-                    fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase',
-                    color: '#D4A847', fontWeight: 600
-                }}>{ad.eyebrow}</div>
-                <h3 style={{
-                    fontFamily: "'Inter', sans-serif", fontSize: '1.2rem', fontWeight: 800,
-                    lineHeight: 1.2, letterSpacing: '-.02em', margin: 0
-                }}>{ad.title}</h3>
-                <p style={{
-                    fontSize: '.85rem', lineHeight: 1.6, color: 'rgba(255,255,255,.7)',
-                    fontWeight: 400, margin: 0, overflowY: 'auto', maxHeight: '180px'
-                }}>{ad.description}</p>
-                <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {ad.pills?.map(p => <span key={p} style={{
-                            fontSize: '.6rem', letterSpacing: '.05em',
-                            textTransform: 'uppercase', padding: '4px 10px', borderRadius: 4, fontWeight: 600,
-                            background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)',
-                            border: '1px solid rgba(255,255,255,0.1)'
-                        }}>{p}</span>)}
-                    </div>
-                    {(ad.show_cta !== false || ad.title.toLowerCase().includes("urgent hiring")) && <CtaBtn text={ad.cta_text || "Enroll →"} link={ad.cta_link} style={ad.cta_style} fullWidth={true} />}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function ImageCard({ ad }: { ad: AdItem }) {
-    const resolvedMediaUrl = resolveMediaUrl(ad.media_url);
-    return (
-        <div className="ads-card-hover" style={{
-            flex: '0 0 260px', minHeight: 260,
-            borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column',
-            background: '#fff', border: '1px solid #f3f4f6', boxShadow: '0 20px 40px rgba(0,0,0,0.06)'
-        }}>
-            <div style={{ position: 'relative', overflow: 'hidden', height: '120px', flexShrink: 0, background: '#f8fafc' }}>
-                <img src={resolvedMediaUrl} alt={ad.title}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
-                {ad.badge && <div style={{
-                    position: 'absolute', top: 12, right: 12, background: '#fff',
-                    color: '#111', fontSize: '.65rem', fontWeight: 700, letterSpacing: '.1em',
-                    textTransform: 'uppercase', padding: '6px 14px', borderRadius: 20,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                }}>{ad.badge}</div>}
-            </div>
-            <div style={{
-                padding: '24px', background: '#fff', color: '#111',
-                display: 'flex', flexDirection: 'column', gap: 12, flex: 1
-            }}>
-                <div style={{
-                    fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase',
-                    color: '#6366f1', fontWeight: 700
-                }}>{ad.eyebrow}</div>
-                <h3 style={{
-                    fontFamily: "'Inter', sans-serif", fontSize: '1.25rem', fontWeight: 800,
-                    lineHeight: 1.2, letterSpacing: '-.02em', margin: 0
-                }}>{ad.title}</h3>
-                <p style={{ 
-                    fontSize: '.9rem', lineHeight: 1.5, color: '#555', fontWeight: 400, margin: 0,
-                    overflowY: 'auto', maxHeight: '140px'
-                 }}>
-                    {ad.description}</p>
-                <div style={{ marginTop: 'auto' }}>
-                    {(ad.show_cta !== false || ad.title.toLowerCase().includes("urgent hiring")) && <CtaBtn text={ad.cta_text || "Enroll →"} link={ad.cta_link} style={ad.cta_style} fullWidth={true} />}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function VideoImageCard({ ad }: { ad: AdItem }) {
-    const resolvedMediaUrl = resolveMediaUrl(ad.media_url);
-    const resolvedSecondaryMediaUrl = resolveMediaUrl(ad.secondary_media_url);
-    const isVideo = ad.media_type === 'video' || !!getYoutubeEmbed(resolvedMediaUrl) || !!resolvedMediaUrl?.match(/\.(mp4|webm|mov|ogg)$/i);
-    return (
-        <div className="ads-card-hover" style={{
-            flex: '0 0 420px', minHeight: 220,
-            borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1.1fr 1fr',
-            background: '#fff', border: '1px solid #f3f4f6', boxShadow: '0 25px 60px rgba(0,0,0,0.1)'
-        }}>
-            <div style={{ position: 'relative', overflow: 'hidden', borderRight: '1px solid #f3f4f6' }}>
-                {isVideo ? (
-                    getYoutubeEmbed(resolvedMediaUrl) ? (
-                        <iframe
-                            src={getYoutubeEmbed(resolvedMediaUrl)!}
-                            style={{ width: '100%', height: '100%', border: 'none', objectFit: 'cover' }}
-                            allow="autoplay; encrypted-media"
-                            title={ad.title}
-                        />
-                    ) : (
-                        <video
-                            key={resolvedMediaUrl}
-                            src={resolvedMediaUrl}
-                            autoPlay={true}
-                            loop={true}
-                            muted={true}
-                            playsInline={true}
-                            style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#f8fafc' }}
-                        />
-                    )
-                ) : (
-                    <img src={resolvedMediaUrl} alt="Primary" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#f8fafc' }} />
-                )}
-                <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(0,0,0,0.5)', color: '#fff', padding: '4px 10px', borderRadius: 4, fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>Main</div>
-            </div>
-            
-            <div style={{ display: 'grid', gridTemplateRows: '1.2fr 1fr' }}>
-                {/* Secondary Image Area */}
-                <div style={{ position: 'relative', overflow: 'hidden', background: '#f9fafb' }}>
-                    {resolvedSecondaryMediaUrl ? (
-                        <img src={resolvedSecondaryMediaUrl} alt="Secondary" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                    ) : (
-                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>
-                             <ImageIcon size={32} />
-                        </div>
-                    )}
-                     <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(255,255,255,0.8)', color: '#111', padding: '4px 10px', borderRadius: 4, fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>Feature</div>
-                </div>
-
-                {/* Content Area */}
-                <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 8, background: '#fff' }}>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: '#111', lineHeight: 1.2 }}>{ad.title}</h3>
-                    <p style={{ fontSize: '.85rem', color: '#555', margin: 0, overflowY: 'auto', maxHeight: '120px', lineHeight: 1.5 }}>{ad.description}</p>
-                    <div style={{ marginTop: 'auto' }}>
-                         {(ad.show_cta !== false || ad.title.toLowerCase().includes("urgent hiring")) && <CtaBtn text={ad.cta_text || "Enroll →"} link={ad.cta_link} style={ad.cta_style} fullWidth={true} />}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-export function renderCard(ad: AdItem, idx: number) {
-    switch (ad.card_type) {
-        case 'video':       return <VideoCard key={idx} ad={ad} />;
-        case 'image':       return <ImageCard key={idx} ad={ad} />;
-        case 'video_image': return <VideoImageCard key={idx} ad={ad} />;
-        default:            return <ImageCard key={idx} ad={ad} />;
-    }
-}
-
-/* ─── easeOutQuint ──────────────────────────────── */
-function easeOutQuint(t: number) { return 1 - Math.pow(1 - t, 5); }
-
-const DEFAULT_ADS: AdItem[] = [];
-
-/* ─── Main carousel ─────────────────────────────── */
 export default function AdsCarousel() {
-    useFont();
-    useCSS();
-
-    const [ads, setAds] = useState<AdItem[]>(DEFAULT_ADS);
-    const [current, setCurrent] = useState(0);
-    const trackRef = useRef<HTMLDivElement>(null);
-    const autoRef = useRef<number>(0);
-    const pausedRef = useRef(false);
-    const currentRef = useRef(0);
-    const DWELL = 2200;
-    const SPEED = 900;
-
-    /* fetch live data */
+    // In the future, this can be hydrated by fetch(`${API_BASE_URL}/api/ads`) 
+    // mapped into the SpotlightItem structure.
+    const [items] = useState<SpotlightItem[]>(SPOTLIGHT_DATA);
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [isHovered, setIsHovered] = useState(false);
+    
+    // Auto progress
     useEffect(() => {
-        fetch(`${API_BASE_URL}/api/ads`)
-            .then(r => r.json())
-            .then(data => { 
-                if (Array.isArray(data) && data.length > 0) {
-                    console.log("AdsCarousel: Fetched ads successfully:", data.length);
-                    setAds(data.sort((a, b) => a.order - b.order)); 
-                } else {
-                    console.warn("AdsCarousel: No ads received from API");
-                }
-            })
-            .catch(err => {
-                console.error("AdsCarousel: Error fetching ads:", err);
-            });
-    }, []);
+        if (isHovered || items.length === 0) return;
+        
+        const timer = setInterval(() => {
+            setCurrentIndex((prev) => (prev + 1) % items.length);
+        }, 5000);
+        
+        return () => clearInterval(timer);
+    }, [isHovered, items.length]);
 
-    const getCards = useCallback(() =>
-        Array.from(trackRef.current?.querySelectorAll<HTMLElement>('.ads-card-hover,.ads-card-active') ?? []), []);
+    if (items.length === 0) return null;
 
-
-    const scrollToCard = useCallback((idx: number) => {
-        const cards = getCards();
-        if (!cards.length || !trackRef.current) return;
-        const safeIdx = ((idx % cards.length) + cards.length) % cards.length;
-        currentRef.current = safeIdx;
-        setCurrent(safeIdx);
-        const card = cards[safeIdx];
-        trackRef.current.scrollTo({ left: card.offsetLeft, behavior: 'smooth' });
-    }, [getCards]);
-
-    const startContinuousScroll = useCallback(() => {
-        if (autoRef.current) cancelAnimationFrame(autoRef.current);
-        const step = () => {
-            if (!pausedRef.current && trackRef.current) {
-                const max = trackRef.current.scrollWidth - trackRef.current.clientWidth;
-                if (trackRef.current.scrollLeft >= max - 2) {
-                    trackRef.current.scrollTo({ left: 0, behavior: 'smooth' }); 
-                    setTimeout(() => { if (!pausedRef.current) autoRef.current = requestAnimationFrame(step); }, 800);
-                    return;
-                } else {
-                    trackRef.current.scrollLeft += 1;
-                }
-            }
-            autoRef.current = requestAnimationFrame(step);
-        };
-        autoRef.current = requestAnimationFrame(step);
-    }, []);
-
-    const pause = useCallback((resumeMs = 3500) => {
-        pausedRef.current = true;
-        setTimeout(() => { pausedRef.current = false; }, resumeMs);
-    }, []);
-
-    useEffect(() => {
-        const t = setTimeout(() => startContinuousScroll(), 1000);
-        return () => { clearTimeout(t); if (autoRef.current) cancelAnimationFrame(autoRef.current); };
-    }, [startContinuousScroll]);
-
-    useEffect(() => () => { if (autoRef.current) cancelAnimationFrame(autoRef.current); }, []);
-
-    const dragRef = useRef({ down: false, startX: 0, scrollLeft: 0 });
-    const onMouseDown = (e: React.MouseEvent) => {
-        if (!trackRef.current) return;
-        dragRef.current = { down: true, startX: e.pageX - trackRef.current.offsetLeft, scrollLeft: trackRef.current.scrollLeft };
-        pause(5000);
-    };
-    const onMouseMove = (e: React.MouseEvent) => {
-        if (!dragRef.current.down || !trackRef.current) return;
-        e.preventDefault();
-        trackRef.current.scrollLeft = dragRef.current.scrollLeft - (e.pageX - (trackRef.current.offsetLeft) - dragRef.current.startX) * 1.4;
-    };
-    const onMouseUp = () => {
-        dragRef.current.down = false;
-        const cards = getCards();
-        let nearest = 0, minD = Infinity;
-        cards.forEach((c, i) => {
-            const d = Math.abs(c.offsetLeft - 64 - (trackRef.current?.scrollLeft ?? 0));
-            if (d < minD) { minD = d; nearest = i; }
-        });
-        scrollToCard(nearest);
-    };
-
-    if (ads.length === 0) return null;
+    const currentItem = items[currentIndex];
 
     return (
-        <section style={{ background: '#fff', fontFamily: "'Inter', sans-serif", color: '#111', overflow: 'hidden' }}>
-            <div style={{ width: '100%', padding: '28px 0 0 24px', position: 'relative' }}>
-                <div
-                    ref={trackRef}
-                    className="ads-scroll-track"
-                    onMouseDown={onMouseDown}
-                    onMouseMove={onMouseMove}
-                    onMouseUp={onMouseUp}
-                    onMouseLeave={() => { dragRef.current.down = false; }}
-                    onMouseEnter={() => pause(3000)}
-                >
-                    {ads.map((ad, i) => renderCard(ad, i))}
-                </div>
+        <section className="relative w-full py-20 bg-white overflow-hidden font-['Poppins']">
+            {/* Background Ambience */}
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-tr from-purple-500/5 to-pink-500/5 rounded-full blur-[100px]" />
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-b from-blue-500/5 to-transparent rounded-full blur-[80px]" />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, padding: '32px 24px 48px' }}>
-                <div style={{ display: 'flex', gap: 16 }}>
-                    <button className="ads-nav-btn" aria-label="Previous"
-                        onClick={() => { pause(4000); scrollToCard(currentRef.current - 1); }}>
-                        <ChevronLeft size={20} />
-                    </button>
-                    <button className="ads-nav-btn" aria-label="Next"
-                        onClick={() => { pause(4000); scrollToCard(currentRef.current + 1); }}>
-                        <ChevronRight size={20} />
-                    </button>
+            <div className="max-w-7xl mx-auto px-6 relative z-10">
+                {/* Section Header */}
+                <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                    <div>
+                        <motion.h2 
+                            initial={{ opacity: 0, y: 20 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            className="text-4xl md:text-5xl font-black text-black tracking-tight uppercase"
+                        >
+                            Community <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B]">Spotlight</span>
+                        </motion.h2>
+                        <motion.p 
+                            initial={{ opacity: 0, y: 20 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ delay: 0.1 }}
+                            className="text-gray-500 mt-2 font-medium text-lg"
+                        >
+                            Discover premium opportunities, hackathons, and exclusive events.
+                        </motion.p>
+                    </div>
+                </div>
+
+                <div 
+                    className="flex flex-col lg:flex-row gap-6 lg:gap-8"
+                    onMouseEnter={() => setIsHovered(true)}
+                    onMouseLeave={() => setIsHovered(false)}
+                >
+                    {/* Main Featured Card */}
+                    <div className="relative flex-grow lg:w-2/3 aspect-[4/5] sm:aspect-[4/3] lg:aspect-auto lg:h-[540px] rounded-[2rem] overflow-hidden group shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={currentItem.id}
+                                initial={{ opacity: 0, scale: 1.05 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, transition: { duration: 0.3 } }}
+                                transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                                className="absolute inset-0"
+                            >
+                                {/* Background Image */}
+                                <div className="absolute inset-0">
+                                    <img 
+                                        src={currentItem.image} 
+                                        alt={currentItem.title}
+                                        className="w-full h-full object-cover transition-transform duration-[10s] ease-out group-hover:scale-110"
+                                    />
+                                    {/* Cinematic Gradient Overlays */}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/60 to-transparent" />
+                                    <div className="absolute inset-0 bg-gradient-to-r from-[#0B0F19]/90 via-[#0B0F19]/40 to-transparent" />
+                                </div>
+
+                                {/* Content Hierarchy */}
+                                <div className="absolute inset-0 p-6 sm:p-10 md:p-12 flex flex-col justify-end">
+                                    {/* Badges */}
+                                    <div className="flex flex-wrap gap-3 mb-6">
+                                        <motion.div 
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ delay: 0.2 }}
+                                            className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest text-white bg-gradient-to-r ${currentItem.color} shadow-lg backdrop-blur-md`}
+                                        >
+                                            {currentItem.type}
+                                        </motion.div>
+                                        <motion.div 
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ delay: 0.3 }}
+                                            className="px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider text-white bg-white/20 backdrop-blur-xl border border-white/30 flex items-center gap-1.5"
+                                        >
+                                            <Sparkles size={14} className="text-yellow-300" />
+                                            {currentItem.community}
+                                        </motion.div>
+                                    </div>
+
+                                    {/* Title */}
+                                    <motion.h3 
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.4, duration: 0.5 }}
+                                        className="text-3xl sm:text-4xl md:text-5xl font-black text-white mb-4 leading-[1.1] tracking-tight drop-shadow-xl"
+                                    >
+                                        {currentItem.title}
+                                    </motion.h3>
+
+                                    {/* Description */}
+                                    <motion.p 
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.5, duration: 0.5 }}
+                                        className="text-gray-200 text-sm sm:text-base md:text-lg max-w-2xl mb-8 leading-relaxed font-medium drop-shadow-md line-clamp-3 sm:line-clamp-none"
+                                    >
+                                        {currentItem.description}
+                                    </motion.p>
+
+                                    {/* Footer Actions */}
+                                    <motion.div 
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.6, duration: 0.5 }}
+                                        className="flex flex-col sm:flex-row items-start sm:items-center gap-6"
+                                    >
+                                        <button className={`px-8 py-4 rounded-xl font-black text-sm uppercase tracking-widest text-white bg-gradient-to-r ${currentItem.color} hover:opacity-90 transition-all hover:-translate-y-1 hover:shadow-2xl flex items-center gap-2 shadow-lg ${currentItem.glow}`}>
+                                            {currentItem.cta}
+                                            <ArrowRight size={18} />
+                                        </button>
+                                        
+                                        <div className="flex flex-col gap-1.5 border-l-2 border-white/20 pl-6 hidden sm:flex">
+                                            <div className="flex items-center gap-2 text-sm text-gray-300 font-bold tracking-wide">
+                                                <Calendar size={16} className="text-white" />
+                                                <span>{currentItem.date}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-sm text-gray-300 font-bold tracking-wide">
+                                                <Users size={16} className="text-white" />
+                                                <span>Premium Event</span>
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                </div>
+                            </motion.div>
+                        </AnimatePresence>
+
+                        {/* Top Progress Bar */}
+                        <div className="absolute top-0 left-0 right-0 h-1.5 bg-black/20 z-20 overflow-hidden">
+                            <motion.div 
+                                key={currentIndex + (isHovered ? "-hover" : "-play")}
+                                initial={{ width: "0%" }}
+                                animate={{ width: isHovered ? "0%" : "100%" }}
+                                transition={{ duration: 5, ease: "linear" }}
+                                className={`h-full bg-gradient-to-r ${currentItem.color}`}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Right Side / Bottom: Preview Cards Navigation */}
+                    <div className="lg:w-1/3 flex flex-col gap-3 h-[540px] overflow-y-auto pr-2 custom-scrollbar pb-4 lg:pb-0">
+                        {items.map((item, idx) => {
+                            const isActive = idx === currentIndex;
+                            return (
+                                <motion.div 
+                                    key={item.id}
+                                    onClick={() => setCurrentIndex(idx)}
+                                    whileHover={{ scale: isActive ? 1 : 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    className={`
+                                        relative p-3 sm:p-4 rounded-[1.5rem] cursor-pointer transition-all duration-300 flex gap-4 items-center group
+                                        ${isActive 
+                                            ? 'bg-white shadow-[0_10px_40px_rgba(108,77,255,0.15)] border-2 border-purple-400' 
+                                            : 'bg-gray-50 border-2 border-transparent hover:bg-white hover:shadow-lg hover:border-purple-200'}
+                                    `}
+                                >
+                                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-[1rem] overflow-hidden shrink-0 relative shadow-inner">
+                                        <img src={item.image} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                                        <div className={`absolute inset-0 transition-colors duration-300 ${isActive ? 'bg-transparent' : 'bg-black/30 group-hover:bg-black/10'}`} />
+                                    </div>
+                                    
+                                    <div className="flex flex-col justify-center flex-grow py-1">
+                                        <div className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-purple-600 mb-1.5">
+                                            {item.type}
+                                        </div>
+                                        <h4 className={`font-bold text-sm sm:text-base leading-tight mb-2 line-clamp-2 ${isActive ? 'text-black' : 'text-gray-600 group-hover:text-black'}`}>
+                                            {item.title}
+                                        </h4>
+                                        <div className="flex items-center gap-1.5 text-xs text-gray-500 font-semibold mt-auto">
+                                            <Calendar size={14} className={isActive ? 'text-purple-500' : 'text-gray-400'} />
+                                            <span className="truncate">{item.date.split('•')[0].trim()}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Active Indicator Line */}
+                                    {isActive && (
+                                        <motion.div 
+                                            layoutId="activeIndicator"
+                                            className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1/2 bg-gradient-to-b from-purple-500 to-pink-500 rounded-r-full"
+                                        />
+                                    )}
+                                </motion.div>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
         </section>

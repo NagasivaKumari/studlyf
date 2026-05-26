@@ -43,11 +43,8 @@ const LearnDropdown = ({ onItemClick }: { onItemClick: () => void }) => (
     <BentoCard onClick={onItemClick} to="/learn/courses-overview" title="Courses" desc="Role-focused tracks for elite engineering readiness." className="md:col-span-2 md:row-span-2 min-h-[160px] md:min-h-[180px]">
       <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=600" className="absolute bottom-0 right-0 w-1/2 h-full object-cover opacity-100 transition-all duration-700" alt="Courses" />
     </BentoCard>
-    <BentoCard onClick={onItemClick} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="md:col-span-2 h-[88px]">
-      <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-100 transition-all" alt="Corporate" />
-    </BentoCard>
-    <BentoCard onClick={onItemClick} to="/blog" title="Blogs" desc="Technical insights on system ownership." className="md:col-span-2 h-[88px]">
-      <img src="https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-100 transition-all" alt="Blog" />
+    <BentoCard onClick={onItemClick} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="md:col-span-2 md:row-span-2 min-h-[160px] md:min-h-[180px]">
+      <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-100 transition-all duration-700" alt="Corporate" />
     </BentoCard>
   </div>
 );
@@ -348,9 +345,6 @@ const Navigation: React.FC = () => {
                           <BentoCard onClick={() => setActiveMobileOverlay(null)} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="min-h-[140px] bg-white/5 border-white/10">
                             <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-20" alt="Corporate" />
                           </BentoCard>
-                          <BentoCard onClick={() => setActiveMobileOverlay(null)} to="/blog" title="Blogs" desc="Technical insights on system ownership." className="min-h-[140px] bg-white/5 border-white/10">
-                            <img src="https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-20" alt="Blog" />
-                          </BentoCard>
                         </>
                       ) : (
                         <>
@@ -433,7 +427,7 @@ const Navigation: React.FC = () => {
                           </div>
                           <div>
                             <p className="text-sm font-bold text-white uppercase tracking-wider">Learn</p>
-                            <p className="text-[10px] text-white/40">Courses, Modules, Blogs</p>
+                            <p className="text-[10px] text-white/40">Courses & Modules</p>
                           </div>
                         </button>
 
