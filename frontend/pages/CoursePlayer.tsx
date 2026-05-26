@@ -13,7 +13,7 @@ import {
   CheckCircle2, Menu, X, BookOpen, MessageCircle, StickyNote,
   AlignLeft, Code, Award, Trophy, ShieldAlert, Link, AlertTriangle
 } from 'lucide-react';
-import { GFG_CURRICULUM_DATA } from '../data/gfgCurriculumData';
+import { CURRICULUM_DATA } from '../data/curriculumData';
 
 /* ═══════ Types ═══════ */
 interface Lesson {
@@ -177,9 +177,9 @@ const CoursePlayer: React.FC = () => {
 
       let fetched = Array.isArray(data) ? data : [];
       
-      // Enforce the dynamic subtopics schema using the imported GFG_CURRICULUM_DATA
+      // Enforce the dynamic subtopics schema using the imported CURRICULUM_DATA
       const formatted = fetched.map((mod: any, i: number) => {
-        const curChapter = GFG_CURRICULUM_DATA[i] || GFG_CURRICULUM_DATA[i % GFG_CURRICULUM_DATA.length];
+        const curChapter = CURRICULUM_DATA[i] || CURRICULUM_DATA[i % CURRICULUM_DATA.length];
         return {
           ...mod,
           lessons: curChapter.topics.map(t => ({
@@ -195,7 +195,7 @@ const CoursePlayer: React.FC = () => {
         const p = mod.progress;
         if (p) {
           if (p.status === 'completed') {
-            const curChapter = GFG_CURRICULUM_DATA[modIdx] || GFG_CURRICULUM_DATA[modIdx % GFG_CURRICULUM_DATA.length];
+            const curChapter = CURRICULUM_DATA[modIdx] || CURRICULUM_DATA[modIdx % CURRICULUM_DATA.length];
             curChapter.topics.forEach((_, tIdx) => {
               initialCompleted[`${modIdx}_${tIdx}`] = true;
             });
@@ -258,7 +258,7 @@ const CoursePlayer: React.FC = () => {
     setModuleDetails(data);
     
     // Fetch dynamic questions count from the current chapter topic
-    const activeChapter = GFG_CURRICULUM_DATA[activeModuleIndex] || GFG_CURRICULUM_DATA[activeModuleIndex % GFG_CURRICULUM_DATA.length];
+    const activeChapter = CURRICULUM_DATA[activeModuleIndex] || CURRICULUM_DATA[activeModuleIndex % CURRICULUM_DATA.length];
     const quizTopic = activeChapter?.topics?.find(t => t.type === 'graded_quiz');
     const gradedQs = quizTopic?.graded || [];
     setQuizAnswers(gradedQs.map(() => []));
@@ -305,7 +305,7 @@ const CoursePlayer: React.FC = () => {
     }
   };
 
-  const activeChapterData = GFG_CURRICULUM_DATA[activeModuleIndex] || GFG_CURRICULUM_DATA[activeModuleIndex % GFG_CURRICULUM_DATA.length];
+  const activeChapterData = CURRICULUM_DATA[activeModuleIndex] || CURRICULUM_DATA[activeModuleIndex % CURRICULUM_DATA.length];
   const activeTopicData = activeChapterData?.topics?.[activeLessonIndex];
 
   /* ── Graded Quiz Submission ── */
