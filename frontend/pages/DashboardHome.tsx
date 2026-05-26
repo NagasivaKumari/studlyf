@@ -27,7 +27,7 @@ import GetHiredSection from '../components/GetHiredSection';
 import { DevHeroSection } from '../components/DevHeroSection';
 import FeaturedColleges from '../components/FeaturedColleges';
 import OpportunitySlider from '../components/opportunities/OpportunitySlider';
-import PremiumStorytellingSection from '../components/PremiumStorytellingSection';
+import StudlyfSteps from '../components/StudlyfSteps';
 // import { NeonBackground } from '../components/NeonBackground';
 
 // Removed DUMMY_COURSES to only show database content.
@@ -622,7 +622,7 @@ const DashboardHome: React.FC = () => {
       </div>
 
       <div className="mb-20">
-        <PremiumStorytellingSection />
+        <StudlyfSteps />
       </div>
 
       <div className="mb-20">

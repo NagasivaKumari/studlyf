@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
-const words = ['doing', 'building', 'practicing', 'solving', 'creating'];
+const words = ['doing', 'building', 'moding', 'solving', 'creating'];
 
 // --- Sub-components for Visuals ---
 
