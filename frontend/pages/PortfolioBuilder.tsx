@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useInView, useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 import {
   Upload,
   FileText,
@@ -110,6 +111,7 @@ function FadeSection({ children, delay = 0, className = '' }: { children: React.
 }
 
 const PortfolioBuilder: React.FC = () => {
+  const location = useLocation();
   const [step, setStep] = useState(1);
   const [inputMethod, setInputMethod] = useState<'upload' | 'manual' | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -121,6 +123,13 @@ const PortfolioBuilder: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('section') === 'templates') {
+      setStep(3);
+    }
+  }, [location.search]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -178,8 +187,26 @@ const PortfolioBuilder: React.FC = () => {
     { id: 'neon_glass', name: 'Neon Glass', desc: 'Modern futuristic developer portfolio', image: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085', tag: 'Popular' },
     { id: 'swiss_minimal', name: 'Swiss Minimal', desc: 'Minimal clean typography aesthetic', image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3', tag: 'Elegant' },
     { id: 'creative_clean', name: 'Creative Clean', desc: 'Creative portfolio for modern builders', image: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8', tag: 'Creative' },
+    { id: 'editorial_dark', name: 'Editorial Dark', desc: 'Premium dark portfolio with bold storytelling', image: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=80', tag: 'Premium' },
+    { id: 'ocean_minimal', name: 'Ocean Minimal', desc: 'Calm professional layout for clean resumes', image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80', tag: 'Calm' },
+    { id: 'bold_grid', name: 'Bold Grid', desc: 'Structured grid for metrics, projects, and proof', image: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&w=1200&q=80', tag: 'Structured' },
   ];
   const scrollingTemplates = [...templates, ...templates];
+
+  const builderFeatures = [
+    { title: 'Live URL', desc: 'Generate a shareable public portfolio link.' },
+    { title: 'ATS Friendly', desc: 'Keep your story readable for recruiters.' },
+    { title: 'Project Blocks', desc: 'Showcase detailed projects and outcomes.' },
+    { title: 'Social Links', desc: 'Add GitHub, LinkedIn, and external proof.' },
+  ];
+
+  const requiredChecklist = [
+    'Full name and role',
+    'Skills and summary',
+    'At least 1 project',
+    'Optional experience and certifications',
+    'Choose a template',
+  ];
 
   const inputCls = 'w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400 transition-all duration-200';
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1.5';
@@ -205,65 +232,6 @@ const PortfolioBuilder: React.FC = () => {
         />
       </div>
 
-      {/* Navbar */}
-      <motion.header
-        initial={{ y: -48, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
-        className="relative z-20 border-b border-gray-200/80 bg-white/80 backdrop-blur-sm"
-      >
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <motion.div
-            className="flex items-center gap-2"
-            whileHover={{ scale: 1.04 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-          >
-            <div className="w-6 h-6 rounded-md bg-purple-600 flex items-center justify-center">
-              <Sparkles size={13} className="text-white" />
-            </div>
-            <span className="text-sm font-semibold text-gray-900 tracking-tight">Folio</span>
-          </motion.div>
-
-          <AnimatePresence>
-            {step > 1 && (
-              <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.3 }}
-                className="flex items-center gap-1"
-              >
-                {[{ n: 1, label: 'Info' }, { n: 2, label: 'Details' }, { n: 3, label: 'Template' }, { n: 4, label: 'Done' }].map((s, i) => (
-                  <React.Fragment key={s.n}>
-                    <div className="flex items-center gap-1.5">
-                      <motion.div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold transition-colors duration-300 ${step >= s.n ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-400'}`}
-                        animate={step === s.n ? { scale: [1, 1.15, 1] } : {}}
-                        transition={{ duration: 0.4 }}
-                      >
-                        {step > s.n ? <Check size={12} /> : s.n}
-                      </motion.div>
-                      <span className={`text-xs font-medium hidden sm:block transition-colors duration-300 ${step >= s.n ? 'text-gray-700' : 'text-gray-400'}`}>
-                        {s.label}
-                      </span>
-                    </div>
-                    {i < 3 && (
-                      <motion.div
-                        className="mx-0.5"
-                        animate={{ opacity: step > s.n ? 1 : 0.4 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        <ChevronRight size={12} className="text-gray-300" />
-                      </motion.div>
-                    )}
-                  </React.Fragment>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </motion.header>
-
       <div className="relative z-10">
         <AnimatePresence mode="wait">
 
@@ -278,7 +246,7 @@ const PortfolioBuilder: React.FC = () => {
               className="overflow-x-hidden"
             >
               {/* Hero */}
-              <section className="max-w-6xl mx-auto px-6 pt-20 pb-16">
+              <section className="max-w-6xl mx-auto px-6 pt-36 pb-16">
                 <div className="grid lg:grid-cols-2 gap-16 items-center min-h-[80vh]">
 
                   {/* Left — staggered text reveal */}
@@ -363,6 +331,15 @@ const PortfolioBuilder: React.FC = () => {
                         </div>
                       ))}
                     </motion.div>
+
+                    <div className="mt-10 grid sm:grid-cols-2 gap-3 max-w-xl">
+                      {builderFeatures.map((feature) => (
+                        <div key={feature.title} className="rounded-2xl border border-gray-200 bg-white/80 backdrop-blur-sm p-4 shadow-sm">
+                          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-500">{feature.title}</div>
+                          <div className="mt-2 text-sm text-gray-600 leading-6">{feature.desc}</div>
+                        </div>
+                      ))}
+                    </div>
                   </motion.div>
 
                   {/* Right — floating cards */}
@@ -628,7 +605,7 @@ const PortfolioBuilder: React.FC = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -32 }}
               transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
-              className="max-w-6xl mx-auto px-6 py-10"
+              className="max-w-6xl mx-auto px-6 pt-36 pb-10"
             >
               <FadeSection className="mb-8">
                 <p className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-1.5">Step 2 of 3</p>
@@ -965,7 +942,7 @@ const PortfolioBuilder: React.FC = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -32 }}
               transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
-              className="max-w-6xl mx-auto px-6 py-10"
+              className="max-w-6xl mx-auto px-6 pt-36 pb-10"
             >
               <FadeSection className="mb-10">
                 <p className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-1.5">Step 3 of 3</p>
@@ -1044,6 +1021,30 @@ const PortfolioBuilder: React.FC = () => {
                   </motion.div>
                 ))}
               </motion.div>
+
+              <div className="mb-10 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
+                <div className="rounded-[2rem] border border-gray-200 bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-purple-600 mb-4">Requirements</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {requiredChecklist.map((item) => (
+                      <div key={item} className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-700 flex items-center gap-3">
+                        <span className="w-2.5 h-2.5 rounded-full bg-purple-500 shrink-0" />
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[2rem] border border-purple-200 bg-gradient-to-br from-purple-50 to-white p-6 shadow-[0_8px_30px_rgba(124,58,237,0.08)]">
+                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-purple-600 mb-4">More features</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {['Share link', 'Portfolio preview', 'Template swap', 'Resume upload', 'Project gallery', 'Social proof'].map((item) => (
+                      <div key={item} className="rounded-2xl border border-white bg-white px-4 py-3 text-sm font-semibold text-gray-800 shadow-sm">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
               {/* Sticky CTA */}
               <div className="sticky bottom-0 z-30">

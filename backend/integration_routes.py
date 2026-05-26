@@ -498,7 +498,11 @@ Good luck in the next round!"""
 async def create_institution_profile(profile: dict, user: dict = Depends(get_auth_user)):
     """Saves a new institution profile to MongoDB. Requires authentication."""
     from db import institutions_col
-    inst_id = str(profile.get("institution_id", "unknown")).strip()
+
+    # Always use the authenticated user's institution_id as source of truth
+    inst_id = str(user.get("institution_id") or "").strip()
+    if not inst_id:
+        raise HTTPException(status_code=400, detail="User profile does not have an institution_id")
 
     if not profile.get("name") or not str(profile.get("name", "")).strip():
         raise HTTPException(status_code=400, detail="Institution name is required")
@@ -524,6 +528,11 @@ async def create_institution_profile(profile: dict, user: dict = Depends(get_aut
     profile["institution_id"] = inst_id 
     profile["updated_at"] = datetime.utcnow()
 
+    # Remove empty fields that have unique sparse indexes to avoid duplicate key errors
+    for key in ("email", "name"):
+        if key in profile and not profile[key]:
+            del profile[key]
+
     if existing:
         await institutions_col.update_one(
             {"_id": existing["_id"]},
@@ -546,6 +555,10 @@ async def get_institution_profile(institution_id: str, user: dict = Depends(get_
         user_email = str(user.get("email") or "").strip().lower()
         if user_email:
             profile = await institutions_col.find_one({"email": user_email})
+    if not profile:
+        user_inst_id = str(user.get("institution_id") or "").strip()
+        if user_inst_id and user_inst_id != institution_id:
+            profile = await institutions_col.find_one({"institution_id": user_inst_id})
         # Don't return fallback - return 404 to force proper institution setup
         raise HTTPException(status_code=404, detail="Institution profile not found. Please complete institution setup.")
     

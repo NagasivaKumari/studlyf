@@ -1,5 +1,6 @@
 // Studlyf Engineering Protocol - Core Routing Engine
-import React, { Suspense, useEffect, lazy, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, lazy, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { HashRouter as Router, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 
 import Navigation from './components/Navigation';
@@ -39,6 +40,7 @@ import Checkout from './pages/Checkout';
 import MyCourses from './pages/MyCourses';
 import CareerOnboarding from './pages/CareerOnboarding';
 import CoursesOverview from './pages/CoursesOverview';
+import PublicProfile from './pages/PublicProfile';
 import TrackDetail from './pages/TrackDetail';
 import EnrollmentFlow from './pages/EnrollmentFlow';
 import StackPage from './pages/StackPage';
@@ -47,11 +49,17 @@ import LinkedListPage from './pages/LinkedListPage';
 import BSTPage from './pages/BSTPage';
 import HashTablePage from './pages/HashTablePage';
 import AITools from './pages/AITools';
+import StudOTT from './pages/StudOTT';
+import StudHub from './pages/StudHub';
+import StudentDiscounts from './pages/StudentDiscounts';
+import StudentSchemes from './pages/StudentSchemes';
+import FeaturePreview from './pages/FeaturePreview';
 import InstitutionDashboard from './pages/institution-dashboard/InstitutionDashboard';
 import RoleFixer from './RoleFixer';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
+
 
 import OpportunitiesList from './pages/opportunities/OpportunitiesList';
 import OpportunityDetails from './pages/opportunities/OpportunityDetails';
@@ -72,6 +80,9 @@ import EnquiryForm from './components/EnquiryForm';
 import ResourceCenter from './components/ResourceCenter';
 import Testimonials from './components/Testimonials';
 import Impact from './components/Impact';
+import Achievements from './components/Achievements';
+import RightHoverPanel from './components/RightHoverPanel';
+import SplashScreen from './components/SplashScreen';
 
 // Admin Pages
 import AdminLayout from './pages/admin/layout/AdminLayout';
@@ -140,6 +151,7 @@ const App: React.FC = () => {
   // Global Redirect Logic
   useEffect(() => {
     if (loading) return;
+    if (!pathname) return;
 
     console.log('[AuthDebug] Role:', role, 'Path:', pathname);
 
@@ -409,8 +421,25 @@ const App: React.FC = () => {
             />
 
 
+            <Route path="/about" element={<About />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/feature-preview/:id" element={<PublicRoute><FeaturePreview /></PublicRoute>} />
+            <Route path="/login" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
+            <Route path="/signup" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
+            <Route path="/judge-invitation" element={<JudgeInvitation />} />
+            <Route path="/ai-tools" element={<AITools />} />
+            <Route path="/studott" element={<StudOTT />} />
+            <Route path="/studhub" element={<StudHub />} />
+            <Route path="/student-discounts" element={<StudentDiscounts />} />
+            <Route path="/student-schemes" element={<StudentSchemes />} />
+            <Route path="/verify/:id" element={<CertificateVerification />} />
+            <Route path="/fix-role" element={<RoleFixer />} />
+            <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+            <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+            <Route path="/verify-email" element={<PublicRoute><VerifyEmail /></PublicRoute>} />
             <Route path="/dashboard/learner" element={<ProtectedRoute><DashboardHome /></ProtectedRoute>} />
             <Route path="/dashboard/profile" element={<ProtectedRoute><LearnerDashboard /></ProtectedRoute>} />
+            <Route path="/profile/:userId" element={<PublicProfile />} />
             <Route path="/dashboard/partner" element={<ProtectedRoute><PartnerDashboard /></ProtectedRoute>} />
             <Route path="/dashboard/my-courses" element={<ProtectedRoute><MyCourses /></ProtectedRoute>} />
 
@@ -436,17 +465,7 @@ const App: React.FC = () => {
             {/* Evaluation */}
             <Route path="/evaluate/:token" element={<EvaluationPage />} />
 
-            {/* Auth */}
-            <Route path="/login" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
-            <Route path="/signup" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
-            <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
-            <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
-            <Route path="/verify-email" element={<PublicRoute><VerifyEmail /></PublicRoute>} />
-
             {/* Misc */}
-            <Route path="/about" element={<About />} />
-            <Route path="/blog" element={<Blog />} />
-            <Route path="/judge-invitation" element={<JudgeInvitation />} />
             <Route path="/goal-selector" element={<ProtectedRoute><GoalSelector /></ProtectedRoute>} />
             <Route path="/ai-tools" element={<AITools />} />
             <Route path="/fix-role" element={<RoleFixer />} />
@@ -502,6 +521,8 @@ const App: React.FC = () => {
         </Suspense>
       </main>
 
+      <RightHoverPanel />
+
       {isHome && (
         <>
           <Impact />
@@ -515,20 +536,40 @@ const App: React.FC = () => {
   );
 };
 
-const AppWrapper = () => (
-  <HeroUIProvider>
-    <Router
-      future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
-      }}
-    >
-      <AuthProvider>
-        <ScrollToTop />
-        <App />
-      </AuthProvider>
-    </Router>
-  </HeroUIProvider>
-);
+const AppWrapper: React.FC = () => {
+  const [showSplash, setShowSplash] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('studlyf_splash_shown') !== '1';
+    } catch (e) {
+      return true;
+    }
+  });
+
+  const handleSplashFinish = () => {
+    try { sessionStorage.setItem('studlyf_splash_shown', '1'); } catch (e) {}
+    setShowSplash(false);
+  };
+
+  return (
+    <HeroUIProvider>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthProvider>
+          <ScrollToTop />
+          {showSplash ? (
+            <SplashScreen duration={7500} onFinish={handleSplashFinish} />
+          ) : (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6 }}
+            >
+              <App />
+            </motion.div>
+          )}
+        </AuthProvider>
+      </Router>
+    </HeroUIProvider>
+  );
+};
 
 export default AppWrapper;
