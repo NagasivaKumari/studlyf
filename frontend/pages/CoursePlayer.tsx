@@ -13,7 +13,7 @@ import {
   CheckCircle2, Menu, X, BookOpen, MessageCircle, StickyNote,
   AlignLeft, Code, Award, Trophy, ShieldAlert, Link, AlertTriangle
 } from 'lucide-react';
-import { GENERATIVE_AI_CURRICULUM } from '../data/courseCurriculum';
+import { GFG_CURRICULUM_DATA } from '../data/gfgCurriculumData';
 
 /* ═══════ Types ═══════ */
 interface Lesson {
@@ -56,9 +56,9 @@ const extractCourseId = (slug?: string) => {
 };
 
 const getLessonLabel = (type: LessonType): string => {
-  if (type === 'overview') return 'Module Overview';
-  if (type === 'text' || type === 'theory') return 'Reading Material';
-  if (type === 'practice_quiz') return 'Practice Quiz';
+  if (type === 'overview') return 'Overview';
+  if (type === 'text' || type === 'theory') return 'Topic Content';
+  if (type === 'practice_quiz') return 'Practice Checkpoint';
   return 'Graded Assignment';
 };
 
@@ -67,125 +67,6 @@ const DUMMY_TRANSCRIPT: { time: string; text: string }[] = [
   { time: "0:30", text: "In this lesson, we will focus on core written material." },
   { time: "1:00", text: "Please review the notes and complete the quizzes to unlock the next steps." }
 ];
-
-/* ═══════ Coursera Content Database ═══════ */
-const COURSE_CONTENT_DB: Record<string, any> = {
-  "0": {
-    overview: `### AI Foundations Overview\n\n${GENERIC_OVERVIEW('AI Foundations')}`,
-    reading: `### AI Foundations Reading\n\n${GENERIC_READING('AI Foundations')}`,
-    practice: [
-      {
-        question: "Placeholder practice question for AI Foundations?",
-        options: ["Option A", "Option B", "Option C", "Option D"],
-        correct: 0,
-        explanation: "This is a placeholder practice question."
-      }
-    ],
-    graded: [
-      {
-        question: "Placeholder graded question for AI Foundations?",
-        options: ["Option A", "Option B", "Option C", "Option D"],
-        correct: 0,
-        explanation: "This is a placeholder graded question."
-      }
-    ]
-  },
-  "1": {
-    overview: `### Prompt Mastery Overview\n\n${GENERIC_OVERVIEW('Prompt Mastery')}`,
-    reading: `### Prompt Mastery Reading\n\n${GENERIC_READING('Prompt Mastery')}`,
-    practice: [
-      {
-        question: "Placeholder practice question for Prompt Mastery?",
-        options: ["Option A", "Option B", "Option C", "Option D"],
-        correct: 0,
-        explanation: "This is a placeholder practice question."
-      }
-    ],
-    graded: [
-      {
-        question: "Placeholder graded question for Prompt Mastery?",
-        options: ["Option A", "Option B", "Option C", "Option D"],
-        correct: 0,
-        explanation: "This is a placeholder graded question."
-      }
-    ]
-  },
-  "2": {
-    overview: `### AI Product Workflows Overview\n\n${GENERIC_OVERVIEW('AI Product Workflows')}`,
-    reading: `### AI Product Workflows Reading\n\n${GENERIC_READING('AI Product Workflows')}`,
-    practice: [
-      {
-        question: "Placeholder practice question for AI Product Workflows?",
-        options: ["Option A", "Option B", "Option C", "Option D"],
-        correct: 0,
-        explanation: "This is a placeholder practice question."
-      }
-    ],
-    graded: [
-      {
-        question: "Placeholder graded question for AI Product Workflows?",
-        options: ["Option A", "Option B", "Option C", "Option D"],
-        correct: 0,
-        explanation: "This is a placeholder graded question."
-      }
-    ]
-  },
-  "3": {
-    overview: `### Hands-On AI Projects Overview\n\n${GENERIC_OVERVIEW('Hands-On AI Projects')}`,
-    reading: `### Hands-On AI Projects Reading\n\n${GENERIC_READING('Hands-On AI Projects')}`,
-    practice: [
-      {
-        question: "Placeholder practice question for Hands-On AI Projects?",
-        options: ["Option A", "Option B", "Option C", "Option D"],
-        correct: 0,
-        explanation: "This is a placeholder practice question."
-      }
-    ],
-    graded: [
-      {
-        question: "Placeholder graded question for Hands-On AI Projects?",
-        options: ["Option A", "Option B", "Option C", "Option D"],
-        correct: 0,
-        explanation: "This is a placeholder graded question."
-      }
-    ]
-  },
-  "4": {
-    overview: `### Job-ready Portfolio Overview\n\n${GENERIC_OVERVIEW('Job-ready Portfolio')}`,
-    reading: `### Job-ready Portfolio Reading\n\n${GENERIC_READING('Job-ready Portfolio')}`,
-    practice: [
-      {
-        question: "Placeholder practice question for Job-ready Portfolio?",
-        options: ["Option A", "Option B", "Option C", "Option D"],
-        correct: 0,
-        explanation: "This is a placeholder practice question."
-      }
-    ],
-    graded: [
-      {
-        question: "Placeholder graded question for Job-ready Portfolio?",
-        options: ["Option A", "Option B", "Option C", "Option D"],
-        correct: 0,
-        explanation: "This is a placeholder graded question."
-      }
-    ]
-  }
-};
-
-/* Helper functions to generate overview and reading content */
-function GENERIC_OVERVIEW(moduleTitle) {
-  const mod = GENERATIVE_AI_CURRICULUM.find(m => m.title === moduleTitle);
-  if (!mod) return '';
-  return `${mod.title}\n\n${mod.description}\n\n**Duration:** ${mod.duration}`;
-}
-
-function GENERIC_READING(moduleTitle) {
-  const mod = GENERATIVE_AI_CURRICULUM.find(m => m.title === moduleTitle);
-  if (!mod) return '';
-  const lessons = mod.lessons.map(l => `- ${l}`).join('\n');
-  const topics = mod.topics.map(t => `- ${t}`).join('\n');
-  return `#### Lessons\n${lessons}\n\n#### Topics\n${topics}`;
-}
 
 /* ═══════ Component ═══════ */
 /* ═══════ Component ═══════ */
@@ -251,10 +132,16 @@ const CoursePlayer: React.FC = () => {
   const buildLessons = (mods: Module[]): FlatLesson[] => {
     const list: FlatLesson[] = [];
     mods.forEach((mod, i) => {
-      list.push({ moduleIndex: i, lessonIndex: 0, type: 'overview', title: 'Module Overview' });
-      list.push({ moduleIndex: i, lessonIndex: 1, type: 'text', title: 'Reading Material' });
-      list.push({ moduleIndex: i, lessonIndex: 2, type: 'practice_quiz', title: 'Practice Quiz' });
-      list.push({ moduleIndex: i, lessonIndex: 3, type: 'graded_quiz', title: 'Graded Quiz' });
+      if (mod.lessons) {
+        mod.lessons.forEach((les, lesIdx) => {
+          list.push({
+            moduleIndex: i,
+            lessonIndex: lesIdx,
+            type: les.type as LessonType,
+            title: les.title
+          });
+        });
+      }
     });
     
     // Add Mini Project (Capstone)
@@ -290,27 +177,28 @@ const CoursePlayer: React.FC = () => {
 
       let fetched = Array.isArray(data) ? data : [];
       
-      // Enforce virtual 4-step Coursera schema inside CoursePlayer state
-      const formatted = fetched.map((mod: any) => ({
-        ...mod,
-        lessons: [
-          { type: 'overview', title: 'Module Overview — What You\'ll Learn' },
-          { type: 'text', title: 'Core Reading — Core Content' },
-          { type: 'practice_quiz', title: 'Practice Quiz — Check Understanding' },
-          { type: 'graded_quiz', title: 'Graded Assignment — Pass to Unlock' }
-        ]
-      }));
+      // Enforce the dynamic subtopics schema using the imported GFG_CURRICULUM_DATA
+      const formatted = fetched.map((mod: any, i: number) => {
+        const curChapter = GFG_CURRICULUM_DATA[i] || GFG_CURRICULUM_DATA[i % GFG_CURRICULUM_DATA.length];
+        return {
+          ...mod,
+          lessons: curChapter.topics.map(t => ({
+            type: t.type,
+            title: t.title
+          }))
+        };
+      });
 
-      // Initialize completedSteps from backend progress (Backwards Compatibility)
+      // Initialize completedSteps from backend progress
       const initialCompleted: Record<string, boolean> = {};
       fetched.forEach((mod: any, modIdx: number) => {
         const p = mod.progress;
         if (p) {
           if (p.status === 'completed') {
-            initialCompleted[`${modIdx}_0`] = true;
-            initialCompleted[`${modIdx}_1`] = true;
-            initialCompleted[`${modIdx}_2`] = true;
-            initialCompleted[`${modIdx}_3`] = true;
+            const curChapter = GFG_CURRICULUM_DATA[modIdx] || GFG_CURRICULUM_DATA[modIdx % GFG_CURRICULUM_DATA.length];
+            curChapter.topics.forEach((_, tIdx) => {
+              initialCompleted[`${modIdx}_${tIdx}`] = true;
+            });
           } else {
             p.completed_lessons?.forEach((idxStr: string) => {
               initialCompleted[`${modIdx}_${idxStr}`] = true;
@@ -318,10 +206,12 @@ const CoursePlayer: React.FC = () => {
             if (p.theory_completed) {
               initialCompleted[`${modIdx}_0`] = true;
               initialCompleted[`${modIdx}_1`] = true;
-            }
-            if (p.quiz_score >= 70) {
               initialCompleted[`${modIdx}_2`] = true;
               initialCompleted[`${modIdx}_3`] = true;
+            }
+            if (p.quiz_score >= 70) {
+              initialCompleted[`${modIdx}_4`] = true;
+              initialCompleted[`${modIdx}_5`] = true;
             }
           }
         }
@@ -367,14 +257,16 @@ const CoursePlayer: React.FC = () => {
     }
     setModuleDetails(data);
     
-    // Fetch DB Content questions counts
-    const contentDb = COURSE_CONTENT_DB[activeModuleIndex.toString()] || COURSE_CONTENT_DB[(activeModuleIndex % 3).toString()];
-    const gradedQs = contentDb?.graded || [];
+    // Fetch dynamic questions count from the current chapter topic
+    const activeChapter = GFG_CURRICULUM_DATA[activeModuleIndex] || GFG_CURRICULUM_DATA[activeModuleIndex % GFG_CURRICULUM_DATA.length];
+    const quizTopic = activeChapter?.topics?.find(t => t.type === 'graded_quiz');
+    const gradedQs = quizTopic?.graded || [];
     setQuizAnswers(gradedQs.map(() => []));
     setCurrentQuizQ(0);
     
     // Check if previously passed
-    if (completedSteps[`${activeModuleIndex}_3`]) {
+    const gradedIdx = activeChapter?.topics?.findIndex(t => t.type === 'graded_quiz') ?? 5;
+    if (completedSteps[`${activeModuleIndex}_${gradedIdx}`]) {
       setQuizResult({ score: 100, passed: true });
     } else {
       setQuizResult(null);
@@ -413,10 +305,12 @@ const CoursePlayer: React.FC = () => {
     }
   };
 
+  const activeChapterData = GFG_CURRICULUM_DATA[activeModuleIndex] || GFG_CURRICULUM_DATA[activeModuleIndex % GFG_CURRICULUM_DATA.length];
+  const activeTopicData = activeChapterData?.topics?.[activeLessonIndex];
+
   /* ── Graded Quiz Submission ── */
   const handleQuizSubmit = async () => {
-    const contentDb = COURSE_CONTENT_DB[activeModuleIndex.toString()] || COURSE_CONTENT_DB[(activeModuleIndex % 3).toString()];
-    const questions = contentDb?.graded || [];
+    const questions = activeTopicData?.graded || [];
     
     let correct = 0;
     questions.forEach((q: any, i: number) => {
@@ -427,19 +321,20 @@ const CoursePlayer: React.FC = () => {
     });
 
     const score = Math.round((correct / Math.max(questions.length, 1)) * 100);
-    const passed = score >= 70; // 70% threshold typical of Coursera
+    const passed = score >= 70; // 70% threshold
 
     setQuizResult({ score, passed });
 
     if (passed) {
       // Mark as complete in completedSteps
-      const stepKey = `${activeModuleIndex}_3`;
+      const stepKey = `${activeModuleIndex}_${activeLessonIndex}`;
       const newCompleted = { ...completedSteps, [stepKey]: true };
       setCompletedSteps(newCompleted);
 
       // Save to database progress
+      const numLessons = modules[activeModuleIndex]?.lessons?.length || 6;
       const completedIndices: string[] = [];
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < numLessons; i++) {
         if (newCompleted[`${activeModuleIndex}_${i}`]) {
           completedIndices.push(i.toString());
         }
@@ -449,11 +344,11 @@ const CoursePlayer: React.FC = () => {
         quiz_score: score,
         quiz_answers: quizAnswers,
         completed_lessons: completedIndices,
-        status: completedIndices.length === 4 ? 'completed' : 'unlocked'
+        status: completedIndices.length === numLessons ? 'completed' : 'unlocked'
       });
 
-      // Show module completion prompt if all 4 lessons are complete
-      if (completedIndices.length === 4) {
+      // Show module completion prompt if all lessons are complete
+      if (completedIndices.length === numLessons) {
         setTimeout(() => {
           setCompletionPrompt({
             open: true,
@@ -463,6 +358,28 @@ const CoursePlayer: React.FC = () => {
         }, 1200);
       }
     }
+  };
+
+  /* ── Sequential Topic Unlocking check ── */
+  const isLessonLocked = (modIdx: number, lessonIdx: number): boolean => {
+    if (modIdx === -3) {
+      return !completedSteps['capstone'];
+    }
+    if (modIdx === -1) {
+      return !modules.every((_, idx) => isModuleComplete(idx));
+    }
+    
+    // Chapter locking
+    if (modIdx > 0 && !isModuleComplete(modIdx - 1)) {
+      return true;
+    }
+    
+    // Linear topic unlocking
+    if (lessonIdx > 0) {
+      return !completedSteps[`${modIdx}_${lessonIdx - 1}`];
+    }
+    
+    return false;
   };
 
   /* ── Navigation ── */
@@ -479,26 +396,9 @@ const CoursePlayer: React.FC = () => {
     if (currentFlatIndex >= flatLessons.length - 1) return;
     const next = flatLessons[currentFlatIndex + 1];
     
-    // Check if the next step is in a locked module
-    if (next.moduleIndex >= 0) {
-      const isNextModuleLocked = next.moduleIndex > 0 && !isModuleComplete(next.moduleIndex - 1);
-      if (isNextModuleLocked) {
-        alert("The next module is locked. You must complete all stages and pass the Graded Assignment of the current module to unlock it.");
-        return;
-      }
-    } else if (next.moduleIndex === -1) {
-      // Capstone (Mini Project) Lock Check
-      const allModulesDone = modules.every((_, idx) => isModuleComplete(idx));
-      if (!allModulesDone) {
-        alert("The Mini Project is locked. You must complete and pass all modules of the course first!");
-        return;
-      }
-    } else if (next.moduleIndex === -3) {
-      // Result Page Lock Check
-      if (!completedSteps['capstone']) {
-        alert("The Completion page is locked. You must submit your Mini Project GitHub repository to graduate!");
-        return;
-      }
+    if (isLessonLocked(next.moduleIndex, next.lessonIndex)) {
+      alert("This topic is locked. You must complete the current topic first to unlock it!");
+      return;
     }
 
     setActiveModuleIndex(next.moduleIndex);
@@ -524,14 +424,15 @@ const CoursePlayer: React.FC = () => {
 
     const curMod = modules[activeModuleIndex];
     if (curMod) {
+      const numLessons = curMod.lessons?.length || 6;
       const completedIndices: string[] = [];
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < numLessons; i++) {
         if (newCompleted[`${activeModuleIndex}_${i}`]) {
           completedIndices.push(i.toString());
         }
       }
       
-      const isFinishingModule = completedIndices.length === 4;
+      const isFinishingModule = completedIndices.length === numLessons;
       const updates: any = {
         completed_lessons: completedIndices,
         status: isFinishingModule ? 'completed' : 'unlocked'
@@ -564,26 +465,26 @@ const CoursePlayer: React.FC = () => {
   };
 
   const isModuleComplete = (modIdx: number): boolean => {
-    if (modIdx < 0) return false;
-    return (
-      !!completedSteps[`${modIdx}_0`] &&
-      !!completedSteps[`${modIdx}_1`] &&
-      !!completedSteps[`${modIdx}_2`] &&
-      !!completedSteps[`${modIdx}_3`]
-    );
+    if (modIdx < 0 || !modules[modIdx]) return false;
+    const lessons = modules[modIdx].lessons || [];
+    if (!lessons.length) return false;
+    return lessons.every((_, idx) => !!completedSteps[`${modIdx}_${idx}`]);
   };
 
   const getModuleProgressPercent = (modIdx: number): number => {
+    if (modIdx < 0 || !modules[modIdx]) return 0;
+    const lessons = modules[modIdx].lessons || [];
+    if (!lessons.length) return 0;
     let completed = 0;
-    for (let i = 0; i < 4; i++) {
-      if (completedSteps[`${modIdx}_${i}`]) completed++;
-    }
-    return Math.round((completed / 4) * 100);
+    lessons.forEach((_, idx) => {
+      if (completedSteps[`${modIdx}_${idx}`]) completed++;
+    });
+    return Math.round((completed / lessons.length) * 100);
   };
 
   const isCurrentLessonComplete = isLessonComplete(activeModuleIndex, activeStage, activeLessonIndex);
   
-  // Dynamic Coursera Course Completion Progress Bar
+  // Dynamic Course Completion Progress Bar
   const overallProgress = (() => {
     if (!flatLessons.length) return 0;
     const trackableLessons = flatLessons.filter(l => l.type !== 'result');
@@ -610,7 +511,13 @@ const CoursePlayer: React.FC = () => {
         : 'Loading...';
 
   const activeContentDb = modules.length > 0 && activeModuleIndex >= 0
-    ? (COURSE_CONTENT_DB[activeModuleIndex.toString()] || COURSE_CONTENT_DB[(activeModuleIndex % 3).toString()])
+    ? {
+        overview: activeTopicData?.content || `### ${activeTopicData?.title}\n\nNo overview content loaded.`,
+        reading: activeTopicData?.content || `### ${activeTopicData?.title}\n\nNo reading content loaded.`,
+        practice: activeTopicData?.practice || [],
+        graded: activeTopicData?.graded || [],
+        resources: []
+      }
     : null;
 
   if (loading) return (
@@ -676,7 +583,7 @@ const CoursePlayer: React.FC = () => {
                     <div className="cp-module-info">
                       <div className="cp-module-name">{mod.title}</div>
                       <div className="cp-module-meta">
-                        {`${mod.estimated_time || '1 hour'} · 4 steps`}
+                        {`${mod.estimated_time || '1 hour'} · ${mod.lessons?.length || 6} steps`}
                       </div>
                     </div>
                   </div>
@@ -695,12 +602,18 @@ const CoursePlayer: React.FC = () => {
                       const isActive = modIdx === activeModuleIndex && activeLessonIndex === lessonIdx;
                       const type = les.type as LessonType;
                       const done = !!completedSteps[`${modIdx}_${lessonIdx}`];
+                      const locked = isLessonLocked(modIdx, lessonIdx);
                       const Icon = (type === 'overview' || type === 'text' || type === 'theory') ? FileText : HelpCircle;
                       return (
                         <button
                           key={lessonIdx}
-                          className={`cp-lesson-item ${isActive ? 'active' : ''} ${done ? 'completed' : ''}`}
+                          className={`cp-lesson-item ${isActive ? 'active' : ''} ${done ? 'completed' : ''} ${locked ? 'locked' : ''}`}
+                          style={{ opacity: locked ? 0.5 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
                           onClick={() => {
+                            if (locked) {
+                              alert("This topic is locked. You must complete the previous topic first!");
+                              return;
+                            }
                             setActiveModuleIndex(modIdx);
                             setActiveLessonIndex(lessonIdx);
                             setActiveStage(type);
