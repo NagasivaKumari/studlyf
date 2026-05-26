@@ -6,7 +6,7 @@ import InteractiveCreature from './InteractiveCreature';
 
 const SignupBranding: React.FC = () => {
     return (
-        <div className="w-full flex items-center justify-center relative overflow-hidden h-full py-8">
+        <div className="w-full flex items-center justify-center relative overflow-hidden h-full py-4">
             {/* Background Constellation Effect */}
             <div className="absolute inset-0 z-0">
                 <div className="absolute top-1/4 left-1/4 w-px h-px bg-white rounded-full shadow-[0_0_15px_1px_rgba(255,255,255,0.8)] animate-pulse" />
@@ -14,116 +14,76 @@ const SignupBranding: React.FC = () => {
                 <div className="absolute bottom-1/4 left-1/2 w-px h-px bg-white rounded-full shadow-[0_0_10px_1px_rgba(255,255,255,0.4)] animate-pulse delay-1000" />
             </div>
 
-            <div className="relative z-10 w-full max-w-sm flex flex-col items-center justify-between h-full gap-8">
+            <div className="relative z-10 w-full max-w-sm flex flex-col items-center justify-between h-full gap-4">
 
                 {/* 1. TOP: Main Visual: Clean Circular Badge Layout */}
-                <div className="w-full relative h-[420px] flex items-center justify-center flex-grow">
+                <div className="w-full relative h-[360px] flex items-center justify-center flex-grow">
                     {/* Center Avatar/Badge */}
-                    <motion.div
-                        initial={{ rotate: -15, scale: 0.8 }}
-                        animate={{
-                            rotate: [0, 5, -5, 0],
-                            y: [0, -10, 10, 0]
-                        }}
-                        transition={{
-                            duration: 15,
-                            repeat: Infinity,
-                            ease: "easeInOut"
-                        }}
-                        className="relative z-30 group"
-                    >
-                        <InteractiveCreature variant="purple" className="scale-[0.9] origin-center transition-all group-hover:scale-[1]" />
-                    </motion.div>
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-auto">
+                        <motion.div
+                            initial={{ rotate: -15, scale: 0.8 }}
+                            animate={{
+                                rotate: [0, 5, -5, 0],
+                                y: [0, -8, 8, 0]
+                            }}
+                            transition={{
+                                duration: 15,
+                                repeat: Infinity,
+                                ease: "easeInOut"
+                            }}
+                            className="group"
+                        >
+                            <InteractiveCreature variant="purple" className="scale-[0.85] origin-center transition-all group-hover:scale-[0.95]" />
+                        </motion.div>
+                    </div>
 
-                    {/* Organized Skill Badges - Clean Grid Layout */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        {/* Top Row */}
-                        <div className="absolute top-0 flex gap-6 items-center justify-center w-full">
-                            {[
-                                { icon: Zap, color: 'purple', label: "Elite" },
-                                { icon: Trophy, color: 'indigo', label: "Win" },
-                                { icon: Sparkles, color: 'purple', label: "Growth" }
-                            ].map((p, i) => (
-                                <motion.div
-                                    key={p.label}
-                                    initial={{ opacity: 0, scale: 0, y: -20 }}
-                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                    transition={{ delay: 0.5 + i * 0.15, type: "spring", stiffness: 100 }}
-                                    whileHover={{ scale: 1.1, y: -4 }}
-                                    className="flex flex-col items-center gap-2.5 p-4 rounded-3xl bg-gradient-to-br from-white/10 to-white/5 border border-white/20 backdrop-blur-md shadow-xl hover:shadow-2xl hover:from-white/15 transition-all"
-                                >
-                                    <p.icon size={18} className={`text-${p.color}-300`} strokeWidth={1.5} />
-                                    <span className="text-[9px] font-black text-white uppercase tracking-[0.15em]">{p.label}</span>
-                                </motion.div>
-                            ))}
-                        </div>
-
-                        {/* Middle Row - Left and Right */}
-                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex items-center justify-between px-0 w-full">
-                            {/* Left */}
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0, x: -20 }}
-                                animate={{ opacity: 1, scale: 1, x: 0 }}
-                                transition={{ delay: 0.8, type: "spring", stiffness: 100 }}
-                                whileHover={{ scale: 1.1, x: -4 }}
-                                className="flex flex-col items-center gap-2.5 p-4 rounded-3xl bg-gradient-to-br from-white/10 to-white/5 border border-white/20 backdrop-blur-md shadow-xl hover:shadow-2xl hover:from-white/15 transition-all"
+                    {/* Organized Skill Badges - Robust Centered Absolute Positioning */}
+                    <div className="absolute inset-0 z-10 pointer-events-none">
+                        {[
+                            { icon: Trophy, color: 'indigo', label: "Win", ox: 0, oy: -125, delay: 0.5 },
+                            { icon: Zap, color: 'purple', label: "Elite", ox: -82, oy: -105, delay: 0.6 },
+                            { icon: Sparkles, color: 'purple', label: "Growth", ox: 82, oy: -105, delay: 0.7 },
+                            { icon: Globe, color: 'indigo', label: "Global", ox: -122, oy: -8, delay: 0.8 },
+                            { icon: Target, color: 'purple', label: "Focus", ox: 122, oy: -8, delay: 0.9 },
+                            { icon: ShieldCheck, color: 'indigo', label: "Verified", ox: -52, oy: 85, delay: 1.0 },
+                            { icon: Orbit, color: 'purple', label: "Skills", ox: 52, oy: 85, delay: 1.1 },
+                            { icon: Compass, color: 'indigo', label: "Future", ox: -52, oy: 150, delay: 1.2 },
+                            { icon: Flame, color: 'purple', label: "Hot", ox: 52, oy: 150, delay: 1.3 }
+                        ].map((p) => (
+                            <div
+                                key={p.label}
+                                style={{
+                                    position: 'absolute',
+                                    left: `calc(50% + ${p.ox}px)`,
+                                    top: `calc(50% + ${p.oy}px)`,
+                                    transform: 'translate(-50%, -50%)',
+                                }}
+                                className="pointer-events-auto"
                             >
-                                <Globe size={18} className="text-indigo-300" strokeWidth={1.5} />
-                                <span className="text-[9px] font-black text-white uppercase tracking-[0.15em]">Global</span>
-                            </motion.div>
-
-                            {/* Right */}
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0, x: 20 }}
-                                animate={{ opacity: 1, scale: 1, x: 0 }}
-                                transition={{ delay: 0.95, type: "spring", stiffness: 100 }}
-                                whileHover={{ scale: 1.1, x: 4 }}
-                                className="flex flex-col items-center gap-2.5 p-4 rounded-3xl bg-gradient-to-br from-white/10 to-white/5 border border-white/20 backdrop-blur-md shadow-xl hover:shadow-2xl hover:from-white/15 transition-all"
-                            >
-                                <Target size={18} className="text-purple-300" strokeWidth={1.5} />
-                                <span className="text-[9px] font-black text-white uppercase tracking-[0.15em]">Focus</span>
-                            </motion.div>
-                        </div>
-
-                        {/* Bottom Row - Lower Middle */}
-                        <div className="absolute bottom-[90px] flex gap-6 items-center justify-center w-full">
-                            {[
-                                { icon: ShieldCheck, color: 'indigo', label: "Verified" },
-                                { icon: Orbit, color: 'purple', label: "Skills" }
-                            ].map((p, i) => (
                                 <motion.div
-                                    key={p.label}
-                                    initial={{ opacity: 0, scale: 0, y: 20 }}
-                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                    transition={{ delay: 1.1 + i * 0.15, type: "spring", stiffness: 100 }}
-                                    whileHover={{ scale: 1.1, y: 4 }}
-                                    className="flex flex-col items-center gap-2.5 p-4 rounded-3xl bg-gradient-to-br from-white/10 to-white/5 border border-white/20 backdrop-blur-md shadow-xl hover:shadow-2xl hover:from-white/15 transition-all"
+                                    initial={{ opacity: 0, scale: 0 }}
+                                    animate={{
+                                        opacity: 1,
+                                        scale: 1,
+                                        y: [0, -4, 4, 0]
+                                    }}
+                                    whileHover={{ scale: 1.1, filter: "brightness(1.1)" }}
+                                    transition={{
+                                        opacity: { delay: p.delay, duration: 0.4 },
+                                        scale: { delay: p.delay, type: "spring", stiffness: 100, damping: 15 },
+                                        y: {
+                                            repeat: Infinity,
+                                            duration: 4 + Math.random() * 2,
+                                            ease: "easeInOut"
+                                        }
+                                    }}
+                                    className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/20 backdrop-blur-md shadow-xl hover:shadow-2xl hover:from-white/15 transition-all cursor-pointer"
                                 >
-                                    <p.icon size={18} className={`text-${p.color}-300`} strokeWidth={1.5} />
-                                    <span className="text-[9px] font-black text-white uppercase tracking-[0.15em]">{p.label}</span>
+                                    <p.icon size={15} className={`text-${p.color}-300`} strokeWidth={1.5} />
+                                    <span className="text-[8.5px] font-black text-white uppercase tracking-[0.15em]">{p.label}</span>
                                 </motion.div>
-                            ))}
-                        </div>
-
-                        {/* Bottom Row - Lower */}
-                        <div className="absolute bottom-0 flex gap-6 items-center justify-center w-full">
-                            {[
-                                { icon: Compass, color: 'indigo', label: "Future" },
-                                { icon: Flame, color: 'purple', label: "Hot" }
-                            ].map((p, i) => (
-                                <motion.div
-                                    key={p.label}
-                                    initial={{ opacity: 0, scale: 0, y: 20 }}
-                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                    transition={{ delay: 1.4 + i * 0.15, type: "spring", stiffness: 100 }}
-                                    whileHover={{ scale: 1.1, y: 4 }}
-                                    className="flex flex-col items-center gap-2.5 p-4 rounded-3xl bg-gradient-to-br from-white/10 to-white/5 border border-white/20 backdrop-blur-md shadow-xl hover:shadow-2xl hover:from-white/15 transition-all"
-                                >
-                                    <p.icon size={18} className={`text-${p.color}-300`} strokeWidth={1.5} />
-                                    <span className="text-[9px] font-black text-white uppercase tracking-[0.15em]">{p.label}</span>
-                                </motion.div>
-                            ))}
-                        </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
