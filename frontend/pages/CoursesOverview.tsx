@@ -129,19 +129,20 @@ const DarkCourseCard = ({
 };
 
 const carouselCards = [
-  { id: 1, title: 'AI & Machine Learning', subtext: 'Build intelligent systems', gradient: 'from-[#6C2BFF] to-[#8B5CF6]', icon: BrainCircuit },
-  { id: 2, title: 'Full Stack Development', subtext: 'Build modern web apps', gradient: 'from-[#4338CA] to-[#6C2BFF]', icon: Layout },
-  { id: 3, title: 'Product & Startups', subtext: 'Build products that scale', gradient: 'from-[#EC4899] to-[#8B5CF6]', icon: Rocket },
-  { id: 4, title: 'UI / UX Design', subtext: 'Design experiences people love', gradient: 'from-[#C084FC] to-[#EC4899]', icon: Monitor },
-  { id: 5, title: 'Data Science & Analytics', subtext: 'Turn data into insights', gradient: 'from-[#3730A3] to-[#8B5CF6]', icon: Database },
+  { id: 1, title: 'AI & Machine Learning', subtext: 'Build intelligent systems', gradient: 'from-[#6C2BFF] to-[#8B5CF6]', icon: BrainCircuit, route: '/roadmaps/ai-ml-engineer' },
+  { id: 2, title: 'Full Stack Development', subtext: 'Build modern web apps', gradient: 'from-[#4338CA] to-[#6C2BFF]', icon: Layout, route: '/roadmaps/frontend-developer' },
+  { id: 3, title: 'Product & Startups', subtext: 'Build products that scale', gradient: 'from-[#EC4899] to-[#8B5CF6]', icon: Rocket, route: '/roadmaps/product-manager' },
+  { id: 4, title: 'UI / UX Design', subtext: 'Design experiences people love', gradient: 'from-[#C084FC] to-[#EC4899]', icon: Monitor, route: '/roadmaps/ui-ux-designer' },
+  { id: 5, title: 'Data Science & Analytics', subtext: 'Turn data into insights', gradient: 'from-[#3730A3] to-[#8B5CF6]', icon: Database, route: '/roadmaps/data-scientist' },
   { id: 6, title: 'Career Growth & Soft Skills', subtext: 'Prepare for placements', gradient: 'from-[#6C2BFF] to-[#EC4899]', icon: TrendingUp },
   { id: 7, title: 'Cybersecurity', subtext: 'Secure digital systems', gradient: 'from-[#312E81] to-[#8B5CF6]', icon: Briefcase },
-  { id: 8, title: 'Cloud & DevOps', subtext: 'Build scalable infrastructure', gradient: 'from-[#4F46E5] to-[#8B5CF6]', icon: Target },
+  { id: 8, title: 'Backend Development', subtext: 'Build scalable servers', gradient: 'from-[#4F46E5] to-[#8B5CF6]', icon: Database, route: '/roadmaps/backend-developer' },
   { id: 9, title: 'Interview & Placement Prep', subtext: 'Crack opportunities confidently', gradient: 'from-[#C084FC] to-[#6C2BFF]', icon: CheckCircle },
 ];
 
 const PremiumExploreCarousel = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -171,7 +172,13 @@ const PremiumExploreCarousel = () => {
                 {carouselCards.slice(slideIndex * 3, slideIndex * 3 + 3).map((card) => (
                   <div 
                     key={card.id} 
-                    className={`relative overflow-hidden rounded-[2rem] p-8 aspect-[4/3] flex flex-col justify-between group cursor-pointer bg-gradient-to-br ${card.gradient} shadow-md hover:shadow-2xl transition-all duration-300 hover:-translate-y-2`}
+                    onClick={() => {
+                      if (card.route) {
+                        navigate(card.route);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className={`relative overflow-hidden rounded-[2rem] p-8 aspect-[4/3] flex flex-col justify-between group cursor-pointer bg-gradient-to-br ${card.gradient} shadow-md hover:shadow-2xl hover:shadow-[#6C2BFF]/30 transition-all duration-300 hover:-translate-y-2`}
                   >
                     <div className="bg-white/20 w-12 h-12 rounded-2xl flex items-center justify-center backdrop-blur-md z-10 shadow-sm border border-white/20">
                       <card.icon className="w-6 h-6 text-white" />
@@ -463,7 +470,7 @@ const CoursesOverview: React.FC = () => {
             <div className="relative rounded-[2rem] shadow-[0_20px_50px_rgba(108,43,255,0.15)] border border-white/50 bg-white p-2">
               <div className="relative rounded-[1.5rem] overflow-hidden">
                 <img 
-                  src="/images/hero_students.png" 
+                  src="/images/course-overview-hero.png" 
                   alt="Collaborative learning" 
                   className="w-full h-auto aspect-[4/3] object-cover"
                 />
@@ -632,7 +639,7 @@ const CoursesOverview: React.FC = () => {
           <div className="bg-[#0F0824] rounded-3xl p-8 md:p-12 flex flex-col md:flex-row items-center gap-10 relative overflow-hidden shadow-2xl">
             <div className="absolute top-0 right-0 w-64 h-64 bg-[#6C2BFF]/20 rounded-full blur-3xl" />
             <img
-              src="/images/satya.jpg"
+              src="/images/OIP.webp"
               alt="Satya Nadella"
               className="w-48 h-48 md:w-64 md:h-64 object-cover rounded-2xl z-10 shadow-lg border border-white/5 bg-[#1A1135]"
             />
