@@ -13,7 +13,6 @@ import {
   CheckCircle2, Menu, X, BookOpen, MessageCircle, StickyNote,
   AlignLeft, Code, Award, Trophy, ShieldAlert, Link, AlertTriangle
 } from 'lucide-react';
-import './CoursePlayerStyles.css';
 
 /* ═══════ Types ═══════ */
 interface Lesson {
