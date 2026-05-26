@@ -23,14 +23,48 @@ const SIDEBAR_ITEMS = [
   { icon: TrendingUp, label: 'Business Studies', id: 'business' },
 ];
 
-const HERO_VIDEO = {
-  title: 'Future of AI Careers in India',
-  desc: 'Join our Founder for an exclusive, cinematic deep-dive into how Generative AI is reshaping the tech landscape, redefining software engineering, and the exact skills you need to stay relevant in the new economy.',
-  url: 'https://www.youtube.com/watch?v=1bRwQVOSynE',
-  category: 'Founder Session',
-  duration: '45 mins',
-  tags: ['AI', 'Career Growth', 'Exclusive']
-};
+const FEATURED_VIDEOS = [
+  {
+    title: 'The Reality of Building an AI Startup',
+    desc: 'Dive into the untold truths of building and scaling a generative AI startup in today\'s hyper-competitive landscape. Unfiltered insights from founders who are in the trenches.',
+    url: 'https://www.youtube.com/watch?v=1bRwQVOSynE',
+    category: 'Startup Secrets',
+    duration: '45 mins',
+    tags: ['AI', 'Startup', 'Exclusive']
+  },
+  {
+    title: 'Mastering System Design in 2026',
+    desc: 'An architectural deep dive into how top tier tech companies are structuring their microservices, streaming pipelines, and data layers for massive global scale.',
+    url: 'https://www.youtube.com/watch?v=b4b8ktEV4Bg',
+    category: 'Engineering Mastery',
+    duration: '32 mins',
+    tags: ['System Design', 'Architecture', 'Advanced']
+  },
+  {
+    title: 'The Psychology of Extreme Productivity',
+    desc: 'Unlocking deep work and flow states. Learn the exact protocols top performers use to manage their time and attention in an era of endless digital distractions.',
+    url: 'https://www.youtube.com/watch?v=5rJ8P1VnZIM',
+    category: 'Deep Work',
+    duration: '18 mins',
+    tags: ['Productivity', 'Focus', 'Mindset']
+  },
+  {
+    title: 'Vibe with AI: The LLM Revolution',
+    desc: 'Understanding the core mechanisms behind large language models and how to leverage prompt engineering as a powerful cognitive extension for your daily workflows.',
+    url: 'https://www.youtube.com/watch?v=zjkBMFhNj_g',
+    category: 'AI Decoded',
+    duration: '52 mins',
+    tags: ['LLMs', 'Research', 'Deep Learning']
+  },
+  {
+    title: 'Designing Next-Gen User Experiences',
+    desc: 'Exploring spatial computing, gesture-based interfaces, and how the physical and digital worlds are seamlessly blending together in modern product design.',
+    url: 'https://www.youtube.com/watch?v=1bRwQVOSynE',
+    category: 'Design Systems',
+    duration: '24 mins',
+    tags: ['UI/UX', 'Product', 'Future']
+  }
+];
 
 interface VideoItem {
   id: string | number;
@@ -173,8 +207,15 @@ const StudOTT: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState('home');
   const [categories, setCategories] = useState<Record<string, CategoryData>>(DEFAULT_CATEGORIES);
   const [showIntro, setShowIntro] = useState(true);
+  const [heroVideo, setHeroVideo] = useState(FEATURED_VIDEOS[0]);
   const introVideoRef = React.useRef<HTMLVideoElement>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Pick a random video on mount
+    const randomVideo = FEATURED_VIDEOS[Math.floor(Math.random() * FEATURED_VIDEOS.length)];
+    setHeroVideo(randomVideo);
+  }, []);
 
   const handleIntroEnd = () => {
     setShowIntro(false);
@@ -202,7 +243,7 @@ const StudOTT: React.FC = () => {
     return () => { isMounted = false; };
   }, [showIntro]);
 
-  const heroThumb = getYouTubeThumbnail(HERO_VIDEO.url);
+  const heroThumb = getYouTubeThumbnail(heroVideo.url);
 
   const scrollRow = (rowId: string, direction: 'left' | 'right') => {
     const container = document.getElementById(`row-${rowId}`);
@@ -284,14 +325,14 @@ const StudOTT: React.FC = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6, ease: "easeInOut" }}
-            className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-6"
+            className="fixed inset-0 z-[9999] bg-black flex items-center justify-center"
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 15 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, transition: { duration: 0.5, ease: "easeOut" } }}
+              initial={{ scale: 1.05, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.5, ease: "easeOut" } }}
               transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
-              className="w-full sm:w-[80%] md:w-[60%] lg:w-[50%] xl:w-[45%] aspect-video relative rounded-2xl md:rounded-3xl overflow-hidden shadow-[0_0_80px_rgba(108,43,255,0.35)] border border-white/10 bg-[#05050A]"
+              className="w-full h-full relative overflow-hidden bg-black"
             >
               <video
                 className="w-full h-full object-cover"
@@ -303,8 +344,7 @@ const StudOTT: React.FC = () => {
                 onError={handleIntroEnd}
                 ref={introVideoRef}
               />
-              <div className="absolute inset-0 ring-1 ring-inset ring-white/10 rounded-2xl md:rounded-3xl pointer-events-none" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#6C2BFF]/10 to-transparent mix-blend-overlay pointer-events-none" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#000000]/80 via-transparent to-transparent pointer-events-none" />
             </motion.div>
           </motion.div>
         )}
@@ -323,20 +363,20 @@ const StudOTT: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4 md:p-10 backdrop-blur-xl"
+            className="fixed inset-0 z-[200] bg-black flex items-center justify-center"
           >
             <button 
               onClick={() => setActiveVideoUrl(null)}
-              className="absolute top-6 right-6 w-12 h-12 bg-white/10 rounded-full flex items-center justify-center hover:bg-white/20 hover:scale-110 transition-all z-[210] border border-white/20 shadow-2xl group"
+              className="absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 sm:w-12 sm:h-12 bg-black/40 rounded-full flex items-center justify-center hover:bg-white/20 hover:scale-110 transition-all z-[210] border border-white/10 shadow-2xl group backdrop-blur-md"
             >
-              <X className="w-6 h-6 text-white group-hover:rotate-90 transition-transform duration-300" />
+              <X className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:rotate-90 transition-transform duration-300" />
             </button>
             <motion.div 
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="w-full max-w-6xl aspect-video bg-[#05050A] rounded-[2rem] overflow-hidden border border-white/10 shadow-[0_0_120px_rgba(108,43,255,0.25)] relative"
+              className="w-full h-full bg-black relative"
             >
               <div className="absolute inset-0 flex items-center justify-center z-0">
                 <div className="w-12 h-12 border-4 border-[#6C2BFF]/30 border-t-[#6C2BFF] rounded-full animate-spin" />
@@ -413,23 +453,23 @@ const StudOTT: React.FC = () => {
                 </div>
                 
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-black text-white leading-[1.05] tracking-tight mb-6 drop-shadow-2xl">
-                  {HERO_VIDEO.title}
+                  {heroVideo.title}
                 </h1>
                 
                 <p className="text-base sm:text-lg text-gray-300 mb-8 max-w-lg leading-relaxed font-medium drop-shadow-md">
-                  {HERO_VIDEO.desc}
+                  {heroVideo.desc}
                 </p>
                 
                 <div className="flex flex-wrap items-center gap-3 mb-10">
-                  {HERO_VIDEO.tags.map(tag => (
+                  {heroVideo.tags.map(tag => (
                     <span key={tag} className="px-3 py-1.5 bg-white/5 border border-white/10 text-gray-300 text-[11px] uppercase tracking-wider font-bold rounded-lg">{tag}</span>
                   ))}
-                  <span className="px-3 py-1.5 bg-white/5 border border-[#6C2BFF]/30 text-[#A88CFF] text-[11px] uppercase tracking-wider font-bold rounded-lg">{HERO_VIDEO.duration}</span>
+                  <span className="px-3 py-1.5 bg-white/5 border border-[#6C2BFF]/30 text-[#A88CFF] text-[11px] uppercase tracking-wider font-bold rounded-lg">{heroVideo.duration}</span>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
                   <button 
-                    onClick={() => setActiveVideoUrl(HERO_VIDEO.url)}
+                    onClick={() => setActiveVideoUrl(heroVideo.url)}
                     className="w-full sm:w-auto flex items-center justify-center gap-2 px-10 py-4 bg-white text-black rounded-xl font-black hover:bg-gray-200 transition-all hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.25)]"
                   >
                     <Play className="w-5 h-5 fill-black" />
@@ -453,7 +493,7 @@ const StudOTT: React.FC = () => {
                 <div className="perspective-1000 w-full h-full">
                   <div 
                     className="relative w-full aspect-video sm:aspect-[16/10] lg:aspect-[16/9] rounded-[2rem] overflow-hidden shadow-[0_20px_80px_rgba(108,43,255,0.25)] border border-white/10 group cursor-pointer transform-gpu hover:rotate-y-[-2deg] hover:rotate-x-[2deg] transition-all duration-700 bg-[#0A0A0F]" 
-                    onClick={() => setActiveVideoUrl(HERO_VIDEO.url)}
+                    onClick={() => setActiveVideoUrl(heroVideo.url)}
                   >
                     <img src={heroThumb} className="w-full h-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-1000" alt="Hero" />
                     

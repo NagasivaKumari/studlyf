@@ -27,8 +27,36 @@ const steps = [
 const StudlyfSteps: React.FC = () => {
   return (
     <section className="py-24 bg-white relative overflow-hidden">
-      {/* Subtle background glow similar to the image */}
-      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-blue-50/40 via-[#6C2BFF]/5 to-pink-50/40 rounded-full blur-[100px] pointer-events-none" />
+      {/* Animated roaming neon background orbs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <motion.div
+          animate={{
+            x: [0, 150, -100, 0],
+            y: [0, -100, 150, 0],
+            scale: [1, 1.2, 0.8, 1],
+          }}
+          transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+          className="absolute -left-[10%] top-[10%] w-[500px] h-[500px] bg-[#6C2BFF]/20 rounded-full blur-[120px] mix-blend-multiply"
+        />
+        <motion.div
+          animate={{
+            x: [0, -150, 100, 0],
+            y: [0, 150, -100, 0],
+            scale: [1, 1.3, 0.9, 1],
+          }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear", delay: 2 }}
+          className="absolute -right-[10%] bottom-[10%] w-[600px] h-[600px] bg-[#EC4899]/20 rounded-full blur-[120px] mix-blend-multiply"
+        />
+        <motion.div
+          animate={{
+            x: [0, 100, -150, 0],
+            y: [0, 150, -150, 0],
+            scale: [1, 1.1, 1.4, 1],
+          }}
+          transition={{ duration: 18, repeat: Infinity, ease: "linear", delay: 5 }}
+          className="absolute left-[30%] top-[40%] w-[400px] h-[400px] bg-cyan-400/20 rounded-full blur-[120px] mix-blend-multiply"
+        />
+      </div>
 
       <div className="max-w-7xl mx-auto px-6 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 lg:gap-8 items-center">
