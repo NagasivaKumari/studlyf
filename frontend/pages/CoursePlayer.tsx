@@ -1327,7 +1327,11 @@ const CoursePlayer: React.FC = () => {
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span>Submitted Project:</span>
-                          <span style={{ color: '#7C3AED', fontWeight: 700, textDecoration: 'underline' }}>{githubLink || 'github.com/repository'}</span>
+                          <a href={githubLink} target="_blank" rel="noreferrer" style={{ color: '#7C3AED', fontWeight: 700, textDecoration: 'underline' }}>{githubLink || 'github.com/repository'}</a>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Deployed URL:</span>
+                          <a href={deployedLink} target="_blank" rel="noreferrer" style={{ color: '#7C3AED', fontWeight: 700, textDecoration: 'underline' }}>{deployedLink || 'N/A'}</a>
                         </div>
                       </div>
                     </div>
