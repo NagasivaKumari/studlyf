@@ -58,6 +58,7 @@ import RoleFixer from './RoleFixer';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
+import RoadmapClone from './pages/RoadmapClone';
 
 import OpportunitiesList from './pages/opportunities/OpportunitiesList';
 import OpportunityDetails from './pages/opportunities/OpportunityDetails';
@@ -476,6 +477,8 @@ const App: React.FC = () => {
             <Route path="/verify-email" element={<PublicRoute><VerifyEmail /></PublicRoute>} />
 
             {/* Misc */}
+            <Route path="/roadmaps" element={<RoadmapClone />} />
+            <Route path="/roadmaps/:roleId" element={<RoadmapClone />} />
             <Route path="/about" element={<About />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/judge-invitation" element={<JudgeInvitation />} />
