@@ -249,10 +249,6 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
                 </button>
 
                 <div className="mt-2 text-center">
-                    <button type="button" onClick={() => setShowTerms(true)} className="text-[10px] text-purple-600 hover:underline">View Terms & Conditions</button>
-                </div>
-
-                <div className="mt-2 text-center">
                     <p className="text-[11px] text-gray-500">
                         Didn’t receive a verification email?
                         <button
