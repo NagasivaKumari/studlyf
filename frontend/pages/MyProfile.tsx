@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
+import QRCode from 'qrcode';
 import { useAuth } from '../AuthContext';
 import { API_BASE_URL } from '../apiConfig';
 import { 
@@ -83,7 +84,7 @@ const MyProfile: React.FC = () => {
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lastToastSnapshot, setLastToastSnapshot] = useState<string | null>(null);
   const [isGeneratingTemplate, setIsGeneratingTemplate] = useState(false);
-
+  const [shareQrDataUrl, setShareQrDataUrl] = useState<string | null>(null);
   const navigate = useNavigate();
   const shareTemplateRef = useRef<HTMLDivElement>(null);
 
@@ -95,7 +96,10 @@ const MyProfile: React.FC = () => {
     const target = e.target as HTMLInputElement & HTMLSelectElement & HTMLTextAreaElement;
     const name = target.name as string;
     if (!name) return;
-    let value: any = target.type === 'checkbox' ? (target as HTMLInputElement).checked : target.value;
+    let value: any = target.value;
+    if (e.target instanceof HTMLInputElement && e.target.type === 'checkbox') {
+      value = e.target.checked;
+    }
 
     setFormData(prev => ({
       ...prev,
@@ -113,6 +117,13 @@ const MyProfile: React.FC = () => {
       console.warn('copyImageToClipboard failed', e);
       return false;
     }
+  };
+
+  const removeInterest = (tag: string) => {
+    setFormData(prev => ({
+      ...prev,
+      interests: prev.interests.filter(interest => interest !== tag),
+    }));
   };
 
   const copyImageImmediate = async () => {
@@ -150,7 +161,7 @@ const MyProfile: React.FC = () => {
     if (formData.certifications.length > 0) score += 10;
     if (formData.experience.company || formData.experienceList.length > 0) score += 10;
     if (formData.projects.length > 0) score += 10;
-    if (formData.linkedin || formData.github) score += 10;
+    if (formData.linkedin) score += 10;
     if (formData.resume.fileName && formData.resume.fileName !== 'No resume uploaded') score += 10;
 
     return score;
@@ -250,7 +261,8 @@ const MyProfile: React.FC = () => {
     } catch (err) {
       clearInterval(progressInterval);
       setUploadProgress(0);
-      alert(`Upload failed: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Upload failed: ${errorMessage}`);
     } finally {
       setIsUploading(false);
     }
@@ -381,7 +393,8 @@ const MyProfile: React.FC = () => {
       setSaveStatus({ type: 'success', message: `${section} saved successfully!` });
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (err) {
-      setSaveStatus({ type: 'error', message: err.message || 'Failed to save. Please try again.' });
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save. Please try again.';
+      setSaveStatus({ type: 'error', message: errorMessage });
       setTimeout(() => setSaveStatus(null), 4000);
     } finally {
       setIsSaving(false);
@@ -403,7 +416,8 @@ const MyProfile: React.FC = () => {
         setTimeout(() => setSaveStatus(null), 2000);
       }
     } catch (err) {
-      setSaveStatus({ type: 'error', message: 'Delete failed: ' + err.message });
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setSaveStatus({ type: 'error', message: 'Delete failed: ' + errorMessage });
       setTimeout(() => setSaveStatus(null), 3000);
     }
   };
@@ -412,12 +426,227 @@ const MyProfile: React.FC = () => {
   const profileDisplayName = [formData.firstName, formData.lastName].filter(Boolean).join(' ') || user?.full_name || 'Your Profile';
   const profileRole = formData.userType || user?.role || 'Contributor';
   const profileHeadline = formData.bio || formData.careerGoal || 'A polished contributor profile for modern learning and hiring workflows.';
+  const profileInitials = [formData.firstName, formData.lastName]
+    .filter(Boolean)
+    .map(part => part.trim().charAt(0).toUpperCase())
+    .join('')
+    .slice(0, 2) || 'SL';
+  const toAvatarDataUri = (svg: string) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  const createAvatarDataUri = (theme: {
+    backgroundA: string;
+    backgroundB: string;
+    skin: string;
+    hair: string;
+    shirt: string;
+    accent: string;
+    accessory: 'none' | 'glasses' | 'headphones' | 'cap' | 'hairclip' | 'hood';
+    eyes: 'round' | 'spark' | 'focused' | 'smile';
+    mouth: 'smile' | 'calm' | 'grin';
+  }) => {
+    const accessorySvg = {
+      none: '',
+      glasses: `
+        <g stroke="#111827" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="154" y="198" width="74" height="46" rx="18" />
+          <rect x="284" y="198" width="74" height="46" rx="18" />
+          <path d="M228 219h56" />
+        </g>`,
+      headphones: `
+        <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M160 242c0-60 42-100 96-100s96 40 96 100" stroke="#111827" stroke-width="20" />
+          <rect x="122" y="232" width="42" height="88" rx="18" fill="#111827" />
+          <rect x="348" y="232" width="42" height="88" rx="18" fill="#111827" />
+          <rect x="132" y="250" width="22" height="52" rx="11" fill="${theme.accent}" />
+          <rect x="358" y="250" width="22" height="52" rx="11" fill="${theme.accent}" />
+        </g>`,
+      cap: `
+        <g>
+          <path d="M140 182c10-62 66-102 116-102s106 40 116 102c-38-18-73-26-116-26s-78 8-116 26Z" fill="#111827" />
+          <path d="M138 184c38-18 75-28 118-28s80 10 120 30" fill="none" stroke="${theme.accent}" stroke-width="12" stroke-linecap="round" />
+        </g>`,
+      hairclip: `
+        <circle cx="352" cy="165" r="16" fill="${theme.accent}" />
+        <circle cx="368" cy="182" r="12" fill="#ffffff" />`,
+      hood: `
+        <path d="M124 314c18-78 78-126 132-126s114 48 132 126c-28 30-66 48-132 48s-104-18-132-48Z" fill="${theme.accent}" opacity="0.95" />
+        <path d="M166 312c14-40 50-72 90-72s76 32 90 72" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="10" stroke-linecap="round" />`,
+    }[theme.accessory];
+
+    const eyeSvg = {
+      round: `<circle cx="188" cy="230" r="11" fill="#111827" /><circle cx="324" cy="230" r="11" fill="#111827" />`,
+      spark: `<path d="M188 219l6 10 11 3-11 3-6 10-6-10-11-3 11-3 6-10Zm136 0 6 10 11 3-11 3-6 10-6-10-11-3 11-3 6-10Z" fill="#111827" />`,
+      focused: `<path d="M173 230h30M309 230h30" stroke="#111827" stroke-width="10" stroke-linecap="round" />`,
+      smile: `<path d="M174 225c10 16 28 24 42 24s32-8 42-24M310 225c10 16 28 24 42 24s32-8 42-24" fill="none" stroke="#111827" stroke-width="9" stroke-linecap="round" />`,
+    }[theme.eyes];
+
+    const mouthSvg = {
+      smile: `<path d="M214 306c16 18 40 28 42 28s26-10 42-28" fill="none" stroke="#111827" stroke-width="10" stroke-linecap="round" />`,
+      calm: `<path d="M218 310h76" stroke="#111827" stroke-width="10" stroke-linecap="round" />`,
+      grin: `<path d="M208 302c16 10 30 16 48 16s32-6 48-16" fill="none" stroke="#111827" stroke-width="12" stroke-linecap="round" />`,
+    }[theme.mouth];
+
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+        <defs>
+          <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="${theme.backgroundA}" />
+            <stop offset="100%" stop-color="${theme.backgroundB}" />
+          </linearGradient>
+          <radialGradient id="glow" cx="50%" cy="26%" r="76%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.36" />
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="512" height="512" rx="128" fill="url(#bg)" />
+        <circle cx="170" cy="148" r="132" fill="url(#glow)" />
+        <circle cx="346" cy="352" r="118" fill="#ffffff" opacity="0.12" />
+        <ellipse cx="256" cy="346" rx="126" ry="92" fill="${theme.shirt}" opacity="0.98" />
+        <path d="M182 292c12-58 42-92 74-108 32 16 62 50 74 108 4 20 1 37-8 52-13 22-34 32-66 32s-53-10-66-32c-9-15-12-32-8-52Z" fill="${theme.skin}" />
+        <path d="M176 240c0-54 38-92 80-92s80 38 80 92c0 7-1 14-2 20-9-14-25-27-46-36-20-9-43-13-64-13s-44 4-64 13c-21 9-37 22-46 36-1-6-2-13-2-20Z" fill="${theme.hair}" />
+        <path d="M188 186c18-22 42-32 68-32s50 10 68 32" fill="none" stroke="#111827" stroke-opacity="0.04" stroke-width="10" stroke-linecap="round" />
+        <ellipse cx="220" cy="284" rx="14" ry="18" fill="#ffffff" opacity="0.14" />
+        <ellipse cx="292" cy="284" rx="14" ry="18" fill="#ffffff" opacity="0.14" />
+        <ellipse cx="206" cy="286" rx="7" ry="6" fill="#ffffff" opacity="0.18" />
+        <ellipse cx="306" cy="286" rx="7" ry="6" fill="#ffffff" opacity="0.18" />
+        ${eyeSvg}
+        ${mouthSvg}
+        <path d="M200 262c10 8 24 12 56 12s46-4 56-12" fill="none" stroke="#111827" stroke-width="6" stroke-linecap="round" opacity="0.12" />
+        <circle cx="214" cy="262" r="8" fill="#fda4af" opacity="0.55" />
+        <circle cx="298" cy="262" r="8" fill="#fda4af" opacity="0.55" />
+        ${accessorySvg}
+        <path d="M196 350c18 10 36 14 60 14s42-4 60-14" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="10" stroke-linecap="round" />
+        <rect x="170" y="392" width="172" height="18" rx="9" fill="#ffffff" opacity="0.18" />
+      </svg>`;
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  };
+  const avatarCatalog = useMemo(() => {
+    const palettes = [
+      { backgroundA: '#7C3AED', backgroundB: '#06B6D4', accent: '#F59E0B' },
+      { backgroundA: '#111827', backgroundB: '#4F46E5', accent: '#22C55E' },
+      { backgroundA: '#EA580C', backgroundB: '#F59E0B', accent: '#FFFFFF' },
+      { backgroundA: '#0F766E', backgroundB: '#14B8A6', accent: '#E0F2FE' },
+      { backgroundA: '#BE185D', backgroundB: '#F43F5E', accent: '#FDE68A' },
+      { backgroundA: '#2563EB', backgroundB: '#0F172A', accent: '#A7F3D0' },
+    ];
+    const monogramFrames = [
+      (accent: string) => `<circle cx="256" cy="256" r="178" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="16" /><circle cx="256" cy="256" r="132" fill="#ffffff" opacity="0.12" /><path d="M132 166c32-40 74-64 124-64s92 24 124 64" fill="none" stroke="${accent}" stroke-width="14" stroke-linecap="round" />`,
+      (accent: string) => `<rect x="92" y="92" width="328" height="328" rx="92" fill="#ffffff" opacity="0.10" /><path d="M152 152h208v208H152z" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="12" /><circle cx="356" cy="156" r="18" fill="${accent}" />`,
+      (accent: string) => `<path d="M104 304l164-172 140 172-140 120z" fill="#ffffff" opacity="0.10" /><circle cx="176" cy="156" r="24" fill="${accent}" opacity="0.85" /><circle cx="334" cy="362" r="30" fill="#ffffff" opacity="0.16" />`,
+      (accent: string) => `<path d="M120 136h272v240H120z" fill="#ffffff" opacity="0.08" /><path d="M156 376h200" stroke="${accent}" stroke-width="16" stroke-linecap="round" /><path d="M156 136v240" stroke="#ffffff" stroke-opacity="0.14" stroke-width="10" />`,
+    ];
+    const emojiSet = ['😀', '😎', '🤩', '🥳', '🫶', '🎧', '🌈', '🚀', '💡', '📱', '🧠', '🔥'];
+    const animeAccessories = ['headphones', 'glasses', 'hairclip', 'cap', 'hood', 'none'] as const;
+    const animeEyes = ['spark', 'focused', 'round', 'smile'] as const;
+    const animeMouths = ['smile', 'calm', 'grin'] as const;
+    const animeBases = [
+      { backgroundA: '#7C3AED', backgroundB: '#06B6D4', skin: '#F5D0C5', hair: '#1F2937', shirt: '#FDE68A', accent: '#F59E0B' },
+      { backgroundA: '#111827', backgroundB: '#4F46E5', skin: '#E7C7B7', hair: '#0F172A', shirt: '#CBD5E1', accent: '#22C55E' },
+      { backgroundA: '#EA580C', backgroundB: '#F59E0B', skin: '#F8D5C2', hair: '#8B5CF6', shirt: '#F9A8D4', accent: '#FFFFFF' },
+      { backgroundA: '#0F766E', backgroundB: '#14B8A6', skin: '#E7BEA8', hair: '#14532D', shirt: '#BFDBFE', accent: '#E0F2FE' },
+      { backgroundA: '#BE185D', backgroundB: '#F43F5E', skin: '#F2C9B2', hair: '#7C2D12', shirt: '#FDE68A', accent: '#FFF7ED' },
+      { backgroundA: '#0F172A', backgroundB: '#2563EB', skin: '#EBC4B5', hair: '#111827', shirt: '#93C5FD', accent: '#A7F3D0' },
+    ];
+
+    const buildMonogramAvatar = (index: number, palette: { backgroundA: string; backgroundB: string; accent: string }) => {
+      const frame = monogramFrames[index % monogramFrames.length](palette.accent);
+      return toAvatarDataUri(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+          <defs>
+            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="${palette.backgroundA}" />
+              <stop offset="100%" stop-color="${palette.backgroundB}" />
+            </linearGradient>
+          </defs>
+          <rect width="512" height="512" rx="132" fill="url(#bg)" />
+          <circle cx="162" cy="142" r="96" fill="#ffffff" opacity="0.12" />
+          <circle cx="360" cy="350" r="108" fill="#ffffff" opacity="0.10" />
+          ${frame}
+          <text x="256" y="280" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="136" font-weight="900" fill="#ffffff" letter-spacing="2">${profileInitials}</text>
+        </svg>`);
+    };
+
+    const buildEmojiAvatar = (emoji: string, label: string, palette: { backgroundA: string; backgroundB: string; accent: string }) => {
+      return toAvatarDataUri(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+          <defs>
+            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="${palette.backgroundA}" />
+              <stop offset="100%" stop-color="${palette.backgroundB}" />
+            </linearGradient>
+          </defs>
+          <rect width="512" height="512" rx="132" fill="url(#bg)" />
+          <circle cx="168" cy="160" r="108" fill="#ffffff" opacity="0.14" />
+          <circle cx="344" cy="352" r="118" fill="#ffffff" opacity="0.12" />
+          <circle cx="256" cy="256" r="152" fill="#111827" opacity="0.12" />
+          <text x="256" y="286" text-anchor="middle" font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif" font-size="150">${emoji}</text>
+          <rect x="144" y="368" width="224" height="16" rx="8" fill="${palette.accent}" opacity="0.92" />
+        </svg>`);
+    };
+
+    const monogramOptions = Array.from({ length: 24 }, (_, index) => ({
+      label: `Monogram ${index + 1}`,
+      category: 'monogram' as const,
+      url: buildMonogramAvatar(index, palettes[index % palettes.length]),
+    }));
+
+    const emojiOptions = Array.from({ length: emojiSet.length }, (_, index) => {
+      const emoji = emojiSet[index % emojiSet.length];
+      return {
+        label: `Emoji ${index + 1}`,
+        category: 'emoji' as const,
+        url: buildEmojiAvatar(emoji, `Mood ${index + 1}`, palettes[(index + 1) % palettes.length]),
+      };
+    });
+
+    const animeOptions = Array.from({ length: 36 }, (_, index) => {
+      const base = animeBases[index % animeBases.length];
+      const accessory = animeAccessories[index % animeAccessories.length];
+      const eyes = animeEyes[index % animeEyes.length];
+      const mouth = animeMouths[index % animeMouths.length];
+      return {
+        label: `Anime ${index + 1}`,
+        category: 'anime' as const,
+        url: createAvatarDataUri({ ...base, accessory, eyes, mouth }),
+      };
+    });
+
+    const uniqueOptions = [...monogramOptions, ...emojiOptions, ...animeOptions].filter((option, index, items) => {
+      return index === items.findIndex(candidate => candidate.url === option.url);
+    });
+
+    return uniqueOptions;
+  }, [profileInitials]);
+  const avatarSections = useMemo(() => {
+    const sectionOrder: Array<{ key: 'monogram' | 'emoji' | 'anime'; label: string }> = [
+      { key: 'monogram', label: 'Monogram' },
+      { key: 'emoji', label: 'Emoji' },
+      { key: 'anime', label: 'Anime' },
+    ];
+
+    return sectionOrder
+      .map(section => ({
+        ...section,
+        items: avatarCatalog.filter(option => option.category === section.key),
+      }))
+      .filter(section => section.items.length > 0);
+  }, [avatarCatalog]);
  const APP_BASE_URL = (import.meta as any).env?.VITE_PUBLIC_URL || window.location.origin;
 const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
   ? `${APP_BASE_URL}/profile/${user.user_id}`
   : '';
 
   const profileShareCaption = `${profileDisplayName} | Studlyf\n${profileRole}\n${profileHeadline}`;
+  const whatsappShareText = [
+    '*STUDLYF Community*',
+    'AI • Tech • Wellness • Execution',
+    '_Student Innovation & Community Ecosystem_',
+    '',
+    `*${profileDisplayName}*`,
+    profileRole,
+    profileHeadline,
+    '',
+    publicProfileUrl,
+  ].join('\n');
 
   const profileTemplateFileName = `${profileDisplayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'studlyf-profile'}-template.png`;
 
@@ -498,8 +727,35 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
   accentBar.style.cssText = `height:5px;background:linear-gradient(90deg,#7C3AED,#06b6d4,#f59e0b);width:100%;`;
   card.appendChild(accentBar);
 
+  const brandStrip = document.createElement('div');
+  brandStrip.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:20px 56px 0;position:relative;z-index:2;`;
+  const brandLeft = document.createElement('div');
+  brandLeft.style.cssText = `display:flex;align-items:center;gap:14px;`;
+  const brandLogoWrap = document.createElement('div');
+  brandLogoWrap.style.cssText = `width:140px;height:48px;padding:8px 12px;border-radius:16px;background:#ffffff;border:1px solid #e5e7eb;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(0,0,0,0.08);`;
+  const brandLogo = document.createElement('img');
+  brandLogo.src = '/images/studlyf_secondary.png';
+  brandLogo.alt = 'Studlyf';
+  brandLogo.style.cssText = `width:100%;height:100%;object-fit:contain;`;
+  brandLogo.crossOrigin = 'anonymous';
+  brandLogoWrap.appendChild(brandLogo);
+  const brandCopy = document.createElement('div');
+  brandCopy.style.cssText = `display:flex;flex-direction:column;gap:3px;`;
+  const brandEyebrow = document.createElement('div');
+  brandEyebrow.style.cssText = `font-size:10px;font-weight:900;color:#06b6d4;text-transform:uppercase;letter-spacing:0.24em;`;
+  brandEyebrow.innerText = 'Profile Template';
+  const brandTitle = document.createElement('div');
+  brandTitle.style.cssText = `font-size:14px;font-weight:800;color:#ffffff;line-height:1.2;`;
+  brandTitle.innerText = 'Share-ready public profile';
+  brandCopy.appendChild(brandEyebrow);
+  brandCopy.appendChild(brandTitle);
+  brandLeft.appendChild(brandLogoWrap);
+  brandLeft.appendChild(brandCopy);
+  brandStrip.appendChild(brandLeft);
+  card.appendChild(brandStrip);
+
   const header = document.createElement('div');
-  header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:48px 56px 32px;position:relative;z-index:2;`;
+  header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:28px 56px 32px;position:relative;z-index:2;`;
 
   const headerLeft = document.createElement('div');
   headerLeft.style.cssText = `display:flex;align-items:center;gap:28px;`;
@@ -610,6 +866,24 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
   const downloadProfileTemplate = async () => {
     if (!publicProfileUrl) return;
     setIsGeneratingTemplate(true);
+
+    try {
+      const { blob } = await generateProfileCardBlob();
+      const link = document.createElement('a');
+      link.download = profileTemplateFileName;
+      link.href = URL.createObjectURL(blob);
+      link.click();
+      setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
+      setTimeout(() => setSaveStatus(null), 4500);
+    } catch (err) {
+      const errorMessage = (err as Error)?.message || 'Unable to download.';
+      setSaveStatus({ type: 'error', message: errorMessage });
+      setTimeout(() => setSaveStatus(null), 3000);
+    } finally {
+      setIsGeneratingTemplate(false);
+    }
+
+    return;
 
     try {
       const canvas = await (async () => {
@@ -732,6 +1006,46 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
         });
         card.appendChild(statsRow);
 
+        const qrDataUrl = await QRCode.toDataURL(publicProfileUrl, {
+          margin: 1,
+          width: 180,
+          color: {
+            dark: '#0f0f13',
+            light: '#ffffff',
+          },
+        });
+
+        const qrSection = document.createElement('div');
+        qrSection.style.cssText = `margin:0 56px 28px;padding:18px 20px;background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;display:flex;align-items:center;justify-content:space-between;gap:20px;position:relative;z-index:2;`;
+
+        const qrTextWrap = document.createElement('div');
+        qrTextWrap.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
+        const qrLabel = document.createElement('div');
+        qrLabel.style.cssText = `font-size:10px;font-weight:900;color:#06b6d4;text-transform:uppercase;letter-spacing:0.2em;`;
+        qrLabel.innerText = 'Scan to open profile';
+        const qrTitle = document.createElement('div');
+        qrTitle.style.cssText = `font-size:15px;font-weight:800;color:#ffffff;line-height:1.4;`;
+        qrTitle.innerText = 'Open the public profile instantly from this card.';
+        const qrLink = document.createElement('div');
+        qrLink.style.cssText = `font-size:11px;color:#cbd5e1;word-break:break-all;line-height:1.5;`;
+        qrLink.innerText = publicProfileUrl;
+        qrTextWrap.appendChild(qrLabel);
+        qrTextWrap.appendChild(qrTitle);
+        qrTextWrap.appendChild(qrLink);
+
+        const qrImageWrap = document.createElement('div');
+        qrImageWrap.style.cssText = `width:132px;height:132px;padding:10px;border-radius:18px;background:#ffffff;flex-shrink:0;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 25px rgba(0,0,0,0.2);`;
+        const qrImage = document.createElement('img');
+        qrImage.src = qrDataUrl;
+        qrImage.alt = 'Public profile QR code';
+        qrImage.style.cssText = `width:100%;height:100%;object-fit:contain;`;
+        qrImage.crossOrigin = 'anonymous';
+        qrImageWrap.appendChild(qrImage);
+
+        qrSection.appendChild(qrTextWrap);
+        qrSection.appendChild(qrImageWrap);
+        card.appendChild(qrSection);
+
         // ── Two column body ──
         const body = document.createElement('div');
         body.style.cssText = `display:flex;gap:20px;padding:0 56px 40px;position:relative;z-index:2;`;
@@ -832,9 +1146,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
         // Contact / links
         const links: string[] = [];
         if (formData.linkedin) links.push(`🔗 LinkedIn: ${formData.linkedin}`);
-        if (formData.github) links.push(`💻 GitHub: ${formData.github}`);
         if (formData.portfolio) links.push(`🌐 Portfolio: ${formData.portfolio}`);
-        if (formData.leetcode) links.push(`🧩 LeetCode: ${formData.leetcode}`);
         const linkSec = makeSection('Links', '#06b6d4', links, '🔗');
         if (linkSec) rightCol.appendChild(linkSec);
 
@@ -875,17 +1187,18 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
       link.download = profileTemplateFileName;
       link.href = canvas.toDataURL('image/png');
       link.click();
-      setSaveStatus({ type: 'success', message: 'Profile card downloaded!' });
+      setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
       setTimeout(() => setSaveStatus(null), 2500);
     } catch (err) {
-      setSaveStatus({ type: 'error', message: err?.message || 'Unable to download.' });
+      const errorMessage = (err as Error)?.message || 'Unable to download.';
+      setSaveStatus({ type: 'error', message: errorMessage });
       setTimeout(() => setSaveStatus(null), 3000);
     } finally {
       setIsGeneratingTemplate(false);
     }
   };
   
-  const shareToSocial = async (platform: 'linkedin' | 'twitter' | 'facebook' | 'whatsapp') => {
+  const shareToSocial = async (platform: 'linkedin' | 'whatsapp') => {
   if (!publicProfileUrl) return;
   if (platform !== 'whatsapp') {
     setCopiedForPlatform(null);
@@ -894,122 +1207,53 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
   setSaveStatus({ type: 'success', message: 'Generating profile card...' });
 
   // Build share URLs pieces
-  const title = encodeURIComponent(`${profileDisplayName} | Studlyf`);
-  const summary = encodeURIComponent(`${profileRole} — ${profileHeadline}`);
-
   try {
     // For LinkedIn we need the public HTML preview URL so the scraper can generate a preview.
     if (platform === 'linkedin') {
-      const { blob, dataUrl } = await generateProfileCardBlob();
-      const imageFile = new File([blob], profileTemplateFileName, { type: 'image/png' });
-
-      // Try to copy image to clipboard immediately (more likely to be treated as user-initiated).
       try {
-        const clipboardItem = new ClipboardItem({ 'image/png': blob });
-        await navigator.clipboard.write([clipboardItem]);
-        setSaveStatus({ type: 'success', message: 'Image copied — paste (Ctrl+V) into the composer.' });
+        await navigator.clipboard.writeText(publicProfileUrl);
+        setSaveStatus({ type: 'success', message: 'Profile URL copied — paste it into LinkedIn.' });
       } catch (e) {
-        // Not fatal — we'll continue with upload and provide preview/download fallbacks.
-        console.warn('Image clipboard write failed early:', e);
+        console.warn('Failed to copy profile URL for LinkedIn:', e);
       }
-
-      // Upload generated image and expect the backend to return an HTML preview URL under `url`.
-      let previewUrl: string | null = null;
-      try {
-        // Allow the user to provide a public base URL (ngrok/localtunnel) at share-time
-        const publicBase =
-  (window as any).PUBLIC_BASE ||
-  prompt(
-    'Public preview base URL (optional). Leave empty to use the deployed server URL.',
-    ''
-  );
-        const form = new FormData();
-        form.append('file', imageFile);
-        if (publicBase) form.append('public_base', publicBase);
-        const upl = await fetch(`${API_BASE_URL}/api/utils/upload-temp-image`, { method: 'POST', body: form });
-        if (upl.ok) {
-          const json = await upl.json();
-          if (json?.url) previewUrl = json.url;
-          // copy hosted preview URL for convenience
-          try { await navigator.clipboard.writeText(json.url); setSaveStatus({ type: 'success', message: 'Preview URL copied — paste it in the LinkedIn composer.' }); } catch {}
-        }
-      } catch (e) {
-        console.warn('Image upload for LinkedIn failed:', e);
-      }
-
-      // If clipboard write wasn't done successfully earlier, try again now (best-effort).
-      try {
-        const clipboardItem = new ClipboardItem({ 'image/png': blob });
-        await navigator.clipboard.write([clipboardItem]);
-        setSaveStatus({ type: 'success', message: 'Image copied — paste (Ctrl+V) into the LinkedIn composer.' });
-      } catch (e) {
-        // If image copy failed, provide downloadable URL files if we have a preview URL, else fallback to image download
-        
-          // If image copy failed, provide downloadable URL files if we have a preview URL, else fallback to image download
-          if (previewUrl) {
-            try {
-              const urlFileContent = `[InternetShortcut]\nURL=${previewUrl}\n`;
-              const urlBlob = new Blob([urlFileContent], { type: 'text/plain' });
-              const urlLink = document.createElement('a');
-              urlLink.href = URL.createObjectURL(urlBlob);
-              urlLink.download = `profile-preview.url`;
-              urlLink.click();
-
-              const htmlContent = `<html><head><meta http-equiv=\"refresh\" content=\"0;url=${previewUrl}\"/></head><body>If not redirected <a href=\"${previewUrl}\">Open preview</a></body></html>`;
-              const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
-              const htmlLink = document.createElement('a');
-              htmlLink.href = URL.createObjectURL(htmlBlob);
-              htmlLink.download = `profile-preview.html`;
-              htmlLink.click();
-
-              setSaveStatus({ type: 'success', message: 'Preview URL file downloaded — open it to visit the public preview.' });
-            } catch (e) {
-              const link = document.createElement('a');
-              link.download = profileTemplateFileName;
-              link.href = dataUrl;
-              link.click();
-              setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the LinkedIn post.' });
-            }
-          } else {
-            const link = document.createElement('a');
-            link.download = profileTemplateFileName;
-            link.href = dataUrl;
-            link.click();
-            setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the LinkedIn post.' });
-          }
-        }
-
-      // Open LinkedIn share with the preview URL (or fallback to publicProfileUrl)
-      const openUrl = previewUrl || publicProfileUrl;
-      const u = encodeURIComponent(openUrl || '');
-      const linkedinUrl = `https://www.linkedin.com/shareArticle?mini=true&url=${u}&title=${title}&summary=${summary}`;
+      const linkedinParams = new URLSearchParams({
+        startTask: 'CERTIFICATION_NAME',
+        organizationName: 'STUDLYF Community',
+        certUrl: publicProfileUrl,
+        name: `${profileDisplayName} | Studlyf`,
+      });
+      const linkedinUrl = `https://www.linkedin.com/profile/add?${linkedinParams.toString()}`;
       const w = window.open(linkedinUrl, '_blank');
       try { w?.focus(); } catch {}
-      setTimeout(() => setSaveStatus(null), 5000);
+      setSaveStatus({ type: 'success', message: 'Opening LinkedIn add-to-profile page.' });
+      setTimeout(() => setSaveStatus(null), 3000);
       return;
     }
 
     // Non-LinkedIn platforms: open immediately and then prepare/upload/copy image so user can paste/attach.
-    const uFallback = encodeURIComponent(publicProfileUrl);
-    const tBase = encodeURIComponent(`${profileShareCaption}\n${publicProfileUrl}`);
-    const urls: Record<string, string> = {
-      twitter: `https://twitter.com/intent/tweet?text=${tBase}`,
-      facebook: `https://www.facebook.com/sharer/sharer.php?u=${uFallback}`,
-      whatsapp: `https://api.whatsapp.com/send?text=${tBase}`,
-    };
+    const tBase = encodeURIComponent(whatsappShareText);
 
     // Special handling for WhatsApp: try native share (mobile), then clipboard copy, then download fallback.
     if (platform === 'whatsapp') {
       const { blob, dataUrl } = await generateProfileCardBlob();
       const imageFile = new File([blob], profileTemplateFileName, { type: 'image/png' });
+      const whatsappUrl = `https://api.whatsapp.com/send?text=${tBase}`;
 
-      // Mobile-only: use Web Share API with files when supported to avoid Windows/desktop share dialog
+      // Always make the PNG available locally so the user can attach/share it from the device.
       try {
-        const ua = navigator.userAgent || '';
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobi/i.test(ua) || (!!(navigator as any).userAgentData && (navigator as any).userAgentData.mobile === true);
-        if (isMobile && (navigator as any).canShare && (navigator as any).canShare({ files: [imageFile] })) {
-          await (navigator as any).share({ files: [imageFile], text: profileShareCaption });
-          setSaveStatus({ type: 'success', message: 'Shared to WhatsApp via native share.' });
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = profileTemplateFileName;
+        link.click();
+      } catch (e) {
+        console.warn('WhatsApp profile image download failed', e);
+      }
+
+      // Use the platform share sheet with the generated image file whenever the browser supports it.
+      try {
+        if ((navigator as any).share && (navigator as any).canShare && (navigator as any).canShare({ files: [imageFile] })) {
+          await (navigator as any).share({ files: [imageFile], text: whatsappShareText });
+          setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
           setTimeout(() => setSaveStatus(null), 3000);
           return;
         }
@@ -1020,30 +1264,21 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
       // Try to copy image to clipboard so user can paste into WhatsApp Web
       const copied = await copyImageToClipboard(blob).catch(() => false);
       if (copied) {
-        // Do NOT open WhatsApp Web automatically. Let the user paste into their composer.
-        setSaveStatus({ type: 'success', message: 'Image copied — open WhatsApp and paste (Ctrl+V) when ready.' });
+        setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
         setCopiedForPlatform('whatsapp');
-        setTimeout(() => setSaveStatus(null), 5000);
-        return;
+      } else {
+        setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
       }
 
-      // Fallback: download the image and open WhatsApp Web for manual attach
-      try {
-        const link = document.createElement('a');
-        link.href = dataUrl;
-        link.download = profileTemplateFileName;
-        link.click();
-        setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to WhatsApp.' });
-      } catch (e) {
-        console.warn('WhatsApp fallback download failed', e);
-      }
-      // If copy failed, don't auto-open WhatsApp — user can click the button below to open it.
       setCopiedForPlatform(null);
+      const openedWindow = window.open(whatsappUrl, '_blank');
+      try { openedWindow?.focus(); } catch {}
       setTimeout(() => setSaveStatus(null), 5000);
       return;
     }
 
-    const platformWindow = window.open(urls[platform], '_blank');
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${tBase}`;
+    const platformWindow = window.open(whatsappUrl, '_blank');
 
     const { blob, dataUrl } = await generateProfileCardBlob();
     const imageFile = new File([blob], profileTemplateFileName, { type: 'image/png' });
@@ -1117,14 +1352,14 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
           link.download = profileTemplateFileName;
           link.href = dataUrl;
           link.click();
-          setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the opened post.' });
+          setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
         }
       } else {
         const link = document.createElement('a');
         link.download = profileTemplateFileName;
         link.href = dataUrl;
         link.click();
-        setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the opened post.' });
+        setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
       }
     }
 
@@ -1133,7 +1368,8 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
     return;
   } catch (err) {
     console.warn('Share flow error:', err);
-    setSaveStatus({ type: 'error', message: err?.message || 'Share failed.' });
+    const errorMessage = err instanceof Error ? err.message : 'Share failed.';
+    setSaveStatus({ type: 'error', message: errorMessage });
     setTimeout(() => setSaveStatus(null), 3000);
   } finally {
     setIsGeneratingTemplate(false);
@@ -1168,6 +1404,45 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
 
   const [showShareModal, setShowShareModal] = useState(false);
   const [copiedForPlatform, setCopiedForPlatform] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!showShareModal || !publicProfileUrl) {
+      setShareQrDataUrl(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    const loadShareQr = async () => {
+      try {
+        const qrDataUrl = await QRCode.toDataURL(publicProfileUrl, {
+          margin: 1,
+          width: 180,
+          color: {
+            dark: '#111827',
+            light: '#ffffff',
+          },
+        });
+
+        if (active) {
+          setShareQrDataUrl(qrDataUrl);
+        }
+      } catch (error) {
+        console.warn('Failed to generate share QR', error);
+        if (active) {
+          setShareQrDataUrl(null);
+        }
+      }
+    };
+
+    void loadShareQr();
+
+    return () => {
+      active = false;
+    };
+  }, [publicProfileUrl, showShareModal]);
  
 
   const shareProfile = async () => {
@@ -1231,28 +1506,73 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
             {/* Form Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                {/* Profile Photo */}
-               <div className="md:col-span-2 flex items-center gap-8 bg-gray-50/50 p-8 rounded-3xl border border-gray-100 border-dashed">
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10"
-                  >
-                    <div className="w-full h-full flex items-center justify-center bg-white">
-                      <User className="w-12 h-12 text-gray-200" />
+               <div className="md:col-span-2 space-y-6 bg-gray-50/50 p-8 rounded-3xl border border-gray-100 border-dashed">
+                  <div className="flex flex-col lg:flex-row lg:items-center gap-8">
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10 shrink-0"
+                    >
+                      {formData.profilePhoto ? (
+                        <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-white">
+                          <User className="w-12 h-12 text-gray-200" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-black uppercase tracking-widest text-center px-4">
+                        Update Photo
+                      </div>
                     </div>
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-black uppercase tracking-widest text-center px-4">
-                      Update Photo
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="image/*" 
+                      onChange={handlePhotoUpload} 
+                    />
+                    <div className="space-y-3 min-w-0">
+                      <h4 className="font-bold text-gray-900 uppercase text-xs tracking-widest">Profile Photo / Avatar</h4>
+                      <p className="text-[10px] font-medium text-gray-400 max-w-xl">Upload a custom photo or choose one of the preset avatars below for a cleaner profile identity.</p>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="rounded-full bg-[#7C3AED] px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-sm hover:bg-[#6D28D9] transition-all"
+                      >
+                        Upload Photo
+                      </button>
                     </div>
                   </div>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    accept="image/*" 
-                    onChange={handlePhotoUpload} 
-                  />
-                  <div className="space-y-1">
-                    <h4 className="font-bold text-gray-900 uppercase text-xs tracking-widest">Profile Photo</h4>
-                    <p className="text-[10px] font-medium text-gray-400 max-w-[200px]">PNG or JPG up to 5MB. Face should be clearly visible.</p>
+                  <div>
+                    <div className="flex items-center justify-between gap-4 mb-4">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Choose Avatar</div>
+                        <div className="text-sm font-bold text-gray-900">{avatarCatalog.length} unique preset avatars</div>
+                      </div>
+                    </div>
+                    <div className="max-h-[22rem] overflow-y-auto pr-2 space-y-6">
+                      {avatarSections.map(section => (
+                        <div key={section.key} className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <h5 className="text-[10px] font-black uppercase tracking-[0.24em] text-gray-500">{section.label}</h5>
+                          </div>
+                          <div className="grid grid-flow-col grid-rows-2 auto-cols-[6rem] gap-2.5 overflow-x-auto pb-2">
+                            {section.items.map(option => {
+                              const isSelected = formData.profilePhoto === option.url;
+                              return (
+                                <button
+                                  key={`${section.key}-${option.label}`}
+                                  type="button"
+                                  onClick={() => setFormData(prev => ({ ...prev, profilePhoto: option.url }))}
+                                  className={`group rounded-2xl border p-0 overflow-hidden transition-all w-[6rem] aspect-square ${isSelected ? 'border-[#7C3AED] bg-white shadow-md' : 'border-gray-200 bg-white/60 hover:border-[#7C3AED]/30'}`}
+                                >
+                                  <img src={option.url} alt={option.label} className="w-full h-full object-cover scale-125" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                </div>
 
@@ -2307,10 +2627,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                {[
                  { id: 'linkedin', label: 'LinkedIn', icon: Share2, color: '#0077B5', placeholder: 'linkedin.com/in/...' },
-                 { id: 'github', label: 'GitHub', icon: Terminal, color: '#181717', placeholder: 'github.com/...' },
-                 { id: 'twitter', label: 'Twitter / X', icon: Globe, color: '#000000', placeholder: 'twitter.com/...' },
                  { id: 'portfolio', label: 'Portfolio', icon: Globe, color: '#7C3AED', placeholder: 'yourwebsite.com' },
-                 { id: 'leetcode', label: 'LeetCode', icon: Book, color: '#FFA116', placeholder: 'leetcode.com/u/...' },
                  { id: 'hackerrank', label: 'HackerRank', icon: Book, color: '#2EC866', placeholder: 'hackerrank.com/profile/...' },
                ].map(social => (
                  <div key={social.label} className="space-y-3 group">
@@ -2530,10 +2847,11 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
       <AnimatePresence>
         {saveStatus && (
           <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-8 py-4 rounded-2xl text-white text-sm font-bold shadow-2xl flex items-center gap-3 backdrop-blur-md
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className={`fixed top-6 left-1/2 -translate-x-1/2 z-[70] px-8 py-4 rounded-2xl text-white text-sm font-bold shadow-2xl flex items-center gap-3 backdrop-blur-md pointer-events-none
               ${saveStatus.type === 'success' ? 'bg-emerald-500/90' : 'bg-red-500/90'}`}
           >
             <span>{saveStatus.type === 'success' ? '✓' : '✗'}</span>
@@ -2631,14 +2949,20 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
               {/* Share Flow panel removed as requested */}
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <button onClick={() => shareToSocial('linkedin')} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase disabled:opacity-50">LinkedIn</button>
-                <button onClick={() => shareToSocial('twitter')} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase disabled:opacity-50">X / Twitter</button>
-                <button onClick={() => shareToSocial('facebook')} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase disabled:opacity-50">Facebook</button>
                 <button onClick={() => shareToSocial('whatsapp')} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase disabled:opacity-50">WhatsApp</button>
               </div>
-              <div className="mt-2 text-xs text-gray-500">Tip: If paste doesn't work in a composer, use "Copy Image" to copy the PNG or "Store Image" to download it and attach manually.</div>
+              {shareQrDataUrl && (
+                <div className="mt-4 rounded-3xl border border-gray-100 bg-gray-50 p-4 text-center">
+                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-gray-400">Scan QR for profile</div>
+                  <div className="mt-3 inline-flex rounded-2xl bg-white p-3 shadow-sm ring-1 ring-gray-100">
+                    <img src={shareQrDataUrl} alt="Profile QR code" className="h-40 w-40 object-contain" />
+                  </div>
+                  <p className="mt-3 text-xs font-medium text-gray-500">Scan to open the public profile instantly.</p>
+                </div>
+              )}
+              <div className="mt-2 text-xs text-gray-500">Tip: Use the download button to save the profile image, then attach it where needed.</div>
               <div className="mt-4 flex gap-3">
-                <button onClick={() => copyImageImmediate()} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black">Copy Image</button>
-                <button onClick={() => { downloadProfileTemplate(); }} className="flex-1 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black text-white">Store Image</button>
+                <button onClick={() => { downloadProfileTemplate(); }} className="flex-1 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black text-white">Download Profile</button>
               </div>
 
               {copiedForPlatform === 'whatsapp' && (
@@ -2647,7 +2971,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => {
-                        const openUrl = `https://web.whatsapp.com/send?text=${encodeURIComponent(profileShareCaption + '\n' + publicProfileUrl)}`;
+                        const openUrl = `https://web.whatsapp.com/send?text=${encodeURIComponent(whatsappShareText)}`;
                         const w = window.open(openUrl, '_blank');
                         try { w?.focus(); } catch {}
                       }}

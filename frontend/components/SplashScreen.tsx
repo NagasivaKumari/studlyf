@@ -152,9 +152,8 @@ const SplashScreen: React.FC<Props> = ({
                 </div>
                 <div className="text-left lg:text-right">
                   <div className="text-2xl sm:text-3xl font-bold text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)]">{founderName}</div>
-                  <div className="mt-1 text-base sm:text-lg text-white/75">Founder & Visionary</div>
-                  <div className="mt-2 text-base sm:text-lg text-white/60 max-w-[340px]">
-                    Building a brighter space for exploring, learning, and achieving.
+                  <div className="mt-1 text-sm sm:text-base text-white/75 max-w-[520px] leading-relaxed">
+                    Student Innovation &amp; Community Ecosystems | AI, Emerging Tech &amp; Wellness Infrastructure | Strategy, Partnerships &amp; Execution | Mentor • Speaker (IIT Bombay, IIT Madras &amp; more) | Building STUDLYF &amp; Nirvaha Wellness
                   </div>
                 </div>
               </div>
