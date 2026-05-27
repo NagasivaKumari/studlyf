@@ -16,12 +16,17 @@ function resolveDefaultApiBaseUrl(): string {
     return 'http://localhost:8000';
 }
 
-export const API_BASE_URL =
-    viteEnv.VITE_API_BASE_URL ??
+let resolvedUrl = viteEnv.VITE_API_BASE_URL ??
     viteEnv.VITE_RENDER_EXTERNAL_URL ??
     viteEnv.RENDER_EXTERNAL_URL ??
     viteEnv.API_BASE_URL ??
     resolveDefaultApiBaseUrl();
+
+if (import.meta.env.DEV || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))) {
+    resolvedUrl = resolveDefaultApiBaseUrl();
+}
+
+export const API_BASE_URL = resolvedUrl;
 
 export const FRONTEND_URL =
     viteEnv.VITE_FRONTEND_URL ??
