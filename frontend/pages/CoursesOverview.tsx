@@ -68,7 +68,7 @@ const DarkCourseCard = ({
   duration,
   image,
   standard,
-  rating = 4.8,
+  rating = 4.2,
   total_reviews = 1200,
   total_hours = 12,
   price = 0,

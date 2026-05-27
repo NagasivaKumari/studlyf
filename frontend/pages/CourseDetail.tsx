@@ -38,7 +38,7 @@ interface Course {
 const MOCK_COURSES: Course[] = [
   {
     _id: 'm1',
-    title: 'Fundamentals of Artificial Intelligence & Generative AI',
+    title: 'Generative AI',
     description: 'Your complete beginner-to-advanced roadmap to understand, build and apply AI in real-world scenarios using modern tools.',
     role_tag: 'AI Fundamentals',
     difficulty: 'Beginner',
@@ -208,9 +208,8 @@ const CourseDetail: React.FC = () => {
               </div>
 
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white leading-[1.1] tracking-tight mb-6">
-                Fundamentals of <br />
-                Artificial Intelligence <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#8B5CF6] to-[#D946EF]">& Generative AI</span>
+                Generative <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#8B5CF6] to-[#D946EF]">AI Course</span>
               </h1>
 
               <p className="text-lg text-gray-300 mb-8 max-w-2xl leading-relaxed">Your complete beginner-to-advanced roadmap to understand, build and apply AI in real-world scenarios using modern tools.</p>
