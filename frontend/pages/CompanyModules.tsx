@@ -45,1071 +45,7 @@ import {
   BookMarked
 } from 'lucide-react';
 
-// --- Types & Interfaces ---
-
-interface DSAQuestion {
-  id: string;
-  title: string;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
-  frequency: number;
-  tags: string[];
-  input: string;
-  output: string;
-  approach: string;
-  code: { [key: string]: string };
-  time: string;
-  space: string;
-  acceptanceRate?: number;
-  estimatedRounds?: string;
-  visualizerType: 'tree' | 'sliding-window' | 'linked-list' | 'dp' | 'sorting' | 'graph';
-  explanation: {
-    intuition: string;
-    brute: string;
-    optimized: string;
-    dryRun: string[];
-    edgeCases: string[];
-    tips: string[];
-  };
-}
-
-interface TechQuestion {
-  id: string;
-  category: string;
-  question: string;
-  answer: string;
-  keyPoints: string[];
-  followUps: string[];
-  difficulty: 'Basic' | 'Intermediate' | 'Advanced';
-  frequency: number;
-}
-
-interface HRQuestion {
-  id: string;
-  question: string;
-  modelAnswer: string;
-  aiTips: string;
-  starTips: {
-    situation: string;
-    task: string;
-    action: string;
-    result: string;
-  };
-}
-
-interface Company {
-  id: string;
-  name: string;
-  logo: string;
-  industry: string;
-  hiringRoles: string[];
-  interviewRounds: string[];
-  salaryRange: string;
-  culture: string;
-  difficulty: 'Moderate' | 'High' | 'Elite';
-  completion: number;
-  brandColor: string;
-  stats: {
-    placed: string;
-    avgpackage: string;
-  };
-  dsa: DSAQuestion[];
-  technical: TechQuestion[];
-  hr: HRQuestion[];
-}
-
-// --- Extended & Premium Placement Database ---
-
-const PREMIUM_COMPANIES: Company[] = [
-  {
-    id: 'google',
-    name: 'Google',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg',
-    industry: 'Software & Cloud Technology',
-    hiringRoles: ['SDE I', 'SDE II', 'Cloud Architect', 'ML Engineer'],
-    interviewRounds: ['Online Assessment', '3x Technical (DSA/Systems)', 'Googliness & Leadership'],
-    salaryRange: '₹32L - ₹65L+',
-    brandColor: '#4285F4',
-    culture: 'Googliness, Innovation, Openness, High Autonomy',
-    difficulty: 'Elite',
-    completion: 45,
-    stats: { placed: '142', avgpackage: '34.8 LPA' },
-    dsa: [
-      {
-        id: 'g1',
-        title: 'Validate Binary Search Tree',
-        difficulty: 'Medium',
-        frequency: 94,
-        tags: ['Tree', 'DFS', 'Recursion'],
-        input: '[10, 5, 15, 2, 7, 12, 20]',
-        output: 'true',
-        approach: 'Traverse recursively, updating upper/lower validation boundaries at each node.',
-        time: 'O(N)',
-        space: 'O(H)',
-        visualizerType: 'tree',
-        explanation: {
-          intuition: 'Each node must remain strictly within a valid value range defined by its ancestors. As we move left, the maximum boundary shrinks. As we move right, the minimum boundary expands.',
-          brute: 'In-order traversal, collect into array, then verify if array is strictly sorted. Uses O(N) auxiliary space.',
-          optimized: 'DFS traversal carrying dynamic (minVal, maxVal) boundaries. Recursively checks root.val > minVal && root.val < maxVal.',
-          dryRun: [
-            'Visiting Root (10): Bound (-∞, +∞) -> Valid',
-            'Moving Left (5): Bound (-∞, 10) -> Valid',
-            'Moving Right (15): Bound (10, +∞) -> Valid',
-            'Moving Left under 5 (2): Bound (-∞, 5) -> Valid',
-            'Moving Right under 5 (7): Bound (5, 10) -> Valid'
-          ],
-          edgeCases: ['Single node trees', 'Trees containing integer bounds (Integer.MIN_VALUE/MAX_VALUE)', 'Duplicate node values (BST rules typically disallow duplicate values)'],
-          tips: ['Clarify whether duplicate values are allowed in the BST input before coding.', 'If using integer limit bounds, use null or double precision bounds to avoid integer underflow/overflow.']
-        },
-        code: {
-          python: `def isValidBST(root, min_val=float('-inf'), max_val=float('inf')):\n    if not root:\n        return True\n    if not (min_val < root.val < max_val):\n        return False\n    return (\n        isValidBST(root.left, min_val, root.val) and\n        isValidBST(root.right, root.val, max_val)\n    )`,
-          java: `public boolean isValidBST(TreeNode root) {\n    return validate(root, null, null);\n}\n\nprivate boolean validate(TreeNode node, Integer min, Integer max) {\n    if (node == null) return true;\n    if ((min != null && node.val <= min) || (max != null && node.val >= max)) return false;\n    return validate(node.left, min, node.val) && validate(node.right, node.val, max);\n}`
-        }
-      },
-      {
-        id: 'g2',
-        title: 'Longest Substring Without Repeating Characters',
-        difficulty: 'Medium',
-        frequency: 89,
-        tags: ['Sliding Window', 'String', 'Hash Table'],
-        input: '"abcabcbb"',
-        output: '3',
-        approach: 'Maintain a sliding window using two pointers, saving the latest character indices in a map.',
-        time: 'O(N)',
-        space: 'O(min(A, M))',
-        visualizerType: 'sliding-window',
-        explanation: {
-          intuition: 'Store index references of characters. When we encounter a repeating character in our current window, shift the left pointer to the right of the previous occurrence immediately to maintain unique characters.',
-          brute: 'Check all possible substrings with nested loops and a frequency set. O(N^3) time complexity.',
-          optimized: 'Keep track of left and right pointers. Update left = max(left, lastSeenIndex[char] + 1) to execute in a single linear pass.',
-          dryRun: [
-            'Right=0: char "a", Window: [a], MaxLength = 1',
-            'Right=1: char "b", Window: [a,b], MaxLength = 2',
-            'Right=2: char "c", Window: [a,b,c], MaxLength = 3',
-            'Right=3: char "a" repeat! Shift Left to 1. Window: [b,c,a], MaxLength = 3',
-            'Right=4: char "b" repeat! Shift Left to 2. Window: [c,a,b], MaxLength = 3'
-          ],
-          edgeCases: ['Empty string ""', 'String with identical characters "bbbbb"', 'No repeating characters "abcdefg"'],
-          tips: ['Always ask whether character set is ASCII or Unicode, as this affects space complexity guarantees.', 'Avoid converting string to character arrays repeatedly inside inner loops.']
-        },
-        code: {
-          python: `def lengthOfLongestSubstring(s: str) -> int:\n    char_map = {}\n    left = 0\n    max_len = 0\n    for right, char in enumerate(s):\n        if char in char_map and char_map[char] >= left:\n            left = char_map[char] + 1\n        char_map[char] = right\n        max_len = max(max_len, right - left + 1)\n    return max_len`,
-          java: `public int lengthOfLongestSubstring(String s) {\n    int n = s.length(), ans = 0;\n    Map<Character, Integer> map = new HashMap<>();\n    for (int j = 0, i = 0; j < n; j++) {\n        if (map.containsKey(s.charAt(j))) {\n            i = Math.max(map.get(s.charAt(j)) + 1, i);\n        }\n        ans = Math.max(ans, j - i + 1);\n        map.put(s.charAt(j), j);\n    }\n    return ans;\n}`
-        }
-      }
-    ],
-    technical: [
-      {
-        id: 'gt1',
-        category: 'System Design',
-        difficulty: 'Advanced',
-        frequency: 95,
-        question: 'Design a highly available distributed global rate limiter.',
-        answer: 'Utilize the Token Bucket or Sliding Window Log algorithm. Use Redis Clusters to persist rate limiting keys globally, coupled with local in-memory caches to cut network latency. Implement consistent hashing to balance load across nodes, and handle local sync failures gracefully with fallback defaults.',
-        keyPoints: ['Token Bucket or Sliding Window', 'Redis Distributed Counter', 'Consistent Hashing', 'Race Conditions (Redis transaction/Lua Scripting)', 'In-memory Cache (with low TTL)'],
-        followUps: ['How do we handle rate-limiting sync across regions if Redis encounters networking partitions?', 'What is the memory consumption difference between a Sliding Window and a Fixed Window approach?']
-      },
-      {
-        id: 'gt2',
-        category: 'DBMS & Core CS',
-        difficulty: 'Intermediate',
-        frequency: 88,
-        question: 'How do you handle horizontal database scaling (Sharding) and prevent massive re-allocations?',
-        answer: 'Horizontal partitioning divides a table across multiple database engines (shards) based on a partition key. Using naive hashing (hash(key) % N) creates massive re-indexing overhead when scaling database instances. Consistent Hashing maps keys and shards onto a circular hash ring, ensuring that adding or removing a shard only affects a tiny fraction (1/N) of total dataset migrations.',
-        keyPoints: ['Horizontal Scaling vs Vertical Scaling', 'Partition Keys', 'Consistent Hashing Ring', 'Virtual Nodes', 'Resharding Overheads'],
-        followUps: ['How do you handle complex transaction queries spanning multiple shards?', 'What are the downfalls of selecting a poor sharding key like timestamp?']
-      }
-    ],
-    hr: [
-      {
-        id: 'gh2',
-        question: 'Describe a situation where you noticed an inefficiency in a project and fixed it without being asked.',
-        modelAnswer: 'While working on a team project, I noticed that our code review process was taking 3-4 days per PR due to manual testing. Without being assigned, I researched automated testing frameworks, implemented a CI/CD pipeline with GitHub Actions, and set up automated unit and integration tests. This reduced review time to under 24 hours and caught bugs earlier in the development cycle.',
-        aiTips: 'Emphasize Google values: proactivity, technical excellence, and improving team efficiency through automation.',
-        starTips: {
-          situation: 'Our team had a slow code review process with 3-4 day turnaround times due to manual testing requirements.',
-          task: 'I identified the inefficiency and took initiative to automate the testing and review process.',
-          action: 'Researched and implemented CI/CD pipeline with GitHub Actions, set up automated unit and integration tests, and created documentation for the team.',
-          result: 'Reduced PR review time from 3-4 days to under 24 hours, increased code quality, and the automation was adopted across all team projects.'
-        }
-      },
-      {
-        id: 'gh1',
-        question: 'Tell me about a time you worked on a technically challenging project under severe ambiguity.',
-        modelAnswer: 'In my third-year internship, I was tasked with designing a real-time data scraper without knowing the exact rate limits or page limits of host sites. I researched the problem from first principles, implemented a dynamic back-off algorithm (exponential decay) to prevent getting IP-blocked, structured the crawler using robust multi-threading, and successfully delivered a highly robust ETL pipeline that processed 50k nodes daily.',
-        aiTips: 'Highlight Googliness: proactive curiosity, systematic handling of ambiguity, resilience, and data-driven prioritization.',
-        starTips: {
-          situation: 'Our university team was tasked with building a web engine without clear system requirements or API access to mock resources.',
-          task: 'I had to architect a resilient client-side interface that could gracefully fail and simulate database calls cleanly.',
-          action: 'I developed a solid mock service worker layer, researched best-practices on browser offline-states, and drafted an interactive client layer.',
-          result: 'Achieved 100% developer operational efficiency during API downtime, allowing frontend and backend development to progress simultaneously.'
-        }
-      }
-    ]
-  },
-  {
-    id: 'amazon',
-    name: 'Amazon',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg',
-    industry: 'Cloud Computing & E-Commerce',
-    hiringRoles: ['SDE I', 'Cloud Engineer', 'Operations Analyst', 'Solutions Architect'],
-    interviewRounds: ['Online Assessment', 'Technical Coding Screen', 'Onsite Bar Raiser (LP-focused)'],
-    salaryRange: '₹24L - ₹55L',
-    brandColor: '#FF9900',
-    culture: 'Customer Obsession, Ownership, Leadership Principles, Fast Delivery',
-    difficulty: 'Elite',
-    completion: 30,
-    stats: { placed: '228', avgpackage: '29.2 LPA' },
-    dsa: [
-      {
-        id: 'a1',
-        title: 'Reverse Linked List',
-        difficulty: 'Easy',
-        frequency: 96,
-        tags: ['Linked List', 'Pointers'],
-        input: '1 -> 2 -> 3 -> 4 -> 5',
-        output: '5 -> 4 -> 3 -> 2 -> 1',
-        approach: 'Maintain prev, curr, and next pointers. Iterate through the nodes, flipping direction arrows in-place.',
-        time: 'O(N)',
-        space: 'O(1)',
-        visualizerType: 'linked-list',
-        explanation: {
-          intuition: 'Iterate through the list. For each node, point its next link backward to the previous node. Because this breaks the forward link, save a reference to the next node before modifying current pointers.',
-          brute: 'Store elements inside an array list, reverse array list, then reconstruct a brand new linked list. Takes O(N) space.',
-          optimized: 'Perform in-place reversal by managing 3 temporary pointers (prev, curr, nextNode). Constant O(1) extra memory.',
-          dryRun: [
-            'Initialize: prev=null, curr=Node(1)',
-            'Step 1: nextNode=Node(2), curr.next=null (prev), prev=Node(1), curr=Node(2)',
-            'Step 2: nextNode=Node(3), curr.next=Node(1) (prev), prev=Node(2), curr=Node(3)',
-            'Step 3: nextNode=Node(4), curr.next=Node(2) (prev), prev=Node(3), curr=Node(4)',
-            'Complete: Head becomes Node(5) pointing back sequentially to Node(1)'
-          ],
-          edgeCases: ['Empty linked list (null)', 'Single node linked list (no action required)', 'Highly cyclical linked list (causes infinite loops if handled poorly)'],
-          tips: ['Clarify whether we need to reverse the list in-place or if we can return a new list.', 'Always write down the pointer reassignments on a board first to avoid NullPointerExceptions.']
-        },
-        code: {
-          python: `def reverseList(head):\n    prev = None\n    curr = head\n    while curr:\n        next_node = curr.next\n        curr.next = prev\n        prev = curr\n        curr = next_node\n    return prev`,
-          java: `public ListNode reverseList(ListNode head) {\n    ListNode prev = null;\n    ListNode curr = head;\n    while (curr != null) {\n        ListNode nextTemp = curr.next;\n        curr.next = prev;\n        prev = curr;\n        curr = nextTemp;\n    }\n    return prev;\n}`
-        }
-      },
-      {
-        id: 'a2',
-        title: 'Sort Array (Quick Sort)',
-        difficulty: 'Medium',
-        frequency: 85,
-        tags: ['Sorting', 'Divide & Conquer', 'Recursion'],
-        input: '[4, 2, 7, 3, 1, 6]',
-        output: '[1, 2, 3, 4, 6, 7]',
-        approach: 'Select a pivot element. Partition array such that elements smaller than pivot are left, larger are right. Recursively sort subsets.',
-        time: 'O(N log N)',
-        space: 'O(log N)',
-        visualizerType: 'sorting',
-        explanation: {
-          intuition: 'Pick a pivot index. Divide the array into elements smaller than pivot and elements larger than pivot. Once partitioned, the pivot sits in its final sorted position. Repeat this dividing step recursively on the sub-arrays.',
-          brute: 'Bubble Sort or Insertion Sort yielding O(N^2) time complexity under most datasets.',
-          optimized: 'Quick Sort or Merge Sort. Quick Sort performs highly efficient in-place partitioning without needing O(N) extra merge buffers.',
-          dryRun: [
-            'Pick Pivot = 6 (Last Element)',
-            'Partitioning: Left values <= 6, Right values > 6. Array becomes: [4, 2, 3, 1, 6, 7]',
-            'Pivot 6 placed at index 4.',
-            'Recursively sort Left [4, 2, 3, 1] and Right [7].',
-            'Sub-partitioning sorts complete successfully!'
-          ],
-          edgeCases: ['Array already sorted (worst-case O(N^2) if pivot selection is naive)', 'Array reverse-sorted', 'Array containing identical elements'],
-          tips: ['Use randomized pivot selection or median-of-three to avoid worst-case O(N^2) performance.', 'Mention in-place sorting optimizations to show strong system memory mastery.']
-        },
-        code: {
-          python: `def quickSort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    middle = [x for x in arr if x == pivot]\n    right = [x for x in arr if x > pivot]\n    return quickSort(left) + middle + quickSort(right)`,
-          java: `public void quickSort(int[] arr, int begin, int end) {\n    if (begin < end) {\n        int partitionIndex = partition(arr, begin, end);\n        quickSort(arr, begin, partitionIndex-1);\n        quickSort(arr, partitionIndex+1, end);\n    }\n}\n\nprivate int partition(int[] arr, int begin, int end) {\n    int pivot = arr[end];\n    int i = (begin-1);\n    for (int j = begin; j < end; j++) {\n        if (arr[j] <= pivot) {\n            i++;\n            int swapTemp = arr[i];\n            arr[i] = arr[j];\n            arr[j] = swapTemp;\n        }\n    }\n    int swapTemp = arr[i+1];\n    arr[i+1] = arr[end];\n    arr[end] = swapTemp;\n    return i+1;\n}`
-        }
-      }
-    ],
-    technical: [
-      {
-        id: 'at1',
-        category: 'System Design',
-        difficulty: 'Advanced',
-        frequency: 93,
-        question: 'Explain how a highly active, fault-tolerant shopping cart persists item states.',
-        answer: 'Use a high-availability masterless distributed database like DynamoDB or Cassandra. Utilize eventual consistency and decentralized consensus to handle extreme traffic loads. Store temporary shopping cart updates locally inside cookies or local Redis caches, sinking batches down to DynamoDB asynchronously to protect database performance.',
-        keyPoints: ['High Availability', 'DynamoDB Write Partitioning', 'Session States Management', 'Asynchronous DB Writing', 'Local Storage Syncing'],
-        followUps: ['How do we prevent items from overselling during flash sales with synchronous stock constraints?', 'What are the trade-offs of storing shopping carts in local storage vs server database?']
-      }
-    ],
-    hr: [
-      {
-        id: 'ah1',
-        question: 'Describe a situation where you noticed an inefficiency in a project and fixed it without being asked.',
-        modelAnswer: 'While building a student application, I noticed that database queries were loading entire user profiles repeatedly for each post on the dashboard. This wasted network bandwidth and degraded server loading times. Without being asked, I took Ownership of the issue, researched database optimizations, implemented MongoDB projection to only fetch necessary post summaries, and added a Redis cache for static profiles. This demonstrated Bias for Action by proactively solving the problem, and Frugality by optimizing resource usage. The result was a 45% reduction in average page latency and 70% reduction in database load.',
-        aiTips: 'Emphasize Amazon Leadership Principles: Ownership (taking responsibility without being asked), Bias for Action (proactively solving problems), and Frugality (optimizing resources and costs).',
-        starTips: {
-          situation: 'Our team was building a dashboard that had highly laggy search results under large records, affecting user experience.',
-          task: 'I took Ownership to optimize API responses and search rendering logic without waiting for assignment.',
-          action: 'Demonstrated Bias for Action by implementing debouncing (300ms delay) on the frontend search bar, indexed database text search fields, and cached queries. Applied Frugality by reducing unnecessary database calls.',
-          result: 'Reduced database query stress by 70% and eliminated lag, yielding extremely smooth, real-time query rendering. This proactive approach became a best practice for the team.'
-        }
-      }
-    ]
-  },
-  {
-    id: 'microsoft',
-    name: 'Microsoft',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/9/96/Microsoft_logo_%282012%29.svg',
-    industry: 'Enterprise OS & Productivity',
-    hiringRoles: ['SDE I', 'Systems Engineer', 'Integration Developer'],
-    interviewRounds: ['Technical Assessment', '2x Codility Interviews', 'As Appropriate (AA) Round'],
-    salaryRange: '₹22L - ₹48L',
-    brandColor: '#00A4EF',
-    culture: 'Growth Mindset, Empathy, Customer Obsession, Accessibility',
-    difficulty: 'High',
-    completion: 5,
-    stats: { placed: '185', avgpackage: '26.0 LPA' },
-    dsa: [
-      {
-        id: 'm1',
-        title: 'Longest Palindromic Substring',
-        difficulty: 'Medium',
-        frequency: 91,
-        tags: ['String', 'Dynamic Programming', 'Expand Center'],
-        input: '"babad"',
-        output: '"bab"',
-        approach: 'Expand outwards from each character acting as a potential center, checking both odd and even palindrome centers.',
-        time: 'O(N^2)',
-        space: 'O(1)',
-        visualizerType: 'dp',
-        explanation: {
-          intuition: 'A palindrome expands symmetrically from its center. We can iterate through the string and, for each index, assume it is either the single-character center (odd) or space-between center (even), expanding outward while character matches hold.',
-          brute: 'Verify every possible substring individually. Reversing and checking each takes O(N^3) time.',
-          optimized: 'Expand Around Center technique. Avoids the O(N^2) memory footprint required by standard 2D DP matrices.',
-          dryRun: [
-            'Center index 0 ("b"): Odd expansion -> "b"',
-            'Center index 1 ("a"): Odd expansion -> expands to "bab" (valid) -> expands to "babad" (invalid)',
-            'Center index 2 ("b"): Odd expansion -> expands to "aba" (valid) -> expands to "babad" (invalid)',
-            'Compare all and return the maximum valid length substring: "bab" (or "aba")'
-          ],
-          edgeCases: ['Single character "a"', 'String containing all identical characters "aaaa"', 'Entire string is already a palindrome "racecar"'],
-          tips: ['Always ask whether a case-sensitive palindrome is required (e.g. "AbA" vs "aba").', 'If space complexity is an absolute bottleneck, emphasize that the center expansion method cuts memory to O(1) compared to O(N^2) DP matrices.']
-        },
-        code: {
-          python: `def longestPalindrome(s: str) -> str:\n    if not s or len(s) < 1: return ""\n    start, end = 0, 0\n    \n    def expand(left, right):\n        while left >= 0 and right < len(s) and s[left] == s[right]:\n            left -= 1\n            right += 1\n        return right - left - 1\n        \n    for i in range(len(s)):\n        len1 = expand(i, i)\n        len2 = expand(i, i + 1)\n        max_len = max(len1, len2)\n        if max_len > end - start:\n            start = i - (max_len - 1) // 2\n            end = i + max_len // 2\n    return s[start:end + 1]`,
-          java: `public String longestPalindrome(String s) {\n    if (s == null || s.length() < 1) return "";\n    int start = 0, end = 0;\n    for (int i = 0; i < s.length(); i++) {\n        int len1 = expandAroundCenter(s, i, i);\n        int len2 = expandAroundCenter(s, i, i + 1);\n        int len = Math.max(len1, len2);\n        if (len > end - start) {\n            start = i - (len - 1) / 2;\n            end = i + len / 2;\n        }\n    }\n    return s.substring(start, end + 1);\n}\n\nprivate int expandAroundCenter(String s, int left, int right) {\n    int L = left, R = right;\n    while (L >= 0 && R < s.length() && s.charAt(L) == s.charAt(R)) {\n        L--;\n        R++;\n    }\n    return R - L - 1;\n}`
-        }
-      }
-    ],
-    technical: [
-      {
-        id: 'mt1',
-        category: 'System Design',
-        difficulty: 'Advanced',
-        frequency: 91,
-        question: 'How do you design a real-time collaborative chat dashboard for enterprise users?',
-        answer: 'Use full-duplex WebSockets connections to broadcast instant messages. Implement a publish-subscribe architecture (Redis Pub/Sub or Apache Kafka) in the backend to route messages across different clusters. Persist chat history in horizontally scalable NoSQL databases (Cassandra) optimized for rapid writes. Integrate local SQLite cache on mobile/desktop applications to ensure offline availability and seamless sync.',
-        keyPoints: ['WebSockets Connection Pooling', 'Kafka Message Queuing', 'Cassandra Partitioning Key', 'Offline SQLite Syncing', 'Global CDN Edge Caching'],
-        followUps: ['How do you ensure message delivery guarantees (at-least-once vs exactly-once)?', 'How do you handle heavy media attachments (images/video) sharing efficiently within high-activity chat rooms?']
-      }
-    ],
-    hr: [
-      {
-        id: 'mh2',
-        question: 'Describe a situation where you noticed an inefficiency in a project and fixed it without being asked.',
-        modelAnswer: 'While working on a Microsoft Teams integration project, I noticed that our API calls were being made synchronously, causing the UI to freeze during data fetches. Without being asked, I researched async/await patterns, refactored all API calls to be asynchronous, and implemented loading states. This improved user experience significantly and reduced app crashes by 60%.',
-        aiTips: 'Emphasize Microsoft values: Growth Mindset (learning and improving), Customer Obsession (improving UX), and technical excellence.',
-        starTips: {
-          situation: 'Our Teams integration had UI freezing issues due to synchronous API calls during data fetches.',
-          task: 'I identified the performance bottleneck and took initiative to refactor the API architecture.',
-          action: 'Researched async/await patterns, refactored all API calls to be asynchronous, implemented loading states and error handling.',
-          result: 'Eliminated UI freezing, reduced app crashes by 60%, and the async pattern became the standard for all future integrations.'
-        }
-      },
-      {
-        id: 'mh1',
-        question: 'Give an example of a time when you had to learn a completely new framework/technology in a very short timeline.',
-        modelAnswer: 'During a hackathon, we decided to integrate an NLP model, which required writing backend logic in FastStream and Python. Having never built FastStream systems, I read the official documentation, consulted source examples, set up a simple API structure within 3 hours, and debugged connection bottlenecks. We successfully completed and deployed the integrated AI engine, winning the "Most Innovative Implementation" award.',
-        aiTips: 'Emphasize Growth Mindset: curiosity, active self-directed learning, seeking feedback, and viewing setbacks as lessons.',
-        starTips: {
-          situation: 'Our project team had to quickly build interactive charts using complex SVG mathematics.',
-          task: 'I had to learn detailed D3 coordinates and React SVG rendering in 48 hours.',
-          action: 'I spent a day building basic coordinate mockups, studied SVG path commands, and created custom responsive components.',
-          result: 'Delivered robust, dependency-free interactive dashboard analytics charts, boosting performance compared to heavy external charting libraries.'
-        }
-      }
-    ]
-  },
-  {
-    id: 'adobe',
-    name: 'Adobe',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/8/8d/Adobe_Corporate_Logo.png',
-    industry: 'Creative Software & Digital Media',
-    hiringRoles: ['SDE I', 'Frontend Engineer', 'ML Engineer', 'Data Scientist'],
-    interviewRounds: ['Online Assessment', '2x Technical Coding', 'Hiring Manager Round'],
-    salaryRange: '₹20L - ₹42L',
-    brandColor: '#FF0000',
-    culture: 'Creativity, Innovation, User Experience, Inclusion, Excellence',
-    difficulty: 'High',
-    completion: 15,
-    stats: { placed: '96', avgpackage: '22.5 LPA' },
-    dsa: [
-      {
-        id: 'ad1',
-        title: 'Merge Intervals',
-        difficulty: 'Medium',
-        frequency: 92,
-        tags: ['Array', 'Sorting', 'Greedy'],
-        input: '[[1,3],[2,6],[8,10],[15,18]]',
-        output: '[[1,6],[8,10],[15,18]]',
-        approach: 'Sort intervals by start time, then merge overlapping intervals by comparing end times.',
-        time: 'O(N log N)',
-        space: 'O(N)',
-        acceptanceRate: 78,
-        estimatedRounds: 'Technical Round 1',
-        visualizerType: 'sorting',
-        explanation: {
-          intuition: 'After sorting by start time, overlapping intervals become adjacent. We iterate and merge whenever the current interval start is less than or equal to the previous interval end.',
-          brute: 'Compare every pair of intervals for overlap and merge iteratively. O(N^2) time complexity.',
-          optimized: 'Sort by start time in O(N log N), then single-pass merge comparing current start with previous end. Total: O(N log N).',
-          dryRun: [
-            'Sort: [[1,3],[2,6],[8,10],[15,18]] (already sorted)',
-            'Compare [1,3] and [2,6]: 2 <= 3, merge → [1,6]',
-            'Compare [1,6] and [8,10]: 8 > 6, no overlap. Keep [8,10]',
-            'Compare [8,10] and [15,18]: 15 > 10, no overlap. Keep [15,18]',
-            'Result: [[1,6],[8,10],[15,18]]'
-          ],
-          edgeCases: ['Single interval input', 'All intervals overlap into one', 'No overlapping intervals', 'Intervals sharing exact endpoints [1,4],[4,5]'],
-          tips: ['Clarify whether interval boundaries are inclusive or exclusive.', 'Mention sorting as a preprocessing step — interviewers want to see systematic thinking.']
-        },
-        code: {
-          python: `def merge(intervals):\n    intervals.sort(key=lambda x: x[0])\n    merged = [intervals[0]]\n    for curr in intervals[1:]:\n        if curr[0] <= merged[-1][1]:\n            merged[-1][1] = max(merged[-1][1], curr[1])\n        else:\n            merged.append(curr)\n    return merged`,
-          java: `public int[][] merge(int[][] intervals) {\n    Arrays.sort(intervals, (a, b) -> a[0] - b[0]);\n    List<int[]> merged = new ArrayList<>();\n    merged.add(intervals[0]);\n    for (int i = 1; i < intervals.length; i++) {\n        int[] last = merged.get(merged.size() - 1);\n        if (intervals[i][0] <= last[1])\n            last[1] = Math.max(last[1], intervals[i][1]);\n        else merged.add(intervals[i]);\n    }\n    return merged.toArray(new int[0][]);\n}`
-        }
-      },
-      {
-        id: 'ad2',
-        title: 'Two Sum',
-        difficulty: 'Easy',
-        frequency: 98,
-        tags: ['Array', 'Hash Table'],
-        input: '[2, 7, 11, 15], target = 9',
-        output: '[0, 1]',
-        approach: 'Use a hash map to store complement values. For each element, check if target - element exists.',
-        time: 'O(N)',
-        space: 'O(N)',
-        acceptanceRate: 92,
-        estimatedRounds: 'Online Assessment',
-        visualizerType: 'sliding-window',
-        explanation: {
-          intuition: 'For each number, we need target - num. Store seen numbers in a hash map for O(1) lookup instead of nested searching.',
-          brute: 'Nested loops checking all pairs. O(N^2) time complexity.',
-          optimized: 'Single pass with hash map. Check if complement exists, if yes return indices, else store current.',
-          dryRun: [
-            'Index 0: num=2, comp=7. Map: {} → not found. Store {2:0}.',
-            'Index 1: num=7, comp=2. Map: {2:0} → found! Return [0,1].'
-          ],
-          edgeCases: ['No valid solution', 'Negative numbers', 'Duplicate values in array', 'Array with exactly 2 elements'],
-          tips: ['Ask if there is guaranteed exactly one solution.', 'Clarify whether the same element can be used twice.']
-        },
-        code: {
-          python: `def twoSum(nums, target):\n    seen = {}\n    for i, num in enumerate(nums):\n        comp = target - num\n        if comp in seen:\n            return [seen[comp], i]\n        seen[num] = i\n    return []`,
-          java: `public int[] twoSum(int[] nums, int target) {\n    Map<Integer, Integer> map = new HashMap<>();\n    for (int i = 0; i < nums.length; i++) {\n        int comp = target - nums[i];\n        if (map.containsKey(comp))\n            return new int[]{map.get(comp), i};\n        map.put(nums[i], i);\n    }\n    return new int[]{};\n}`
-        }
-      }
-    ],
-    technical: [
-      {
-        id: 'adt1',
-        category: 'OOPs & Design Patterns',
-        question: 'Explain SOLID Principles with Real-world Examples',
-        difficulty: 'Intermediate',
-        frequency: 90,
-        answer: 'SOLID stands for: Single Responsibility (one class, one job), Open-Closed (open for extension, closed for modification via interfaces), Liskov Substitution (child types must be substitutable for parent), Interface Segregation (prefer small, focused interfaces), and Dependency Inversion (depend on abstractions). In Adobe Creative Cloud, each filter follows SRP. Plugin architecture uses Open-Closed. Export formats implement a common interface (ISP).',
-        keyPoints: ['Single Responsibility', 'Open-Closed Principle', 'Liskov Substitution', 'Interface Segregation', 'Dependency Inversion'],
-        followUps: ['How would you refactor a god class that violates SRP?', 'Give an example where Liskov Substitution is violated.']
-      },
-      {
-        id: 'adt2',
-        category: 'Operating Systems',
-        question: 'Explain Process vs Thread and Concurrency Models',
-        difficulty: 'Intermediate',
-        frequency: 85,
-        answer: 'A process has its own memory address space. Threads share the parent process memory but have individual stacks and registers. Context switching between processes is expensive (TLB flush, page table swap). Thread switching is cheaper. Modern concurrency uses thread pools, async/await patterns, and event loops. Adobe uses multi-threaded rendering pipelines for real-time video processing in Premiere Pro.',
-        keyPoints: ['Process Address Space Isolation', 'Thread Shared Memory', 'Context Switch Cost', 'Thread Pools', 'Async Event Loops'],
-        followUps: ['What is a deadlock and how do you prevent it?', 'Explain the difference between concurrency and parallelism.']
-      }
-    ],
-    hr: [
-      {
-        id: 'adh2',
-        question: 'Describe a situation where you noticed an inefficiency in a project and fixed it without being asked.',
-        modelAnswer: 'While working on a creative design tool, I noticed that the rendering engine was recalculating the entire canvas on every minor change, causing significant lag. Without being assigned, I implemented a dirty rectangle system that only re-rendered changed regions. This reduced rendering time by 75% and made the tool much more responsive for designers.',
-        aiTips: 'Emphasize Adobe values: Creativity (innovative solutions), User Experience (performance matters), and technical excellence.',
-        starTips: {
-          situation: 'Our creative design tool had performance issues due to full canvas recalculation on every change.',
-          task: 'I identified the rendering bottleneck and proactively optimized the rendering engine.',
-          action: 'Implemented dirty rectangle system to only re-render changed regions, optimized the render loop, added performance monitoring.',
-          result: 'Reduced rendering time by 75%, improved tool responsiveness, and the optimization became standard across Adobe products.'
-        }
-      },
-      {
-        id: 'adh1',
-        question: 'Tell me about a creative solution you implemented to solve a complex technical problem.',
-        modelAnswer: 'During a college project, our image processing pipeline took 30+ seconds per batch. I researched Web Workers and proposed offloading computation to background threads. I implemented a worker pool pattern processing images in parallel, reducing batch time to under 5 seconds — an 83% improvement. This creative approach earned recognition and was adopted by two other project teams.',
-        aiTips: 'Adobe values creativity and innovation. Show you think outside the box and combine technical skill with creative problem-solving.',
-        starTips: {
-          situation: 'Our team\'s image processing pipeline caused UI freezes and took 30+ seconds per batch.',
-          task: 'Find an innovative way to handle heavy computation without blocking the main thread.',
-          action: 'Researched Web Workers, designed a worker pool architecture, implemented parallel processing.',
-          result: 'Reduced processing time by 83%, eliminated UI freezes, solution adopted by other teams.'
-        }
-      }
-    ]
-  },
-  {
-    id: 'flipkart',
-    name: 'Flipkart',
-    logo: 'https://logo.clearbit.com/flipkart.com',
-    industry: 'E-Commerce & Supply Chain',
-    hiringRoles: ['SDE I', 'SDE II', 'Backend Engineer', 'Data Engineer'],
-    interviewRounds: ['Online Coding Test', 'Machine Coding Round', '2x Technical DSA', 'Hiring Manager'],
-    salaryRange: '₹18L - ₹38L',
-    brandColor: '#F8E71C',
-    culture: 'Customer First, Speed, Boldness, Data-Driven, Integrity',
-    difficulty: 'High',
-    completion: 10,
-    stats: { placed: '174', avgpackage: '24.5 LPA' },
-    dsa: [
-      {
-        id: 'fk1',
-        title: 'Maximum Subarray (Kadane\'s Algorithm)',
-        difficulty: 'Medium',
-        frequency: 91,
-        tags: ['Array', 'Dynamic Programming', 'Greedy'],
-        input: '[-2, 1, -3, 4, -1, 2, 1, -5, 4]',
-        output: '6',
-        approach: 'Track current maximum subarray sum ending at each position. Reset when sum becomes negative.',
-        time: 'O(N)',
-        space: 'O(1)',
-        acceptanceRate: 82,
-        estimatedRounds: 'Technical Round 1',
-        visualizerType: 'sliding-window',
-        explanation: {
-          intuition: 'At each index, decide: extend the current subarray or start fresh from here. If the running sum drops below zero, starting fresh is always better.',
-          brute: 'Check all possible subarrays with nested loops. O(N^2) or O(N^3) depending on implementation.',
-          optimized: 'Kadane\'s Algorithm: maintain currentMax and globalMax. currentMax = max(nums[i], currentMax + nums[i]). globalMax = max(globalMax, currentMax).',
-          dryRun: [
-            'i=0: num=-2, currMax=-2, globalMax=-2',
-            'i=1: num=1, currMax=max(1,-2+1)=1, globalMax=1',
-            'i=2: num=-3, currMax=max(-3,1-3)=-2, globalMax=1',
-            'i=3: num=4, currMax=max(4,-2+4)=4, globalMax=4',
-            'i=4..6: Subarray [4,-1,2,1] yields currMax=6, globalMax=6'
-          ],
-          edgeCases: ['All negative numbers', 'Single element array', 'All positive numbers', 'Array with zeros'],
-          tips: ['Ask if empty subarrays are allowed (sum = 0).', 'Mention divide and conquer O(N log N) as an alternative approach.']
-        },
-        code: {
-          python: `def maxSubArray(nums):\n    curr_max = global_max = nums[0]\n    for num in nums[1:]:\n        curr_max = max(num, curr_max + num)\n        global_max = max(global_max, curr_max)\n    return global_max`,
-          java: `public int maxSubArray(int[] nums) {\n    int currMax = nums[0], globalMax = nums[0];\n    for (int i = 1; i < nums.length; i++) {\n        currMax = Math.max(nums[i], currMax + nums[i]);\n        globalMax = Math.max(globalMax, currMax);\n    }\n    return globalMax;\n}`
-        }
-      },
-      {
-        id: 'fk2',
-        title: 'LRU Cache',
-        difficulty: 'Hard',
-        frequency: 88,
-        tags: ['Hash Table', 'Linked List', 'Design'],
-        input: 'capacity=2, put(1,1), put(2,2), get(1), put(3,3)',
-        output: 'get(1)→1, get(2)→-1',
-        approach: 'Combine a doubly linked list (for ordering) with a hash map (for O(1) lookup). Move accessed nodes to front.',
-        time: 'O(1)',
-        space: 'O(capacity)',
-        acceptanceRate: 65,
-        estimatedRounds: 'Machine Coding Round',
-        visualizerType: 'linked-list',
-        explanation: {
-          intuition: 'We need O(1) get and put. A hash map gives O(1) lookup. A doubly linked list lets us add/remove nodes in O(1). Combine both: map stores key→node, list maintains recency order.',
-          brute: 'Use an array with timestamps. Search and evict oldest. O(N) per operation.',
-          optimized: 'HashMap + Doubly Linked List. Head = most recently used. Tail = least recently used. On access, move node to head. On capacity overflow, remove tail.',
-          dryRun: [
-            'put(1,1): Add node(1,1) to head. Map: {1→node}',
-            'put(2,2): Add node(2,2) to head. Map: {1→node, 2→node}. List: [2,1]',
-            'get(1): Found in map. Move node(1) to head. List: [1,2]. Return 1',
-            'put(3,3): Capacity full. Evict tail (node 2). Add node(3,3) to head. List: [3,1]',
-            'get(2): Not in map. Return -1'
-          ],
-          edgeCases: ['Capacity of 1', 'Updating existing key value', 'Getting non-existent key', 'Rapid sequential puts exceeding capacity'],
-          tips: ['Draw the linked list on a whiteboard to show pointer manipulation clearly.', 'Use sentinel head/tail nodes to simplify edge case handling at boundaries.']
-        },
-        code: {
-          python: `class LRUCache:\n    def __init__(self, capacity):\n        self.cap = capacity\n        self.cache = {}\n        self.order = collections.OrderedDict()\n\n    def get(self, key):\n        if key not in self.cache: return -1\n        self.order.move_to_end(key)\n        return self.cache[key]\n\n    def put(self, key, value):\n        if key in self.cache:\n            self.order.move_to_end(key)\n        self.cache[key] = value\n        self.order[key] = None\n        if len(self.cache) > self.cap:\n            oldest = next(iter(self.order))\n            del self.cache[oldest]\n            del self.order[oldest]`,
-          java: `class LRUCache extends LinkedHashMap<Integer, Integer> {\n    private int capacity;\n    public LRUCache(int capacity) {\n        super(capacity, 0.75f, true);\n        this.capacity = capacity;\n    }\n    public int get(int key) {\n        return super.getOrDefault(key, -1);\n    }\n    public void put(int key, int value) {\n        super.put(key, value);\n    }\n    @Override\n    protected boolean removeEldestEntry(Map.Entry e) {\n        return size() > capacity;\n    }\n}`
-        }
-      }
-    ],
-    technical: [
-      {
-        id: 'fkt1',
-        category: 'System Design',
-        question: 'Design a Real-time Inventory Management System',
-        difficulty: 'Advanced',
-        frequency: 92,
-        answer: 'Use event-driven architecture with Apache Kafka for real-time inventory updates. Redis for caching current stock levels. PostgreSQL for persistent storage. Implement optimistic locking to prevent overselling during flash sales. Use CQRS pattern to separate read (product listing) and write (order placement) paths for scalability.',
-        keyPoints: ['Event-Driven Architecture', 'Kafka Streaming', 'Redis Cache Layer', 'Optimistic Locking', 'CQRS Pattern'],
-        followUps: ['How do you handle inventory sync across multiple warehouses?', 'What happens during a flash sale with 100K concurrent requests?']
-      }
-    ],
-    hr: [
-      {
-        id: 'fkh2',
-        question: 'Describe a situation where you noticed an inefficiency in a project and fixed it without being asked.',
-        modelAnswer: 'While working on an e-commerce feature, I noticed that product images were being loaded at full resolution regardless of device, causing slow page loads on mobile. Without being asked, I implemented responsive image loading with different sizes for different devices, and lazy loading for images below the fold. This reduced page load time by 60% on mobile and improved conversion rates.',
-        aiTips: 'Emphasize Flipkart values: Customer First (improving experience), Speed (performance), and Data-Driven (measuring impact).',
-        starTips: {
-          situation: 'Our e-commerce pages were slow on mobile due to full-resolution image loading.',
-          task: 'I identified the performance issue and took initiative to optimize image delivery.',
-          action: 'Implemented responsive image loading with device-specific sizes, added lazy loading for below-fold images, monitored performance metrics.',
-          result: 'Reduced mobile page load time by 60%, improved conversion rates by 15%, and the optimization was rolled out across the platform.'
-        }
-      },
-      {
-        id: 'fkh1',
-        question: 'Describe a time when you had to deliver results under extreme time pressure.',
-        modelAnswer: 'During our college hackathon, our team\'s backend crashed 4 hours before the deadline. I took ownership, quickly identified the issue as a database connection pool exhaustion, implemented connection pooling with HikariCP, added request rate limiting, and restored service within 90 minutes. We still delivered our presentation on time and won second place.',
-        aiTips: 'Flipkart values Speed and Boldness. Show you can make quick decisions under pressure without sacrificing quality.',
-        starTips: {
-          situation: 'Our hackathon project\'s backend crashed 4 hours before the final presentation deadline.',
-          task: 'Diagnose the root cause and restore service while maintaining feature completeness.',
-          action: 'Identified connection pool exhaustion, implemented HikariCP pooling, added rate limiting.',
-          result: 'Restored service in 90 minutes, delivered on time, won second place among 50+ teams.'
-        }
-      }
-    ]
-  },
-  {
-    id: 'goldman',
-    name: 'Goldman Sachs',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/6/61/Goldman_Sachs.svg',
-    industry: 'Investment Banking & Financial Technology',
-    hiringRoles: ['Software Engineer', 'Quantitative Analyst', 'Platform Engineer'],
-    interviewRounds: ['HackerRank Coding Test', 'Coderpad Interview', 'Technical + Behavioral', 'Superday'],
-    salaryRange: '₹22L - ₹45L',
-    brandColor: '#6FA8DC',
-    culture: 'Client Service, Integrity, Excellence, Teamwork, Partnership',
-    difficulty: 'Elite',
-    completion: 8,
-    stats: { placed: '64', avgpackage: '28.0 LPA' },
-    dsa: [
-      {
-        id: 'gs1',
-        title: 'Best Time to Buy and Sell Stock',
-        difficulty: 'Easy',
-        frequency: 95,
-        tags: ['Array', 'Dynamic Programming', 'Greedy'],
-        input: '[7, 1, 5, 3, 6, 4]',
-        output: '5',
-        approach: 'Track minimum price seen so far. At each step, calculate potential profit and update maximum.',
-        time: 'O(N)',
-        space: 'O(1)',
-        acceptanceRate: 88,
-        estimatedRounds: 'HackerRank Test',
-        visualizerType: 'sliding-window',
-        explanation: {
-          intuition: 'We want to buy low and sell high. Track the lowest price seen and at each day compute profit if we sold today. Keep the maximum profit.',
-          brute: 'Check all pairs (buy day i, sell day j where j > i). O(N^2) time.',
-          optimized: 'Single pass: maintain minPrice and maxProfit. For each price, update minPrice = min(minPrice, price) and maxProfit = max(maxProfit, price - minPrice).',
-          dryRun: [
-            'Day 0: price=7, minPrice=7, maxProfit=0',
-            'Day 1: price=1, minPrice=1, maxProfit=0',
-            'Day 2: price=5, profit=5-1=4, maxProfit=4',
-            'Day 3: price=3, profit=3-1=2, maxProfit=4',
-            'Day 4: price=6, profit=6-1=5, maxProfit=5 ✓'
-          ],
-          edgeCases: ['Prices only decrease (profit = 0)', 'Single day', 'All prices identical', 'Two days only'],
-          tips: ['Clarify if short selling is allowed (sell before buy).', 'Ask about transaction fees if this is a follow-up question.']
-        },
-        code: {
-          python: `def maxProfit(prices):\n    min_price = float('inf')\n    max_profit = 0\n    for price in prices:\n        min_price = min(min_price, price)\n        max_profit = max(max_profit, price - min_price)\n    return max_profit`,
-          java: `public int maxProfit(int[] prices) {\n    int minPrice = Integer.MAX_VALUE, maxProfit = 0;\n    for (int price : prices) {\n        minPrice = Math.min(minPrice, price);\n        maxProfit = Math.max(maxProfit, price - minPrice);\n    }\n    return maxProfit;\n}`
-        }
-      },
-      {
-        id: 'gs2',
-        title: 'Trapping Rain Water',
-        difficulty: 'Hard',
-        frequency: 87,
-        tags: ['Array', 'Two Pointers', 'Stack', 'DP'],
-        input: '[0,1,0,2,1,0,1,3,2,1,2,1]',
-        output: '6',
-        approach: 'For each bar, water trapped = min(maxLeft, maxRight) - height. Use two pointers to compute in O(1) space.',
-        time: 'O(N)',
-        space: 'O(1)',
-        acceptanceRate: 58,
-        estimatedRounds: 'Technical Interview',
-        visualizerType: 'sorting',
-        explanation: {
-          intuition: 'Water above any bar is bounded by the shorter of the tallest bars on its left and right. We precompute or dynamically track these maximums.',
-          brute: 'For each element, scan left and right to find max heights. O(N^2) time.',
-          optimized: 'Two-pointer approach: left and right pointers move inward. Track leftMax and rightMax. Process the side with smaller max (water is bounded by the smaller side).',
-          dryRun: [
-            'L=0,R=11: leftMax=0,rightMax=1. Process left. No water (height=0, leftMax=0).',
-            'L=1: leftMax=1. Continue...',
-            'L=2: height=0 < leftMax=1. Water += 1-0 = 1.',
-            'Process continues, accumulating water at each valley.',
-            'Total water trapped = 6 units.'
-          ],
-          edgeCases: ['Monotonically increasing/decreasing', 'All same height', 'Empty or single bar', 'Very tall single bar in middle'],
-          tips: ['Draw the elevation map on whiteboard to visualize water accumulation.', 'Mention stack-based approach as an alternative O(N) solution.']
-        },
-        code: {
-          python: `def trap(height):\n    left, right = 0, len(height) - 1\n    left_max = right_max = water = 0\n    while left < right:\n        if height[left] < height[right]:\n            if height[left] >= left_max:\n                left_max = height[left]\n            else:\n                water += left_max - height[left]\n            left += 1\n        else:\n            if height[right] >= right_max:\n                right_max = height[right]\n            else:\n                water += right_max - height[right]\n            right -= 1\n    return water`,
-          java: `public int trap(int[] height) {\n    int left = 0, right = height.length - 1;\n    int leftMax = 0, rightMax = 0, water = 0;\n    while (left < right) {\n        if (height[left] < height[right]) {\n            leftMax = Math.max(leftMax, height[left]);\n            water += leftMax - height[left++];\n        } else {\n            rightMax = Math.max(rightMax, height[right]);\n            water += rightMax - height[right--];\n        }\n    }\n    return water;\n}`
-        }
-      }
-    ],
-    technical: [
-      {
-        id: 'gst1',
-        category: 'DBMS & SQL',
-        question: 'Explain ACID Properties and Transaction Isolation Levels',
-        difficulty: 'Intermediate',
-        frequency: 93,
-        answer: 'ACID: Atomicity (all or nothing), Consistency (valid state transitions), Isolation (concurrent transactions don\'t interfere), Durability (committed data persists). Isolation levels: Read Uncommitted (dirty reads possible), Read Committed (no dirty reads), Repeatable Read (no phantom reads within transaction), Serializable (full isolation, slowest). Financial systems like Goldman\'s trading platforms use Serializable for critical transactions.',
-        keyPoints: ['Atomicity & Rollback', 'Consistency Constraints', 'Isolation Levels', 'Write-Ahead Logging', 'MVCC (Multi-Version Concurrency)'],
-        followUps: ['What is the performance trade-off between Read Committed and Serializable?', 'How does PostgreSQL implement MVCC internally?']
-      }
-    ],
-    hr: [
-      {
-        id: 'gsh1',
-        question: 'Tell me about a situation where you had to make a difficult ethical decision in a team project.',
-        modelAnswer: 'During a group project, a teammate suggested copying code from an open-source project without attribution. I understood the time pressure but explained the importance of intellectual property and academic integrity. I proposed we use the library properly with correct licensing and attribution, and I volunteered to handle the integration myself to save time. The team agreed, and we delivered a fully compliant, well-documented solution.',
-        aiTips: 'Goldman Sachs deeply values Integrity and Partnership. Show ethical judgment, transparency, and collaborative resolution.',
-        starTips: {
-          situation: 'A teammate proposed using open-source code without proper attribution under deadline pressure.',
-          task: 'Address the ethical concern while maintaining team morale and meeting the deadline.',
-          action: 'Explained IP importance, proposed proper licensing, volunteered to handle the integration.',
-          result: 'Delivered a fully compliant solution on time, strengthened team\'s approach to ethical coding.'
-        }
-      }
-    ]
-  },
-  {
-    id: 'atlassian',
-    name: 'Atlassian',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/0/01/Atlassian_Logo.svg',
-    industry: 'Enterprise Collaboration Software',
-    hiringRoles: ['SDE I', 'Full Stack Engineer', 'Platform Engineer', 'SRE'],
-    interviewRounds: ['Values Interview', 'Technical Phone Screen', 'Coding Challenge', 'System Design'],
-    salaryRange: '₹25L - ₹52L',
-    brandColor: '#0052CC',
-    culture: 'Open Company No Bullshit, Build with Heart and Balance, Play as a Team, Don\'t #@!% the Customer',
-    difficulty: 'Elite',
-    completion: 12,
-    stats: { placed: '48', avgpackage: '32.0 LPA' },
-    dsa: [
-      {
-        id: 'at1',
-        title: 'Clone Graph (BFS Traversal)',
-        difficulty: 'Medium',
-        frequency: 86,
-        tags: ['Graph', 'BFS', 'Hash Map'],
-        input: 'adjacency: [[2,4],[1,3],[2,4],[1,3]]',
-        output: 'Deep copy of entire graph',
-        approach: 'BFS traversal with a hash map mapping original nodes to cloned nodes. Clone neighbors as you traverse.',
-        time: 'O(V + E)',
-        space: 'O(V)',
-        acceptanceRate: 72,
-        estimatedRounds: 'Coding Challenge',
-        visualizerType: 'graph',
-        explanation: {
-          intuition: 'Traverse the graph (BFS/DFS). For each node, create a clone if not already created. Use a hash map to track original → clone mapping to avoid infinite loops in cyclic graphs.',
-          brute: 'Serialize the graph to a string/JSON, then deserialize into new objects. Wastes memory and is fragile.',
-          optimized: 'BFS with HashMap<Node, ClonedNode>. Start from any node, clone it, add to queue. For each neighbor: if not cloned yet, clone and enqueue. Link cloned neighbors.',
-          dryRun: [
-            'Start BFS from Node 1. Clone Node 1\'. Map: {1→1\'}. Queue: [1]',
-            'Process Node 1. Neighbors: [2,4]. Clone 2\' and 4\'. Link 1\'→[2\',4\']. Queue: [2,4]',
-            'Process Node 2. Neighbors: [1,3]. 1\' exists. Clone 3\'. Link 2\'→[1\',3\']. Queue: [4,3]',
-            'Process Node 4. Neighbors: [1,3]. Both exist. Link 4\'→[1\',3\'].',
-            'Process Node 3. Neighbors: [2,4]. Both exist. Link 3\'→[2\',4\']. Graph fully cloned!'
-          ],
-          edgeCases: ['Empty graph (null input)', 'Single node with self-loop', 'Disconnected components', 'Very large cyclic graph'],
-          tips: ['Emphasize the hash map prevents infinite loops in cycles.', 'Mention both BFS and DFS approaches and their trade-offs.']
-        },
-        code: {
-          python: `def cloneGraph(node):\n    if not node: return None\n    cloned = {node: Node(node.val)}\n    queue = deque([node])\n    while queue:\n        curr = queue.popleft()\n        for neighbor in curr.neighbors:\n            if neighbor not in cloned:\n                cloned[neighbor] = Node(neighbor.val)\n                queue.append(neighbor)\n            cloned[curr].neighbors.append(cloned[neighbor])\n    return cloned[node]`,
-          java: `public Node cloneGraph(Node node) {\n    if (node == null) return null;\n    Map<Node, Node> map = new HashMap<>();\n    map.put(node, new Node(node.val));\n    Queue<Node> queue = new LinkedList<>();\n    queue.add(node);\n    while (!queue.isEmpty()) {\n        Node curr = queue.poll();\n        for (Node neighbor : curr.neighbors) {\n            if (!map.containsKey(neighbor)) {\n                map.put(neighbor, new Node(neighbor.val));\n                queue.add(neighbor);\n            }\n            map.get(curr).neighbors.add(map.get(neighbor));\n        }\n    }\n    return map.get(node);\n}`
-        }
-      },
-      {
-        id: 'at2',
-        title: 'Course Schedule (Topological Sort)',
-        difficulty: 'Medium',
-        frequency: 84,
-        tags: ['Graph', 'Topological Sort', 'BFS'],
-        input: 'numCourses=4, prerequisites=[[1,0],[2,0],[3,1],[3,2]]',
-        output: 'true (can finish all courses)',
-        approach: 'Build a directed graph from prerequisites. Use Kahn\'s algorithm (BFS topological sort) to detect cycles.',
-        time: 'O(V + E)',
-        space: 'O(V + E)',
-        acceptanceRate: 68,
-        estimatedRounds: 'Technical Phone Screen',
-        visualizerType: 'graph',
-        explanation: {
-          intuition: 'Prerequisites form a directed graph. If there\'s a cycle, some courses can never be completed. Topological sort processes nodes with no incoming edges first — if all nodes are processed, no cycle exists.',
-          brute: 'Try all permutations of course orderings. Exponential time.',
-          optimized: 'Kahn\'s Algorithm: compute in-degrees. Start with nodes having in-degree 0. Process each, decrementing neighbors\' in-degrees. If processed count equals total nodes, no cycle.',
-          dryRun: [
-            'Build graph: 0→[1,2], 1→[3], 2→[3]. In-degrees: {0:0, 1:1, 2:1, 3:2}',
-            'Queue starts with [0] (in-degree 0). Process 0, decrement 1 and 2.',
-            'In-degrees: {1:0, 2:0, 3:2}. Queue: [1, 2].',
-            'Process 1, decrement 3. Process 2, decrement 3. In-degree of 3 → 0.',
-            'Process 3. All 4 courses processed. Return true!'
-          ],
-          edgeCases: ['No prerequisites', 'Circular dependency (cycle)', 'Isolated courses', 'Single course'],
-          tips: ['Mention both DFS (cycle detection via recursion stack) and BFS (Kahn\'s) approaches.', 'Ask if the interviewer wants to return the actual course order or just feasibility.']
-        },
-        code: {
-          python: `def canFinish(numCourses, prerequisites):\n    graph = defaultdict(list)\n    in_degree = [0] * numCourses\n    for dest, src in prerequisites:\n        graph[src].append(dest)\n        in_degree[dest] += 1\n    queue = deque([i for i in range(numCourses) if in_degree[i] == 0])\n    count = 0\n    while queue:\n        node = queue.popleft()\n        count += 1\n        for neighbor in graph[node]:\n            in_degree[neighbor] -= 1\n            if in_degree[neighbor] == 0:\n                queue.append(neighbor)\n    return count == numCourses`,
-          java: `public boolean canFinish(int n, int[][] prereqs) {\n    List<List<Integer>> graph = new ArrayList<>();\n    int[] inDeg = new int[n];\n    for (int i = 0; i < n; i++) graph.add(new ArrayList<>());\n    for (int[] p : prereqs) {\n        graph.get(p[1]).add(p[0]);\n        inDeg[p[0]]++;\n    }\n    Queue<Integer> q = new LinkedList<>();\n    for (int i = 0; i < n; i++) if (inDeg[i] == 0) q.add(i);\n    int count = 0;\n    while (!q.isEmpty()) {\n        int node = q.poll(); count++;\n        for (int nb : graph.get(node))\n            if (--inDeg[nb] == 0) q.add(nb);\n    }\n    return count == n;\n}`
-        }
-      }
-    ],
-    technical: [
-      {
-        id: 'att1',
-        category: 'System Design',
-        question: 'Design a Distributed Task Queue (like Jira Workflows)',
-        difficulty: 'Advanced',
-        frequency: 89,
-        answer: 'Use a message broker (RabbitMQ/Kafka) for task distribution. Workers consume tasks from queues with acknowledgment-based processing. Implement dead letter queues for failed tasks. Use Redis for task state tracking and deduplication. Horizontal scaling of workers based on queue depth. Implement priority queues for urgent tasks and backpressure mechanisms to prevent worker overload.',
-        keyPoints: ['Message Broker Architecture', 'Worker Pool Scaling', 'Dead Letter Queues', 'Task Deduplication', 'Backpressure Handling'],
-        followUps: ['How do you handle task ordering guarantees?', 'What happens when a worker crashes mid-task?']
-      }
-    ],
-    hr: [
-      {
-        id: 'ath1',
-        question: 'Tell me about a time you had to give honest, direct feedback to someone — even when it was uncomfortable.',
-        modelAnswer: 'In a team project, a teammate was consistently submitting code without tests, causing CI failures. Instead of escalating, I had a direct one-on-one conversation, sharing specific examples and the impact on the team. I offered to pair-program on writing tests together. They appreciated the honesty, and within a week, they were writing tests independently. Our CI pass rate improved from 60% to 95%.',
-        aiTips: 'Atlassian values "Open Company, No Bullshit." Show direct communication, empathy, and constructive approach.',
-        starTips: {
-          situation: 'A teammate consistently pushed untested code, causing 40% of CI builds to fail.',
-          task: 'Address the issue directly without damaging the relationship or team morale.',
-          action: 'Had an honest 1:1 with specific examples, offered to pair-program on testing practices.',
-          result: 'Teammate adopted testing habits independently, CI pass rate improved from 60% to 95%.'
-        }
-      }
-    ]
-  },
-  {
-    id: 'tcs',
-    name: 'TCS',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Tata_Consultancy_Services_Logo.svg/512px-Tata_Consultancy_Services_Logo.svg.png',
-    industry: 'IT Services & Consulting',
-    hiringRoles: ['System Engineer', 'Digital Engineer', 'Assistant Consultant'],
-    interviewRounds: ['TCS NQT (National Qualifier Test)', 'Technical Interview', 'HR Round'],
-    salaryRange: '₹3.6L - ₹11L',
-    brandColor: '#0072C6',
-    culture: 'Integrity, Respect, Excellence, Learning, Pioneering',
-    difficulty: 'Moderate',
-    completion: 35,
-    stats: { placed: '520', avgpackage: '7.2 LPA' },
-    dsa: [
-      {
-        id: 'tcs1',
-        title: 'Fibonacci Number',
-        difficulty: 'Easy',
-        frequency: 90,
-        tags: ['Recursion', 'Dynamic Programming', 'Math'],
-        input: 'n = 6',
-        output: '8',
-        approach: 'Use iterative DP to compute Fibonacci in O(N) time and O(1) space.',
-        time: 'O(N)',
-        space: 'O(1)',
-        acceptanceRate: 95,
-        estimatedRounds: 'TCS NQT',
-        visualizerType: 'dp',
-        explanation: {
-          intuition: 'Each Fibonacci number is the sum of the two preceding numbers. F(n) = F(n-1) + F(n-2). Instead of recursion (exponential), iterate and keep only the last two values.',
-          brute: 'Recursive approach: fib(n) = fib(n-1) + fib(n-2). O(2^N) time due to overlapping subproblems.',
-          optimized: 'Iterative with two variables: prev1 and prev2. Swap and add each iteration. O(N) time, O(1) space.',
-          dryRun: [
-            'F(0) = 0, F(1) = 1',
-            'F(2) = F(1) + F(0) = 1',
-            'F(3) = F(2) + F(1) = 2',
-            'F(4) = F(3) + F(2) = 3',
-            'F(5) = F(4) + F(3) = 5, F(6) = F(5) + F(4) = 8'
-          ],
-          edgeCases: ['n = 0 (return 0)', 'n = 1 (return 1)', 'Very large n (use modular arithmetic)'],
-          tips: ['Mention memoization vs tabulation trade-offs.', 'For very large N, mention matrix exponentiation O(log N) approach.']
-        },
-        code: {
-          python: `def fib(n):\n    if n <= 1: return n\n    a, b = 0, 1\n    for _ in range(2, n + 1):\n        a, b = b, a + b\n    return b`,
-          java: `public int fib(int n) {\n    if (n <= 1) return n;\n    int a = 0, b = 1;\n    for (int i = 2; i <= n; i++) {\n        int temp = a + b;\n        a = b;\n        b = temp;\n    }\n    return b;\n}`
-        }
-      },
-      {
-        id: 'tcs2',
-        title: 'Palindrome String Check',
-        difficulty: 'Easy',
-        frequency: 88,
-        tags: ['String', 'Two Pointers'],
-        input: '"racecar"',
-        output: 'true',
-        approach: 'Use two pointers from start and end, compare characters moving inward.',
-        time: 'O(N)',
-        space: 'O(1)',
-        acceptanceRate: 96,
-        estimatedRounds: 'TCS NQT',
-        visualizerType: 'sliding-window',
-        explanation: {
-          intuition: 'A palindrome reads the same forwards and backwards. Compare first with last character, second with second-to-last, etc. If all match, it is a palindrome.',
-          brute: 'Reverse the string and compare. O(N) time and O(N) space for the reversed copy.',
-          optimized: 'Two pointers: left from start, right from end. Compare s[left] == s[right]. Move inward. O(1) extra space.',
-          dryRun: [
-            'left=0 (r), right=6 (r) → match',
-            'left=1 (a), right=5 (a) → match',
-            'left=2 (c), right=4 (c) → match',
-            'left=3 (e), right=3 (e) → match, pointers crossed',
-            'All matched. Return true!'
-          ],
-          edgeCases: ['Empty string', 'Single character', 'Even length palindrome', 'Case sensitivity ("Racecar")'],
-          tips: ['Ask whether the check should be case-insensitive.', 'Ask if non-alphanumeric characters should be ignored.']
-        },
-        code: {
-          python: `def isPalindrome(s):\n    left, right = 0, len(s) - 1\n    while left < right:\n        if s[left] != s[right]:\n            return False\n        left += 1\n        right -= 1\n    return True`,
-          java: `public boolean isPalindrome(String s) {\n    int left = 0, right = s.length() - 1;\n    while (left < right) {\n        if (s.charAt(left) != s.charAt(right))\n            return false;\n        left++;\n        right--;\n    }\n    return true;\n}`
-        }
-      }
-    ],
-    technical: [
-      {
-        id: 'tcst1',
-        category: 'SQL & Databases',
-        question: 'What is Normalization in DBMS? Explain Normal Forms.',
-        difficulty: 'Basic',
-        frequency: 95,
-        answer: 'Normalization organizes database tables to minimize redundancy. 1NF: Atomic values only (no repeating groups). 2NF: 1NF + no partial dependencies (all non-key attributes depend on full primary key). 3NF: 2NF + no transitive dependencies (non-key attributes don\'t depend on other non-key attributes). BCNF: Every determinant is a candidate key. Example: separating Student(id, name) and Enrollment(student_id, course_id) eliminates redundancy.',
-        keyPoints: ['1NF: Atomic Values', '2NF: No Partial Dependencies', '3NF: No Transitive Dependencies', 'BCNF: Strict Key Dependency', 'Denormalization Trade-offs'],
-        followUps: ['When would you choose denormalization over normalization?', 'What problems does over-normalization create?']
-      }
-    ],
-    hr: [
-      {
-        id: 'tcsh1',
-        question: 'Why do you want to join TCS and how do you see your career growing here?',
-        modelAnswer: 'TCS\'s global presence across 46+ countries offers unmatched exposure to diverse industries. I\'m drawn to the TCS Digital program for its focus on emerging technologies like AI, cloud, and blockchain. I see myself growing from a strong engineering foundation to eventually leading cross-functional teams on global client projects, leveraging TCS\'s renowned learning culture and Career 4.0 framework.',
-        aiTips: 'TCS values Learning and Pioneering. Show genuine interest in their global scale, technology initiatives, and long-term career growth.',
-        starTips: {
-          situation: 'Researching companies for campus placement, I needed to find the best fit for long-term growth.',
-          task: 'Evaluate which company aligned with my goals of global exposure and technical depth.',
-          action: 'Studied TCS\'s Digital initiatives, spoke with alumni, and mapped my career aspirations to their growth framework.',
-          result: 'Identified TCS as the ideal platform for building both technical expertise and leadership skills globally.'
-        }
-      }
-    ]
-  },
-  {
-    id: 'infosys',
-    name: 'Infosys',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/9/95/Infosys_logo.svg',
-    industry: 'IT Services & Digital Transformation',
-    hiringRoles: ['Systems Engineer', 'Power Programmer', 'Digital Specialist'],
-    interviewRounds: ['InfyTQ / HackWithInfy', 'Technical Interview', 'HR Interview'],
-    salaryRange: '₹3.6L - ₹12L',
-    brandColor: '#007CC3',
-    culture: 'Client Value, Leadership by Example, Integrity, Fairness, Excellence',
-    difficulty: 'Moderate',
-    completion: 40,
-    stats: { placed: '680', avgpackage: '6.8 LPA' },
-    dsa: [
-      {
-        id: 'inf1',
-        title: 'Reverse a String',
-        difficulty: 'Easy',
-        frequency: 92,
-        tags: ['String', 'Two Pointers', 'Array'],
-        input: '["h","e","l","l","o"]',
-        output: '["o","l","l","e","h"]',
-        approach: 'Two pointers from both ends, swap characters until they meet in the middle.',
-        time: 'O(N)',
-        space: 'O(1)',
-        acceptanceRate: 97,
-        estimatedRounds: 'InfyTQ Test',
-        visualizerType: 'sliding-window',
-        explanation: {
-          intuition: 'Place two pointers at the start and end. Swap the characters at both pointers. Move inward. Repeat until pointers cross.',
-          brute: 'Create a new reversed copy. O(N) extra space.',
-          optimized: 'In-place swap with two pointers. O(1) extra space. Swap s[left] and s[right], increment left, decrement right.',
-          dryRun: [
-            'left=0 (h), right=4 (o) → swap → [o,e,l,l,h]',
-            'left=1 (e), right=3 (l) → swap → [o,l,l,e,h]',
-            'left=2, right=2 → pointers meet. Done!'
-          ],
-          edgeCases: ['Empty string', 'Single character', 'Already a palindrome', 'String with spaces'],
-          tips: ['Clarify if modifying in-place is required or if a new string is acceptable.', 'In Java, strings are immutable — use char array.']
-        },
-        code: {
-          python: `def reverseString(s):\n    left, right = 0, len(s) - 1\n    while left < right:\n        s[left], s[right] = s[right], s[left]\n        left += 1\n        right -= 1`,
-          java: `public void reverseString(char[] s) {\n    int left = 0, right = s.length - 1;\n    while (left < right) {\n        char temp = s[left];\n        s[left++] = s[right];\n        s[right--] = temp;\n    }\n}`
-        }
-      },
-      {
-        id: 'inf2',
-        title: 'Binary Search',
-        difficulty: 'Easy',
-        frequency: 94,
-        tags: ['Array', 'Binary Search', 'Divide & Conquer'],
-        input: '[-1,0,3,5,9,12], target = 9',
-        output: '4',
-        approach: 'Maintain left and right boundaries. Compare middle element with target. Halve search space each iteration.',
-        time: 'O(log N)',
-        space: 'O(1)',
-        acceptanceRate: 93,
-        estimatedRounds: 'Technical Interview',
-        visualizerType: 'sliding-window',
-        explanation: {
-          intuition: 'In a sorted array, comparing the middle element with target tells us which half to discard. This halving gives logarithmic time.',
-          brute: 'Linear scan through entire array. O(N) time.',
-          optimized: 'Binary Search: mid = (left + right) / 2. If nums[mid] == target, found. If nums[mid] < target, search right half. Else search left half.',
-          dryRun: [
-            'left=0, right=5, mid=2: nums[2]=3 < 9. Search right: left=3',
-            'left=3, right=5, mid=4: nums[4]=9 == target. Found at index 4!'
-          ],
-          edgeCases: ['Target not in array', 'Single element array', 'Target at boundaries', 'Integer overflow in mid calculation'],
-          tips: ['Use mid = left + (right - left) / 2 to prevent integer overflow.', 'Clarify if duplicates exist and which occurrence to return.']
-        },
-        code: {
-          python: `def search(nums, target):\n    left, right = 0, len(nums) - 1\n    while left <= right:\n        mid = left + (right - left) // 2\n        if nums[mid] == target:\n            return mid\n        elif nums[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1`,
-          java: `public int search(int[] nums, int target) {\n    int left = 0, right = nums.length - 1;\n    while (left <= right) {\n        int mid = left + (right - left) / 2;\n        if (nums[mid] == target) return mid;\n        else if (nums[mid] < target) left = mid + 1;\n        else right = mid - 1;\n    }\n    return -1;\n}`
-        }
-      }
-    ],
-    technical: [
-      {
-        id: 'inft1',
-        category: 'Computer Networks',
-        question: 'Explain the OSI Model and TCP/IP Protocol Stack',
-        difficulty: 'Basic',
-        frequency: 94,
-        answer: 'OSI has 7 layers: Physical (bits), Data Link (frames, MAC), Network (packets, IP routing), Transport (segments, TCP/UDP), Session (connection management), Presentation (encryption, compression), Application (HTTP, FTP). TCP/IP simplifies to 4 layers: Network Access, Internet, Transport, Application. TCP provides reliable ordered delivery with 3-way handshake. UDP provides fast, connectionless, best-effort delivery.',
-        keyPoints: ['7 OSI Layers', 'TCP vs UDP', '3-Way Handshake', 'IP Addressing & Routing', 'DNS Resolution'],
-        followUps: ['What happens when you type google.com in a browser?', 'When would you choose UDP over TCP?']
-      }
-    ],
-    hr: [
-      {
-        id: 'infh1',
-        question: 'Where do you see yourself in 5 years and how does Infosys fit into that plan?',
-        modelAnswer: 'In 5 years, I aim to be a technical lead managing complex digital transformation projects. Infosys\'s focus on continuous learning through platforms like Lex and InfyTQ aligns with my growth goals. I plan to gain deep expertise in cloud architecture through Infosys\'s Cobalt initiative, earn relevant certifications, and transition from individual contributor to a mentor who helps junior engineers grow.',
-        aiTips: 'Infosys values Leadership by Example and Excellence. Show ambition, alignment with company programs, and desire to uplift others.',
-        starTips: {
-          situation: 'Planning my career trajectory during final year, I needed a company offering structured growth.',
-          task: 'Find an organization where I could grow from engineer to technical leader within 5 years.',
-          action: 'Researched Infosys\'s Lex platform, Cobalt initiative, and career progression frameworks.',
-          result: 'Mapped a clear 5-year path: 2 years deep tech, 1 year specialization, 2 years leadership transition.'
-        }
-      }
-    ]
-  }
-];
-
+import { PREMIUM_COMPANIES, Company, DSAQuestion } from '../data/premiumCompaniesData';
 const CompanyModules: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -1499,47 +435,84 @@ const CompanyModules: React.FC = () => {
     }
   };
 
-  // --- Client-side AI HR Round Evaluator ---
-  const runHrEvaluation = () => {
+  const [techAnswer, setTechAnswer] = useState('');
+  const [evaluatingTech, setEvaluatingTech] = useState(false);
+  const [techEvaluation, setTechEvaluation] = useState<any>(null);
+
+  const runTechEvaluation = async (questionText: string) => {
+    if (!techAnswer.trim()) {
+      alert('Kindly type an answer first!');
+      return;
+    }
+    setEvaluatingTech(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const payload = {
+        company: selectedCompany?.name,
+        role: 'Technical Round',
+        questions: [{ question: questionText, type: 'text', correctAnswer: '' }],
+        answers: [techAnswer]
+      };
+
+      const res = await fetch(`${API_BASE_URL}/api/student/assessment/submit-v2`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setTechEvaluation(data);
+      } else {
+        triggerToast('Failed to evaluate. Please try again.');
+      }
+    } catch (err) {
+      console.error(err);
+      triggerToast('Evaluation request failed.');
+    } finally {
+      setEvaluatingTech(false);
+    }
+  };
+
+  const runHrEvaluation = async (questionText: string) => {
     if (!hrAnswer.trim()) {
       alert('Kindly type an answer first!');
       return;
     }
     setEvaluatingHr(true);
-    setTimeout(() => {
-      const length = hrAnswer.split(' ').length;
-      const lower = hrAnswer.toLowerCase();
+    try {
+      const token = localStorage.getItem('auth_token');
+      const payload = {
+        company: selectedCompany?.name,
+        role: 'HR Round',
+        questions: [{ question: questionText, type: 'text', correctAnswer: '' }],
+        answers: [hrAnswer]
+      };
 
-      // Simulated NLP score computing
-      const confidence = length > 60 ? 88 : length > 30 ? 74 : 52;
-      const grammar = lower.includes('i did') || lower.includes('we achieved') ? 92 : 80;
-      const structure = lower.includes('situation') || lower.includes('result') || lower.includes('task') ? 95 : 65;
-      const professionalism = lower.includes('however') || lower.includes('subsequently') || lower.includes('collaboration') ? 90 : 72;
-      const overall = Math.round((confidence + grammar + structure + professionalism) / 4);
-
-      let feedback = [];
-      if (length < 40) {
-        feedback.push('Your response is slightly brief. Expand with concrete metrics to deliver higher impact.');
-      } else {
-        feedback.push('Great depth of explanation and good usage of action-oriented verbs.');
-      }
-
-      if (structure < 80) {
-        feedback.push('Utilize the STAR structure explicitly. Briefly state the Situation and your measurable Result first.');
-      }
-
-      setHrEvaluation({
-        overall,
-        confidence,
-        grammar,
-        structure,
-        professionalism,
-        feedback,
-        starAdherence: structure > 80 ? 'Excellent' : 'Needs Structuring'
+      const res = await fetch(`${API_BASE_URL}/api/student/assessment/submit-v2`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
       });
+
+      if (res.ok) {
+        const data = await res.json();
+        setHrEvaluation(data);
+      } else {
+        triggerToast('Failed to evaluate. Please try again.');
+      }
+    } catch (err) {
+      console.error(err);
+      triggerToast('Evaluation request failed.');
+    } finally {
       setEvaluatingHr(false);
-      triggerToast('Simulated AI Evaluation Complete!');
-    }, 1500);
+    }
   };
 
   // Construct STAR Answer helper
@@ -2402,221 +1375,125 @@ const CompanyModules: React.FC = () => {
                         TAB: TECH ROUND SECTION
                         ==================================================== */}
                     {activeTab === 'tech' && (
-                      <div className="space-y-8">
-                        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                          <div>
-                            <h2 className="text-3xl font-black uppercase tracking-tight text-slate-800 mb-2">Technical Core</h2>
-                            <p className="text-xs font-semibold text-slate-400">Company-specific conceptual technical prep for {selectedCompany.name}.</p>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                setTechFlashcardsMode(!techFlashcardsMode);
-                                setTechQuizMode(false);
-                                setFlashcardIndex(0);
-                                setFlashcardFlipped(false);
-                              }}
-                              className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl border transition-all ${techFlashcardsMode ? 'bg-purple-100 border-purple-500 text-slate-700' : 'bg-transparent border-gray-200 hover:border-white/[0.2] text-slate-400'}`}
-                            >
-                              Flashcards Mode
-                            </button>
-                            <button
-                              onClick={() => {
-                                setTechQuizMode(!techQuizMode);
-                                setTechFlashcardsMode(false);
-                                setSelectedQuizAnswers({});
-                                setTechQuizScore(null);
-                              }}
-                              className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl border transition-all ${techQuizMode ? 'bg-purple-100 border-purple-500 text-slate-700' : 'bg-transparent border-gray-200 hover:border-white/[0.2] text-slate-400'}`}
-                            >
-                              Practice Quiz
-                            </button>
-                          </div>
+                      <div className="space-y-8 max-w-4xl mx-auto">
+                        <header className="mb-8 border-b pb-4">
+                          <h2 className="text-3xl font-black uppercase tracking-tight text-slate-800 mb-2">Technical Evaluation</h2>
+                          <p className="text-xs font-semibold text-slate-400">Written technical assessment for {selectedCompany.name}.</p>
                         </header>
+                        
+                        <div className="bg-white border border-gray-100 rounded-[2rem] p-8 shadow-sm">
+                          <div className="flex justify-between items-center mb-6">
+                            <span className="text-[10px] uppercase tracking-widest font-black text-purple-600 bg-purple-50 border border-purple-100 px-3 py-1 rounded-full">
+                              {selectedCompany.technical[flashcardIndex].category}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                              Question {flashcardIndex + 1} of {selectedCompany.technical.length}
+                            </span>
+                          </div>
+                          
+                          <h3 className="text-2xl font-bold text-slate-800 mb-6 leading-relaxed">
+                            "{selectedCompany.technical[flashcardIndex].question}"
+                          </h3>
 
-                        {/* FLASHCARDS WORKSPACE */}
-                        {techFlashcardsMode ? (
-                          <div className="flex flex-col items-center justify-center space-y-8 py-10 max-w-xl mx-auto">
-                            <div className="text-center w-full">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Flashcard {flashcardIndex + 1} of {selectedCompany.technical.length}</span>
-                            </div>
+                          <textarea
+                            value={techAnswer}
+                            onChange={(e) => setTechAnswer(e.target.value)}
+                            placeholder="Type your technical reasoning or architecture approach here..."
+                            className="w-full h-48 p-5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 font-mono text-sm text-gray-800 mb-4 transition-all"
+                          />
 
-                            {/* Flipped Card Component */}
-                            <div
-                              onClick={() => setFlashcardFlipped(!flashcardFlipped)}
-                              style={{ perspective: '1000px' }}
-                              className="w-full h-80 cursor-pointer"
-                            >
-                              <div
-                                style={{
-                                  transformStyle: 'preserve-3d',
-                                  transform: flashcardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
-                                }}
-                                className="w-full h-full transition-transform duration-700 relative"
-                              >
-                                {/* Front Face */}
-                                <div className="absolute inset-0 bg-[#120B2E] border border-gray-200 rounded-[2.5rem] p-10 flex flex-col justify-between shadow-2xl backface-hidden">
-                                  <span className="text-[9px] uppercase tracking-widest font-black text-purple-400">{selectedCompany.technical[flashcardIndex].category}</span>
-                                  <h3 className="text-2xl font-bold text-center leading-relaxed text-slate-800">"{selectedCompany.technical[flashcardIndex].question}"</h3>
-                                  <span className="text-[8px] uppercase tracking-widest font-black text-center text-slate-600">Click Card to Flip & View Answer</span>
-                                </div>
-
-                                {/* Back Face */}
-                                <div
-                                  style={{ transform: 'rotateY(180deg)' }}
-                                  className="absolute inset-0 bg-purple-50/40 border border-purple-500/20 rounded-[2.5rem] p-10 flex flex-col justify-between shadow-2xl backface-hidden"
-                                >
-                                  <span className="text-[9px] uppercase tracking-widest font-black text-yellow-400">Core Answer</span>
-                                  <p className="text-sm leading-relaxed text-slate-600 font-medium overflow-y-auto max-h-48">{selectedCompany.technical[flashcardIndex].answer}</p>
-                                  <span className="text-[8px] uppercase tracking-widest font-black text-center text-slate-600">Click to Flip Back</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Card control buttons */}
-                            <div className="flex gap-4">
+                          <div className="flex justify-between items-center">
+                            <div className="flex gap-2">
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
+                                onClick={() => {
                                   setFlashcardIndex(prev => Math.max(0, prev - 1));
-                                  setFlashcardFlipped(false);
+                                  setTechEvaluation(null);
+                                  setTechAnswer('');
                                 }}
                                 disabled={flashcardIndex === 0}
-                                className="px-5 py-2.5 bg-gray-100 border border-gray-200 hover:border-purple-500/30 rounded-xl text-xs font-black uppercase tracking-wider text-slate-400 disabled:opacity-40"
+                                className="px-5 py-2.5 bg-gray-100 border border-gray-200 hover:border-purple-500/30 rounded-xl text-xs font-black uppercase tracking-wider text-slate-500 disabled:opacity-40"
                               >
-                                Previous Card
+                                Previous
                               </button>
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
+                                onClick={() => {
                                   setFlashcardIndex(prev => Math.min(selectedCompany.technical.length - 1, prev + 1));
-                                  setFlashcardFlipped(false);
+                                  setTechEvaluation(null);
+                                  setTechAnswer('');
                                 }}
                                 disabled={flashcardIndex === selectedCompany.technical.length - 1}
-                                className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-black uppercase tracking-wider text-white disabled:opacity-40"
+                                className="px-5 py-2.5 bg-gray-100 border border-gray-200 hover:border-purple-500/30 rounded-xl text-xs font-black uppercase tracking-wider text-slate-500 disabled:opacity-40"
                               >
-                                Next Card
+                                Next
                               </button>
-                            </div>
-                          </div>
-                        ) : techQuizMode ? (
-                          
-                          /* PRACTICE QUIZ WORKSPACE */
-                          <div className="space-y-8 max-w-3xl mx-auto bg-gray-50/80 border border-gray-200 p-8 rounded-[2.5rem]">
-                            <header className="border-b border-gray-200 pb-4 flex justify-between items-center">
-                              <h3 className="text-xl font-bold">Tech Subject Grading</h3>
-                              {techQuizScore !== null && (
-                                <span className={`text-sm font-black px-4 py-1.5 rounded-full uppercase tracking-wider ${techQuizScore >= 70 ? 'bg-green-950 text-green-400 border border-green-500/20' : 'bg-red-950 text-red-400 border border-red-500/20'}`}>
-                                  Graded: {techQuizScore}%
-                                </span>
-                              )}
-                            </header>
-
-                            <div className="space-y-8">
-                              {selectedCompany.technical.map((q, idx) => (
-                                <div key={q.id} className="space-y-4">
-                                  <h4 className="font-bold text-sm text-slate-700">{idx + 1}. {q.question}</h4>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {/* Mock MCQs options dynamically generated from keypoints */}
-                                    {q.keyPoints.map((option) => (
-                                      <button
-                                        key={option}
-                                        onClick={() => setSelectedQuizAnswers(prev => ({ ...prev, [q.id]: option }))}
-                                        className={`p-4 rounded-xl border text-left text-xs font-semibold transition-all flex items-center justify-between ${selectedQuizAnswers[q.id] === option ? 'bg-purple-50/50 border-purple-500 text-purple-300' : 'bg-transparent border-gray-100 hover:bg-gray-50'}`}
-                                      >
-                                        <span>{option}</span>
-                                        {selectedQuizAnswers[q.id] === option && <CheckCircle2 className="w-4 h-4 text-purple-400" />}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
                             </div>
 
                             <button
-                              onClick={handleQuizSubmit}
-                              className="w-full py-4 mt-8 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em]"
+                              onClick={() => runTechEvaluation(selectedCompany.technical[flashcardIndex].question)}
+                              disabled={evaluatingTech || !techAnswer.trim()}
+                              className="px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-purple-500/20 transition-all disabled:opacity-50 disabled:shadow-none flex items-center gap-2"
                             >
-                              Submit Answers for Grading
+                              {evaluatingTech ? (
+                                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Evaluating</>
+                              ) : 'Submit for AI Evaluation'}
                             </button>
                           </div>
-                        ) : (
-                          
-                          /* STANDARD TECH QUESTIONS LIST WITH AUDIO & AI EXPANSION */
-                          <div className="space-y-4">
-                            {selectedCompany.technical.map((t, idx) => {
-                              const isActive = activeTechIndex === idx;
-                              const isSpeaking = speechSpeaking === t.id;
-                              return (
-                                <div
-                                  key={t.id}
-                                  className="bg-gray-50/80 border border-gray-200 rounded-3xl overflow-hidden group shadow-xl transition-all"
-                                >
-                                  {/* Expandable Header bar */}
-                                  <div
-                                    onClick={() => setActiveTechIndex(isActive ? null : idx)}
-                                    className="p-6 flex items-center justify-between cursor-pointer"
-                                  >
-                                    <div className="flex items-center gap-4">
-                                      <span className="text-[10px] font-black text-purple-400 bg-purple-50/70 border border-purple-500/20 px-3 py-1 rounded-lg uppercase tracking-wider">{t.category}</span>
-                                      <h4 className="text-base font-bold text-slate-700 group-hover:text-purple-400 transition-colors">{t.question}</h4>
-                                    </div>
-                                    <ChevronDown className={`w-5 h-5 text-slate-400 group-hover:text-purple-400 transition-transform ${isActive ? 'rotate-180 text-purple-400' : ''}`} />
-                                  </div>
+                        </div>
 
-                                  {/* Expandable body content */}
-                                  <AnimatePresence>
-                                    {isActive && (
-                                      <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        className="border-t border-gray-100"
-                                      >
-                                        <div className="p-6 space-y-6 bg-gray-100/20">
-                                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-purple-50/15 border border-purple-500/10 p-4 rounded-2xl">
-                                            <div className="flex items-center gap-3">
-                                              <Volume2 className="w-5 h-5 text-purple-400 animate-pulse" />
-                                              <span className="text-xs font-black uppercase text-slate-600">Voice Synthesis Explanation</span>
-                                            </div>
-                                            <button
-                                              onClick={() => speakExplanation(t.id, t.answer)}
-                                              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center gap-2"
-                                            >
-                                              {isSpeaking ? <VolumeX className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                                              {isSpeaking ? 'Mute Explanation' : 'Speak Explanation'}
-                                            </button>
-                                          </div>
-
-                                          <div className="space-y-2">
-                                            <span className="text-[9px] uppercase tracking-widest font-black text-purple-400">Conceptual Answer</span>
-                                            <p className="text-sm leading-relaxed text-slate-600 font-medium">{t.answer}</p>
-                                          </div>
-
-                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div className="p-5 bg-gray-100/60 rounded-2xl border border-gray-100">
-                                              <span className="text-[9px] uppercase tracking-widest font-black text-slate-400 block mb-3">Key Knowledge Tokens</span>
-                                              <div className="flex flex-wrap gap-2">
-                                                {t.keyPoints.map(kp => (
-                                                  <span key={kp} className="px-3 py-1 bg-white border border-gray-200 rounded-lg text-[9px] font-black text-slate-400 uppercase tracking-widest">{kp}</span>
-                                                ))}
-                                              </div>
-                                            </div>
-
-                                            <div className="p-5 bg-gray-100/60 rounded-2xl border border-gray-100">
-                                              <span className="text-[9px] uppercase tracking-widest font-black text-slate-400 block mb-3">AI Recruiter Follow-up Queries</span>
-                                              <ul className="space-y-2 text-xs text-slate-400 font-semibold leading-relaxed">
-                                                {t.followUps.map((fl, i) => <li key={i} className="flex gap-2"><span>{i + 1}.</span> <span>{fl}</span></li>)}
-                                              </ul>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
+                        {/* Premium Evaluation Results */}
+                        {techEvaluation && techEvaluation.results && techEvaluation.results.length > 0 && (
+                          <div className="mt-8 bg-white border border-gray-100 p-8 rounded-[2rem] shadow-sm animate-fade-in-up">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-6 mb-6">
+                              <div>
+                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 mb-1">Evaluation Complete</h3>
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${techEvaluation.results[0].verdict === 'PASS' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                  {techEvaluation.results[0].verdict} ({techEvaluation.results[0].aiScore}%)
+                                </span>
+                              </div>
+                              <div className="text-right mt-4 sm:mt-0">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1">Total Score</span>
+                                <span className="text-4xl font-black text-purple-600">{techEvaluation.score}%</span>
+                              </div>
+                            </div>
+                            
+                            <div className="grid md:grid-cols-2 gap-8">
+                              {techEvaluation.results[0].strengths?.length > 0 && (
+                                <div className="bg-green-50 p-6 rounded-2xl border border-green-100">
+                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-green-600 flex items-center gap-2 mb-3">
+                                    <CheckCircle2 className="w-4 h-4" /> Strengths
+                                  </h4>
+                                  <ul className="space-y-2">
+                                    {techEvaluation.results[0].strengths.map((s: string, i: number) => (
+                                      <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1.5 flex-shrink-0" /> {s}
+                                      </li>
+                                    ))}
+                                  </ul>
                                 </div>
-                              );
-                            })}
+                              )}
+
+                              {techEvaluation.results[0].gaps?.length > 0 && (
+                                <div className="bg-red-50 p-6 rounded-2xl border border-red-100">
+                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-red-600 flex items-center gap-2 mb-3">
+                                    <span className="w-4 h-4 flex items-center justify-center font-bold">!</span> Gaps
+                                  </h4>
+                                  <ul className="space-y-2">
+                                    {techEvaluation.results[0].gaps.map((s: string, i: number) => (
+                                      <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5 flex-shrink-0" /> {s}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+
+                            {techEvaluation.results[0].idealApproach && (
+                              <div className="mt-6 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Ideal Approach</h4>
+                                <p className="text-sm text-slate-700 leading-relaxed font-medium">{techEvaluation.results[0].idealApproach}</p>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -2626,284 +1503,158 @@ const CompanyModules: React.FC = () => {
                         TAB: HR ROUND SECTION
                         ==================================================== */}
                     {activeTab === 'hr' && (
-                      <div className="space-y-8">
-                        
-                        {/* Title header */}
-                        <header>
-                          <h2 className="text-3xl font-black uppercase tracking-tight text-white mb-2">Behavioral Sync</h2>
-                          <p className="text-xs font-semibold text-gray-300">Master real HR behavioral placement assessments asked by {selectedCompany.name}.</p>
+                      <div className="space-y-8 max-w-4xl mx-auto">
+                        <header className="mb-8">
+                          <h2 className="text-3xl font-black uppercase tracking-tight text-white mb-2">Behavioral Matrix</h2>
+                          <p className="text-xs font-semibold text-gray-400">Master real HR behavioral placement assessments for {selectedCompany.name}.</p>
                         </header>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div className="bg-[#120B2E] border border-white/10 p-8 rounded-[2rem] shadow-xl relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 blur-[80px] rounded-full pointer-events-none" />
                           
-                          {/* HR Editor & Evaluator Panel */}
-                          <div className="lg:col-span-2 space-y-6">
+                          <span className="text-[10px] uppercase tracking-widest font-black text-purple-400 bg-purple-500/10 px-3 py-1 rounded-full mb-6 inline-block">
+                            Behavioral Scenario
+                          </span>
+                          
+                          <h3 className="text-2xl font-bold text-white italic leading-relaxed mb-4">
+                            "{selectedCompany.hr[0].question}"
+                          </h3>
+                          <p className="text-xs text-gray-400 font-medium bg-black/20 p-4 rounded-xl border border-white/5 mb-6">
+                            <span className="text-purple-400 font-bold block mb-1">AI Tip:</span>
+                            {selectedCompany.hr[0].aiTips}
+                          </p>
+
+                          {/* Tabs inside STAR */}
+                          <div className="bg-black/20 p-6 rounded-2xl border border-white/5 mb-8">
+                            <div className="flex flex-wrap gap-2 mb-4">
+                              {(['S', 'T', 'A', 'R'] as const).map((tab) => (
+                                <button
+                                  key={tab}
+                                  onClick={() => setStarTab(tab)}
+                                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${starTab === tab ? 'bg-purple-500/20 border border-purple-500/40 text-white' : 'bg-transparent border border-transparent text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}
+                                >
+                                  {tab === 'S' ? 'Situation' : tab === 'T' ? 'Task' : tab === 'A' ? 'Action' : 'Result'}
+                                </button>
+                              ))}
+                            </div>
                             
-                            {/* Question Drawer Card */}
-                            <div className="bg-gradient-to-br from-[#1a0a2e] to-[#16082a] border border-purple-500/30 rounded-[2rem] p-6 lg:p-8 shadow-2xl relative overflow-hidden">
-                              <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-transparent to-purple-500/10 animate-pulse" />
-                              <div className="relative z-10">
-                                <span className="text-[9px] uppercase tracking-widest font-black text-purple-400 block mb-2">Target Behavioral Query</span>
-                                <h3 className="text-2xl font-bold text-white italic leading-relaxed">"{selectedCompany.hr[0].question}"</h3>
-                                <p className="text-xs text-gray-300 mt-4 font-semibold">{selectedCompany.hr[0].aiTips}</p>
-                              </div>
-                            </div>
-
-                            {/* STAR Method Assistant Tool */}
-                            <div className="bg-gradient-to-br from-[#0f0a1e] to-[#1a0a2e] border border-purple-500/20 rounded-[2rem] p-6 lg:p-8 space-y-6 shadow-xl">
-                              <div className="flex justify-between items-center">
-                                <h4 className="text-lg font-bold text-white">STAR Method Planner</h4>
-                                <span className="text-[8px] bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 font-bold px-2 py-0.5 rounded">Structured Narratives</span>
-                              </div>
-
-                              {/* Tabs inside STAR */}
-                              <div className="flex gap-2 border-b border-purple-500/20 pb-3">
-                                {(['S', 'T', 'A', 'R'] as const).map((tab) => (
-                                  <button
-                                    key={tab}
-                                    onClick={() => setStarTab(tab)}
-                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${starTab === tab ? 'bg-purple-500/20 border border-purple-500/40 text-white' : 'bg-transparent text-gray-400 hover:text-gray-200'}`}
-                                  >
-                                    {tab === 'S' ? 'Situation' : tab === 'T' ? 'Task' : tab === 'A' ? 'Action' : 'Result'}
-                                  </button>
-                                ))}
-                              </div>
-
-                              <div className="space-y-4">
-                                <span className="text-[9px] uppercase tracking-widest font-black text-purple-400 block">
-                                  {starTab === 'S' ? 'Situation (The background story)' : starTab === 'T' ? 'Task (The challenge at hand)' : starTab === 'A' ? 'Action (What YOU specifically did)' : 'Result (The measurable metrics)'}
-                                </span>
-                                <textarea
-                                  value={starInputs[starTab]}
-                                  onChange={(e) => setStarInputs(prev => ({ ...prev, [starTab]: e.target.value }))}
-                                  placeholder={
-                                    starTab === 'S' ? selectedCompany.hr[0].starTips.situation
-                                    : starTab === 'T' ? selectedCompany.hr[0].starTips.task
-                                    : starTab === 'A' ? selectedCompany.hr[0].starTips.action
-                                    : selectedCompany.hr[0].starTips.result
-                                  }
-                                  className="w-full bg-[#1a0a2e] border border-purple-500/30 focus:border-purple-500/60 rounded-2xl p-4 text-xs h-24 focus:outline-none text-white placeholder-gray-500"
-                                />
-                                <div className="flex justify-between items-center">
-                                  <span className="text-[8px] text-gray-400">Auto-saves state in active workspace</span>
-                                  <button
-                                    onClick={importStarAnswer}
-                                    className="px-4 py-2 bg-purple-600/20 border border-purple-500/30 hover:border-purple-500/50 rounded-xl text-[10px] font-black uppercase text-purple-300"
-                                  >
-                                    Sync STAR Narrative to Editor
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Main Answer Area & Evaluator */}
-                            <div className="space-y-4">
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs font-black uppercase tracking-wider text-white">Construct Your Response</span>
-                                <span className="text-[10px] text-gray-400 font-bold">{hrAnswer.split(' ').filter(Boolean).length} Words</span>
-                              </div>
+                            <div>
+                              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2 block">
+                                {starTab === 'S' ? 'Situation (The background story)' : starTab === 'T' ? 'Task (The challenge at hand)' : starTab === 'A' ? 'Action (What YOU specifically did)' : 'Result (The measurable metrics)'}
+                              </label>
                               <textarea
-                                value={hrAnswer}
-                                onChange={(e) => setHrAnswer(e.target.value)}
-                                placeholder="Type or sync your behavioral response here..."
-                                className="w-full bg-[#1a0a2e] border border-purple-500/30 focus:border-purple-500 rounded-3xl p-6 text-xs h-48 focus:outline-none text-white leading-relaxed font-medium placeholder-gray-500"
+                                value={starInputs[starTab]}
+                                onChange={(e) => setStarInputs(prev => ({ ...prev, [starTab]: e.target.value }))}
+                                placeholder={
+                                  starTab === 'S' ? selectedCompany.hr[0].starTips.situation
+                                  : starTab === 'T' ? selectedCompany.hr[0].starTips.task
+                                  : starTab === 'A' ? selectedCompany.hr[0].starTips.action
+                                  : selectedCompany.hr[0].starTips.result
+                                }
+                                className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 font-mono transition-all"
+                                rows={3}
                               />
-
-                              <div className="flex gap-3">
-                                <button
-                                  onClick={runHrEvaluation}
-                                  disabled={evaluatingHr}
-                                  className="flex-grow py-4 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                                >
-                                  {evaluatingHr ? 'Assessing Answer...' : 'Submit for AI Evaluation'}
-                                </button>
-                                <button
-                                  onClick={() => setHrAnswer('')}
-                                  className="px-6 bg-purple-900/30 border border-purple-500/20 text-gray-400 hover:text-white rounded-2xl text-xs font-black uppercase"
-                                >
-                                  Clear
-                                </button>
-                              </div>
                             </div>
 
-                            {/* Simulated AI Feedback Panel */}
-                            {hrEvaluation && (
-                              <motion.div
-                                initial={{ opacity: 0, y: 15 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="bg-gradient-to-br from-[#10092B] to-[#1a0a2e] border border-purple-500/25 p-8 rounded-[2.5rem] space-y-6 shadow-2xl"
+                            <div className="mt-4 flex justify-end">
+                              <button
+                                onClick={importStarAnswer}
+                                className="text-[10px] font-black uppercase tracking-widest text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors"
                               >
-                                <header className="flex justify-between items-center border-b border-purple-500/20 pb-4">
-                                  <h4 className="text-lg font-bold text-purple-400 flex items-center gap-2">
-                                    <Bot className="w-5 h-5 text-purple-400 animate-pulse" /> AI Evaluation Report
+                                <Zap className="w-3 h-3" /> Sync to Master Editor
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Final Answer Editor */}
+                          <div className="space-y-3 relative z-10">
+                            <div className="flex justify-between items-end">
+                              <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Master Answer (Final Submission)</label>
+                              <span className="text-[10px] text-gray-500 font-bold bg-black/30 px-2 py-1 rounded-md">{hrAnswer.split(' ').filter(Boolean).length} Words</span>
+                            </div>
+                            <textarea
+                              value={hrAnswer}
+                              onChange={(e) => setHrAnswer(e.target.value)}
+                              placeholder="Combine your STAR components into a fluid, professional narrative..."
+                              className="w-full h-48 bg-white border-2 border-transparent focus:border-purple-500 rounded-xl p-5 text-sm text-slate-800 placeholder-gray-400 shadow-inner font-mono transition-all"
+                            />
+                          </div>
+
+                          <div className="mt-6 flex justify-end gap-3 relative z-10">
+                            <button
+                              onClick={() => setHrAnswer('')}
+                              className="px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest text-gray-500 hover:text-white transition-colors"
+                            >
+                              Clear
+                            </button>
+                            <button
+                              onClick={() => runHrEvaluation(selectedCompany.hr[0].question)}
+                              disabled={evaluatingHr || !hrAnswer.trim()}
+                              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-purple-500/20 transition-all disabled:opacity-50 disabled:shadow-none flex items-center gap-2"
+                            >
+                              {evaluatingHr ? (
+                                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Assessing...</>
+                              ) : 'Submit for AI Evaluation'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Premium Evaluation Results */}
+                        {hrEvaluation && hrEvaluation.results && hrEvaluation.results.length > 0 && (
+                          <div className="mt-8 bg-[#120B2E] border border-white/10 p-8 rounded-[2rem] shadow-xl animate-fade-in-up">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-white/10 pb-6 mb-6">
+                              <div>
+                                <h3 className="text-sm font-black uppercase tracking-widest text-white mb-1">Behavioral Evaluation</h3>
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${hrEvaluation.results[0].verdict === 'PASS' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                  {hrEvaluation.results[0].verdict} ({hrEvaluation.results[0].aiScore}%)
+                                </span>
+                              </div>
+                              <div className="text-right mt-4 sm:mt-0">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1">Overall Score</span>
+                                <span className="text-4xl font-black text-purple-400">{hrEvaluation.score}%</span>
+                              </div>
+                            </div>
+                            
+                            <div className="grid md:grid-cols-2 gap-8">
+                              {hrEvaluation.results[0].strengths?.length > 0 && (
+                                <div className="bg-green-500/5 p-6 rounded-2xl border border-green-500/20">
+                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-green-400 flex items-center gap-2 mb-3">
+                                    <CheckCircle2 className="w-4 h-4" /> Strengths
                                   </h4>
-                                  <span className="text-2xl font-black text-white">{hrEvaluation.overall} / 100</span>
-                                </header>
-
-                                {/* Scores grid */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                  {[
-                                    { l: 'Confidence Matrix', val: hrEvaluation.confidence },
-                                    { l: 'Grammar & Syntax', val: hrEvaluation.grammar },
-                                    { l: 'STAR Adherence', val: hrEvaluation.structure },
-                                    { l: 'Professionalism', val: hrEvaluation.professionalism }
-                                  ].map((sc, i) => (
-                                    <div key={i} className="p-4 bg-purple-900/30 rounded-xl border border-purple-500/20">
-                                      <span className="text-[8px] uppercase tracking-wider font-black text-purple-400 block mb-1">{sc.l}</span>
-                                      <span className="text-sm font-black text-white">{sc.val}%</span>
-                                    </div>
-                                  ))}
-                                </div>
-
-                                <div className="space-y-2">
-                                  <span className="text-[10px] uppercase tracking-widest font-black text-purple-400">Actionable Feedback Tips</span>
                                   <ul className="space-y-2">
-                                    {hrEvaluation.feedback.map((f: string, i: number) => (
-                                      <li key={i} className="text-xs text-gray-300 leading-relaxed flex items-start gap-2">
-                                        <Sparkles className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" />
-                                        <span>{f}</span>
+                                    {hrEvaluation.results[0].strengths.map((s: string, i: number) => (
+                                      <li key={i} className="text-sm text-gray-300 flex items-start gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1.5 flex-shrink-0" /> {s}
                                       </li>
                                     ))}
                                   </ul>
                                 </div>
-                              </motion.div>
-                            )}
+                              )}
 
-                          </div>
-
-                          {/* Company Cultural Pillars info card */}
-                          <div className="space-y-6">
-                            <div className="bg-gradient-to-br from-purple-900/95 to-slate-900/95 border border-purple-500/30 rounded-[2rem] p-6 lg:p-8 shadow-2xl relative overflow-hidden">
-                              <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-transparent to-purple-500/10 animate-pulse" />
-                              <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-                              <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
-                              
-                              <div className="relative z-10">
-                                <h4 className="text-xl font-bold mb-6 flex items-center gap-3 text-white">
-                                  <div className="relative">
-                                    <Medal className="w-5 h-5 text-purple-300" />
-                                    <div className="absolute inset-0 bg-purple-400 blur-lg opacity-50" />
-                                  </div>
-                                  Cultural Alignment
-                                </h4>
-                                <p className="text-xs text-purple-200/80 leading-relaxed mb-6 font-semibold">
-                                  {selectedCompany.name} strictly filters candidates who display core culture properties:
-                                </p>
-                                <div className="space-y-4">
-                                  {selectedCompany.culture.split(',').map((pil, idx) => (
-                                    <div key={idx} className="flex items-center gap-3 bg-white/10 backdrop-blur-sm p-3.5 rounded-xl border border-purple-400/30 hover:bg-white/15 hover:border-purple-400/50 transition-all group">
-                                      <div className="relative">
-                                        <CheckCircle2 className="w-4 h-4 text-purple-300 flex-shrink-0 group-hover:scale-110 transition-transform" />
-                                        <div className="absolute inset-0 bg-purple-400 blur-md opacity-40 group-hover:opacity-60 transition-opacity" />
-                                      </div>
-                                      <span className="text-xs font-bold text-white">{pil.trim()}</span>
-                                    </div>
-                                  ))}
+                              {hrEvaluation.results[0].gaps?.length > 0 && (
+                                <div className="bg-red-500/5 p-6 rounded-2xl border border-red-500/20">
+                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-red-400 flex items-center gap-2 mb-3">
+                                    <span className="w-4 h-4 flex items-center justify-center font-bold">!</span> Gaps
+                                  </h4>
+                                  <ul className="space-y-2">
+                                    {hrEvaluation.results[0].gaps.map((s: string, i: number) => (
+                                      <li key={i} className="text-sm text-gray-300 flex items-start gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5 flex-shrink-0" /> {s}
+                                      </li>
+                                    ))}
+                                  </ul>
                                 </div>
-                              </div>
+                              )}
                             </div>
 
-                            {/* Company-Specific Leadership Principles Card */}
-                            <div className="bg-gradient-to-br from-[#1a0a2e] to-[#0f0a1e] border border-purple-500/20 rounded-[2rem] p-6 lg:p-8 shadow-xl">
-                              <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-3">
-                                <Award className="w-5 h-5 text-purple-400" />
-                                Leadership Principles
-                              </h4>
-                              <p className="text-xs text-gray-300 leading-relaxed mb-4 font-semibold">
-                                Key values {selectedCompany.name} evaluates in behavioral interviews:
-                              </p>
-                              <div className="space-y-3">
-                                {selectedCompany.id === 'amazon' && (
-                                  <>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Ownership</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Bias for Action</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Frugality</span>
-                                    </div>
-                                  </>
-                                )}
-                                {selectedCompany.id === 'google' && (
-                                  <>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Googliness</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Technical Excellence</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Proactivity</span>
-                                    </div>
-                                  </>
-                                )}
-                                {selectedCompany.id === 'microsoft' && (
-                                  <>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Growth Mindset</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Customer Obsession</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Technical Excellence</span>
-                                    </div>
-                                  </>
-                                )}
-                                {selectedCompany.id === 'adobe' && (
-                                  <>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Creativity</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">User Experience</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Innovation</span>
-                                    </div>
-                                  </>
-                                )}
-                                {selectedCompany.id === 'flipkart' && (
-                                  <>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Customer First</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Speed</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                      <Check className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs font-bold text-white">Data-Driven</span>
-                                    </div>
-                                  </>
-                                )}
-                                {(selectedCompany.id === 'goldman' || selectedCompany.id === 'atlassian' || selectedCompany.id === 'tcs' || selectedCompany.id === 'infosys') && (
-                                  <div className="flex items-center gap-3 bg-purple-900/30 p-3 rounded-xl border border-purple-500/20">
-                                    <Check className="w-4 h-4 text-purple-400" />
-                                    <span className="text-xs font-bold text-white">Professional Excellence</span>
-                                  </div>
-                                )}
+                            {hrEvaluation.results[0].idealApproach && (
+                              <div className="mt-6 bg-white/5 p-6 rounded-2xl border border-white/10">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-purple-400 mb-3">Ideal Approach</h4>
+                                <p className="text-sm text-gray-300 leading-relaxed font-medium">{hrEvaluation.results[0].idealApproach}</p>
                               </div>
-                            </div>
+                            )}
                           </div>
-
-                        </div>
+                        )}
                       </div>
                     )}
 

@@ -237,10 +237,10 @@ const Navigation: React.FC = () => {
                             </span>
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#7C3AED] to-[#A78BFA] flex items-center justify-center text-white font-black text-sm shadow-md">
-                                {user?.full_name?.split(' ').map((n: string) => n[0]).join('') || user?.displayName?.charAt(0) || 'U'}
+                                {user?.full_name?.split(' ').map((n: string) => n[0]).join('') || 'U'}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-xs font-black text-slate-900 truncate">{user?.full_name || user?.displayName || 'User'}</p>
+                                <p className="text-xs font-black text-slate-900 truncate">{user?.full_name || 'User'}</p>
                                 <p className="text-[10px] font-medium text-slate-500 truncate mt-0.5">{user?.email}</p>
                               </div>
                             </div>
