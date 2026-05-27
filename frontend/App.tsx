@@ -59,6 +59,7 @@ import RoleFixer from './RoleFixer';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
+import RoadmapClone from './pages/RoadmapClone';
 
 
 import OpportunitiesList from './pages/opportunities/OpportunitiesList';
@@ -465,7 +466,12 @@ const App: React.FC = () => {
             {/* Evaluation */}
             <Route path="/evaluate/:token" element={<EvaluationPage />} />
 
-            {/* Misc */}
+            {/* Misc
+            <Route path="/roadmaps" element={<RoadmapClone />} />
+            <Route path="/roadmaps/:roleId" element={<RoadmapClone />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/judge-invitation" element={<JudgeInvitation />} />
             <Route path="/goal-selector" element={<ProtectedRoute><GoalSelector /></ProtectedRoute>} />
             <Route path="/ai-tools" element={<AITools />} />
             <Route path="/fix-role" element={<RoleFixer />} />

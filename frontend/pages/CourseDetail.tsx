@@ -213,9 +213,8 @@ const CourseDetail: React.FC = () => {
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#8B5CF6] to-[#D946EF]">& Generative AI</span>
               </h1>
 
-              <p className="text-lg text-gray-300 mb-8 max-w-2xl leading-relaxed">
-                Your complete beginner-to-advanced roadmap to understand, build and apply AI in real-world scenarios using modern tools.
-              </p>
+              <p className="text-lg text-gray-300 mb-8 max-w-2xl leading-relaxed">Your complete beginner-to-advanced roadmap to understand, build and apply AI in real-world scenarios using modern tools.</p>
+              <img src="/images/ai_foundations_1779792498429.png" alt="AI Foundations" className="my-6 rounded-lg" />
 
               <div className="flex flex-wrap gap-3 mb-10">
                 {(course.skills || []).map((skill, idx) => (
@@ -337,6 +336,7 @@ const CourseDetail: React.FC = () => {
               What You'll Get With <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C2BFF] to-[#A88CFF]">This Course</span>
             </h2>
             <p className="text-gray-600 text-lg">Everything you need to start, learn, and grow in AI — from basics to real-world applications.</p>
+            <img src="/images/prompt_mastery_1779792771105.png" alt="Prompt Mastery" className="my-6 rounded-lg" />
           </div>
 
           <div className="bg-white border border-gray-200 shadow-sm rounded-[2rem] p-8 md:p-12 relative overflow-hidden">
@@ -609,17 +609,17 @@ const CourseDetail: React.FC = () => {
 
           <div className="flex flex-nowrap overflow-x-auto pb-8 snap-x snap-mandatory md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 custom-scrollbar">
             {MOCK_BLOGS.map((blog) => (
-              <div 
-                key={blog.id} 
+              <div
+                key={blog.id}
                 onClick={() => navigate('/blog')}
                 className="min-w-[85vw] sm:min-w-[350px] md:min-w-0 snap-center md:snap-align-none bg-white border border-gray-200 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] rounded-[1.5rem] overflow-hidden hover:shadow-[0_20px_40px_-15px_rgba(108,43,255,0.15)] hover:border-[#6C2BFF]/30 hover:-translate-y-1.5 transition-all duration-300 group cursor-pointer flex flex-col shrink-0 md:shrink"
               >
                 {/* Top Image */}
                 <div className="h-48 overflow-hidden relative">
-                  <img src={blog.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={blog.title}/>
+                  <img src={blog.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={blog.title} />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-                
+
                 {/* Middle Content */}
                 <div className="p-6 flex flex-col flex-1">
                   <div className="flex items-center justify-between mb-4">
@@ -628,7 +628,7 @@ const CourseDetail: React.FC = () => {
                   </div>
                   <h4 className="font-bold text-gray-900 text-lg mb-2 leading-snug group-hover:text-[#6C2BFF] transition-colors">{blog.title}</h4>
                   <p className="text-sm text-gray-500 mb-6 line-clamp-2 leading-relaxed">{blog.desc}</p>
-                  
+
                   {/* Bottom CTA */}
                   <div className="mt-auto flex items-center font-bold text-sm text-[#6C2BFF]">
                     Read Blog <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
