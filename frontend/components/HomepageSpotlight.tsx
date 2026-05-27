@@ -82,16 +82,16 @@ const HomepageSpotlight: React.FC = () => {
                   >
                     {/* Hover Gradient Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-br from-[#7C3AED]/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    
+
                     <div className="relative z-10 flex flex-col h-full">
                       <div className="w-14 h-14 rounded-2xl bg-[#F8F9FA] border border-gray-100 flex items-center justify-center text-[#64748B] group-hover:bg-[#7C3AED] group-hover:text-white group-hover:border-[#7C3AED] transition-all duration-300 shadow-sm mb-6">
                         <Icon className="w-6 h-6 stroke-[1.5]" />
                       </div>
-                      
+
                       <h3 className="text-xl font-bold text-[#0F172A] tracking-tight mb-3 group-hover:text-[#7C3AED] transition-colors duration-300">
                         {item.title}
                       </h3>
-                      
+
                       <p className="text-sm text-[#64748B] leading-relaxed mb-8 flex-grow">
                         {item.desc}
                       </p>
