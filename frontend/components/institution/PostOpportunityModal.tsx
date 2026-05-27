@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Upload, Info, ChevronRight, Save, Plus, Trash2, Calendar, Trophy, Users, FileText, ArrowLeft, HeadphonesIcon, ChevronDown, ChevronUp, Lock, RefreshCw, UploadCloud } from 'lucide-react';
+import { API_BASE_URL, authHeaders } from '../../apiConfig';
 
 interface PostOpportunityModalProps {
     isOpen: boolean;
@@ -219,7 +220,6 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                 const fetchProfile = async () => {
                     if (!institutionId) return;
                     try {
-                        const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
                         const res = await fetch(`${API_BASE_URL}/api/v1/institution/profile/${institutionId}`, {
                             headers: { ...authHeaders() },
                         });
@@ -265,7 +265,6 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         const fetchEventDetails = async () => {
             if (!isOpen || !eventId) return;
             try {
-                const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
                 const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/details`, {
                     headers: { ...authHeaders() },
                 });
@@ -406,7 +405,6 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
 
             setLoading(true);
             try {
-                const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
                 
                 // Use FormData for multipart/form-data support
                 const submitData = new FormData();
@@ -506,8 +504,6 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         }
         setLoading(true);
         try {
-            const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
-            
             // Use FormData for multipart/form-data support
             const submitData = new FormData();
             
