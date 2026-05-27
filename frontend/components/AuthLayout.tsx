@@ -64,7 +64,7 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({
             >
                 <div className="flex items-center bg-white border border-white/20 px-3 py-1.5 rounded-2xl shadow-lg backdrop-blur-md">
                     <img
-                        src="/images/studlyf.png"
+                        src="/images/studlyf_secondary.png"
                         alt="STUDLYF Logo"
                         className="h-8 sm:h-10 w-auto object-contain drop-shadow-sm group-hover:opacity-80 transition-opacity"
                     />

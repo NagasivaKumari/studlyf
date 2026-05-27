@@ -1093,7 +1093,7 @@ export default function ResumeBuilder() {
             <nav className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 shrink-0">
                 <div className="flex items-center gap-6">
                     <div className="flex items-center cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setStep(hasExistingData ? 'dashboard' : 'create_new')}>
-                        <img src="/images/studlyf.png" alt="STUDLYF Logo" className="h-7 sm:h-8 w-auto object-contain" />
+                        <img src="/images/studlyf_secondary.png" alt="STUDLYF Logo" className="h-7 sm:h-8 w-auto object-contain" />
                     </div>
 
                     <div className="h-4 border-l border-slate-200 mx-2"></div>
