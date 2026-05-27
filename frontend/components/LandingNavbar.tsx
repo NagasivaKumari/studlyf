@@ -12,7 +12,7 @@ const LandingNavbar: React.FC = () => {
                 className="cursor-pointer tracking-tight pointer-events-auto bg-white px-4 py-1.5 sm:px-6 sm:py-2 rounded-2xl border border-gray-200 shadow-sm transition-all hover:shadow-md hover:scale-[1.02]"
                 onClick={() => navigate('/')}
             >
-                <img src="/images/studlyf.png" alt="STUDLYF" className="h-10 sm:h-16" />
+                <img src="/images/studlyf_secondary.png" alt="STUDLYF" className="h-10 sm:h-16" />
             </div>
 
             {/* Sign In - Pointer events auto */}
