@@ -194,6 +194,14 @@ async def startup_event():
         logger.info(f"Mounted certificates directory at {certs_dir}")
     except Exception as e:
         logger.warning(f"Could not mount certificates directory: {e}")
+    # Mount uploads directory for temporary images
+    try:
+        uploads_dir = os.path.join(os.path.dirname(__file__), "uploads")
+        os.makedirs(uploads_dir, exist_ok=True)
+        app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+        logger.info(f"Mounted uploads directory at {uploads_dir}")
+    except Exception as e:
+        logger.warning(f"Could not mount uploads directory: {e}")
 
 @app.get("/")
 async def root():
@@ -456,6 +464,65 @@ async def promote_to_institution(data: dict):
         {"$set": {"role": "institution"}}
     )
     return {"status": "success"}
+
+
+@app.post('/api/utils/upload-temp-image')
+async def upload_temp_image(request: Request, file: UploadFile = File(...), public_base: Optional[str] = Form(None)):
+    """Accept a single image upload and store it under /uploads, returning a public URL.
+    This is intended for short-lived hosting of generated profile cards for social posting.
+    """
+    try:
+        uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
+        os.makedirs(uploads_dir, exist_ok=True)
+        ext = os.path.splitext(file.filename)[1] or '.png'
+        fname = f"{uuid.uuid4().hex}{ext}"
+        dest = os.path.join(uploads_dir, fname)
+        contents = await file.read()
+        with open(dest, 'wb') as f:
+            f.write(contents)
+
+        # Allow caller to override the public base URL at upload-time (avoids editing .env)
+        base = (public_base and public_base.strip()) or os.getenv('RENDER_EXTERNAL_URL') or str(request.base_url).rstrip('/')
+        public_image_url = f"{base}/uploads/{fname}"
+
+        # Also generate a simple HTML page with Open Graph tags so social scrapers
+        # (LinkedIn/Twitter/etc.) can fetch a preview when given a link.
+        try:
+            base_name = os.path.splitext(fname)[0]
+            html_fname = f"{base_name}.html"
+            html_dest = os.path.join(uploads_dir, html_fname)
+            title = "My Studlyf Profile"
+            description = "A quick profile card generated from Studlyf."
+            html_content = f"""<!doctype html>
+<html lang=\"en\"> 
+<head>
+  <meta charset=\"utf-8\"> 
+  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"> 
+  <meta property=\"og:type\" content=\"article\" />
+  <meta property=\"og:title\" content=\"{title}\" />
+  <meta property=\"og:description\" content=\"{description}\" />
+  <meta property=\"og:image\" content=\"{public_image_url}\" />
+  <meta property=\"twitter:card\" content=\"summary_large_image\" />
+  <title>{title}</title>
+</head>
+<body>
+  <div style=\"display:flex;align-items:center;justify-content:center;min-height:100vh;\">
+    <img src=\"{public_image_url}\" alt=\"profile card\" style=\"max-width:100%;height:auto;\"/>
+  </div>
+</body>
+</html>"""
+            with open(html_dest, 'w', encoding='utf-8') as h:
+                h.write(html_content)
+
+            public_url = f"{base}/uploads/{html_fname}"
+        except Exception:
+            # If HTML generation fails, fall back to direct image URL
+            public_url = public_image_url
+
+        return {"url": public_url, "image_url": public_image_url}
+    except Exception as e:
+        logger.exception('Temporary upload failed')
+        raise HTTPException(status_code=500, detail='Upload failed')
 
 from models import Institution, Event, Participant, Team, Submission, Judge, Score, Notification, LeaderboardEntry, Certificate
 from services.email_service import send_notification_email, get_registration_template, get_email_verification_template
