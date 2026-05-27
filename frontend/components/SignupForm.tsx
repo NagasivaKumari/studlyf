@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Mail, Lock, User, Building2, CheckCircle2, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
 import AuthCard from './AuthCard';
+import TermsOverlay from './TermsOverlay';
 
 interface SignupFormProps {
     onSwitchToLogin: () => void;
@@ -14,7 +14,7 @@ interface SignupFormProps {
 const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = false }) => {
     const navigate = useNavigate();
     const location = useLocation();
-    
+
     // Auth State
     const [step, setStep] = useState(1);
     const [email, setEmail] = useState('');
@@ -23,8 +23,10 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
     const [otp, setOtp] = useState('');
     const [institutionName, setInstitutionName] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [agreed, setAgreed] = useState(false);
+    const [showTerms, setShowTerms] = useState(false);
     const [resendCooldown, setResendCooldown] = useState(0);
-    
+
     // UI State
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -51,54 +53,56 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
     // Role detection from URL or email context
     const queryParams = new URLSearchParams(location.search);
     let selectedRole = queryParams.get('role') || 'student';
-    
+
     // Auto-detect judge role if coming from judge invitation
     const nextPath = queryParams.get('next');
     if (nextPath && nextPath.includes('judge-portal') && !selectedRole) {
         selectedRole = 'judge';
-        console.log('[SignupForm] Auto-detected judge role from nextPath:', nextPath);
     }
-    
-    // Also check if email looks like it's from judge invitation
+
     if (!selectedRole && email) {
-        // Check if this email exists in judges collection (would need API call)
-        // For now, assume judge if accessing from judge invitation flow
-        const judgeIndicators = ['judge', 'evaluator', 'reviewer'];
-        if (nextPath?.includes('judge-portal') || 
+        if (
+            nextPath?.includes('judge-portal') ||
             document.referrer.includes('judge-invitation') ||
-            localStorage.getItem('pendingJudgeRole') === 'true') {
+            localStorage.getItem('pendingJudgeRole') === 'true'
+        ) {
             selectedRole = 'judge';
-            console.log('[SignupForm] Auto-detected judge role from invitation flow:', selectedRole);
         }
     }
-    
-    console.log('[SignupForm] Final selected role:', selectedRole, 'email:', email);
+
+    const isInstitution = selectedRole === 'institution';
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
-        
-        // Institution Email Check
-        if (selectedRole === 'institution') {
-            const personalDomains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com"];
-            const domain = email.split("@").pop()?.toLowerCase();
+
+        if (isInstitution) {
+            const personalDomains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'aol.com'];
+            const domain = email.split('@').pop()?.toLowerCase();
             if (domain && personalDomains.includes(domain)) {
-                setError("Please use your institution's official email (e.g., @university.edu). Personal Gmail/Yahoo accounts are not permitted for institutional registration.");
+                setError(
+                    "Please use your institution's official email (e.g., @university.edu). Personal Gmail/Yahoo accounts are not permitted for institutional registration."
+                );
                 return;
             }
+        }
+
+        if (!agreed) {
+            setError('Please accept Terms & Conditions.');
+            return;
         }
 
         setLoading(true);
         setError('');
         try {
-            // 0. Client-side Strength Check
             const strength = getPasswordStrength(password);
             if (strength < 4) {
-                setError("Password is not strong enough. Please include at least 8 characters, an uppercase letter, a number, and a special character.");
+                setError(
+                    'Password is not strong enough. Please include at least 8 characters, an uppercase letter, a number, and a special character.'
+                );
                 setLoading(false);
                 return;
             }
 
-            // 1. Complete Signup in MongoDB directly
             const signupRes = await fetch(`${API_BASE_URL}/api/auth/signup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -107,15 +111,12 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
                     password,
                     full_name: fullName,
                     role: selectedRole,
-                    institution_name: selectedRole === 'institution' ? institutionName : undefined
-                })
+                    institution_name: isInstitution ? institutionName : undefined,
+                }),
             });
 
             if (signupRes.ok) {
-                // Clear judge role flag if set
-                if (selectedRole === 'judge') {
-                    localStorage.removeItem('pendingJudgeRole');
-                }
+                if (selectedRole === 'judge') localStorage.removeItem('pendingJudgeRole');
                 setStep(3);
                 setTimeout(() => onSwitchToLogin(), 3000);
             } else {
@@ -136,135 +137,176 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
         }
     };
 
-    const inputClasses = "w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-100 focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all duration-200 outline-none text-gray-900 placeholder-gray-400 text-sm";
-    const labelClasses = "block text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1.5 ml-1";
+    // Shared input / label styles
+    const inputBase =
+        'w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-100 focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all duration-200 outline-none text-gray-900 placeholder-gray-400 text-sm';
+    const labelClasses =
+        'block text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1.5 ml-1';
+
+    // Institution layout: two-column grid on md+
+    const fieldGrid = isInstitution ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : 'space-y-4';
+
+    // Card width: wider for institution to prevent cramping
+    const cardMaxWidth = isInstitution ? 'max-w-2xl' : 'max-w-lg';
 
     return (
-        <AuthCard 
-            title={step === 3 ? "Welcome Aboard" : "Create Account"} 
-            maxWidth="max-w-[450px]" 
+        <AuthCard
+            title={step === 3 ? 'Welcome Aboard' : 'Create Account'}
+            maxWidth={cardMaxWidth}
             transparent={transparent}
         >
             <AnimatePresence mode="wait">
                 {step === 1 && (
-                    <motion.form
-                        key="step1"
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                        onSubmit={handleSignup}
-                        className="space-y-4"
-                    >
-                        {error && <div className="p-3 bg-red-50 text-red-500 text-xs rounded-lg border border-red-100">{error}</div>}
-                        
-                        {selectedRole === 'institution' && (
-                            <div>
-                                <label className={labelClasses}>Institution Name</label>
-                                <div className="relative">
-                                    <Building2 className="absolute left-3 top-3.5 text-gray-300" size={18} />
-                                    <input
-                                        type="text"
-                                        placeholder="e.g. IIT Delhi"
-                                        className={inputClasses + " pl-10"}
-                                        value={institutionName}
-                                        onChange={(e) => setInstitutionName(e.target.value)}
-                                        required
-                                    />
-                                </div>
-                            </div>
-                        )}
-                        <div>
-                            <label className={labelClasses}>Full Name</label>
-                            <div className="relative">
-                                <User className="absolute left-3 top-3.5 text-gray-300" size={18} />
-                                <input
-                                    type="text"
-                                    placeholder={selectedRole === 'institution' ? "Administrator" : "Shiva"}
-                                    className={inputClasses + " pl-10"}
-                                    value={fullName}
-                                    onChange={(e) => setFullName(e.target.value)}
-                                    required
-                                />
-                            </div>
-                        </div>
+                    <div className="relative overflow-visible">
+                        <AnimatePresence>
+                            {showTerms && <TermsOverlay onClose={() => setShowTerms(false)} />}
+                        </AnimatePresence>
 
-                        <div>
-                            <label className={labelClasses}>{selectedRole === 'institution' ? "Work Email" : "Student Email"}</label>
-                            <div className="relative">
-                                <Mail className="absolute left-3 top-3.5 text-gray-300" size={18} />
-                                <input
-                                    type="email"
-                                    placeholder={selectedRole === 'institution' ? "admin@institution.edu" : "shiva@gmail.com"}
-                                    className={inputClasses + " pl-10"}
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className={labelClasses}>Secure Password</label>
-                            <div className="relative">
-                                <Lock className="absolute left-3 top-3.5 text-gray-300" size={18} />
-                                <input
-                                    type={showPassword ? "text" : "password"}
-                                    placeholder="••••••••"
-                                    className={inputClasses + " pl-10"}
-                                    value={password}
-                                    onChange={(e) => {
-                                        if (e.target.value.length <= 50) {
-                                            setPassword(e.target.value);
-                                        }
-                                    }}
-                                    required
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-3.5 text-gray-400 hover:text-purple-600"
-                                >
-                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                </button>
-                            </div>
-                            
-                            {/* Password Strength Indicator */}
-                            {password.length > 0 && (
-                                <div className="mt-2 flex gap-1 px-1">
-                                    {[1, 2, 3, 4].map((level) => (
-                                        <div 
-                                            key={level}
-                                            className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                                                getPasswordStrength(password) >= level 
-                                                    ? (getPasswordStrength(password) <= 2 ? 'bg-orange-400' : 'bg-green-500')
-                                                    : 'bg-gray-100'
-                                            }`}
-                                        />
-                                    ))}
+                        <motion.form
+                            key="step1"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            onSubmit={handleSignup}
+                        >
+                            {error && (
+                                <div className="mb-4 p-3 bg-red-50 text-red-500 text-xs rounded-lg border border-red-100 leading-relaxed">
+                                    {error}
                                 </div>
                             )}
-                            <div className="mt-2 px-1 text-[9px] text-gray-400 font-medium leading-relaxed">
-                                <span className={password.length >= 8 ? 'text-green-500' : ''}>• 8+ characters</span>{' '}
-                                <span className={/[A-Z]/.test(password) ? 'text-green-500' : ''}>• Uppercase</span>{' '}
-                                <span className={/[0-9]/.test(password) ? 'text-green-500' : ''}>• Number</span>{' '}
-                                <span className={/[^A-Za-z0-9]/.test(password) ? 'text-green-500' : ''}>• Special char</span>
+
+                            {/* ── Fields grid ── */}
+                            <div className={fieldGrid}>
+                                {isInstitution && (
+                                    <div className="md:col-span-2">
+                                        <label className={labelClasses}>Institution Name</label>
+                                        <div className="relative">
+                                            <Building2 className="absolute left-3 top-3.5 text-gray-300" size={18} />
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. IIT Delhi"
+                                                className={`${inputBase} pl-10`}
+                                                value={institutionName}
+                                                onChange={(e) => setInstitutionName(e.target.value)}
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className={labelClasses}>
+                                        {isInstitution ? 'Administrator Name' : 'Full Name'}
+                                    </label>
+                                    <div className="relative">
+                                        <User className="absolute left-3 top-3.5 text-gray-300" size={18} />
+                                        <input
+                                            type="text"
+                                            placeholder={isInstitution ? 'Administrator' : 'Shiva'}
+                                            className={`${inputBase} pl-10`}
+                                            value={fullName}
+                                            onChange={(e) => setFullName(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className={labelClasses}>
+                                        {isInstitution ? 'Work Email' : 'Student Email'}
+                                    </label>
+                                    <div className="relative">
+                                        <Mail className="absolute left-3 top-3.5 text-gray-300" size={18} />
+                                        <input
+                                            type="email"
+                                            placeholder={isInstitution ? 'admin@institution.edu' : 'shiva@gmail.com'}
+                                            className={`${inputBase} pl-10`}
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className={isInstitution ? 'md:col-span-2' : ''}>
+                                    <label className={labelClasses}>Secure Password</label>
+                                    <div className="relative">
+                                        <Lock className="absolute left-3 top-3.5 text-gray-300" size={18} />
+                                        <input
+                                            type={showPassword ? 'text' : 'password'}
+                                            placeholder="••••••••"
+                                            className={`${inputBase} pl-10 pr-10`}
+                                            value={password}
+                                            onChange={(e) => {
+                                                if (e.target.value.length <= 50) setPassword(e.target.value);
+                                            }}
+                                            required
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-3 top-3.5 text-gray-400 hover:text-purple-600"
+                                        >
+                                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
+
+                                    {password.length > 0 && (
+                                        <div className="mt-2 flex gap-1 px-1">
+                                            {[1, 2, 3, 4].map((level) => (
+                                                <div
+                                                    key={level}
+                                                    className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                                                        getPasswordStrength(password) >= level
+                                                            ? getPasswordStrength(password) <= 2
+                                                                ? 'bg-orange-400'
+                                                                : 'bg-green-500'
+                                                            : 'bg-gray-100'
+                                                    }`}
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
+                                    <div className="mt-1.5 px-1 text-[9px] text-gray-400 font-medium leading-relaxed flex flex-wrap gap-x-2">
+                                        <span className={password.length >= 8 ? 'text-green-500' : ''}>• 8+ chars</span>
+                                        <span className={/[A-Z]/.test(password) ? 'text-green-500' : ''}>• Uppercase</span>
+                                        <span className={/[0-9]/.test(password) ? 'text-green-500' : ''}>• Number</span>
+                                        <span className={/[^A-Za-z0-9]/.test(password) ? 'text-green-500' : ''}>• Special char</span>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
 
+                            {/* ── Terms ── */}
+                            <div className="flex flex-row items-center gap-3 mt-4 p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                <input
+                                    type="checkbox"
+                                    checked={agreed}
+                                    onChange={(e) => setAgreed(e.target.checked)}
+                                    className="w-5 h-5 min-w-[20px] min-h-[20px] accent-purple-600 cursor-pointer"
+                                />
+                                <span className="text-[12px] text-gray-600 leading-relaxed">
+                                    I agree to the{" "}
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTerms(true)}
+                                        className="text-purple-600 font-semibold hover:underline"
+                                    >
+                                        Terms & Conditions
+                                    </button>
+                                </span>
+                            </div>
 
-
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full py-4 bg-purple-600 text-white rounded-xl font-bold uppercase tracking-widest text-[11px] hover:bg-purple-700 transition-all shadow-lg shadow-purple-200 mt-2 flex items-center justify-center gap-2"
-                        >
-                            {loading ? 'Creating Account...' : 'Sign Up Now'}
-                            <ArrowRight size={16} />
-                        </button>
-                    </motion.form>
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full mt-4 py-4 bg-purple-600 text-white rounded-xl font-bold uppercase tracking-widest text-[11px] hover:bg-purple-700 transition-all shadow-lg shadow-purple-200 flex items-center justify-center gap-2"
+                            >
+                                {loading ? 'Creating Account...' : 'Sign Up Now'}
+                                <ArrowRight size={16} />
+                            </button>
+                        </motion.form>
+                    </div>
                 )}
-
-                {/* Step 2 (OTP) is removed */}
 
                 {step === 3 && (
                     <motion.div
@@ -276,7 +318,9 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
                         <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
                             <CheckCircle2 size={40} />
                         </div>
-                        <h2 className="text-2xl font-black uppercase tracking-tighter text-gray-900 mb-2">Registration Complete</h2>
+                        <h2 className="text-2xl font-black uppercase tracking-tighter text-gray-900 mb-2">
+                            Registration Complete
+                        </h2>
                         <p className="text-gray-500 text-sm mb-8">Welcome aboard! Your account is ready.</p>
                         <div className="flex items-center justify-center gap-2 text-purple-600 font-bold text-[10px] uppercase tracking-widest">
                             Please wait a moment...

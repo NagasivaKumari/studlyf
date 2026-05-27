@@ -1,5 +1,6 @@
 // Studlyf Engineering Protocol - Core Routing Engine
-import React, { Suspense, useEffect, lazy, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, lazy, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { HashRouter as Router, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 
 import Navigation from './components/Navigation';
@@ -59,6 +60,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
 import RoadmapClone from './pages/RoadmapClone';
+
 
 import OpportunitiesList from './pages/opportunities/OpportunitiesList';
 import OpportunityDetails from './pages/opportunities/OpportunityDetails';
@@ -150,6 +152,7 @@ const App: React.FC = () => {
   // Global Redirect Logic
   useEffect(() => {
     if (loading) return;
+    if (!pathname) return;
 
     console.log('[AuthDebug] Role:', role, 'Path:', pathname);
 
@@ -435,12 +438,6 @@ const App: React.FC = () => {
             <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
             <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
             <Route path="/verify-email" element={<PublicRoute><VerifyEmail /></PublicRoute>} />
-
-            <Route path="/dashboard" element={
-              <ProtectedRoute>
-                {role === 'institution' ? <Navigate to="/institution-dashboard" replace /> : <Navigate to="/dashboard/learner" replace />}
-              </ProtectedRoute>
-            } />
             <Route path="/dashboard/learner" element={<ProtectedRoute><DashboardHome /></ProtectedRoute>} />
             <Route path="/dashboard/profile" element={<ProtectedRoute><LearnerDashboard /></ProtectedRoute>} />
             <Route path="/profile/:userId" element={<PublicProfile />} />
@@ -469,14 +466,7 @@ const App: React.FC = () => {
             {/* Evaluation */}
             <Route path="/evaluate/:token" element={<EvaluationPage />} />
 
-            {/* Auth */}
-            <Route path="/login" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
-            <Route path="/signup" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
-            <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
-            <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
-            <Route path="/verify-email" element={<PublicRoute><VerifyEmail /></PublicRoute>} />
-
-            {/* Misc */}
+            {/* Misc
             <Route path="/roadmaps" element={<RoadmapClone />} />
             <Route path="/roadmaps/:roleId" element={<RoadmapClone />} />
             <Route path="/about" element={<About />} />
@@ -565,18 +555,6 @@ const AppWrapper: React.FC = () => {
     try { sessionStorage.setItem('studlyf_splash_shown', '1'); } catch (e) {}
     setShowSplash(false);
   };
-  const appRef = React.useRef<HTMLDivElement | null>(null);
-  const [appMounted, setAppMounted] = useState(false);
-
-  useEffect(() => {
-    if (!showSplash) {
-      // mount the app and trigger fade-in
-      setAppMounted(true);
-      requestAnimationFrame(() => {
-        if (appRef.current) appRef.current.style.opacity = '1';
-      });
-    }
-  }, [showSplash]);
 
   return (
     <HeroUIProvider>
@@ -586,11 +564,13 @@ const AppWrapper: React.FC = () => {
           {showSplash ? (
             <SplashScreen duration={7500} onFinish={handleSplashFinish} />
           ) : (
-            appMounted && (
-              <div ref={appRef} style={{ opacity: 0, transition: 'opacity 600ms ease' }}>
-                <App />
-              </div>
-            )
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6 }}
+            >
+              <App />
+            </motion.div>
           )}
         </AuthProvider>
       </Router>
