@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
+import html2canvas from 'html2canvas';
 import { useAuth } from '../AuthContext';
 import { API_BASE_URL } from '../apiConfig';
 import { 
   User, FileText, Book, Award, Briefcase, 
   Terminal, Share2, Settings, ShieldCheck, 
   ChevronLeft, Plus, Save, Sparkles, Scan,
-  Globe, MapPin, Calendar, Heart, GraduationCap
+  Globe, MapPin, Calendar, Heart, GraduationCap, Download, Copy
 } from 'lucide-react';
 
 const MyProfile: React.FC = () => {
@@ -80,8 +81,64 @@ const MyProfile: React.FC = () => {
   const [newSkillInput, setNewSkillInput] = useState('');
   const [profileLoading, setProfileLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [lastToastSnapshot, setLastToastSnapshot] = useState<string | null>(null);
+  const [isGeneratingTemplate, setIsGeneratingTemplate] = useState(false);
 
   const navigate = useNavigate();
+  const shareTemplateRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (saveStatus && saveStatus.message) setLastToastSnapshot(saveStatus.message);
+  }, [saveStatus]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const target = e.target as HTMLInputElement & HTMLSelectElement & HTMLTextAreaElement;
+    const name = target.name as string;
+    if (!name) return;
+    let value: any = target.type === 'checkbox' ? (target as HTMLInputElement).checked : target.value;
+
+    setFormData(prev => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const copyImageToClipboard = async (blob: Blob) => {
+    try {
+      if (!navigator.clipboard || typeof ClipboardItem === 'undefined') return false;
+      const item = new ClipboardItem({ 'image/png': blob });
+      await navigator.clipboard.write([item]);
+      return true;
+    } catch (e) {
+      console.warn('copyImageToClipboard failed', e);
+      return false;
+    }
+  };
+
+  const copyImageImmediate = async () => {
+    if (isGeneratingTemplate) return;
+    setCopiedForPlatform(null);
+    setIsGeneratingTemplate(true);
+    try {
+      const { blob, dataUrl } = await generateProfileCardBlob();
+      const ok = await copyImageToClipboard(blob);
+      if (ok) {
+        setSaveStatus({ type: 'success', message: 'Image copied to clipboard — paste into the composer.' });
+      } else {
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = profileTemplateFileName;
+        link.click();
+        setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the post.' });
+      }
+    } catch (e) {
+      console.warn('copyImageImmediate failed', e);
+      setSaveStatus({ type: 'error', message: 'Unable to copy or download image.' });
+    } finally {
+      setTimeout(() => setSaveStatus(null), 3000);
+      setIsGeneratingTemplate(false);
+    }
+  };
 
   const calculateStrength = () => {
     let score = 0;
@@ -190,7 +247,7 @@ const MyProfile: React.FC = () => {
           ...newSkills.filter(ns => !prev.skills.some(es => es.name.toLowerCase() === ns.name.toLowerCase()))
         ]
       }));
-    } catch (err: any) {
+    } catch (err) {
       clearInterval(progressInterval);
       setUploadProgress(0);
       alert(`Upload failed: ${err.message}`);
@@ -204,11 +261,6 @@ const MyProfile: React.FC = () => {
     if (!resumeInputRef.current?.files?.[0] && formData.resume.fileName === 'No resume uploaded') {
       alert('Please upload a resume first.');
       return;
-    }
-    setIsExtracting(true);
-    await new Promise(r => setTimeout(r, 600));
-    setIsExtracting(false);
-    if (resumeParseResult?.skills?.length) {
       alert(`Extraction complete! Found ${resumeParseResult.skills.length} skills already loaded.`);
     } else {
       alert('No new skills found. Please re-upload your resume.');
@@ -229,34 +281,6 @@ const MyProfile: React.FC = () => {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    if (name.includes('.')) {
-      const [parent, child] = name.split('.');
-      setFormData(prev => ({
-        ...prev,
-        [parent]: {
-          ...(prev[parent as keyof typeof prev] as any),
-          [child]: value
-        }
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
-  };
-
-  const removeInterest = (interest: string) => {
-    setFormData(prev => ({
-      ...prev,
-      interests: prev.interests.filter(i => i !== interest)
-    }));
-  };
-
-  const toggleStatus = (field: 'isCurrentStudent' | 'isCurrentEmployee') => {
-    setFormData(prev => ({ ...prev, [field]: !prev[field] }));
-  };
-
-  // ─── REAL: Load full profile from backend on mount ───
   useEffect(() => {
     if (!user?.user_id) {
       setProfileLoading(false);
@@ -264,16 +288,14 @@ const MyProfile: React.FC = () => {
     }
 
     const loadProfile = async () => {
-      setProfileLoading(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/user/${user.user_id}/profile`);
+        const res = await fetch(`${API_BASE_URL}/api/user/${user.user_id}`);
         if (res.ok) {
           const data = await res.json();
           setFormData(prev => ({
             ...prev,
-            firstName: data.firstName || prev.firstName,
-            lastName: data.lastName || prev.lastName,
-            username: data.username || prev.username,
+            firstName: data.full_name ? data.full_name.split(' ')[0] : prev.firstName,
+            lastName: data.full_name ? data.full_name.split(' ').slice(1).join(' ') : prev.lastName,
             phone: data.phone || prev.phone,
             gender: data.gender || prev.gender,
             dob: data.dob || prev.dob,
@@ -306,7 +328,6 @@ const MyProfile: React.FC = () => {
             isCurrentEmployee: data.isCurrentEmployee ?? prev.isCurrentEmployee,
           }));
         } else {
-          // Fallback: seed name from auth context
           const names = user.full_name?.split(' ') || [];
           setFormData(prev => ({
             ...prev,
@@ -359,7 +380,7 @@ const MyProfile: React.FC = () => {
 
       setSaveStatus({ type: 'success', message: `${section} saved successfully!` });
       setTimeout(() => setSaveStatus(null), 3000);
-    } catch (err: any) {
+    } catch (err) {
       setSaveStatus({ type: 'error', message: err.message || 'Failed to save. Please try again.' });
       setTimeout(() => setSaveStatus(null), 4000);
     } finally {
@@ -381,7 +402,7 @@ const MyProfile: React.FC = () => {
         setSaveStatus({ type: 'success', message: 'Deleted successfully!' });
         setTimeout(() => setSaveStatus(null), 2000);
       }
-    } catch (err: any) {
+    } catch (err) {
       setSaveStatus({ type: 'error', message: 'Delete failed: ' + err.message });
       setTimeout(() => setSaveStatus(null), 3000);
     }
@@ -391,14 +412,752 @@ const MyProfile: React.FC = () => {
   const profileDisplayName = [formData.firstName, formData.lastName].filter(Boolean).join(' ') || user?.full_name || 'Your Profile';
   const profileRole = formData.userType || user?.role || 'Contributor';
   const profileHeadline = formData.bio || formData.careerGoal || 'A polished contributor profile for modern learning and hiring workflows.';
-  const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
-    ? `${window.location.origin}/profile/${user.user_id}`
-    : '';
+ const APP_BASE_URL = (import.meta as any).env?.VITE_PUBLIC_URL || window.location.origin;
+const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
+  ? `${APP_BASE_URL}/profile/${user.user_id}`
+  : '';
+
+  const profileShareCaption = `${profileDisplayName} | Studlyf\n${profileRole}\n${profileHeadline}`;
+
+  const profileTemplateFileName = `${profileDisplayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'studlyf-profile'}-template.png`;
+
+  const captureProfileTemplate = async () => {
+    if (!shareTemplateRef.current) {
+      throw new Error('Profile template is not ready yet.');
+    }
+    // Safer approach: build a simplified clone of the template, strip all classes
+    // and complex styles, append it visibly offscreen, capture it, then remove.
+    const original = shareTemplateRef.current;
+    const clone = original.cloneNode(true) as HTMLElement;
+
+    // Remove class names and inline styles from clone elements to avoid complex CSS
+    const nodes = [clone, ...Array.from(clone.querySelectorAll('*'))] as HTMLElement[];
+    for (const n of nodes) {
+      try {
+        n.className = '';
+        n.id = '';
+        // preserve text content but reset styles
+        n.style.cssText = 'box-sizing:border-box; color:#111827; background:transparent;';
+      } catch (e) {}
+    }
+
+    // Wrap clone in a container with explicit clean styles
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.left = '50%';
+    container.style.top = '50%';
+    container.style.transform = 'translate(-50%, -50%)';
+    container.style.zIndex = '99999';
+    container.style.background = '#ffffff';
+    container.style.padding = '24px';
+    container.style.borderRadius = '24px';
+    container.style.boxShadow = '0 10px 30px rgba(0,0,0,0.08)';
+    container.style.maxWidth = '1080px';
+    container.style.visibility = 'visible';
+    container.appendChild(clone);
+
+    document.body.appendChild(container);
+    try {
+      const canvas = await html2canvas(container, { backgroundColor: null, scale: 2, useCORS: true });
+      return canvas;
+    } finally {
+      try { document.body.removeChild(container); } catch (e) {}
+    }
+  };
+  const generateProfileCardBlob = async (): Promise<{ blob: Blob; dataUrl: string }> => {
+  const container = document.createElement('div');
+  container.style.width = '900px';
+  container.style.margin = '0';
+  container.style.padding = '0';
+  container.style.boxSizing = 'border-box';
+  container.style.background = '#0f0f13';
+  container.style.fontFamily = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+  container.style.position = 'fixed';
+  container.style.left = '-99999px';
+  container.style.top = '0';
+
+  const card = document.createElement('div');
+  card.style.width = '900px';
+  card.style.minHeight = '1100px';
+  card.style.boxSizing = 'border-box';
+  card.style.background = '#0f0f13';
+  card.style.position = 'relative';
+  card.style.overflow = 'hidden';
+
+  const blob1 = document.createElement('div');
+  blob1.style.cssText = `position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,#7C3AED55,transparent 70%);top:-100px;left:-100px;pointer-events:none;`;
+  const blob2 = document.createElement('div');
+  blob2.style.cssText = `position:absolute;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,#06b6d455,transparent 70%);bottom:-80px;right:-80px;pointer-events:none;`;
+  const blob3 = document.createElement('div');
+  blob3.style.cssText = `position:absolute;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,#f59e0b33,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;`;
+  card.appendChild(blob1);
+  card.appendChild(blob2);
+  card.appendChild(blob3);
+
+  const accentBar = document.createElement('div');
+  accentBar.style.cssText = `height:5px;background:linear-gradient(90deg,#7C3AED,#06b6d4,#f59e0b);width:100%;`;
+  card.appendChild(accentBar);
+
+  const header = document.createElement('div');
+  header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:48px 56px 32px;position:relative;z-index:2;`;
+
+  const headerLeft = document.createElement('div');
+  headerLeft.style.cssText = `display:flex;align-items:center;gap:28px;`;
+
+  const photoRing = document.createElement('div');
+  photoRing.style.cssText = `width:110px;height:110px;border-radius:28px;padding:3px;background:linear-gradient(135deg,#7C3AED,#06b6d4);flex-shrink:0;box-shadow:0 0 40px #7C3AED55;`;
+  const photoInner = document.createElement('div');
+  photoInner.style.cssText = `width:100%;height:100%;border-radius:25px;overflow:hidden;background:#1a1a2e;`;
+  if (formData.profilePhoto) {
+    const img = document.createElement('img');
+    img.src = formData.profilePhoto;
+    img.style.cssText = `width:100%;height:100%;object-fit:cover;`;
+    img.crossOrigin = 'anonymous';
+    photoInner.appendChild(img);
+  } else {
+    photoInner.style.cssText += `display:flex;align-items:center;justify-content:center;`;
+    const userIcon = document.createElement('div');
+    userIcon.style.cssText = `width:54px;height:54px;border-radius:50%;border:3px solid #7C3AED;color:#7C3AED;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;`;
+    userIcon.innerText = '◎';
+    photoInner.appendChild(userIcon);
+  }
+  photoRing.appendChild(photoInner);
+
+  headerLeft.appendChild(photoRing);
+
+  const scoreCircle = document.createElement('div');
+  scoreCircle.style.cssText = `width:100px;height:100px;border-radius:50%;background:conic-gradient(#7C3AED ${profileCompletion * 3.6}deg, #ffffff11 0deg);display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px #7C3AED44;flex-shrink:0;`;
+  const scoreInner = document.createElement('div');
+  scoreInner.style.cssText = `width:80px;height:80px;border-radius:50%;background:#0f0f13;display:flex;flex-direction:column;align-items:center;justify-content:center;`;
+  const scoreNum = document.createElement('div');
+  scoreNum.style.cssText = `font-size:22px;font-weight:900;color:#fff;line-height:1;`;
+  scoreNum.innerText = `${profileCompletion}%`;
+  const scoreLabel = document.createElement('div');
+  scoreLabel.style.cssText = `font-size:8px;font-weight:800;color:#7C3AED;text-transform:uppercase;letter-spacing:0.1em;margin-top:2px;`;
+  scoreLabel.innerText = 'Score';
+  scoreInner.appendChild(scoreNum);
+  scoreInner.appendChild(scoreLabel);
+  scoreCircle.appendChild(scoreInner);
+
+  header.appendChild(headerLeft);
+  header.appendChild(scoreCircle);
+  card.appendChild(header);
+
+  if (formData.bio || formData.careerGoal) {
+    const bioWrap = document.createElement('div');
+    bioWrap.style.cssText = `margin:0 56px 32px;padding:20px 24px;background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;position:relative;z-index:2;border-left:3px solid #7C3AED;`;
+    const bioText = document.createElement('div');
+    bioText.style.cssText = `font-size:13px;color:#cbd5e1;line-height:1.7;font-weight:500;`;
+    bioText.innerText = formData.bio || formData.careerGoal;
+    bioWrap.appendChild(bioText);
+    card.appendChild(bioWrap);
+  }
+
+  const statsRow = document.createElement('div');
+  statsRow.style.cssText = `display:flex;gap:16px;padding:0 56px 36px;position:relative;z-index:2;`;
+  const stats = [
+    { label: 'Skills', value: formData.skills.length, color: '#7C3AED' },
+    { label: 'Projects', value: formData.projects.length, color: '#06b6d4' },
+    { label: 'Experience', value: formData.experienceList.length, color: '#f59e0b' },
+    { label: 'Certificates', value: formData.certifications.length, color: '#10b981' },
+  ];
+  stats.forEach(stat => {
+    const s = document.createElement('div');
+    s.style.cssText = `flex:1;background:#ffffff08;border:1px solid #ffffff11;border-radius:18px;padding:18px 16px;text-align:center;border-top:2px solid ${stat.color};`;
+    const sv = document.createElement('div');
+    sv.style.cssText = `font-size:30px;font-weight:900;color:#fff;line-height:1;`;
+    sv.innerText = String(stat.value);
+    const sl = document.createElement('div');
+    sl.style.cssText = `font-size:9px;font-weight:800;color:${stat.color};text-transform:uppercase;letter-spacing:0.15em;margin-top:6px;`;
+    sl.innerText = stat.label;
+    s.appendChild(sv);
+    s.appendChild(sl);
+    statsRow.appendChild(s);
+  });
+  card.appendChild(statsRow);
+
+  const footer = document.createElement('div');
+  footer.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:20px 56px 32px;position:relative;z-index:2;border-top:1px solid #ffffff11;`;
+  const footerBrand = document.createElement('div');
+  footerBrand.style.cssText = `font-size:11px;font-weight:900;color:#7C3AED;letter-spacing:0.1em;text-transform:uppercase;`;
+  footerBrand.innerText = 'Studlyf';
+  footer.appendChild(footerBrand);
+  card.appendChild(footer);
+
+  const bottomBar = document.createElement('div');
+  bottomBar.style.cssText = `height:5px;background:linear-gradient(90deg,#f59e0b,#7C3AED,#06b6d4);width:100%;`;
+  card.appendChild(bottomBar);
+
+  container.appendChild(card);
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      backgroundColor: '#0f0f13',
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+    });
+    const dataUrl = canvas.toDataURL('image/png');
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Blob generation failed')), 'image/png');
+    });
+    return { blob, dataUrl };
+  } finally {
+    try { document.body.removeChild(container); } catch (e) {}
+  }
+};
+  const downloadProfileTemplate = async () => {
+    if (!publicProfileUrl) return;
+    setIsGeneratingTemplate(true);
+
+    try {
+      const canvas = await (async () => {
+        const container = document.createElement('div');
+        container.style.width = '900px';
+        container.style.margin = '0';
+        container.style.padding = '0';
+        container.style.boxSizing = 'border-box';
+        container.style.background = '#0f0f13';
+        container.style.fontFamily = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+        container.style.position = 'fixed';
+        container.style.left = '-99999px';
+        container.style.top = '0';
+
+        const card = document.createElement('div');
+        card.style.width = '900px';
+        card.style.minHeight = '1100px';
+        card.style.boxSizing = 'border-box';
+        card.style.background = '#0f0f13';
+        card.style.position = 'relative';
+        card.style.overflow = 'hidden';
+
+        // ── Background blobs ──
+        const blob1 = document.createElement('div');
+        blob1.style.cssText = `position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,#7C3AED55,transparent 70%);top:-100px;left:-100px;pointer-events:none;`;
+        const blob2 = document.createElement('div');
+        blob2.style.cssText = `position:absolute;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,#06b6d455,transparent 70%);bottom:-80px;right:-80px;pointer-events:none;`;
+        const blob3 = document.createElement('div');
+        blob3.style.cssText = `position:absolute;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,#f59e0b33,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;`;
+        card.appendChild(blob1);
+        card.appendChild(blob2);
+        card.appendChild(blob3);
+
+        // ── Top accent bar ──
+        const accentBar = document.createElement('div');
+        accentBar.style.cssText = `height:5px;background:linear-gradient(90deg,#7C3AED,#06b6d4,#f59e0b);width:100%;`;
+        card.appendChild(accentBar);
+
+        // ── Header section ──
+        const header = document.createElement('div');
+        header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:48px 56px 32px;position:relative;z-index:2;`;
+
+        // Left: photo only
+        const headerLeft = document.createElement('div');
+        headerLeft.style.cssText = `display:flex;align-items:center;gap:28px;`;
+
+        // Photo
+        const photoRing = document.createElement('div');
+        photoRing.style.cssText = `width:110px;height:110px;border-radius:28px;padding:3px;background:linear-gradient(135deg,#7C3AED,#06b6d4);flex-shrink:0;box-shadow:0 0 40px #7C3AED55;`;
+        const photoInner = document.createElement('div');
+        photoInner.style.cssText = `width:100%;height:100%;border-radius:25px;overflow:hidden;background:#1a1a2e;`;
+        if (formData.profilePhoto) {
+          const img = document.createElement('img');
+          img.src = formData.profilePhoto;
+          img.style.cssText = `width:100%;height:100%;object-fit:cover;`;
+          img.crossOrigin = 'anonymous';
+          photoInner.appendChild(img);
+        } else {
+          photoInner.style.cssText += `display:flex;align-items:center;justify-content:center;`;
+          const userIcon = document.createElement('div');
+          userIcon.style.cssText = `width:54px;height:54px;border-radius:50%;border:3px solid #7C3AED;color:#7C3AED;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;`;
+          userIcon.innerText = '◎';
+          photoInner.appendChild(userIcon);
+        }
+        photoRing.appendChild(photoInner);
+
+        headerLeft.appendChild(photoRing);
+
+        // Right: score circle
+        const scoreCircle = document.createElement('div');
+        scoreCircle.style.cssText = `width:100px;height:100px;border-radius:50%;background:conic-gradient(#7C3AED ${profileCompletion * 3.6}deg, #ffffff11 0deg);display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px #7C3AED44;flex-shrink:0;`;
+        const scoreInner = document.createElement('div');
+        scoreInner.style.cssText = `width:80px;height:80px;border-radius:50%;background:#0f0f13;display:flex;flex-direction:column;align-items:center;justify-content:center;`;
+        const scoreNum = document.createElement('div');
+        scoreNum.style.cssText = `font-size:22px;font-weight:900;color:#fff;line-height:1;`;
+        scoreNum.innerText = `${profileCompletion}%`;
+        const scoreLabel = document.createElement('div');
+        scoreLabel.style.cssText = `font-size:8px;font-weight:800;color:#7C3AED;text-transform:uppercase;letter-spacing:0.1em;margin-top:2px;`;
+        scoreLabel.innerText = 'Score';
+        scoreInner.appendChild(scoreNum);
+        scoreInner.appendChild(scoreLabel);
+        scoreCircle.appendChild(scoreInner);
+
+        header.appendChild(headerLeft);
+        header.appendChild(scoreCircle);
+        card.appendChild(header);
+
+        // ── Bio ──
+        if (formData.bio || formData.careerGoal) {
+          const bioWrap = document.createElement('div');
+          bioWrap.style.cssText = `margin:0 56px 32px;padding:20px 24px;background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;position:relative;z-index:2;border-left:3px solid #7C3AED;`;
+          const bioText = document.createElement('div');
+          bioText.style.cssText = `font-size:13px;color:#cbd5e1;line-height:1.7;font-weight:500;`;
+          bioText.innerText = formData.bio || formData.careerGoal;
+          bioWrap.appendChild(bioText);
+          card.appendChild(bioWrap);
+        }
+
+        // ── Stats row ──
+        const statsRow = document.createElement('div');
+        statsRow.style.cssText = `display:flex;gap:16px;padding:0 56px 36px;position:relative;z-index:2;`;
+        const stats = [
+          { label: 'Skills', value: formData.skills.length, color: '#7C3AED' },
+          { label: 'Projects', value: formData.projects.length, color: '#06b6d4' },
+          { label: 'Experience', value: formData.experienceList.length, color: '#f59e0b' },
+          { label: 'Certificates', value: formData.certifications.length, color: '#10b981' },
+        ];
+        stats.forEach(stat => {
+          const s = document.createElement('div');
+          s.style.cssText = `flex:1;background:#ffffff08;border:1px solid #ffffff11;border-radius:18px;padding:18px 16px;text-align:center;border-top:2px solid ${stat.color};`;
+          const sv = document.createElement('div');
+          sv.style.cssText = `font-size:30px;font-weight:900;color:#fff;line-height:1;`;
+          sv.innerText = String(stat.value);
+          const sl = document.createElement('div');
+          sl.style.cssText = `font-size:9px;font-weight:800;color:${stat.color};text-transform:uppercase;letter-spacing:0.15em;margin-top:6px;`;
+          sl.innerText = stat.label;
+          s.appendChild(sv);
+          s.appendChild(sl);
+          statsRow.appendChild(s);
+        });
+        card.appendChild(statsRow);
+
+        // ── Two column body ──
+        const body = document.createElement('div');
+        body.style.cssText = `display:flex;gap:20px;padding:0 56px 40px;position:relative;z-index:2;`;
+
+        const leftCol = document.createElement('div');
+        leftCol.style.cssText = `flex:1.4;display:flex;flex-direction:column;gap:20px;`;
+
+        const rightCol = document.createElement('div');
+        rightCol.style.cssText = `flex:1;display:flex;flex-direction:column;gap:20px;`;
+
+        const makeSection = (title: string, color: string, items: string[], icon: string) => {
+          if (!items.length) return null;
+          const sec = document.createElement('div');
+          sec.style.cssText = `background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;padding:20px 22px;`;
+          const titleRow = document.createElement('div');
+          titleRow.style.cssText = `display:flex;align-items:center;gap:8px;margin-bottom:14px;`;
+          const iconEl = document.createElement('div');
+          iconEl.style.cssText = `width:24px;height:24px;border-radius:8px;background:${color}22;display:flex;align-items:center;justify-content:center;font-size:12px;`;
+          iconEl.innerText = icon;
+          const titleEl = document.createElement('div');
+          titleEl.style.cssText = `font-size:10px;font-weight:900;color:${color};text-transform:uppercase;letter-spacing:0.2em;`;
+          titleEl.innerText = title;
+          titleRow.appendChild(iconEl);
+          titleRow.appendChild(titleEl);
+          sec.appendChild(titleRow);
+          items.forEach((item, idx) => {
+            const row = document.createElement('div');
+            row.style.cssText = `display:flex;align-items:flex-start;gap:10px;padding:8px 0;${idx < items.length - 1 ? 'border-bottom:1px solid #ffffff08;' : ''}`;
+            const dot = document.createElement('div');
+            dot.style.cssText = `width:5px;height:5px;border-radius:50%;background:${color};margin-top:6px;flex-shrink:0;`;
+            const text = document.createElement('div');
+            text.style.cssText = `font-size:12px;color:#e2e8f0;font-weight:500;line-height:1.5;`;
+            text.innerText = item;
+            row.appendChild(dot);
+            row.appendChild(text);
+            sec.appendChild(row);
+          });
+          return sec;
+        };
+
+        // Skills chips section
+        if (formData.skills.length > 0) {
+          const skillsSec = document.createElement('div');
+          skillsSec.style.cssText = `background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;padding:20px 22px;`;
+          const skillTitle = document.createElement('div');
+          skillTitle.style.cssText = `font-size:10px;font-weight:900;color:#7C3AED;text-transform:uppercase;letter-spacing:0.2em;margin-bottom:14px;display:flex;align-items:center;gap:8px;`;
+          skillTitle.innerText = '⚡ Skills & Expertise';
+          skillsSec.appendChild(skillTitle);
+          const chipsWrap = document.createElement('div');
+          chipsWrap.style.cssText = `display:flex;flex-wrap:wrap;gap:8px;`;
+          formData.skills.slice(0, 14).forEach((sk: any) => {
+            const chip = document.createElement('div');
+            const name = typeof sk === 'string' ? sk : sk.name;
+            chip.style.cssText = `padding:5px 12px;border-radius:20px;background:#7C3AED22;border:1px solid #7C3AED44;font-size:11px;font-weight:700;color:#a78bfa;`;
+            chip.innerText = name;
+            chipsWrap.appendChild(chip);
+          });
+          skillsSec.appendChild(chipsWrap);
+          leftCol.appendChild(skillsSec);
+        }
+
+        // Education
+        const eduItems = formData.educationList.slice(0,3).map((e: any) =>
+          `${e.degree || ''} ${e.specialization ? '· ' + e.specialization : ''}\n${e.institution || ''} ${e.startYear ? '(' + e.startYear + '–' + (e.endYear || 'Present') + ')' : ''}`.trim()
+        );
+        if (!eduItems.length && formData.education?.institution) {
+          eduItems.push(`${formData.education.degree || ''} · ${formData.education.institution}`);
+        }
+        const eduSec = makeSection('Education', '#06b6d4', eduItems, '🎓');
+        if (eduSec) leftCol.appendChild(eduSec);
+
+        // Experience
+        const expItems = formData.experienceList.slice(0,3).map((e: any) =>
+          `${e.role || ''} @ ${e.company || ''} · ${e.type || ''}${e.location ? ' · ' + e.location : ''}`
+        );
+        const expSec = makeSection('Experience', '#f59e0b', expItems, '💼');
+        if (expSec) leftCol.appendChild(expSec);
+
+        // Projects
+        const projItems = formData.projects.slice(0,4).map((p: any) => p.title || '');
+        const projSec = makeSection('Projects', '#10b981', projItems, '🚀');
+        if (projSec) rightCol.appendChild(projSec);
+
+        // Certifications
+        const certItems = formData.certifications.slice(0,4).map((c: any) =>
+          `${c.name || ''}${c.issuer ? ' · ' + c.issuer : ''}`
+        );
+        const certSec = makeSection('Certifications', '#f43f5e', certItems, '🏆');
+        if (certSec) rightCol.appendChild(certSec);
+
+        // Achievements
+        const achItems = formData.achievements.slice(0,4).map((a: any) =>
+          `${a.title || ''}${a.organization ? ' · ' + a.organization : ''}`
+        );
+        const achSec = makeSection('Achievements', '#8b5cf6', achItems, '⭐');
+        if (achSec) rightCol.appendChild(achSec);
+
+        // Contact / links
+        const links: string[] = [];
+        if (formData.linkedin) links.push(`🔗 LinkedIn: ${formData.linkedin}`);
+        if (formData.github) links.push(`💻 GitHub: ${formData.github}`);
+        if (formData.portfolio) links.push(`🌐 Portfolio: ${formData.portfolio}`);
+        if (formData.leetcode) links.push(`🧩 LeetCode: ${formData.leetcode}`);
+        const linkSec = makeSection('Links', '#06b6d4', links, '🔗');
+        if (linkSec) rightCol.appendChild(linkSec);
+
+        if (leftCol.children.length) body.appendChild(leftCol);
+        if (rightCol.children.length) body.appendChild(rightCol);
+        card.appendChild(body);
+
+        // ── Footer ──
+        const footer = document.createElement('div');
+        footer.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:20px 56px 32px;position:relative;z-index:2;border-top:1px solid #ffffff11;`;
+        const footerBrand = document.createElement('div');
+        footerBrand.style.cssText = `font-size:11px;font-weight:900;color:#7C3AED;letter-spacing:0.1em;text-transform:uppercase;`;
+        footerBrand.innerText = 'Studlyf';
+        footer.appendChild(footerBrand);
+        card.appendChild(footer);
+
+        // ── Bottom accent bar ──
+        const bottomBar = document.createElement('div');
+        bottomBar.style.cssText = `height:5px;background:linear-gradient(90deg,#f59e0b,#7C3AED,#06b6d4);width:100%;`;
+        card.appendChild(bottomBar);
+
+        container.appendChild(card);
+        document.body.appendChild(container);
+        try {
+          const c = await html2canvas(container, {
+            backgroundColor: '#0f0f13',
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+          });
+          return c;
+        } finally {
+          try { document.body.removeChild(container); } catch (e) {}
+        }
+      })();
+
+      const link = document.createElement('a');
+      link.download = profileTemplateFileName;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      setSaveStatus({ type: 'success', message: 'Profile card downloaded!' });
+      setTimeout(() => setSaveStatus(null), 2500);
+    } catch (err) {
+      setSaveStatus({ type: 'error', message: err?.message || 'Unable to download.' });
+      setTimeout(() => setSaveStatus(null), 3000);
+    } finally {
+      setIsGeneratingTemplate(false);
+    }
+  };
+  
+  const shareToSocial = async (platform: 'linkedin' | 'twitter' | 'facebook' | 'whatsapp') => {
+  if (!publicProfileUrl) return;
+  if (platform !== 'whatsapp') {
+    setCopiedForPlatform(null);
+  }
+  setIsGeneratingTemplate(true);
+  setSaveStatus({ type: 'success', message: 'Generating profile card...' });
+
+  // Build share URLs pieces
+  const title = encodeURIComponent(`${profileDisplayName} | Studlyf`);
+  const summary = encodeURIComponent(`${profileRole} — ${profileHeadline}`);
+
+  try {
+    // For LinkedIn we need the public HTML preview URL so the scraper can generate a preview.
+    if (platform === 'linkedin') {
+      const { blob, dataUrl } = await generateProfileCardBlob();
+      const imageFile = new File([blob], profileTemplateFileName, { type: 'image/png' });
+
+      // Try to copy image to clipboard immediately (more likely to be treated as user-initiated).
+      try {
+        const clipboardItem = new ClipboardItem({ 'image/png': blob });
+        await navigator.clipboard.write([clipboardItem]);
+        setSaveStatus({ type: 'success', message: 'Image copied — paste (Ctrl+V) into the composer.' });
+      } catch (e) {
+        // Not fatal — we'll continue with upload and provide preview/download fallbacks.
+        console.warn('Image clipboard write failed early:', e);
+      }
+
+      // Upload generated image and expect the backend to return an HTML preview URL under `url`.
+      let previewUrl: string | null = null;
+      try {
+        // Allow the user to provide a public base URL (ngrok/localtunnel) at share-time
+        const publicBase =
+  (window as any).PUBLIC_BASE ||
+  prompt(
+    'Public preview base URL (optional). Leave empty to use the deployed server URL.',
+    ''
+  );
+        const form = new FormData();
+        form.append('file', imageFile);
+        if (publicBase) form.append('public_base', publicBase);
+        const upl = await fetch(`${API_BASE_URL}/api/utils/upload-temp-image`, { method: 'POST', body: form });
+        if (upl.ok) {
+          const json = await upl.json();
+          if (json?.url) previewUrl = json.url;
+          // copy hosted preview URL for convenience
+          try { await navigator.clipboard.writeText(json.url); setSaveStatus({ type: 'success', message: 'Preview URL copied — paste it in the LinkedIn composer.' }); } catch {}
+        }
+      } catch (e) {
+        console.warn('Image upload for LinkedIn failed:', e);
+      }
+
+      // If clipboard write wasn't done successfully earlier, try again now (best-effort).
+      try {
+        const clipboardItem = new ClipboardItem({ 'image/png': blob });
+        await navigator.clipboard.write([clipboardItem]);
+        setSaveStatus({ type: 'success', message: 'Image copied — paste (Ctrl+V) into the LinkedIn composer.' });
+      } catch (e) {
+        // If image copy failed, provide downloadable URL files if we have a preview URL, else fallback to image download
+        
+          // If image copy failed, provide downloadable URL files if we have a preview URL, else fallback to image download
+          if (previewUrl) {
+            try {
+              const urlFileContent = `[InternetShortcut]\nURL=${previewUrl}\n`;
+              const urlBlob = new Blob([urlFileContent], { type: 'text/plain' });
+              const urlLink = document.createElement('a');
+              urlLink.href = URL.createObjectURL(urlBlob);
+              urlLink.download = `profile-preview.url`;
+              urlLink.click();
+
+              const htmlContent = `<html><head><meta http-equiv=\"refresh\" content=\"0;url=${previewUrl}\"/></head><body>If not redirected <a href=\"${previewUrl}\">Open preview</a></body></html>`;
+              const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+              const htmlLink = document.createElement('a');
+              htmlLink.href = URL.createObjectURL(htmlBlob);
+              htmlLink.download = `profile-preview.html`;
+              htmlLink.click();
+
+              setSaveStatus({ type: 'success', message: 'Preview URL file downloaded — open it to visit the public preview.' });
+            } catch (e) {
+              const link = document.createElement('a');
+              link.download = profileTemplateFileName;
+              link.href = dataUrl;
+              link.click();
+              setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the LinkedIn post.' });
+            }
+          } else {
+            const link = document.createElement('a');
+            link.download = profileTemplateFileName;
+            link.href = dataUrl;
+            link.click();
+            setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the LinkedIn post.' });
+          }
+        }
+
+      // Open LinkedIn share with the preview URL (or fallback to publicProfileUrl)
+      const openUrl = previewUrl || publicProfileUrl;
+      const u = encodeURIComponent(openUrl || '');
+      const linkedinUrl = `https://www.linkedin.com/shareArticle?mini=true&url=${u}&title=${title}&summary=${summary}`;
+      const w = window.open(linkedinUrl, '_blank');
+      try { w?.focus(); } catch {}
+      setTimeout(() => setSaveStatus(null), 5000);
+      return;
+    }
+
+    // Non-LinkedIn platforms: open immediately and then prepare/upload/copy image so user can paste/attach.
+    const uFallback = encodeURIComponent(publicProfileUrl);
+    const tBase = encodeURIComponent(`${profileShareCaption}\n${publicProfileUrl}`);
+    const urls: Record<string, string> = {
+      twitter: `https://twitter.com/intent/tweet?text=${tBase}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${uFallback}`,
+      whatsapp: `https://api.whatsapp.com/send?text=${tBase}`,
+    };
+
+    // Special handling for WhatsApp: try native share (mobile), then clipboard copy, then download fallback.
+    if (platform === 'whatsapp') {
+      const { blob, dataUrl } = await generateProfileCardBlob();
+      const imageFile = new File([blob], profileTemplateFileName, { type: 'image/png' });
+
+      // Mobile-only: use Web Share API with files when supported to avoid Windows/desktop share dialog
+      try {
+        const ua = navigator.userAgent || '';
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobi/i.test(ua) || (!!(navigator as any).userAgentData && (navigator as any).userAgentData.mobile === true);
+        if (isMobile && (navigator as any).canShare && (navigator as any).canShare({ files: [imageFile] })) {
+          await (navigator as any).share({ files: [imageFile], text: profileShareCaption });
+          setSaveStatus({ type: 'success', message: 'Shared to WhatsApp via native share.' });
+          setTimeout(() => setSaveStatus(null), 3000);
+          return;
+        }
+      } catch (e) {
+        console.warn('Native share for WhatsApp failed', e);
+      }
+
+      // Try to copy image to clipboard so user can paste into WhatsApp Web
+      const copied = await copyImageToClipboard(blob).catch(() => false);
+      if (copied) {
+        // Do NOT open WhatsApp Web automatically. Let the user paste into their composer.
+        setSaveStatus({ type: 'success', message: 'Image copied — open WhatsApp and paste (Ctrl+V) when ready.' });
+        setCopiedForPlatform('whatsapp');
+        setTimeout(() => setSaveStatus(null), 5000);
+        return;
+      }
+
+      // Fallback: download the image and open WhatsApp Web for manual attach
+      try {
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = profileTemplateFileName;
+        link.click();
+        setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to WhatsApp.' });
+      } catch (e) {
+        console.warn('WhatsApp fallback download failed', e);
+      }
+      // If copy failed, don't auto-open WhatsApp — user can click the button below to open it.
+      setCopiedForPlatform(null);
+      setTimeout(() => setSaveStatus(null), 5000);
+      return;
+    }
+
+    const platformWindow = window.open(urls[platform], '_blank');
+
+    const { blob, dataUrl } = await generateProfileCardBlob();
+    const imageFile = new File([blob], profileTemplateFileName, { type: 'image/png' });
+
+    // Upload generated image (non-blocking for the user since platform tab is already open)
+    let uploadedPreview: string | null = null;
+    try {
+      const publicBase = (window as any).PUBLIC_BASE || null;
+      const form = new FormData();
+      form.append('file', imageFile);
+      if (publicBase) form.append('public_base', publicBase);
+      const upl = await fetch(`${API_BASE_URL}/api/utils/upload-temp-image`, { method: 'POST', body: form });
+      if (upl.ok) {
+        const json = await upl.json();
+        if (json?.url) {
+          uploadedPreview = json.url;
+          // also copy the hosted URL so user can paste easily
+          try { await navigator.clipboard.writeText(json.url); setSaveStatus({ type: 'success', message: 'Image URL copied — paste it in the post.' }); } catch {}
+
+          // auto-download small URL files for convenience
+          try {
+            const preview = json.url;
+            const urlFileContent = `[InternetShortcut]\nURL=${preview}\n`;
+            const urlBlob = new Blob([urlFileContent], { type: 'text/plain' });
+            const urlLink = document.createElement('a');
+            urlLink.href = URL.createObjectURL(urlBlob);
+            urlLink.download = `profile-preview.url`;
+            urlLink.click();
+
+            const htmlContent = `<html><head><meta http-equiv=\"refresh\" content=\"0;url=${preview}\"/></head><body>If not redirected <a href=\"${preview}\">Open preview</a></body></html>`;
+            const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+            const htmlLink = document.createElement('a');
+            htmlLink.href = URL.createObjectURL(htmlBlob);
+            htmlLink.download = `profile-preview.html`;
+            htmlLink.click();
+          } catch (e) {
+            console.warn('Failed to auto-download preview URL file', e);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Image upload for social share failed:', e);
+    }
+
+    // Try to copy the image itself to the clipboard (some desktop browsers support this in secure contexts)
+    try {
+      const clipboardItem = new ClipboardItem({ 'image/png': blob });
+      await navigator.clipboard.write([clipboardItem]);
+      setSaveStatus({ type: 'success', message: 'Image copied — paste (Ctrl+V) into the opened post.' });
+    } catch {
+      // fallback: if we have an uploaded preview, download URL files; else download the image
+      if (uploadedPreview) {
+        try {
+          const urlFileContent = `[InternetShortcut]\nURL=${uploadedPreview}\n`;
+          const urlBlob = new Blob([urlFileContent], { type: 'text/plain' });
+          const urlLink = document.createElement('a');
+          urlLink.href = URL.createObjectURL(urlBlob);
+          urlLink.download = `profile-preview.url`;
+          urlLink.click();
+
+          const htmlContent = `<html><head><meta http-equiv=\"refresh\" content=\"0;url=${uploadedPreview}\"/></head><body>If not redirected <a href=\"${uploadedPreview}\">Open preview</a></body></html>`;
+          const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+          const htmlLink = document.createElement('a');
+          htmlLink.href = URL.createObjectURL(htmlBlob);
+          htmlLink.download = `profile-preview.html`;
+          htmlLink.click();
+
+          setSaveStatus({ type: 'success', message: 'Preview URL file downloaded — open it to visit the public preview.' });
+        } catch (e) {
+          const link = document.createElement('a');
+          link.download = profileTemplateFileName;
+          link.href = dataUrl;
+          link.click();
+          setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the opened post.' });
+        }
+      } else {
+        const link = document.createElement('a');
+        link.download = profileTemplateFileName;
+        link.href = dataUrl;
+        link.click();
+        setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the opened post.' });
+      }
+    }
+
+    setTimeout(() => setSaveStatus(null), 5000);
+    try { platformWindow?.focus(); } catch {}
+    return;
+  } catch (err) {
+    console.warn('Share flow error:', err);
+    setSaveStatus({ type: 'error', message: err?.message || 'Share failed.' });
+    setTimeout(() => setSaveStatus(null), 3000);
+  } finally {
+    setIsGeneratingTemplate(false);
+  }
+  };
 
   const copyProfileLink = async () => {
     if (!publicProfileUrl) return;
     try {
-      await navigator.clipboard.writeText(publicProfileUrl);
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(publicProfileUrl);
+      } else {
+        // Fallback for HTTP / non-secure contexts
+        const textArea = document.createElement('textarea');
+        textArea.value = publicProfileUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
       setSaveStatus({ type: 'success', message: 'Profile link copied to clipboard.' });
       setTimeout(() => setSaveStatus(null), 2500);
     } catch {
@@ -407,26 +1166,16 @@ const MyProfile: React.FC = () => {
     }
   };
 
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [copiedForPlatform, setCopiedForPlatform] = useState<string | null>(null);
+ 
+
   const shareProfile = async () => {
     if (!publicProfileUrl) return;
-    const shareData = {
-      title: `${profileDisplayName} | Studlyf Profile`,
-      text: `View ${profileDisplayName}'s public profile on Studlyf.`,
-      url: publicProfileUrl,
-    };
-
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
-        await navigator.clipboard.writeText(publicProfileUrl);
-        setSaveStatus({ type: 'success', message: 'Share link copied to clipboard.' });
-        setTimeout(() => setSaveStatus(null), 2500);
-      }
-    } catch {
-      setSaveStatus({ type: 'error', message: 'Sharing was cancelled or unavailable.' });
-      setTimeout(() => setSaveStatus(null), 2500);
-    }
+    setCopiedForPlatform(null);
+    setShowShareModal(true);
+    setSaveStatus({ type: 'success', message: 'Choose a social template to share.' });
+    setTimeout(() => setSaveStatus(null), 2000);
   };
 
   const activityTimeline = [
@@ -1694,8 +2443,9 @@ const MyProfile: React.FC = () => {
                   </div>
                   <div className="rounded-2xl border border-white/70 bg-white px-4 py-3 text-sm font-medium text-gray-700 break-all shadow-sm">{publicProfileUrl || 'Save your profile to generate a public link.'}</div>
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <button onClick={copyProfileLink} disabled={!publicProfileUrl} className="flex-1 px-5 py-3 rounded-2xl bg-white border border-gray-200 text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy Profile Link</button>
-                    <button onClick={shareProfile} disabled={!publicProfileUrl} className="flex-1 px-5 py-3 rounded-2xl bg-[#7C3AED] text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share Profile</button>
+                    <button type="button" onClick={copyProfileLink} disabled={!publicProfileUrl} className="flex-1 px-5 py-3 rounded-2xl bg-white border border-gray-200 text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50 cursor-pointer touch-manipulation">Copy Profile Link</button>
+                    <button type="button" onClick={downloadProfileTemplate} disabled={!publicProfileUrl || isGeneratingTemplate} className="flex-1 px-5 py-3 rounded-2xl bg-white border border-gray-200 text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50 cursor-pointer touch-manipulation">Download Template</button>
+                    <button type="button" onClick={shareProfile} disabled={!publicProfileUrl || isGeneratingTemplate} className="flex-1 px-5 py-3 rounded-2xl bg-[#7C3AED] text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all disabled:opacity-50 cursor-pointer touch-manipulation">Share Template</button>
                   </div>
                </div>
 
@@ -1792,6 +2542,13 @@ const MyProfile: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* Persistent debug banner for automated verification */}
+      {lastToastSnapshot && (
+        <div id="debug-last-toast" className="fixed top-6 right-6 z-60 px-4 py-3 rounded-lg bg-black text-white text-sm font-bold shadow-lg">
+          {lastToastSnapshot}
+        </div>
+      )}
+
       {/* ── Loading Overlay ── */}
       {profileLoading && (
         <div className="fixed inset-0 bg-white/70 backdrop-blur-sm z-40 flex flex-col items-center justify-center gap-4">
@@ -1821,7 +2578,7 @@ const MyProfile: React.FC = () => {
           className="relative overflow-hidden rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_20px_60px_rgba(15,23,42,0.06)]"
         >
           <div className="absolute inset-0 bg-gradient-to-br from-[#7C3AED]/6 via-transparent to-[#06B6D4]/8 pointer-events-none" />
-          <div className="relative flex flex-col lg:flex-row gap-8 lg:items-center">
+          <div className="relative flex flex-col gap-8">
             <div className="flex items-start gap-5 flex-1">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-[2rem] overflow-hidden border border-white shadow-xl bg-gray-50 ring-4 ring-[#7C3AED]/10 flex items-center justify-center shrink-0">
                 {formData.profilePhoto ? <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" /> : <User className="w-10 h-10 text-gray-300" />}
@@ -1842,7 +2599,7 @@ const MyProfile: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 w-full lg:w-[280px]">
+            <div className="grid grid-cols-2 gap-3 w-full">
               <div className="rounded-3xl border border-gray-100 bg-gray-50/80 p-4">
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Profile Completion</div>
                 <div className="mt-3 text-3xl font-black text-gray-900">{profileCompletion}%</div>
@@ -1855,12 +2612,56 @@ const MyProfile: React.FC = () => {
                 <div className="mt-3 text-sm font-bold text-gray-900 break-all">{publicProfileUrl || 'Ready after save'}</div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button onClick={copyProfileLink} disabled={!publicProfileUrl} className="rounded-full border border-gray-200 bg-white px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy</button>
-                  <button onClick={shareProfile} disabled={!publicProfileUrl} className="rounded-full bg-[#7C3AED] px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-white hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share</button>
+                  <button onClick={downloadProfileTemplate} disabled={!publicProfileUrl || isGeneratingTemplate} className="rounded-full border border-gray-200 bg-white px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Download</button>
+                  <button onClick={shareProfile} disabled={!publicProfileUrl || isGeneratingTemplate} className="rounded-full bg-[#7C3AED] px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-white hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share</button>
                 </div>
               </div>
             </div>
           </div>
         </motion.div>
+
+        {showShareModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black">Share Profile</h3>
+                <button onClick={() => setShowShareModal(false)} className="text-gray-400">Close</button>
+              </div>
+              {/* Share description removed as requested */}
+              {/* Share Flow panel removed as requested */}
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button onClick={() => shareToSocial('linkedin')} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase disabled:opacity-50">LinkedIn</button>
+                <button onClick={() => shareToSocial('twitter')} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase disabled:opacity-50">X / Twitter</button>
+                <button onClick={() => shareToSocial('facebook')} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase disabled:opacity-50">Facebook</button>
+                <button onClick={() => shareToSocial('whatsapp')} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase disabled:opacity-50">WhatsApp</button>
+              </div>
+              <div className="mt-2 text-xs text-gray-500">Tip: If paste doesn't work in a composer, use "Copy Image" to copy the PNG or "Store Image" to download it and attach manually.</div>
+              <div className="mt-4 flex gap-3">
+                <button onClick={() => copyImageImmediate()} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black">Copy Image</button>
+                <button onClick={() => { downloadProfileTemplate(); }} className="flex-1 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black text-white">Store Image</button>
+              </div>
+
+              {copiedForPlatform === 'whatsapp' && (
+                <div className="mt-3 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center justify-between gap-3">
+                  <div className="text-sm text-amber-900">Image copied to clipboard. Open WhatsApp and paste (Ctrl+V) into your chat.</div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const openUrl = `https://web.whatsapp.com/send?text=${encodeURIComponent(profileShareCaption + '\n' + publicProfileUrl)}`;
+                        const w = window.open(openUrl, '_blank');
+                        try { w?.focus(); } catch {}
+                      }}
+                      className="px-3 py-2 rounded-lg bg-[#25D366] text-white text-sm font-bold"
+                    >
+                      Open WhatsApp Web
+                    </button>
+                    <button onClick={() => setCopiedForPlatform(null)} className="px-3 py-2 rounded-lg bg-white border text-sm">Done</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
           {[
@@ -1993,6 +2794,63 @@ const MyProfile: React.FC = () => {
           <AnimatePresence mode="wait">
              {renderContent()}
           </AnimatePresence>
+        </div>
+      </div>
+
+      <div ref={shareTemplateRef} aria-hidden="true" className="fixed -left-[99999px] top-0 w-[1080px] overflow-hidden rounded-[48px] bg-[#F5F3FF] p-8 pointer-events-none">
+        <div className="relative overflow-hidden rounded-[36px] bg-gradient-to-br from-[#111827] via-[#5B21B6] to-[#8B5CF6] p-10 text-white shadow-2xl">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.16),transparent_30%)]" />
+          <div className="relative flex items-start justify-between gap-8">
+            <div className="max-w-[640px]">
+              <div className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-white/90">
+                Studlyf Social Profile
+              </div>
+              <h1 className="mt-8 text-6xl font-black leading-none tracking-tight">{profileDisplayName}</h1>
+              <p className="mt-4 text-2xl font-semibold text-white/85">{profileRole}</p>
+              <p className="mt-6 text-xl leading-8 text-white/80 max-w-[56rem]">{profileHeadline}</p>
+            </div>
+
+            <div className="flex w-[260px] flex-col items-center rounded-[32px] border border-white/15 bg-white/10 p-6 text-center backdrop-blur-md">
+              <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-[28px] bg-white/90 text-3xl font-black text-[#5B21B6] shadow-xl">
+                {formData.profilePhoto ? (
+                  <img src={formData.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
+                ) : (
+                  <span>{profileDisplayName.split(' ').map(part => part[0]).join('').slice(0, 2)}</span>
+                )}
+              </div>
+              <div className="mt-5 text-[10px] font-black uppercase tracking-[0.25em] text-white/60">Profile score</div>
+              <div className="mt-2 text-5xl font-black">{profileCompletion}</div>
+              <div className="mt-2 text-[11px] font-medium uppercase tracking-[0.2em] text-white/60">Ready to share</div>
+            </div>
+          </div>
+
+          <div className="relative mt-10 grid gap-4 sm:grid-cols-3">
+            {[
+              { label: 'Skills', value: `${formData.skills.length}` },
+              { label: 'Projects', value: `${formData.projects.length}` },
+              { label: 'Experience', value: `${formData.experienceList.length}` },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[28px] border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
+                <div className="text-[10px] font-black uppercase tracking-[0.25em] text-white/55">{item.label}</div>
+                <div className="mt-3 text-4xl font-black">{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="relative mt-10 grid gap-4 md:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-[32px] border border-white/15 bg-white p-6 text-gray-900 shadow-2xl">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-[#7C3AED]">About this profile</div>
+              <p className="mt-4 text-lg leading-8 text-gray-700">{profileShareCaption}</p>
+            </div>
+            <div className="rounded-[32px] border border-white/15 bg-black/10 p-6 text-white backdrop-blur-sm">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/60">Share links</div>
+              <div className="mt-4 space-y-3 text-sm font-semibold break-all text-white/90">
+                <div>{publicProfileUrl}</div>
+                {formData.linkedin && <div>LinkedIn: {formData.linkedin}</div>}
+                {formData.portfolio && <div>Portfolio: {formData.portfolio}</div>}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

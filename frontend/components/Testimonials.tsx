@@ -4,7 +4,53 @@ import { Star } from 'lucide-react';
 
 const testimonials = [
     {
+        name: "Pantham Bhavya",
+        college: "Sridevi women's engineering college",
+        course: "UI / UX DESIGN",
+        text: "The sessions felt practical and easy to follow, and I could see my confidence grow with every project.",
+        logo: "https://tse4.mm.bing.net/th/id/OIP.lVjildIbVBqy3M0v5i3CdQAAAA?pid=Api&P=0&h=180",
+        rating: 5,
+        bgColor: "bg-purple-50"
+    },
+    {
+        name: "Vadla Sudhasri",
+        college: "Stanley women's college",
+        course: "JAVA FULL STACK",
+        text: "The guidance was consistent and the doubt-clearing support made the learning experience very smooth.",
+        logo: "https://tse4.mm.bing.net/th/id/OIP.v0frENi_cxklUXtI6Xe8DAAAAA?pid=Api&P=0&h=180",
+        rating: 5,
+        bgColor: "bg-indigo-50"
+    },
+    {
+        name: "Ginuguntla Likhitha",
+        college: "BVRIT",
+        course: "DATA ANALYTICS",
+        text: "I liked how the classes mixed concepts with hands-on work. It made every topic easy to understand.",
+        logo: "https://tse1.mm.bing.net/th/id/OIP.5iu4CxKUaMOVB5RQ5ZMExwHaC9?pid=Api&P=0&h=180",
+        rating: 5,
+        bgColor: "bg-blue-50"
+    },
+    {
+        name: "Sajja Dhruwallika",
+        college: "CBIT",
+        course: "CLOUD COMPUTING",
+        text: "The platform and mentor support helped me stay consistent and finish projects with confidence.",
+        logo: "https://tse3.mm.bing.net/th/id/OIP.FMYqaQYIZGlFhT2YF4ucXQAAAA?pid=Api&P=0&h=180",
+        rating: 4,
+        bgColor: "bg-rose-50"
+    },
+    {
+        name: "Modaboina Tejaswi",
+        college: "Vasavi college of Engineering",
+        course: "AI / ML",
+        text: "The training style was simple, effective, and very motivating. I could actually apply what I learned.",
+        logo: "https://tse3.mm.bing.net/th/id/OIP._RuhQoIgit5e9Sjir5o05QAAAA?pid=Api&P=0&h=180",
+        rating: 5,
+        bgColor: "bg-emerald-50"
+    },
+    {
         name: "Vishnu Vardhan",
+        college: "Vasavi College of Engineering",
         course: "WEB DEVELOPMENT",
         text: "The training and project exposure here are top-notch. Trainer is really helpful and clearing the doubts till course end!",
         logo: "data:image/webp;base64,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",
@@ -13,6 +59,7 @@ const testimonials = [
     },
     {
         name: "P. Jaikrishna",
+        college: "BVRIT",
         course: "AI & DATA SCIENCE",
         text: "Studlyf's curriculum helped me transition into AI with confidence. The mentorship and real-world projects were the highlight of my journey.",
         logo: "data:image/webp;base64,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",
@@ -21,6 +68,7 @@ const testimonials = [
     },
     {
         name: "Vivek Goud Adula",
+        college: "JBIT",
         course: "AI Engineer",
         text: "Training and doubt clarification were excellent. Mic access during class would help clear doubts more effectively.",
         logo: "data:image/webp;base64,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",
