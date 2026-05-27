@@ -1,13 +1,45 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Star, Sparkles, Calendar, Trophy } from 'lucide-react';
+import { Star, Sparkles, Calendar, Trophy, ArrowUpRight } from 'lucide-react';
 
 const highlights = [
-  { title: 'Featured Tracks', desc: 'Role-focused tracks for engineers and builders.', icon: Star, color: 'from-[#FF7AB6] to-[#7C3AED]', action: 'tracks' as const },
-  { title: 'Upcoming Events', desc: 'Workshops, live reviews, and hiring events.', icon: Calendar, color: 'from-[#06B6D4] to-[#4F46E5]', action: 'learnHub' as const },
-  { title: 'Success Stories', desc: 'Learners who landed roles and shipped products.', icon: Trophy, color: 'from-[#F59E0B] to-[#EF4444]', action: 'testimonials' as const },
-  { title: 'Tooling & AI', desc: 'Integrated tools to speed up learning and practice.', icon: Sparkles, color: 'from-[#34D399] to-[#06B6D4]', action: 'aiTools' as const },
+  { 
+    title: 'Featured Tracks', 
+    desc: 'Role-focused curriculums engineered for modern builders. Go from basics to advanced systems.', 
+    icon: Star, 
+    color: 'from-[#FF7AB6] to-[#7C3AED]',
+    glow: 'bg-[#FF7AB6]',
+    action: 'tracks' as const,
+    label: 'Curriculum'
+  },
+  { 
+    title: 'Upcoming Events', 
+    desc: 'Join live workshops, code reviews, and exclusive hiring events with top tech companies.', 
+    icon: Calendar, 
+    color: 'from-[#06B6D4] to-[#4F46E5]',
+    glow: 'bg-[#06B6D4]',
+    action: 'learnHub' as const,
+    label: 'Community'
+  },
+  { 
+    title: 'Success Stories', 
+    desc: 'Read how our learners shipped real products and landed roles at top tier startups.', 
+    icon: Trophy, 
+    color: 'from-[#F59E0B] to-[#EF4444]',
+    glow: 'bg-[#F59E0B]',
+    action: 'testimonials' as const,
+    label: 'Outcomes'
+  },
+  { 
+    title: 'Tooling & AI', 
+    desc: 'Leverage our integrated AI tools to speed up learning, debugging, and daily practice.', 
+    icon: Sparkles, 
+    color: 'from-[#34D399] to-[#06B6D4]',
+    glow: 'bg-[#34D399]',
+    action: 'aiTools' as const,
+    label: 'Platform'
+  },
 ];
 
 const ColorfulHighlights: React.FC = () => {
@@ -46,35 +78,77 @@ const ColorfulHighlights: React.FC = () => {
   };
 
   return (
-    <section className="py-12 bg-white px-4 sm:px-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8 text-center">
-          <h3 className="text-sm font-black uppercase tracking-[0.35em] text-[#7C3AED]">Highlights</h3>
-          <p className="mt-3 text-xl font-bold text-[#111827]">Quick ways to explore</p>
-        </div>
+    <section className="py-20 sm:py-28 bg-white px-4 sm:px-6 relative overflow-hidden">
+      {/* Abstract Background Elements */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-bl from-gray-50 to-transparent rounded-full opacity-50 pointer-events-none" />
+      
+      <div className="relative max-w-7xl mx-auto">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-100px' }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          className="mb-16 sm:mb-20 flex flex-col md:flex-row md:items-end justify-between gap-6"
+        >
+          <div className="max-w-2xl">
+            <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7C3AED] mb-3">Explore the ecosystem</h3>
+            <p className="text-3xl sm:text-5xl font-black text-[#0F172A] tracking-tight">
+              Everything you need to <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-800 to-gray-400">scale your skills.</span>
+            </p>
+          </div>
+          <div className="hidden md:block">
+            <p className="text-[#64748B] text-sm max-w-xs font-medium leading-relaxed">
+              Navigate through curated tracks, upcoming events, and powerful tools built for modern developers.
+            </p>
+          </div>
+        </motion.div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {highlights.map((h, i) => {
             const Icon = h.icon;
             return (
               <motion.button
                 key={i}
                 type="button"
-                whileHover={{ translateY: -6 }}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-80px' }}
+                transition={{ duration: 0.5, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }}
+                whileHover={{ y: -6 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => handleCardAction(h.action)}
-                className="text-left rounded-2xl overflow-hidden shadow-md border border-gray-100 bg-white focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/30"
+                className="group text-left rounded-[28px] overflow-hidden bg-white border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.08)] transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/30 relative"
               >
-                <div className={`p-6 flex flex-col gap-4 h-full`}>
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${h.color} flex items-center justify-center text-white shadow-lg`}>
-                    <Icon className="w-5 h-5" />
+                {/* Top decorative gradient bar */}
+                <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${h.color} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+
+                <div className="p-7 sm:p-8 flex flex-col h-full z-10 relative">
+                  <div className="flex items-start justify-between mb-8">
+                    <div className="relative">
+                      {/* Glow effect behind icon */}
+                      <div className={`absolute inset-0 ${h.glow} blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500 rounded-2xl`} />
+                      <div className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br ${h.color} flex items-center justify-center text-white shadow-lg transform group-hover:scale-105 transition-transform duration-500`}>
+                        <Icon className="w-6 h-6 stroke-[1.5]" />
+                      </div>
+                    </div>
+                    
+                    <div className="px-3 py-1 rounded-full bg-gray-50 border border-gray-100 text-[10px] font-bold uppercase tracking-wider text-gray-500 group-hover:text-gray-900 group-hover:bg-white group-hover:border-gray-200 transition-all duration-300">
+                      {h.label}
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-lg text-[#111827]">{h.title}</h4>
-                    <p className="text-sm text-[#6B7280] mt-1">{h.desc}</p>
+                  
+                  <div className="flex-grow">
+                    <h4 className="font-bold text-xl text-[#0F172A] mb-3 tracking-tight group-hover:text-[#7C3AED] transition-colors duration-300">{h.title}</h4>
+                    <p className="text-[14px] text-[#64748B] leading-relaxed font-medium">{h.desc}</p>
                   </div>
-                  <div className="mt-auto pt-2">
-                    <div className="text-[11px] font-black text-[#7C3AED] uppercase tracking-[0.3em]">Explore →</div>
+                  
+                  <div className="mt-8 pt-4 border-t border-gray-50 flex items-center justify-between">
+                    <span className="text-[12px] font-bold text-[#0F172A] group-hover:text-[#7C3AED] transition-colors duration-300">
+                      Explore section
+                    </span>
+                    <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-[#7C3AED]/10 transition-colors duration-300">
+                      <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-[#7C3AED] transition-colors duration-300" />
+                    </div>
                   </div>
                 </div>
               </motion.button>
