@@ -209,4 +209,3 @@ const Impact = () => {
 };
 
 export default Impact;
-

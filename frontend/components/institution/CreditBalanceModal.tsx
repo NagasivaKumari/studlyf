@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Video, FileText, Globe, ArrowUpRight, Zap, ChevronLeft, ChevronDown, HelpCircle } from 'lucide-react';
+import { API_BASE_URL, authHeaders } from '../../apiConfig';
 
 interface CreditBalanceModalProps {
     isOpen: boolean;
@@ -17,7 +18,6 @@ const CreditBalanceModal: React.FC<CreditBalanceModalProps> = ({ isOpen, onClose
         const fetchPlans = async () => {
             try {
                 setPlansLoading(true);
-                const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
                 const res = await fetch(`${API_BASE_URL}/api/v1/institution/hackathon/plans`, { headers: authHeaders() });
                 if (!res.ok) return;
                 const data = await res.json();
