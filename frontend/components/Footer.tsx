@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Instagram, Linkedin, Twitter, Github, Send, Mail } from 'lucide-react';
+import TermsOverlay from './TermsOverlay';
 
 // Custom WhatsApp icon (not available in lucide-react)
 const WhatsAppIcon = ({ size = 22 }: { size?: number }) => (
@@ -12,6 +13,7 @@ const WhatsAppIcon = ({ size = 22 }: { size?: number }) => (
 const Footer: React.FC = () => {
     const [email, setEmail] = useState('');
     const [isSubscribed, setIsSubscribed] = useState(false);
+    const [showTerms, setShowTerms] = useState(false);
 
     const handleSubscribe = (e: React.FormEvent) => {
         e.preventDefault();
@@ -32,6 +34,11 @@ const Footer: React.FC = () => {
 
     return (
         <footer className="relative w-full bg-[#0B0B0F] py-8 px-4 md:px-10 font-poppins font-medium">
+            <AnimatePresence>
+                {showTerms && (
+                    <TermsOverlay onClose={() => setShowTerms(false)} />
+                )}
+            </AnimatePresence>
             {/* Animated Purple Gradient Overlay */}
             <motion.div
                 className="absolute inset-0 pointer-events-none opacity-40"
@@ -155,11 +162,25 @@ const Footer: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* 3️⃣ Bottom Section – Copyright */}
-                    <div className="mt-20 pt-10 border-t border-white/[0.08] text-center">
-                        <p className="text-[#CFCFEA] text-sm md:text-base font-medium opacity-40">
+                    {/* Bottom Section – Copyright + Legal Links */}
+                    <div className="mt-20 pt-10 border-t border-white/[0.08] flex flex-col md:flex-row justify-between items-center gap-4">
+                        <p className="text-[#CFCFEA] text-sm opacity-40">
                             &copy; {new Date().getFullYear()} Studlyf. All rights reserved.
                         </p>
+                        <div className="flex gap-6">
+                            <button
+                                onClick={() => setShowTerms(true)}
+                                className="text-[#CFCFEA] text-xs font-bold uppercase tracking-widest hover:text-purple-400 transition-colors"
+                            >
+                                Terms & Conditions
+                            </button>
+                            <a
+                                href="/privacy-policy"
+                                className="text-[#CFCFEA] text-xs font-bold uppercase tracking-widest hover:text-purple-400 transition-colors"
+                            >
+                                Privacy Policy
+                            </a>
+                        </div>
                     </div>
                 </motion.div>
             </div>

@@ -59,6 +59,23 @@ const questionBank: any = {
 const diffColor: any = { MEDIUM: "#8B5CF6", HARD: "#EF4444", EASY: "#10B981" };
 const verdictColor = (v: string) => ({ "STRONG PASS": "#10B981", "PASS": "#10B981", "BORDERLINE": "#F59E0B", "FAIL": "#EF4444" }[v] || PURPLE);
 
+const difficultyLabel = (difficulty: string) => {
+    if (difficulty === 'EASY') return 'Beginner';
+    if (difficulty === 'MEDIUM') return 'Intermediate';
+    return 'Advanced';
+};
+
+const getAssessmentSummary = (feedback: any, questions: any[]) => {
+    const scores = Object.values(feedback).filter((f: any) => f && f.score !== undefined);
+    const avg = scores.length ? Math.round(scores.reduce((a: number, b: any) => a + (b.score || 0), 0) / scores.length) : 0;
+    return {
+        attemptsMade: scores.length,
+        averageScore: avg,
+        completionRate: questions.length ? Math.round((scores.length / questions.length) * 100) : 0,
+        recentPerformance: scores.length ? (scores[scores.length - 1] as any).score || 0 : 0,
+    };
+};
+
 
 function ConfigScreen({ onGenerate }: any) {
     const [role, setRole] = useState("GenAI Intern");
@@ -66,6 +83,7 @@ function ConfigScreen({ onGenerate }: any) {
     const [customInst, setCustomInst] = useState("");
     const [experience, setExperience] = useState("FRESHER");
     const [generating, setGenerating] = useState(false);
+    const trackQuestions = questionBank[role] || questionBank["GenAI Intern"];
 
     const handleGenerate = () => {
         setGenerating(true);
@@ -84,6 +102,19 @@ function ConfigScreen({ onGenerate }: any) {
                 <p className="text-[#666] text-xs sm:text-sm leading-relaxed max-w-[280px]">
                     Calibrate your assessment protocol by specifying your target role and <span className="text-[#7C3AED] font-semibold">institution</span>.
                 </p>
+                <div className="mt-8 grid grid-cols-2 gap-4 max-w-[320px]">
+                    {[
+                        { label: 'Questions', value: trackQuestions.length },
+                        { label: 'Difficulty', value: `${trackQuestions.length} gates` },
+                        { label: 'Adaptivity', value: 'On' },
+                        { label: 'Scoring', value: 'AI Rated' },
+                    ].map(card => (
+                        <div key={card.label} className="rounded-2xl border border-white bg-white/80 p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)]">
+                            <div className="text-[10px] font-black uppercase tracking-[2px] text-gray-400">{card.label}</div>
+                            <div className="mt-3 text-lg font-black text-[#111827]">{card.value}</div>
+                        </div>
+                    ))}
+                </div>
             </div>
             <div className="w-full max-w-[380px] mx-auto lg:mx-0 bg-white rounded-2xl p-5 sm:p-7 shadow-[0_8px_40px_rgba(0,0,0,0.08)] flex flex-col gap-5">
                 <div>
@@ -117,6 +148,25 @@ function ConfigScreen({ onGenerate }: any) {
                     <div style={{ display: "flex", gap: 10 }}>
                         {["FRESHER", "1-3 YRS", "3-5 YRS"].map(lvl => (
                             <button key={lvl} onClick={() => setExperience(lvl)} style={{ flex: 1, background: experience === lvl ? PURPLE : "white", color: experience === lvl ? "white" : "#555", border: "1.5px solid " + (experience === lvl ? PURPLE : "#ddd"), borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 11, cursor: "pointer", letterSpacing: 0.5 }}>{lvl}</button>
+                        ))}
+                    </div>
+                </div>
+                <div className="rounded-2xl bg-[#F5F3FF] border border-[#7C3AED]/10 p-4">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-[2px] text-[#7C3AED]">Track Preview</span>
+                        <span className="text-[10px] font-black uppercase tracking-[2px] text-gray-400">{trackQuestions.length} gates</span>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                        {trackQuestions.map((q: any) => (
+                            <div key={q.gate} className="rounded-xl bg-white border border-white px-4 py-3 flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="text-[10px] font-black uppercase tracking-[2px] text-gray-400">Gate {q.gate}</div>
+                                    <div className="text-xs font-bold text-[#111827] truncate">{difficultyLabel(q.difficulty)}</div>
+                                </div>
+                                <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden shrink-0">
+                                    <div className="h-full rounded-full bg-[#7C3AED]" style={{ width: q.difficulty === 'HARD' ? '100%' : q.difficulty === 'MEDIUM' ? '66%' : '33%' }} />
+                                </div>
+                            </div>
                         ))}
                     </div>
                 </div>
@@ -210,6 +260,15 @@ function QuestionScreen({ config, questions, onComplete }: any) {
                     </div>
                     {!isSubmitted && <Timer start={gateIdx} />}
                 </div>
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="text-[10px] font-black uppercase tracking-[2px] text-gray-400">Assessment Progress</div>
+                        <div className="text-[10px] font-black uppercase tracking-[2px] text-[#7C3AED]">{difficultyLabel(q.difficulty)}</div>
+                    </div>
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                        <div className="h-full rounded-full bg-[#7C3AED] transition-all" style={{ width: `${Math.round(((gateIdx + 1) / questions.length) * 100)}%` }} />
+                    </div>
+                </div>
                 <div style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 4px 20px rgba(0,0,0,0.06)", flex: 1 }}>
                     <p style={{ fontSize: 16, fontWeight: 800, color: "#1a1a2e", lineHeight: 1.5, margin: "0 0 16px" }}>{questionText}</p>
                     {!isSubmitted ? (
@@ -261,7 +320,7 @@ function QuestionScreen({ config, questions, onComplete }: any) {
                     <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, color: "#666", marginBottom: 16 }}>LIVE RESPONSE MESH</div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                         <span style={{ color: "#888", fontSize: 12 }}>DIFFICULTY</span>
-                        <span style={{ color: diffColor[q.difficulty] || PURPLE, fontWeight: 800, fontSize: 13 }}>{q.difficulty}</span>
+                        <span style={{ color: diffColor[q.difficulty] || PURPLE, fontWeight: 800, fontSize: 13 }}>{difficultyLabel(q.difficulty)}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
                         <span style={{ color: "#888", fontSize: 12 }}>SYSTEM IMPACT</span>
@@ -283,8 +342,9 @@ function QuestionScreen({ config, questions, onComplete }: any) {
 }
 
 function ReportScreen({ config, questions, feedback, onRestart }: any) {
+    const summary = getAssessmentSummary(feedback, questions);
     const scores = Object.values(feedback).filter((f: any) => f && f.score !== undefined);
-    const avg = scores.length ? Math.round((scores.reduce((a: number, b: any) => a + (b.score || 0), 0) as number) / scores.length) : 0;
+    const avg = summary.averageScore;
     const verdict = avg >= 80 ? "STRONG PASS" : avg >= 65 ? "PASS" : avg >= 50 ? "BORDERLINE" : "FAIL";
     return (
         <div className="min-h-screen bg-[#F4F4F6] p-6 sm:p-10 lg:p-20 mt-20">
@@ -292,6 +352,19 @@ function ReportScreen({ config, questions, feedback, onRestart }: any) {
                 <div className="text-5xl mb-4">📊</div>
                 <h1 className="text-3xl sm:text-4xl font-black text-[#1a1a2e] m-0 uppercase">ASSESSMENT <span className="text-[#7C3AED]">COMPLETE.</span></h1>
                 <p className="text-[#666] mt-3">{config.role} @ {config.institution} • {config.experience}</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-10">
+                {[
+                    { label: 'Attempts made', value: summary.attemptsMade, tone: 'text-[#7C3AED]' },
+                    { label: 'Average score', value: `${summary.averageScore}%`, tone: 'text-gray-900' },
+                    { label: 'Completion rate', value: `${summary.completionRate}%`, tone: 'text-emerald-600' },
+                    { label: 'Recent performance', value: `${summary.recentPerformance}%`, tone: 'text-sky-600' },
+                ].map(card => (
+                    <div key={card.label} className="bg-white rounded-2xl p-6 shadow-[0_4px_16px_rgba(0,0,0,0.06)] border border-gray-100">
+                        <div className="text-[9px] text-[#999] tracking-widest uppercase font-bold">{card.label}</div>
+                        <div className={`mt-2 text-3xl font-black ${card.tone}`}>{card.value}</div>
+                    </div>
+                ))}
             </div>
             <div className="flex flex-col sm:flex-row gap-5 justify-center mb-10">
                 <div className="bg-white rounded-2xl p-6 text-center min-w-[140px] shadow-[0_4px_16px_rgba(0,0,0,0.06)] border-t-4" style={{ borderTopColor: verdictColor(verdict) }}>

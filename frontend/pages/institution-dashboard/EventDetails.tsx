@@ -135,7 +135,17 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [reviewingParticipantId, setReviewingParticipantId] = useState<string | null>(null);
     const [portalReviewNotice, setPortalReviewNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
     const [stageSubmissions, setStageSubmissions] = useState<ISubmission[]>([]);
-    const [submissionSubTab, setSubmissionSubTab] = useState<'projects' | 'assets'>('projects');
+    const [submissionSubTab, setSubmissionSubTab] = useState<'projects' | 'assets' | 'assessments'>('projects');
+    const [selectedSubTabQuizStageId, setSelectedSubTabQuizStageId] = useState<string>('');
+    const [quizResults, setQuizResults] = useState<any[]>([]);
+    const [quizResultsLoading, setQuizResultsLoading] = useState(false);
+    const [quizResultsError, setQuizResultsError] = useState('');
+    const [quizResultsSearch, setQuizResultsSearch] = useState('');
+    const [quizSelectedIds, setQuizSelectedIds] = useState<Set<string>>(new Set());
+    const [quizShortlisting, setQuizShortlisting] = useState(false);
+    const [quizNotifying, setQuizNotifying] = useState(false);
+    const [quizShortlistDone, setQuizShortlistDone] = useState(false);
+    const [quizNotifyDone, setQuizNotifyDone] = useState(false);
     const [judgeAssignmentModal, setJudgeAssignmentModal] = useState<{ isOpen: boolean; submissionId: string | null }>({ isOpen: false, submissionId: null });
     const [availableJudges, setAvailableJudges] = useState<any[]>([]);
     const [isJudgeInviteOpen, setIsJudgeInviteOpen] = useState(false);
@@ -528,6 +538,102 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             console.error('Failed to fetch evaluation bundle:', e);
         }
     };
+
+    const fetchSubTabQuizResults = async (qStageId: string) => {
+        const stage = stages.find(s => s.id === qStageId);
+        const quizId = stage?.config?.quiz_id;
+        if (!quizId || !eventId) return;
+        setQuizResultsLoading(true);
+        setQuizResultsError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes/${quizId}/results`, {
+                headers: { ...authHeaders() }
+            });
+            if (!res.ok) throw new Error('Failed to load quiz results');
+            const data = await res.json();
+            setQuizResults(data.results || []);
+        } catch (e: any) {
+            setQuizResultsError(e.message);
+        } finally {
+            setQuizResultsLoading(false);
+        }
+    };
+
+    const toggleQuizSelect = (uid: string) => {
+        setQuizSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(uid)) next.delete(uid);
+            else next.add(uid);
+            return next;
+        });
+    };
+
+    const toggleQuizSelectAll = (filteredItems: any[]) => {
+        if (quizSelectedIds.size === filteredItems.length) {
+            setQuizSelectedIds(new Set());
+        } else {
+            setQuizSelectedIds(new Set(filteredItems.map(r => r.user_id)));
+        }
+    };
+
+    const handleQuizShortlist = async () => {
+        const ids = Array.from(quizSelectedIds);
+        if (!ids.length || !eventId || !selectedSubTabQuizStageId) return;
+        const stage = stages.find(s => s.id === selectedSubTabQuizStageId);
+        const quizId = stage?.config?.quiz_id;
+        if (!quizId) return;
+        setQuizShortlisting(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes/${quizId}/shortlist`, {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_ids: ids }),
+            });
+            if (!res.ok) throw new Error('Shortlist failed');
+            setQuizShortlistDone(true);
+            fetchSubTabQuizResults(selectedSubTabQuizStageId);
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setQuizShortlisting(false);
+        }
+    };
+
+    const handleQuizNotifyShortlisted = async () => {
+        if (!eventId || !selectedSubTabQuizStageId) return;
+        const stage = stages.find(s => s.id === selectedSubTabQuizStageId);
+        const quizId = stage?.config?.quiz_id;
+        if (!quizId) return;
+        setQuizNotifying(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes/${quizId}/notify-shortlisted`, {
+                method: 'POST',
+                headers: { ...authHeaders() },
+            });
+            if (!res.ok) throw new Error('Notification dispatch failed');
+            setQuizNotifyDone(true);
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setQuizNotifying(false);
+        }
+    };
+
+    useEffect(() => {
+        const quizStages = stages.filter(s => s.type === 'QUIZ' && s.config?.quiz_id);
+        if (quizStages.length > 0 && !selectedSubTabQuizStageId) {
+            setSelectedSubTabQuizStageId(quizStages[0].id);
+        }
+    }, [stages, selectedSubTabQuizStageId]);
+
+    useEffect(() => {
+        if (activeTab === 'submissions' && submissionSubTab === 'assessments' && selectedSubTabQuizStageId) {
+            fetchSubTabQuizResults(selectedSubTabQuizStageId);
+            setQuizSelectedIds(new Set());
+            setQuizShortlistDone(false);
+            setQuizNotifyDone(false);
+        }
+    }, [activeTab, submissionSubTab, selectedSubTabQuizStageId, eventId, refreshCounter]);
 
     useEffect(() => {
         if (eventId && activeTab === 'submissions') {
@@ -1297,6 +1403,218 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             return matchesSearch && matchesDomain && matchesJudge;
         });
 
+        if (submissionSubTab === 'assessments') {
+            const quizStages = stages.filter(s => s.type === 'QUIZ' && s.config?.quiz_id);
+            const passedCount = quizResults.filter(r => r.passed).length;
+            const filteredQuizzes = quizResults.filter(r =>
+                !quizResultsSearch || 
+                r.name.toLowerCase().includes(quizResultsSearch.toLowerCase()) || 
+                r.email.toLowerCase().includes(quizResultsSearch.toLowerCase())
+            );
+
+            return (
+                <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="p-12 bg-slate-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
+                        <div className="relative z-10">
+                            <h3 className="text-4xl font-black tracking-tight mb-4">Submission Management</h3>
+                            <p className="text-slate-400 font-bold max-w-xl leading-relaxed">Review submissions, assign judges, and evaluate in real-time.</p>
+                        </div>
+                        <div className="absolute -right-20 -top-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px]"></div>
+                    </div>
+
+                    <div className="flex bg-slate-100 p-1.5 rounded-[2.2rem] shadow-inner border border-slate-200/50 w-fit mx-4">
+                        <button 
+                            type="button"
+                            onClick={() => setSubmissionSubTab('projects')}
+                            className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'projects' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                            Projects & Deliverables
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={() => setSubmissionSubTab('assessments')}
+                            className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'assessments' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                            Quizzes & Assessments
+                        </button>
+                    </div>
+
+                    {quizStages.length === 0 ? (
+                        <div className="text-center py-20 bg-slate-50 border border-dashed border-slate-200 rounded-[3rem] p-10 mx-4">
+                            <div className="w-16 h-16 bg-purple-50 text-[#6C3BFF] rounded-3xl flex items-center justify-center mx-auto mb-4">
+                                <HelpCircle size={32} />
+                            </div>
+                            <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight">No Quiz Rounds Configured</h4>
+                            <p className="text-sm text-slate-400 mt-2 max-w-sm mx-auto">Configure a Quiz or Assessment round in the "Stages & Timeline" builder to start reviewing attempts.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-8 px-4">
+                            <div className="flex flex-wrap items-center justify-between gap-6">
+                                <div className="flex flex-wrap items-center gap-4">
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Select Quiz Stage</label>
+                                        <select 
+                                            value={selectedSubTabQuizStageId}
+                                            onChange={(e) => setSelectedSubTabQuizStageId(e.target.value)}
+                                            className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 transition-all min-w-[240px]"
+                                        >
+                                            {quizStages.map(qs => (
+                                                <option key={qs.id} value={qs.id}>{qs.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Search Participants</label>
+                                        <div className="relative">
+                                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                            <input 
+                                                type="text" 
+                                                placeholder="Search by name or email..." 
+                                                value={quizResultsSearch}
+                                                onChange={(e) => setQuizResultsSearch(e.target.value)}
+                                                className="pl-14 pr-8 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all w-80"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-4 self-end">
+                                    {quizNotifyDone && (
+                                        <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-bold bg-emerald-50 px-4 py-2.5 rounded-xl border border-emerald-100 animate-in fade-in">
+                                            <CheckCircle2 size={14} /> Notification sent
+                                        </span>
+                                    )}
+                                    <button 
+                                        type="button"
+                                        onClick={handleQuizNotifyShortlisted}
+                                        disabled={quizNotifying || !quizResults.some(r => r.participant_status === 'shortlisted' || r.participant_status === 'accepted')}
+                                        className="px-6 py-4 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-600 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                        title="Send email to all currently shortlisted participants"
+                                    >
+                                        {quizNotifying ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                        Notify All
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={handleQuizShortlist}
+                                        disabled={quizSelectedIds.size === 0 || quizShortlisting}
+                                        className="px-8 py-4 bg-[#6C3BFF] hover:bg-purple-700 disabled:opacity-40 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-purple-200"
+                                    >
+                                        {quizShortlisting && <Loader2 size={14} className="animate-spin" />}
+                                        Shortlist ({quizSelectedIds.size})
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Summary bar */}
+                            <div className="flex flex-wrap items-center gap-6 px-8 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium text-slate-500 animate-in fade-in">
+                                <span>Total Attempts: <strong className="text-slate-800">{quizResults.length}</strong></span>
+                                <span>Passed Cutoff: <strong className="text-emerald-600">{passedCount}</strong></span>
+                                <span>Failed: <strong className="text-red-500">{quizResults.length - passedCount}</strong></span>
+                                {quizShortlistDone && (
+                                    <span className="flex items-center gap-1 text-emerald-600 font-bold ml-auto">
+                                        <CheckCircle2 size={14} /> Shortlisted
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
+                                {quizResultsLoading ? (
+                                    <div className="flex items-center justify-center py-20">
+                                        <Loader2 size={32} className="animate-spin text-[#6C3BFF]" />
+                                    </div>
+                                ) : quizResultsError ? (
+                                    <div className="p-10 text-center text-red-500 font-bold flex items-center justify-center gap-2">
+                                        <AlertCircle size={20} />
+                                        {quizResultsError}
+                                    </div>
+                                ) : quizResults.length === 0 ? (
+                                    <div className="text-center py-20 text-slate-400 font-bold">
+                                        No quiz attempts submitted yet for this stage.
+                                    </div>
+                                ) : (
+                                    <table className="w-full text-left">
+                                        <thead>
+                                            <tr className="bg-slate-50/50">
+                                                <th className="px-10 py-6 w-10">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={filteredQuizzes.length > 0 && quizSelectedIds.size === filteredQuizzes.length}
+                                                        onChange={() => toggleQuizSelectAll(filteredQuizzes)}
+                                                        className="w-5 h-5 rounded border-2 border-slate-200 text-purple-600 focus:ring-purple-500"
+                                                    />
+                                                </th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Participant</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Score / Cutoff</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Result</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Submitted At</th>
+                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50">
+                                            {filteredQuizzes.map((r) => {
+                                                const isShortlisted = r.participant_status === 'shortlisted' || r.participant_status === 'accepted';
+                                                return (
+                                                    <tr key={r.user_id} className={`hover:bg-slate-50/30 transition-colors group ${isShortlisted ? 'bg-emerald-50/20' : ''}`}>
+                                                        <td className="px-10 py-8">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={quizSelectedIds.has(r.user_id)}
+                                                                onChange={() => toggleQuizSelect(r.user_id)}
+                                                                disabled={isShortlisted}
+                                                                className="w-5 h-5 rounded border-2 border-slate-200 text-[#6C3BFF] focus:ring-[#6C3BFF] disabled:opacity-30"
+                                                            />
+                                                        </td>
+                                                        <td className="px-10 py-8">
+                                                            <div className="flex flex-col">
+                                                                <span className="font-black text-slate-900 text-lg tracking-tight">{r.name}</span>
+                                                                <span className="text-[10px] font-bold text-slate-400 mt-1">{r.email}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-10 py-8">
+                                                            <div className="flex flex-col">
+                                                                <span className={`text-lg font-black ${r.passed ? 'text-emerald-600' : 'text-red-500'}`}>
+                                                                    {r.correct !== undefined && r.total !== undefined ? `${r.correct}/${r.total}` : `${r.score}%`}
+                                                                </span>
+                                                                <span className="text-[10px] font-bold text-slate-400 mt-1">({r.score}%) • Cutoff {r.pass_mark}%</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-10 py-8">
+                                                            {r.passed ? (
+                                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-wider border border-emerald-100">
+                                                                    <CheckCircle2 size={12} /> Pass
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-600 rounded-full text-[10px] font-black uppercase tracking-wider border border-red-100">
+                                                                    <XCircle size={12} /> Fail
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-10 py-8 text-sm font-bold text-slate-500">
+                                                            {r.submitted_at ? new Date(r.submitted_at).toLocaleString() : '-'}
+                                                        </td>
+                                                        <td className="px-10 py-8">
+                                                            {isShortlisted ? (
+                                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                                                    <CheckCircle2 size={12} /> Shortlisted
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider">{r.participant_status}</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         return (
             <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="p-12 bg-slate-900 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
@@ -1305,6 +1623,23 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         <p className="text-slate-400 font-bold max-w-xl leading-relaxed">Review submissions, assign judges, and evaluate in real-time.</p>
                     </div>
                     <div className="absolute -right-20 -top-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px]"></div>
+                </div>
+
+                <div className="flex bg-slate-100 p-1.5 rounded-[2.2rem] shadow-inner border border-slate-200/50 w-fit mx-4">
+                    <button 
+                        type="button"
+                        onClick={() => setSubmissionSubTab('projects')}
+                        className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'projects' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                        Projects & Deliverables
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={() => setSubmissionSubTab('assessments')}
+                        className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'assessments' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                        Quizzes & Assessments
+                    </button>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-6 px-4">

@@ -1,7 +1,9 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 const GetHiredSection: React.FC = () => {
+    const navigate = useNavigate();
     return (
         <section className="w-full relative py-12 lg:py-24 overflow-hidden flex items-center min-h-[400px] lg:min-h-[500px]">
             {/* Background Image Setup */}
@@ -104,7 +106,7 @@ const GetHiredSection: React.FC = () => {
                         .gs-label { position: relative; z-index: 5; }
                     `}</style>
 
-                    <button className="gs-btn">
+                    <button className="gs-btn" onClick={() => navigate('/opportunities')}>
                         <span className="gs-orb gs-orb1" />
                         <span className="gs-orb gs-orb2" />
                         <span className="gs-orb gs-orb3" />

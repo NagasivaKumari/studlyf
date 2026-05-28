@@ -1,8 +1,37 @@
 /// <reference types="vite/client" />
 
-export const API_BASE_URL = import.meta.env.RENDER_EXTERNAL_URL ?? '';
+const viteEnv = import.meta.env as Record<string, string | undefined>;
 
-export const FRONTEND_URL = import.meta.env.FRONTEND_URL ?? '';
+function resolveDefaultApiBaseUrl(): string {
+    if (typeof window === 'undefined') {
+        return 'http://localhost:8000';
+    }
+
+    const { protocol, hostname } = window.location;
+
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || /^192\.168\.\d+\.\d+$/.test(hostname)) {
+        return `${protocol}//${hostname}:8000`;
+    }
+
+    return 'http://localhost:8000';
+}
+
+let resolvedUrl = viteEnv.VITE_API_BASE_URL ??
+    viteEnv.VITE_RENDER_EXTERNAL_URL ??
+    viteEnv.RENDER_EXTERNAL_URL ??
+    viteEnv.API_BASE_URL ??
+    resolveDefaultApiBaseUrl();
+
+if (import.meta.env.DEV || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))) {
+    resolvedUrl = resolveDefaultApiBaseUrl();
+}
+
+export const API_BASE_URL = resolvedUrl;
+
+export const FRONTEND_URL =
+    viteEnv.VITE_FRONTEND_URL ??
+    viteEnv.FRONTEND_URL ??
+    window.location.origin;
 
 /** Merge with fetch headers so institution / learner JWT routes work after server hardening. */
 export function authHeaders(): Record<string, string> {

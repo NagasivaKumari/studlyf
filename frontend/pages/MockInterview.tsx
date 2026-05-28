@@ -747,6 +747,20 @@ export default function MockInterview() {
                                 <p className="text-xl text-[#475569] mb-12 leading-relaxed max-w-lg font-medium">
                                     Simulate high-stakes interviews with our AI protocol. Practice Technical, Behavioral, and HR rounds to build clinical authority.
                                 </p>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10 max-w-2xl">
+                                    {[
+                                        { label: 'Rounds', value: '3' },
+                                        { label: 'Mode', value: 'Live AI' },
+                                        { label: 'Timing', value: 'Adaptive' },
+                                        { label: 'Feedback', value: 'Instant' },
+                                    ].map(item => (
+                                        <div key={item.label} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{item.label}</div>
+                                            <div className="mt-2 text-base font-black text-gray-900">{item.value}</div>
+                                        </div>
+                                    ))}
+                                </div>
                                 
                                 <button onClick={() => setStep('API_KEY')} className="sp-btn">
                                     <span className="sp-orb sp-orb1" />

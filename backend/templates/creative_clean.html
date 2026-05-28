@@ -6,378 +6,452 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{name}} - Creative</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
         :root {
-            --bg: #FAFAFA;
-            --text: #121212;
-            --accent: #FF5A5F;
-            --secondary: #2C3E50;
+            --bg: #fdfdfb;
+            --surface: #ffffff;
+            --text: #191c1f;
+            --muted: #5e666e;
+            --border: #f0eff7;
+            --accent: #f43f5e; /* Elegant Rose */
+            --accent-light: #ffe4e6;
+            --font-display: 'Outfit', sans-serif;
+            --font-mono: 'Space Grotesk', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            background: var(--bg);
         }
 
         body {
-            background-color: var(--bg);
+            font-family: var(--font-display);
+            background: var(--bg);
             color: var(--text);
-            font-family: 'Space Grotesk', sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-
-        .header-bg {
-            background-color: var(--secondary);
-            color: white;
-            padding: 6rem 2rem 4rem;
-            clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%);
+            overflow-x: hidden;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
         }
 
         .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 0 2rem;
+            width: 100%;
+            max-width: 1200px;
+            margin: auto;
+            padding: 0 32px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 20px;
+            }
+        }
+
+        /* Nav Layout */
+        nav {
+            padding: 24px 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.3rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: var(--text);
+        }
+
+        .nav-link {
+            text-decoration: none;
+            color: var(--text);
+            font-weight: 600;
+            font-size: 0.9rem;
+            padding: 10px 20px;
+            border-radius: 99px;
+            background: var(--border);
+            transition: all 0.3s;
+        }
+
+        .nav-link:hover {
+            background: var(--accent);
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        /* Hero Section */
+        .header-bg {
+            padding: 100px 0 80px;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(circle at 80% 20%, rgba(244, 63, 94, 0.05), transparent 40%);
         }
 
         h1 {
-            font-size: 4.5rem;
-            margin: 0;
-            line-height: 1;
+            font-size: clamp(3.2rem, 8vw, 5.8rem);
+            line-height: 1.05;
+            font-weight: 900;
+            letter-spacing: -2px;
+            max-width: 900px;
+            color: var(--text);
+            margin-bottom: 24px;
         }
 
         .subtitle {
-            font-size: 1.5rem;
-            margin-top: 1rem;
-            opacity: 0.9;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            color: var(--accent);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 16px;
         }
 
-        .card-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            margin-top: -3rem;
+        .header-bg p {
+            font-size: clamp(1.1rem, 2vw, 1.3rem);
+            line-height: 1.6;
+            color: var(--muted);
+            max-width: 700px;
+            margin-top: 24px;
         }
 
-        .card {
-            background: white;
-            border-radius: 1px;
-            padding: 2rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-            border-top: 4px solid var(--accent);
-            transition: transform 0.2s;
-        }
-
-        .card:hover {
-            padding-top: 1.5rem;
-        }
-
+        /* Structured Titles */
         h2 {
-            font-size: 2rem;
-            margin-bottom: 2rem;
-            display: inline-block;
-            background: var(--accent);
-            color: white;
-            padding: 0.5rem 1rem;
-            transform: skew(-10deg);
+            margin-top: 100px;
+            margin-bottom: 40px;
+            font-size: 0.85rem;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--muted);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 12px;
         }
 
-        .project-card {
-            background: #fff;
-            border: 2px solid #000;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 5px 5px 0px #000;
+        /* Skills Tag wrap */
+        #skills-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 60px;
         }
 
         .skill-tag {
-            background: #eee;
-            padding: 0.3rem 0.8rem;
-            border-radius: 20px;
-            margin: 0.2rem;
-            display: inline-block;
-            font-size: 0.9rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 14px 22px;
+            border-radius: 99px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--text);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.01);
         }
 
+        .skill-tag:hover {
+            transform: translateY(-3px);
+            border-color: var(--accent);
+            color: var(--accent);
+            box-shadow: 0 10px 20px rgba(244, 63, 94, 0.08);
+        }
+
+        /* Card Layout Grids */
+        #projects-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 32px;
+            margin-bottom: 60px;
+        }
+
+        @media (max-width: 768px) {
+            #projects-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        #experience-container,
+        #certifications-container {
+            display: grid;
+            gap: 24px;
+            margin-bottom: 60px;
+        }
+
+        .project-card,
         .timeline-item {
-            border-left: 2px solid var(--accent);
-            padding-left: 2rem;
-            position: relative;
-            margin-bottom: 2rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 28px;
+            padding: 40px;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
         }
 
-        .timeline-item::before {
-            content: '';
-            width: 12px;
-            height: 12px;
+        .project-card:hover,
+        .timeline-item:hover {
+            transform: translateY(-6px);
+            border-color: rgba(244, 63, 94, 0.2);
+            box-shadow: 0 20px 40px rgba(244, 63, 94, 0.05);
+        }
+
+        .project-card h3,
+        .timeline-item h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .project-card p,
+        .timeline-item p {
+            color: var(--muted);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .project-tech-bar {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 16px;
+        }
+
+        .project-card a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 24px;
+            background: var(--text);
+            color: var(--surface) !important;
+            text-decoration: none;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            width: fit-content;
+            transition: all 0.3s;
+        }
+
+        .project-card a:hover {
             background: var(--accent);
-            border-radius: 50%;
-            position: absolute;
-            left: -7px;
-            top: 5px;
+            transform: translateY(-1px);
         }
 
+        /* Timeline Items (Experience & Certifications) */
+        .timeline-item {
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 576px) {
+            .timeline-item {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+
+        .timeline-date-wrapper {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .timeline-date {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            font-weight: 700;
+            background: var(--accent-light);
+            width: fit-content;
+            padding: 4px 12px;
+            border-radius: 99px;
+            margin-bottom: 8px;
+        }
+
+        .timeline-item h3 {
+            margin: 0 0 6px;
+        }
+
+        .timeline-item h4 {
+            font-size: 0.95rem;
+            color: var(--muted);
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+
+        .verify-link {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text);
+            text-decoration: underline;
+            font-weight: 600;
+            display: inline-block;
+            margin-top: 14px;
+            transition: color 0.3s;
+        }
+
+        .verify-link:hover {
+            color: var(--accent);
+        }
+
+        /* Footer / Contact CTA */
         .contact-section {
-            background: #000;
-            color: white;
-            padding: 4rem 2rem;
+            margin-top: 100px;
+            padding: 80px 0;
             text-align: center;
-            margin-top: 4rem;
+            border-top: 1px solid var(--border);
+            background: radial-gradient(circle at 50% 100%, rgba(244, 63, 94, 0.03), transparent 60%);
+        }
+
+        .contact-section h2 {
+            border: none;
+            margin-top: 0;
+            font-size: clamp(2.2rem, 5vw, 3.6rem);
+            font-weight: 800;
+            letter-spacing: -1.5px;
+            color: var(--text);
+            margin-bottom: 16px;
+        }
+
+        .contact-section p {
+            color: var(--muted);
+            max-width: 500px;
+            margin: 0 auto 32px;
+            font-size: 1.1rem;
         }
 
         .contact-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px 36px;
+            background: var(--text);
+            color: var(--bg);
+            border-radius: 14px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+        }
+
+        .contact-btn:hover {
             background: var(--accent);
             color: white;
-            padding: 1rem 2rem;
-            text-decoration: none;
-            font-size: 1.2rem;
-            border-radius: 30px;
-            display: inline-block;
-            margin-top: 2rem;
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(244, 63, 94, 0.2);
         }
+
+
     </style>
 </head>
 
 <body>
 
+    <div class="container">
+        <!-- Navigation -->
+        <nav>
+            <div class="logo">{{name}}</div>
+            <a href="mailto:{{email}}" class="nav-link">Get In Touch</a>
+        </nav>
+    </div>
+
+    <!-- Hero Area -->
     <header class="header-bg">
         <div class="container">
+            <div class="subtitle">Creative Builder</div>
             <h1>Hello, I'm {{name}}.</h1>
-            <div class="subtitle">Based in the world.</div>
-            <p style="margin-top: 2rem; max-width: 600px; font-size: 1.1rem; line-height: 1.6;">{{summary}}</p>
+            <p>{{summary}}</p>
         </div>
     </header>
 
     <div class="container">
-        <div style="margin-top: 4rem;"></div>
-
+        <!-- SKILLS -->
         <h2>My Skills</h2>
-        <div class="card" id="skills-container" style="margin-bottom: 4rem;">
+        <div class="card" id="skills-container">
             {% for skill in skills %}
             <span class="skill-tag">{{skill}}</span>
             {% endfor %}
         </div>
 
+        <!-- PROJECTS -->
         <h2>Selected Projects</h2>
-        <div id="projects-container" style="margin-bottom: 4rem;">
+        <div id="projects-container">
             {% for project in projects %}
             <div class="project-card">
-                <h3 style="margin-top:0;">{{project.name}}</h3>
-                <p>{{project.description}}</p>
-                <div style="font-size: 0.9rem; font-weight: bold; margin-top: 1rem;">
-                    {{project.technologies}}
-                    {% if project.link %}
-                    <br><br>
-                    <a href="{{project.link}}" target="_blank"
-                        style="display:inline-block; background: var(--secondary); color: white; padding: 0.5rem 1rem; text-decoration: none; border-radius: 5px;">View
-                        Project</a>
-                    {% endif %}
+                <div>
+                    <div class="project-tech-bar">{{project.technologies}}</div>
+                    <h3>{{project.name}}</h3>
+                    <p>{{project.description}}</p>
+                </div>
+                {% if project.link %}
+                <a href="{{project.link}}" target="_blank">View Project</a>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- EXPERIENCE -->
+        <h2>Work Experience</h2>
+        <div id="experience-container">
+            {% for exp in experience %}
+            <div class="timeline-item">
+                <div class="timeline-date-wrapper">
+                    <span class="timeline-date">{{exp.year}}</span>
+                </div>
+                <div>
+                    <h3>{{exp.role}}</h3>
+                    <h4>{{exp.company}}</h4>
+                    <p>{{exp.details}}</p>
                 </div>
             </div>
             {% endfor %}
         </div>
 
-        <h2>Work Experience</h2>
-        <div id="experience-container">
-            {% for exp in experience %}
-            <div class="timeline-item">
-                <h3 style="margin: 0;">{{exp.role}} @ {{exp.company}}</h3>
-                <span style="color: grey; font-size: 0.9rem;">{{exp.year}}</span>
-                <p style="margin-top: 0.5rem;">{{exp.details}}</p>
-            </div>
-            {% endfor %}
-        </div>
-
+        <!-- CERTIFICATIONS -->
         {% if certifications %}
         <h2>Certifications</h2>
-        <div id="certifications-container" style="margin-bottom: 4rem;">
+        <div id="certifications-container">
             {% for cert in certifications %}
-            <div class="timeline-item" style="border-left-color: var(--secondary);">
-                <style>
-                    .timeline-item[style*="secondary"]::before {
-                        background: var(--secondary);
-                    }
-                </style>
-                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                    <div>
-                        <h3 style="margin: 0;">{{cert.name}}</h3>
-                        <span style="color: grey; font-size: 0.9rem;">{{cert.issuer}} &mdash; {{cert.date}}</span>
-                    </div>
+            <div class="timeline-item">
+                <div class="timeline-date-wrapper">
+                    <span class="timeline-date">{{cert.date}}</span>
+                </div>
+                <div>
+                    <h3>{{cert.name}}</h3>
+                    <h4>{{cert.issuer}}</h4>
                     {% if cert.link %}
-                    <a href="{{cert.link}}" target="_blank"
-                        style="color: var(--accent); text-decoration: underline; font-weight: bold;">Verify &rarr;</a>
+                    <a href="{{cert.link}}" target="_blank" class="verify-link">Verify &rarr;</a>
                     {% endif %}
                 </div>
             </div>
             {% endfor %}
         </div>
         {% endif %}
-
     </div>
 
+    <!-- Contact & Footer -->
     <footer class="contact-section">
-        <h2>Let's Work Together</h2>
-        <p>Feel free to reach out for collaborations or just a friendly hello.</p>
-        <a href="mailto:{{email}}" class="contact-btn">Email Me</a>
+        <div class="container">
+            <h2>Let's Work Together</h2>
+            <p>Feel free to reach out for collaborations, project inquiries, or just a friendly hello.</p>
+            <a href="mailto:{{email}}" class="contact-btn">Email Me</a>
+        </div>
     </footer>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // --- UI HELPERS ---
-            const createBtn = (text, id, bg, clickHandler) => {
-                const btn = document.createElement('button');
-                btn.innerText = text;
-                btn.id = id;
-                Object.assign(btn.style, {
-                    position: 'fixed', bottom: '30px', right: '30px', zIndex: '10000',
-                    padding: '12px 24px', background: bg, color: 'white',
-                    border: 'none', borderRadius: '30px', cursor: 'pointer',
-                    fontFamily: 'inherit', fontWeight: 'bold',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)', transition: 'all 0.3s'
-                });
-                btn.onclick = clickHandler;
-                return btn;
-            };
 
-            const toggleBtn = createBtn('✎ Edit Magic', 'edit-toggle-btn', '#FF5A5F', null);
-            document.body.appendChild(toggleBtn);
-
-            let isEditing = false;
-            const textSelect = 'h1, h2, h3, h4, p, span, li, a, div.role, div.subtitle';
-
-            // Define editable zones for structural editing
-            const zones = [
-                { id: 'skills', itemSel: '.skill-tag', containerSel: '#skills-container', type: 'skill' },
-                { id: 'projects', itemSel: '.project-card', containerSel: '#projects-container', type: 'card' },
-                { id: 'experience', itemSel: '.timeline-item', containerSel: '#experience-container', type: 'card' },
-                { id: 'certifications', itemSel: '.timeline-item', containerSel: '#certifications-container', type: 'card' }
-            ];
-
-            const cleanupUI = () => {
-                document.querySelectorAll('.edit-ui-element').forEach(el => el.remove());
-                document.querySelectorAll(textSelect).forEach(el => {
-                    el.contentEditable = 'false';
-                    el.style.outline = 'none';
-                    el.style.cursor = 'default';
-                });
-            };
-
-            const enableEditing = () => {
-                // 1. Text Editing
-                document.querySelectorAll(textSelect).forEach(el => {
-                    el.contentEditable = 'true';
-                    el.style.outline = '1px dashed #FF5A5F';
-                    el.style.cursor = 'text';
-
-                    // Special Link Handling
-                    if (el.tagName === 'A') {
-                        el.onclick = (e) => {
-                            if (isEditing) {
-                                e.preventDefault();
-                                e.stopImmediatePropagation();
-                                const newUrl = prompt('Edit Link URL:', el.getAttribute('href'));
-                                if (newUrl !== null) el.setAttribute('href', newUrl);
-                            }
-                        };
-                    }
-                });
-
-                // 2. Structural Editing (Add/Delete)
-                zones.forEach(zone => {
-                    const container = document.querySelector(zone.containerSel);
-                    if (!container) return;
-
-                    // A. Delete Buttons on existing items
-                    container.querySelectorAll(zone.itemSel).forEach(item => {
-                        if (item.querySelector('.delete-btn')) return; // already has one
-
-                        item.style.position = 'relative';
-                        const delBtn = document.createElement('button');
-                        delBtn.innerHTML = '×';
-                        delBtn.className = 'edit-ui-element delete-btn';
-                        Object.assign(delBtn.style, {
-                            position: 'absolute', top: '-10px', right: '-10px',
-                            width: '24px', height: '24px', borderRadius: '50%',
-                            background: '#000', color: 'white', border: 'none',
-                            cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            zIndex: '10'
-                        });
-                        delBtn.onclick = (e) => {
-                            e.stopPropagation();
-                            if (confirm('Delete this item?')) item.remove();
-                        };
-                        item.appendChild(delBtn);
-                    });
-
-                    // B. Add Button for the container
-                    if (!container.parentElement.querySelector(`.add-btn-${zone.id}`)) {
-                        const addBtn = document.createElement('button');
-                        addBtn.innerText = '+ Add ' + (zone.type === 'skill' ? 'Skill' : 'Item');
-                        addBtn.className = `edit-ui-element add-btn-${zone.id}`;
-                        Object.assign(addBtn.style, {
-                            display: 'block', margin: '1rem auto', padding: '10px 20px',
-                            background: '#FF5A5F', color: 'white',
-                            border: 'none', borderRadius: '20px', cursor: 'pointer',
-                            fontWeight: 'bold', boxShadow: '0 4px 10px rgba(255, 90, 95, 0.3)'
-                        });
-
-                        addBtn.onclick = () => {
-                            const tempItem = container.querySelector(zone.itemSel);
-                            if (tempItem) {
-                                const clone = tempItem.cloneNode(true);
-                                clone.querySelectorAll('.edit-ui-element').forEach(e => e.remove());
-                                if (zone.type === 'skill') {
-                                    clone.innerText = 'New Skill';
-                                } else {
-                                    clone.querySelectorAll('h3').forEach(h => h.innerText = 'New Title');
-                                    clone.querySelectorAll('p').forEach(p => p.innerText = 'Description goes here...');
-                                    clone.querySelectorAll('span').forEach(s => s.innerText = '2025');
-                                }
-                                container.appendChild(clone);
-                                enableEditing();
-                            } else {
-                                alert('No template item found to clone!');
-                            }
-                        };
-                        container.after(addBtn);
-                    }
-                });
-            };
-
-            const saveChanges = () => {
-                toggleBtn.innerText = 'Saving...';
-                cleanupUI();
-                toggleBtn.remove();
-
-                const fullHtml = document.documentElement.outerHTML;
-                const filename = window.location.pathname.split('/').pop();
-
-                document.body.appendChild(toggleBtn);
-                toggleBtn.innerText = '✎ Edit Magic';
-                toggleBtn.style.transform = 'scale(1)';
-
-                fetch('/update-portfolio', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename: filename, html: fullHtml })
-                })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 'success') alert('✨ Magic Saved!');
-                        else alert('Error: ' + data.error);
-                    })
-                    .catch(e => alert('Net Error: ' + e));
-            };
-
-            toggleBtn.onclick = () => {
-                isEditing = !isEditing;
-                if (isEditing) {
-                    toggleBtn.innerText = '💾 Save Magic';
-                    toggleBtn.style.transform = 'scale(1.1)';
-                    enableEditing();
-                } else {
-                    saveChanges();
-                }
-            };
-        });
-    </script>
 </body>
 
 </html>

@@ -8,7 +8,7 @@ import { ShoppingCart, User } from 'lucide-react';
 const StudlyfLogo = ({ className = "h-8 sm:h-10" }: { className?: string }) => (
   <div className={`flex items-center ${className}`}>
     <img
-      src="/images/studlyf.png"
+      src="/images/studlyf_secondary.png"
       alt="STUDLYF Logo"
       className="h-full w-auto object-contain"
     />
@@ -43,11 +43,11 @@ const LearnDropdown = ({ onItemClick }: { onItemClick: () => void }) => (
     <BentoCard onClick={onItemClick} to="/learn/courses-overview" title="Courses" desc="Role-focused tracks for elite engineering readiness." className="md:col-span-2 md:row-span-2 min-h-[160px] md:min-h-[180px]">
       <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=600" className="absolute bottom-0 right-0 w-1/2 h-full object-cover opacity-100 transition-all duration-700" alt="Courses" />
     </BentoCard>
-    <BentoCard onClick={onItemClick} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="md:col-span-2 h-[88px]">
-      <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-100 transition-all" alt="Corporate" />
+    <BentoCard onClick={onItemClick} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="md:col-span-1 md:row-span-2 min-h-[160px] md:min-h-[180px]">
+      <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-full h-1/2 object-cover opacity-100 transition-all duration-700 rounded-b-[1.5rem]" alt="Corporate" />
     </BentoCard>
-    <BentoCard onClick={onItemClick} to="/blog" title="Blogs" desc="Technical insights on system ownership." className="md:col-span-2 h-[88px]">
-      <img src="https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-100 transition-all" alt="Blog" />
+    <BentoCard onClick={onItemClick} to="/studhub" title="STUDHub" desc="The central nervous system for your student growth." className="md:col-span-1 md:row-span-2 min-h-[160px] md:min-h-[180px] bg-[#6C2BFF]/5 hover:border-[#6C2BFF]/30">
+      <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-full h-1/2 object-cover opacity-100 transition-all duration-700 rounded-b-[1.5rem]" alt="STUDHub" />
     </BentoCard>
   </div>
 );
@@ -142,12 +142,12 @@ const Navigation: React.FC = () => {
 
   return (
     <>
-      <nav className="fixed top-0 z-[100] w-full px-2 py-4 sm:px-6 sm:py-6 lg:px-12">
+      <nav className="fixed top-0 z-[100] w-full px-2 py-2.5 sm:px-6 sm:py-4 lg:px-12">
         <div className="max-w-7xl mx-auto relative">
           <motion.div
             initial={{ y: -40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="relative z-[110] h-14 sm:h-20 bg-[#7C3AED] rounded-[1.25rem] sm:rounded-[2rem] px-4 sm:px-8 lg:px-12 flex items-center justify-between shadow-2xl shadow-[#7C3AED]/40 border border-[#7C3AED]/50"
+            className="relative z-[110] h-12 sm:h-16 bg-[#7C3AED]/95 backdrop-blur-xl rounded-[1.1rem] sm:rounded-[1.75rem] px-4 sm:px-7 lg:px-10 flex items-center justify-between shadow-[0_18px_40px_rgba(124,58,237,0.26)] border border-white/15"
           >
             <div className="flex items-center lg:w-[250px] gap-4">
               <button
@@ -172,29 +172,28 @@ const Navigation: React.FC = () => {
                   <button
                     key={id}
                     onMouseEnter={() => handleMouseEnter(id)}
-                    className={`flex items-center space-x-2 transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] ${activeMenu === id ? 'text-white' : 'text-white/80'} hover:text-white`}
+                    className={`flex items-center space-x-2 transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] ${activeMenu === id ? 'text-white' : 'text-white/80'} hover:text-white`}
                   >
                     <span>{id === 'jobprep' ? 'Job Prep' : id.charAt(0).toUpperCase() + id.slice(1)}</span>
                     <motion.svg animate={{ rotate: activeMenu === id ? 180 : 0 }} className="w-3.5 h-3.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" /></motion.svg>
                   </button>
                 ))}
-
                 <Link
-                  to="/ai-tools"
-                  className="flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-white/80 hover:text-white"
+                  to="/studott"
+                  className="flex items-center transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] text-white/80 hover:text-white"
                 >
-                  AI TOOLS
+                  STUDOTT
                 </Link>
                 <Link
                   to="/opportunities"
-                  className="flex items-center transition-all h-full uppercase tracking-[0.25em] font-bold text-[11px] text-white/80 hover:text-white"
+                  className="flex items-center transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] text-white/80 hover:text-white"
                 >
                   OPPORTUNITIES
                 </Link>
               </div>
             </div>
 
-            <div className="flex items-center lg:w-[250px] justify-end shrink-0 gap-8">
+            <div className="flex items-center lg:w-[250px] justify-end shrink-0 gap-6">
               {user ? (
                 <div className="flex items-center gap-5">
                   <Link
@@ -238,10 +237,10 @@ const Navigation: React.FC = () => {
                             </span>
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#7C3AED] to-[#A78BFA] flex items-center justify-center text-white font-black text-sm shadow-md">
-                                {user?.full_name?.split(' ').map((n: string) => n[0]).join('') || user?.displayName?.charAt(0) || 'U'}
+                                {user?.full_name?.split(' ').map((n: string) => n[0]).join('') || 'U'}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-xs font-black text-slate-900 truncate">{user?.full_name || user?.displayName || 'User'}</p>
+                                <p className="text-xs font-black text-slate-900 truncate">{user?.full_name || 'User'}</p>
                                 <p className="text-[10px] font-medium text-slate-500 truncate mt-0.5">{user?.email}</p>
                               </div>
                             </div>
@@ -283,8 +282,8 @@ const Navigation: React.FC = () => {
                               Sign Out
                             </button>
                           </div>
-                        </motion.div>
-                      )}
+                          </motion.div>
+                        )}
                     </AnimatePresence>
                   </div>
                 </div>
@@ -347,9 +346,6 @@ const Navigation: React.FC = () => {
                           </BentoCard>
                           <BentoCard onClick={() => setActiveMobileOverlay(null)} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="min-h-[140px] bg-white/5 border-white/10">
                             <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-20" alt="Corporate" />
-                          </BentoCard>
-                          <BentoCard onClick={() => setActiveMobileOverlay(null)} to="/blog" title="Blogs" desc="Technical insights on system ownership." className="min-h-[140px] bg-white/5 border-white/10">
-                            <img src="https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-20" alt="Blog" />
                           </BentoCard>
                         </>
                       ) : (
@@ -433,7 +429,7 @@ const Navigation: React.FC = () => {
                           </div>
                           <div>
                             <p className="text-sm font-bold text-white uppercase tracking-wider">Learn</p>
-                            <p className="text-[10px] text-white/40">Courses, Modules, Blogs</p>
+                            <p className="text-[10px] text-white/40">Courses & Modules</p>
                           </div>
                         </button>
 
@@ -451,16 +447,16 @@ const Navigation: React.FC = () => {
                         </button>
 
                         <Link
-                          to="/ai-tools"
+                          to="/studott"
                           onClick={() => setMobileMenuOpen(false)}
                           className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-[#7C3AED]/30 transition-all hover:bg-[#7C3AED]/10 group text-left"
                         >
                           <div className="w-10 h-10 rounded-xl bg-[#7C3AED]/20 flex items-center justify-center text-[#A78BFA]">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-white uppercase tracking-wider">AI Tools</p>
-                            <p className="text-[10px] text-white/40">Latest AI protocols</p>
+                            <p className="text-sm font-bold text-white uppercase tracking-wider">STUDOTT</p>
+                            <p className="text-[10px] text-white/40">Student Streaming Platform</p>
                           </div>
                         </Link>
                       </div>

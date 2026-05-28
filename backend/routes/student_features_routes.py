@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, HTTPException, Body, Depends, Query
 from typing import Optional
 from bson import ObjectId
@@ -16,6 +17,7 @@ from db import (
 router = APIRouter(prefix="/api/student", tags=["Student Features"])
 
 from utils.db_helpers import fix_id
+from services.rule_based_evaluator import evaluate_answer
 
 # ─── CAREER GOALS ──────────────────────────────────────────────────────────────
 
@@ -219,6 +221,81 @@ async def submit_assessment(data: dict = Body(...), user: dict = Depends(get_aut
     )
     return {"score": score, "correct": correct, "total": total, "results": results}
 
+@router.post("/assessment/submit-v2")
+async def submit_assessment_v2(data: dict = Body(...), user: dict = Depends(get_auth_user_optional)):
+    if user is None:
+        if os.getenv("ALLOW_LOCAL_AUTH_BYPASS", "false").lower() == "true":
+            user = {"user_id": "local-test-user"}
+        else:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        
+    questions = data.get("questions", [])
+    answers = data.get("answers", [])
+    correct = 0
+    results = []
+    total_score_sum = 0
+    
+    for i, q in enumerate(questions):
+        user_ans = answers[i] if i < len(answers) else None
+        q_type = q.get("type", "mcq")
+        
+        if q_type == "mcq":
+            is_correct = q.get("correctAnswer") is not None and user_ans == q.get("correctAnswer")
+            if is_correct:
+                correct += 1
+                total_score_sum += 100
+            results.append({
+                "question": q.get("question"),
+                "userAnswer": user_ans,
+                "correctAnswer": q.get("correctAnswer"),
+                "isCorrect": is_correct,
+                "explanation": q.get("explanation", ""),
+                "evalType": "mcq"
+            })
+        else:
+            # Deterministic AI Evaluation
+            eval_res = evaluate_answer(
+                question=q.get("question", ""),
+                user_answer=str(user_ans) if user_ans else "",
+                question_type=q_type,
+                expected_answer=q.get("explanation", "")
+            )
+            score_val = eval_res.get("score", 0)
+            total_score_sum += score_val
+            
+            results.append({
+                "question": q.get("question"),
+                "userAnswer": user_ans,
+                "evalType": "ai",
+                "aiScore": score_val,
+                "strengths": eval_res.get("strengths", []),
+                "gaps": eval_res.get("gaps", []),
+                "verdict": eval_res.get("verdict", "FAIL"),
+                "idealApproach": eval_res.get("ideal_approach", "")
+            })
+            
+    total = len(questions)
+    final_score = round(total_score_sum / total) if total > 0 else 0
+    
+    submission = {
+        "user_id": user.get("user_id"),
+        "company": data.get("company"),
+        "role": data.get("role"),
+        "score": final_score,
+        "correct_mcqs": correct,
+        "total": total,
+        "results": results,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await assessment_questions_col.insert_one(submission)
+    await user_stats_col.update_one(
+        {"user_id": user.get("user_id")},
+        {"$set": {"last_assessment_score": final_score, "last_assessment_role": data.get("role")}},
+        upsert=True
+    )
+    
+    return {"score": final_score, "total": total, "results": results}
 
 # ─── BLOG ──────────────────────────────────────────────────────────────────────
 

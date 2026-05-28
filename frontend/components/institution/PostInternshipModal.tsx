@@ -5,6 +5,7 @@ import {
     Plus, Trash2, Building, Link as LinkIcon, Edit, Eye, Save,
     Calendar, Users, FileText, Phone, Mail, Globe, Award, ListChecks
 } from 'lucide-react';
+import { API_BASE_URL, authHeaders } from '../../apiConfig';
 
 interface PostInternshipModalProps {
     isOpen: boolean;
@@ -141,8 +142,6 @@ const PostInternshipModal: React.FC<PostInternshipModalProps> = ({ isOpen, onClo
         }
         setLoading(true);
         try {
-            const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
-            
             // Map the modal's fields to the opportunity schema expected by MongoDB
             const payload = {
                 title: formData.title,

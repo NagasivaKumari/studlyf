@@ -1,11 +1,12 @@
 
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import AuthCard from './AuthCard';
 import { useAuth } from '../AuthContext';
 import { API_BASE_URL } from '../apiConfig';
+import TermsOverlay from './TermsOverlay';
 
 interface LoginFormProps {
     onSwitchToSignup: () => void;
@@ -27,6 +28,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
     const [resendMessage, setResendMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const [showTerms, setShowTerms] = useState(false);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -56,7 +58,12 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
 
                 // If we were deep-linked into a page, return there after auth.
                 if (next && next.startsWith('/')) {
-                    navigate(next);
+                    // Ignore opportunity deep-links for post-login landing and prefer dashboard
+                    if (next.startsWith('/opportunities')) {
+                        navigate('/dashboard');
+                    } else {
+                        navigate(next);
+                    }
                     return;
                 }
 
@@ -64,7 +71,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
                 if (data.user.role === 'super_admin' || data.user.role === 'admin') navigate('/admin');
                 else if (data.user.role === 'institution') navigate('/institution-dashboard');
                 else if (data.user.role === 'judge') navigate('/judge-portal');
-                else navigate('/opportunities');
+                else navigate('/dashboard');
             } else {
                 const detail = data.detail || 'Login failed. Please check your credentials.';
                 setError(detail);
@@ -113,7 +120,11 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
 
     return (
         <AuthCard title="Welcome Back" maxWidth="max-w-[450px]" transparent={transparent}>
-            <form onSubmit={handleLogin} className="space-y-2.5">
+            <div className="relative overflow-visible">
+                <AnimatePresence>
+                    {showTerms && <TermsOverlay onClose={() => setShowTerms(false)} />}
+                </AnimatePresence>
+                <form onSubmit={handleLogin} className="space-y-2.5">
                 {error && (
                     <div className="p-3 bg-red-50 text-red-500 text-xs rounded-lg border border-red-100 space-y-3">
                         {error}
@@ -250,7 +261,8 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
                         </button>
                     </p>
                 </div>
-            </form>
+                </form>
+            </div>
 
             <div className="mt-8 text-center pt-6 border-t border-gray-50">
                 <p className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">

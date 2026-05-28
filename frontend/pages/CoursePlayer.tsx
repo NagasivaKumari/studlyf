@@ -9,21 +9,16 @@ import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
-  ChevronDown, ChevronLeft, ChevronRight, Play, FileText, HelpCircle,
-  CheckCircle2, Menu, X, BookOpen, MessageCircle, Download, StickyNote,
-  AlignLeft, Code, Award, Trophy, ShieldAlert, Link
+  ChevronDown, ChevronLeft, ChevronRight, FileText, HelpCircle,
+  CheckCircle2, Menu, X, BookOpen, MessageCircle, StickyNote,
+  AlignLeft, Code, Award, Trophy, ShieldAlert, Link, AlertTriangle
 } from 'lucide-react';
-import './CoursePlayerStyles.css';
+import { CURRICULUM_DATA } from '../data/curriculumData';
 
 /* ═══════ Types ═══════ */
 interface Lesson {
-  type: 'video' | 'text' | 'quiz' | 'code' | 'image';
+  type: 'overview' | 'text' | 'theory' | 'practice_quiz' | 'quiz' | 'graded_quiz';
   title: string;
-  image_url?: string;
-  video_url?: string;
-  content?: string;
-  questions?: any[]; // For quiz lessons
-  resources?: string[];
 }
 
 interface Module {
@@ -34,7 +29,7 @@ interface Module {
   lessons: Lesson[];
   progress?: {
     status: string;
-    completed_lessons?: string[]; // IDs or titles of completed lessons
+    completed_lessons?: string[];
     theory_completed: boolean;
     video_completed: boolean;
     quiz_score: number;
@@ -44,7 +39,7 @@ interface Module {
   };
 }
 
-type LessonType = 'video' | 'text' | 'theory' | 'quiz' | 'code' | 'capstone' | 'final_assessment' | 'result';
+type LessonType = 'overview' | 'text' | 'theory' | 'practice_quiz' | 'graded_quiz' | 'quiz' | 'capstone' | 'result';
 
 interface FlatLesson {
   moduleIndex: number;
@@ -60,36 +55,20 @@ const extractCourseId = (slug?: string) => {
   return parts.length > 1 ? parts[parts.length - 1] : slug;
 };
 
-const getModuleProgress = (mod: Module): number => {
-  const p = mod.progress;
-  if (!p) return 0;
-  
-  // Dynamic progress based on internal lessons
-  if (mod.lessons && mod.lessons.length > 0) {
-    const total = mod.lessons.length;
-    const completedCount = p.completed_lessons?.length || 0;
-    
-    // Simple percentage calculation
-    return Math.round((completedCount / total) * 100);
-  }
-
-  // Fallback for legacy data
-  let done = 0;
-  if (p.video_completed) done++;
-  if (p.theory_completed) done++;
-  if (p.quiz_score >= 60 || p.status === 'completed') done++;
-  return Math.min(Math.round((done / 3) * 100), 100);
-};
-
 const getLessonLabel = (type: LessonType): string => {
-  if (type === 'video') return 'Video Lesson';
-  if (type === 'text' || type === 'theory') return 'Reading Material';
-  if (type === 'code') return 'Coding Lab';
-  return 'Assessment Quiz';
+  if (type === 'overview') return 'Overview';
+  if (type === 'text' || type === 'theory') return 'Topic Content';
+  if (type === 'practice_quiz') return 'Practice Checkpoint';
+  return 'Graded Assignment';
 };
 
-const DUMMY_TRANSCRIPT: { time: string; text: string }[] = [];
+const DUMMY_TRANSCRIPT: { time: string; text: string }[] = [
+  { time: "0:00", text: "Welcome to this reading module." },
+  { time: "0:30", text: "In this lesson, we will focus on core written material." },
+  { time: "1:00", text: "Please review the notes and complete the quizzes to unlock the next steps." }
+];
 
+/* ═══════ Component ═══════ */
 /* ═══════ Component ═══════ */
 const CoursePlayer: React.FC = () => {
   const { courseId } = useParams<{ courseId: string }>();
@@ -101,7 +80,7 @@ const CoursePlayer: React.FC = () => {
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
   const [moduleDetails, setModuleDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeStage, setActiveStage] = useState<LessonType>('video');
+  const [activeStage, setActiveStage] = useState<LessonType>('overview');
   const [courseData, setCourseData] = useState<any>(null);
 
   // Sidebar
@@ -114,57 +93,62 @@ const CoursePlayer: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [notesSaved, setNotesSaved] = useState(false);
 
-  // Quiz
+  // Persistent localStorage Progress State
+  const resolvedCourseId = extractCourseId(courseId);
+  const progressKey = `studlyf_progress_${user?.uid || 'guest'}_${resolvedCourseId}`;
+  
+  const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(progressKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Whenever completedSteps changes, save to localStorage
+  useEffect(() => {
+    localStorage.setItem(progressKey, JSON.stringify(completedSteps));
+  }, [completedSteps, progressKey]);
+
+  // Quizzes State
+  const [practiceAnswers, setPracticeAnswers] = useState<Record<string, number>>({});
   const [quizAnswers, setQuizAnswers] = useState<number[][]>([]);
   const [quizResult, setQuizResult] = useState<any>(null);
   const [currentQuizQ, setCurrentQuizQ] = useState(0);
 
-  // Project
-  const [deployedLink, setDeployedLink] = useState('');
-  const [githubLink, setGithubLink] = useState('');
-  const [projectFile, setProjectFile] = useState<File | null>(null);
+  // Project state
+  const [githubLink, setGithubLink] = useState(() => localStorage.getItem(`${progressKey}_github`) || '');
+  const [deployedLink, setDeployedLink] = useState(() => localStorage.getItem(`${progressKey}_deployed`) || '');
 
   // Completion modal
   const [completionPrompt, setCompletionPrompt] = useState<{
     open: boolean; nextIndex: number | null; moduleName: string; earnedBadge?: any;
   }>({ open: false, nextIndex: null, moduleName: '' });
 
-  const resolvedCourseId = extractCourseId(courseId);
   const contentRef = useRef<HTMLDivElement>(null);
 
   /* ── Build flat lesson list ── */
   const buildLessons = (mods: Module[]): FlatLesson[] => {
     const list: FlatLesson[] = [];
     mods.forEach((mod, i) => {
-      if (mod.lessons && mod.lessons.length > 0) {
-        mod.lessons.forEach((les, li) => {
-          list.push({ 
-            moduleIndex: i, 
-            lessonIndex: li, 
-            type: les.type as LessonType, 
-            title: les.title 
+      if (mod.lessons) {
+        mod.lessons.forEach((les, lesIdx) => {
+          list.push({
+            moduleIndex: i,
+            lessonIndex: lesIdx,
+            type: les.type as LessonType,
+            title: les.title
           });
         });
-      } else {
-        // Fallback for legacy data
-        list.push({ moduleIndex: i, lessonIndex: 0, type: 'video', title: 'Video Lesson' });
-        list.push({ moduleIndex: i, lessonIndex: 1, type: 'theory', title: 'Reading Material' });
-        list.push({ moduleIndex: i, lessonIndex: 2, type: 'quiz', title: 'Assessment Quiz' });
       }
     });
     
-    // Add Final Assessment if questions exist
-    if (courseData?.questions && courseData.questions.length > 0) {
-      list.push({ moduleIndex: -2, lessonIndex: -2, type: 'final_assessment', title: 'Final Comprehensive Assessment' });
-    }
-
-    // Add Final Capstone if problem statement exists
-    if (courseData?.capstone_problem) {
-      list.push({ moduleIndex: -1, lessonIndex: -1, type: 'capstone', title: 'Final Capstone Project' });
-    }
+    // Add Mini Project (Capstone)
+    list.push({ moduleIndex: -1, lessonIndex: -1, type: 'capstone', title: 'Mini Project Submission' });
 
     // Add Result Page
-    list.push({ moduleIndex: -3, lessonIndex: -3, type: 'result', title: 'Course Certification' });
+    list.push({ moduleIndex: -3, lessonIndex: -3, type: 'result', title: 'Course Completion' });
 
     return list;
   };
@@ -185,15 +169,62 @@ const CoursePlayer: React.FC = () => {
       const data = await res.json();
       
       const courseRes = await fetch(`${API_BASE_URL}/api/course/${resolvedCourseId}/details?user_id=${user?.uid || ''}`);
+      let cData: any = null;
       if (courseRes.ok) {
-        const cData = await courseRes.json();
+        cData = await courseRes.json();
         setCourseData(cData);
       }
 
       let fetched = Array.isArray(data) ? data : [];
-      setModules(fetched);
+      
+      // Enforce the dynamic subtopics schema using the imported CURRICULUM_DATA
+      const formatted = fetched.map((mod: any, i: number) => {
+        const curChapter = CURRICULUM_DATA[i] || CURRICULUM_DATA[i % CURRICULUM_DATA.length];
+        return {
+          ...mod,
+          lessons: curChapter.topics.map(t => ({
+            type: t.type,
+            title: t.title
+          }))
+        };
+      });
+
+      // Initialize completedSteps from backend progress
+      const initialCompleted: Record<string, boolean> = {};
+      fetched.forEach((mod: any, modIdx: number) => {
+        const p = mod.progress;
+        if (p) {
+          if (p.status === 'completed') {
+            const curChapter = CURRICULUM_DATA[modIdx] || CURRICULUM_DATA[modIdx % CURRICULUM_DATA.length];
+            curChapter.topics.forEach((_, tIdx) => {
+              initialCompleted[`${modIdx}_${tIdx}`] = true;
+            });
+          } else {
+            p.completed_lessons?.forEach((idxStr: string) => {
+              initialCompleted[`${modIdx}_${idxStr}`] = true;
+            });
+            if (p.theory_completed) {
+              initialCompleted[`${modIdx}_0`] = true;
+              initialCompleted[`${modIdx}_1`] = true;
+              initialCompleted[`${modIdx}_2`] = true;
+              initialCompleted[`${modIdx}_3`] = true;
+            }
+            if (p.quiz_score >= 70) {
+              initialCompleted[`${modIdx}_4`] = true;
+              initialCompleted[`${modIdx}_5`] = true;
+            }
+          }
+        }
+      });
+      
+      if (cData?.progress?.project_status === 'submitted') {
+        initialCompleted['capstone'] = true;
+      }
+      
+      setCompletedSteps(prev => ({ ...initialCompleted, ...prev }));
+      setModules(formatted);
       setLoading(false);
-      return fetched;
+      return formatted;
     } catch {
       setModules([]);
       setLoading(false);
@@ -206,30 +237,19 @@ const CoursePlayer: React.FC = () => {
       fetchModuleDetails(modules[activeModuleIndex]._id);
       
       const les = modules[activeModuleIndex]?.lessons?.[activeLessonIndex];
-      if (les?.type === 'quiz' && les.questions) {
-        setQuizAnswers(les.questions.map(() => []));
-        setCurrentQuizQ(0);
-        setQuizResult(null);
+      if (les) {
+        setActiveStage(les.type as LessonType);
       }
     } else if (activeModuleIndex === -1) {
       setActiveStage('capstone');
-    } else if (activeModuleIndex === -2) {
-      setActiveStage('final_assessment');
-      if (courseData?.questions) {
-        setQuizAnswers(courseData.questions.map(() => []));
-        setCurrentQuizQ(0);
-        setQuizResult(null);
-      }
     } else if (activeModuleIndex === -3) {
       setActiveStage('result');
     }
-  }, [activeModuleIndex, activeLessonIndex, modules, activeStage]);
+  }, [activeModuleIndex, activeLessonIndex, modules]);
 
   const fetchModuleDetails = async (moduleId: string) => {
     let data: any = {};
-    if (moduleId.startsWith('dummy-mod')) {
-      data = {};
-    } else {
+    if (!moduleId.startsWith('dummy-mod')) {
       try {
         const res = await fetch(`${API_BASE_URL}/api/modules/${moduleId}`);
         if (res.ok) data = await res.json();
@@ -237,101 +257,129 @@ const CoursePlayer: React.FC = () => {
     }
     setModuleDetails(data);
     
-    // Get progress from the current module
-    const prog = modules[activeModuleIndex]?.progress;
-
-    // Prefer the type of the current lesson from the lessons array if it exists
-    const currentLesson = modules[activeModuleIndex]?.lessons?.[activeLessonIndex];
-    if (currentLesson) {
-      setActiveStage(currentLesson.type as LessonType);
-    } else {
-      // Fallback to legacy/dummy logic
-      if (!prog?.video_completed) setActiveStage('video');
-      else if (!prog?.theory_completed) setActiveStage('theory');
-      else setActiveStage('quiz');
-    }
-
-    if (prog?.quiz_answers?.length) setQuizAnswers(prog.quiz_answers);
-    else {
-      // Support quiz content both in the lesson and module details
-      const quizQs = currentLesson?.type === 'quiz' ? (currentLesson as any).questions : data.quiz?.questions;
-      setQuizAnswers(quizQs?.map(() => []) || []);
-    }
-
-    if (prog?.quiz_score && prog.quiz_score > 0) {
-      setQuizResult({ score: prog.quiz_score, passed: prog.quiz_score >= 60 });
+    // Fetch dynamic questions count from the current chapter topic
+    const activeChapter = CURRICULUM_DATA[activeModuleIndex] || CURRICULUM_DATA[activeModuleIndex % CURRICULUM_DATA.length];
+    const quizTopic = activeChapter?.topics?.find(t => t.type === 'graded_quiz');
+    const gradedQs = quizTopic?.graded || [];
+    setQuizAnswers(gradedQs.map(() => []));
+    setCurrentQuizQ(0);
+    
+    // Check if previously passed
+    const gradedIdx = activeChapter?.topics?.findIndex(t => t.type === 'graded_quiz') ?? 5;
+    if (completedSteps[`${activeModuleIndex}_${gradedIdx}`]) {
+      setQuizResult({ score: 100, passed: true });
     } else {
       setQuizResult(null);
     }
-    setCurrentQuizQ(0);
   };
 
   /* ── Progress Updates ── */
   const updateProgress = async (updates: any) => {
-    if (modules[activeModuleIndex]._id.startsWith('dummy-mod')) {
+    if (modules[activeModuleIndex]?._id?.startsWith('dummy-mod')) {
       const updated = [...modules];
       const cur = updated[activeModuleIndex];
       if (!cur.progress) cur.progress = { status: 'unlocked', theory_completed: false, video_completed: false, quiz_score: 0, quiz_answers: [], project_status: 'pending', review_status: 'pending' };
       Object.assign(cur.progress, updates);
-      if (updates.status === 'completed' || updates.project_status === 'submitted' || updates.quiz_score >= 60) {
+      if (updates.status === 'completed' || updates.quiz_score >= 70) {
         cur.progress.status = 'completed';
-        if (activeModuleIndex + 1 < updated.length) {
-          if (!updated[activeModuleIndex + 1].progress) updated[activeModuleIndex + 1].progress = {} as any;
-          updated[activeModuleIndex + 1].progress!.status = 'unlocked';
-        }
       }
       setModules(updated);
       return;
     }
-    const res = await fetch(`${API_BASE_URL}/api/progress/update`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: user?.uid, course_id: resolvedCourseId, module_id: modules[activeModuleIndex]._id, updates })
-    });
-    const data = await res.json();
-    fetchModules();
-    return data;
+    
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/progress/update`, {
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          user_id: user?.uid, 
+          course_id: resolvedCourseId, 
+          module_id: modules[activeModuleIndex]?._id, 
+          updates 
+        })
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      console.warn("Failed to sync progress with database, persisting locally.", err);
+    }
   };
 
-  /* ── Quiz ── */
+  const activeChapterData = CURRICULUM_DATA[activeModuleIndex] || CURRICULUM_DATA[activeModuleIndex % CURRICULUM_DATA.length];
+  const activeTopicData = activeChapterData?.topics?.[activeLessonIndex];
+
+  /* ── Graded Quiz Submission ── */
   const handleQuizSubmit = async () => {
-    let score = 0;
-    let data: any = {};
+    const questions = activeTopicData?.graded || [];
     
-    const currentLesson = modules[activeModuleIndex]?.lessons?.[activeLessonIndex];
-    const embeddedQuestions = currentLesson?.type === 'quiz' ? currentLesson.questions : null;
+    let correct = 0;
+    questions.forEach((q: any, i: number) => {
+      const sel = quizAnswers[i] || [];
+      if (sel.includes(q.correct)) {
+        correct++;
+      }
+    });
 
-    if (embeddedQuestions) {
-      let correct = 0;
-      const qs = embeddedQuestions || moduleDetails?.quiz?.questions || [];
-      qs.forEach((q: any, i: number) => {
-        const sel = quizAnswers[i] || [];
-        const ans = q.correct_answers || [];
-        if (sel.length === ans.length && sel.every((v: number) => ans.includes(v))) correct++;
+    const score = Math.round((correct / Math.max(questions.length, 1)) * 100);
+    const passed = score >= 70; // 70% threshold
+
+    setQuizResult({ score, passed });
+
+    if (passed) {
+      // Mark as complete in completedSteps
+      const stepKey = `${activeModuleIndex}_${activeLessonIndex}`;
+      const newCompleted = { ...completedSteps, [stepKey]: true };
+      setCompletedSteps(newCompleted);
+
+      // Save to database progress
+      const numLessons = modules[activeModuleIndex]?.lessons?.length || 6;
+      const completedIndices: string[] = [];
+      for (let i = 0; i < numLessons; i++) {
+        if (newCompleted[`${activeModuleIndex}_${i}`]) {
+          completedIndices.push(i.toString());
+        }
+      }
+
+      await updateProgress({
+        quiz_score: score,
+        quiz_answers: quizAnswers,
+        completed_lessons: completedIndices,
+        status: completedIndices.length === numLessons ? 'completed' : 'unlocked'
       });
-      score = Math.round((correct / Math.max(qs.length, 1)) * 100);
-      data = { score, passed: score >= 60 };
-      
-      await updateProgress({ quiz_score: score, quiz_answers: quizAnswers });
-    } else {
-      const res = await fetch(`${API_BASE_URL}/api/quiz/submit`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user?.uid, module_id: modules[activeModuleIndex]._id, answers: quizAnswers })
-      });
-      data = await res.json();
-      score = data.score;
+
+      // Show module completion prompt if all lessons are complete
+      if (completedIndices.length === numLessons) {
+        setTimeout(() => {
+          setCompletionPrompt({
+            open: true,
+            nextIndex: activeModuleIndex + 1 < modules.length ? activeModuleIndex + 1 : -1,
+            moduleName: modules[activeModuleIndex].title
+          });
+        }, 1200);
+      }
     }
-    setQuizResult(data);
+  };
+
+  /* ── Sequential Topic Unlocking check ── */
+  const isLessonLocked = (modIdx: number, lessonIdx: number): boolean => {
+    if (modIdx === -3) {
+      return !completedSteps['capstone'];
+    }
+    if (modIdx === -1) {
+      return !modules.every((_, idx) => isModuleComplete(idx));
+    }
     
-    // Automatically mark as complete if passed
-    if (data.passed) {
-      setTimeout(() => {
-        handleMarkComplete();
-      }, 800);
+    // Chapter locking
+    if (modIdx > 0 && !isModuleComplete(modIdx - 1)) {
+      return true;
     }
-
-    if (modules[activeModuleIndex]._id.startsWith('dummy-mod')) {
-       setTimeout(() => updateProgress({ quiz_score: score, quiz_answers: quizAnswers }), 500);
+    
+    // Linear topic unlocking
+    if (lessonIdx > 0) {
+      return !completedSteps[`${modIdx}_${lessonIdx - 1}`];
     }
+    
+    return false;
   };
 
   /* ── Navigation ── */
@@ -347,6 +395,12 @@ const CoursePlayer: React.FC = () => {
   const goToNextLesson = () => {
     if (currentFlatIndex >= flatLessons.length - 1) return;
     const next = flatLessons[currentFlatIndex + 1];
+    
+    if (isLessonLocked(next.moduleIndex, next.lessonIndex)) {
+      alert("This topic is locked. You must complete the current topic first to unlock it!");
+      return;
+    }
+
     setActiveModuleIndex(next.moduleIndex);
     setActiveLessonIndex(next.lessonIndex);
     setActiveStage(next.type);
@@ -363,114 +417,76 @@ const CoursePlayer: React.FC = () => {
     setExpandedModules(s);
   };
 
-  const selectLesson = (modIdx: number, type: LessonType) => {
-    const mod = modules[modIdx];
-    setActiveModuleIndex(modIdx);
-    setActiveStage(type);
-    setSidebarOpen(false);
-    scrollContentTop();
-    const s = new Set(expandedModules);
-    s.add(modIdx);
-    setExpandedModules(s);
-  };
-
   const handleMarkComplete = async () => {
-    // 1. Regular Module Lessons
-    if (activeModuleIndex >= 0) {
-      const curMod = modules[activeModuleIndex];
-      if (!curMod) return;
+    const stepKey = `${activeModuleIndex}_${activeLessonIndex}`;
+    const newCompleted = { ...completedSteps, [stepKey]: true };
+    setCompletedSteps(newCompleted);
 
-      const updatedLessons = Array.from(new Set([...(curMod.progress?.completed_lessons || []), activeLessonIndex.toString()]));
+    const curMod = modules[activeModuleIndex];
+    if (curMod) {
+      const numLessons = curMod.lessons?.length || 6;
+      const completedIndices: string[] = [];
+      for (let i = 0; i < numLessons; i++) {
+        if (newCompleted[`${activeModuleIndex}_${i}`]) {
+          completedIndices.push(i.toString());
+        }
+      }
+      
+      const isFinishingModule = completedIndices.length === numLessons;
       const updates: any = {
-        completed_lessons: updatedLessons,
-        status: (updatedLessons.length >= (curMod.lessons?.length || 0)) ? 'completed' : 'unlocked'
+        completed_lessons: completedIndices,
+        status: isFinishingModule ? 'completed' : 'unlocked'
       };
 
-      if (activeStage === 'video') updates.video_completed = true;
-      if (activeStage === 'theory' || activeStage === 'text') updates.theory_completed = true;
-      
-      const resData = await updateProgress(updates);
-      const newBadges = resData?.new_badges || [];
-      const latestBadge = newBadges.length > 0 ? newBadges[0] : null;
+      if (activeStage === 'overview') updates.video_completed = true;
+      if (activeStage === 'text' || activeStage === 'theory') updates.theory_completed = true;
 
-      const isFinishingModule = updatedLessons.length >= (curMod.lessons?.length || 0);
+      await updateProgress(updates);
+
       if (isFinishingModule) {
         setCompletionPrompt({
           open: true,
-          nextIndex: activeModuleIndex + 1 < modules.length ? activeModuleIndex + 1 : -2,
-          moduleName: curMod.title,
-          earnedBadge: latestBadge
+          nextIndex: activeModuleIndex + 1 < modules.length ? activeModuleIndex + 1 : -1,
+          moduleName: curMod.title
         });
-        return;
-      }
-    } 
-    // 2. Capstone Project
-    else if (activeModuleIndex === -1) {
-      if (!githubLink) {
-        alert("Please provide your GitHub repository link before marking as complete.");
-        return;
-      }
-      const resData = await updateProgress({ project_status: 'submitted', github_link: githubLink, deployed_link: deployedLink });
-      const newBadges = resData?.new_badges || [];
-      if (newBadges.length > 0) {
-        setCompletionPrompt({ open: true, nextIndex: -2, moduleName: 'Capstone Project', earnedBadge: newBadges[0] });
-        return;
-      }
-    }
-    // 3. Final Assessment
-    else if (activeModuleIndex === -2) {
-      if (!quizResult?.passed) {
-        alert("You must pass the Final Assessment before marking it as complete.");
-        return;
-      }
-      const resData = await updateProgress({ final_assessment_passed: true });
-      const newBadges = resData?.new_badges || [];
-      if (newBadges.length > 0) {
-        setCompletionPrompt({ open: true, nextIndex: -3, moduleName: 'Final Assessment', earnedBadge: newBadges[0] });
         return;
       }
     }
 
-    // Auto transition
     if (currentFlatIndex < flatLessons.length - 1) {
       goToNextLesson();
     }
   };
 
   const isLessonComplete = (modIdx: number, type: LessonType, lessonIdx: number): boolean => {
-    if (modIdx === -1) return courseData?.progress?.project_status === 'submitted';
-    if (modIdx === -2) return courseData?.progress?.final_assessment_passed || quizResult?.passed;
+    if (modIdx === -1) return !!completedSteps['capstone'];
     if (modIdx === -3) return false;
-
-    const p = modules[modIdx]?.progress;
-    if (!p) return false;
-    
-    // Check per-lesson completion if available
-    if (p.completed_lessons?.includes(lessonIdx.toString())) return true;
-    
-    // Legacy fallback
-    if (type === 'video') return !!p.video_completed;
-    if (type === 'theory' || type === 'text') return !!p.theory_completed;
-    return (p.quiz_score || 0) > 0;
+    return !!completedSteps[`${modIdx}_${lessonIdx}`];
   };
 
   const isModuleComplete = (modIdx: number): boolean => {
-    if (modIdx < 0) return false;
-    const mod = modules[modIdx];
-    if (!mod) return false;
-    if (mod.lessons && mod.lessons.length > 0) {
-      return mod.lessons.every((les, idx) => isLessonComplete(modIdx, les.type as LessonType, idx));
-    }
-    return mod.progress?.status === 'completed' || getModuleProgress(mod) >= 100;
+    if (modIdx < 0 || !modules[modIdx]) return false;
+    const lessons = modules[modIdx].lessons || [];
+    if (!lessons.length) return false;
+    return lessons.every((_, idx) => !!completedSteps[`${modIdx}_${idx}`]);
+  };
+
+  const getModuleProgressPercent = (modIdx: number): number => {
+    if (modIdx < 0 || !modules[modIdx]) return 0;
+    const lessons = modules[modIdx].lessons || [];
+    if (!lessons.length) return 0;
+    let completed = 0;
+    lessons.forEach((_, idx) => {
+      if (completedSteps[`${modIdx}_${idx}`]) completed++;
+    });
+    return Math.round((completed / lessons.length) * 100);
   };
 
   const isCurrentLessonComplete = isLessonComplete(activeModuleIndex, activeStage, activeLessonIndex);
-  const currentModule = modules[activeModuleIndex];
   
-  // Calculate more granular overall progress by checking total completed units across all steps
+  // Dynamic Course Completion Progress Bar
   const overallProgress = (() => {
     if (!flatLessons.length) return 0;
-    // Don't count the 'result' page in the total or completed count
     const trackableLessons = flatLessons.filter(l => l.type !== 'result');
     if (!trackableLessons.length) return 0;
     
@@ -484,22 +500,30 @@ const CoursePlayer: React.FC = () => {
     return Math.round((completedCount / trackableLessons.length) * 100);
   })();
 
+  const currentModule = modules[activeModuleIndex];
+  
   const currentLessonTitle = currentModule
     ? currentModule.lessons?.[activeLessonIndex]?.title || `${currentModule.title} — ${getLessonLabel(activeStage)}`
-    : 'Loading...';
+    : activeStage === 'capstone'
+      ? 'Mini Project Submission'
+      : activeStage === 'result'
+        ? 'Course Certification'
+        : 'Loading...';
 
-  /* ═══════ Render ═══════ */
-  // Remove the hardcoded blocker to allow custom courses to load content from MongoDB
-  /* 
-  if (courseId && !courseId.toLowerCase().includes('generative-ai')) {
-    ...
-  }
-  */
+  const activeContentDb = modules.length > 0 && activeModuleIndex >= 0
+    ? {
+        overview: activeTopicData?.content || `### ${activeTopicData?.title}\n\nNo overview content loaded.`,
+        reading: activeTopicData?.content || `### ${activeTopicData?.title}\n\nNo reading content loaded.`,
+        practice: activeTopicData?.practice || [],
+        graded: activeTopicData?.graded || [],
+        resources: []
+      }
+    : null;
 
   if (loading) return (
     <div className="cp-loading">
       <div className="cp-spinner" />
-      <span className="cp-loading-text">Loading course...</span>
+      <span className="cp-loading-text">Loading course modules...</span>
     </div>
   );
 
@@ -522,7 +546,7 @@ const CoursePlayer: React.FC = () => {
       {/* ══════ LEFT SIDEBAR ══════ */}
       <aside className={`cp-sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="cp-sidebar-header">
-          <button className="cp-sidebar-back" onClick={() => navigate('/learn/courses')}>
+          <button className="cp-sidebar-back" onClick={() => navigate('/dashboard/my-courses')}>
             <ChevronLeft size={16} /> Back to courses
           </button>
           <div className="cp-sidebar-title-row">
@@ -540,18 +564,14 @@ const CoursePlayer: React.FC = () => {
           {modules.map((mod, modIdx) => {
             const isExpanded = expandedModules.has(modIdx);
             
-            // Enforce sequential locking: First module is unlocked, others require previous to be completed
+            // Enforce Coursera sequential module locking
             let isLocked = false;
             if (modIdx > 0) {
-              const prevMod = modules[modIdx - 1];
-              if (prevMod.progress?.status !== 'completed' && getModuleProgress(prevMod) < 100) {
-                isLocked = true;
-              }
+              isLocked = !isModuleComplete(modIdx - 1);
             }
             
             const isCompleted = isModuleComplete(modIdx);
-            const modProgress = getModuleProgress(mod);
-            const lessons: LessonType[] = ['video', 'theory', 'quiz'];
+            const modProgress = getModuleProgressPercent(modIdx);
 
             return (
               <div key={mod._id} className="cp-module-group" style={{ opacity: isLocked ? 0.45 : 1 }}>
@@ -563,7 +583,7 @@ const CoursePlayer: React.FC = () => {
                     <div className="cp-module-info">
                       <div className="cp-module-name">{mod.title}</div>
                       <div className="cp-module-meta">
-                        {`${mod.estimated_time} · 3 lessons`}
+                        {`${mod.estimated_time || '1 hour'} · ${mod.lessons?.length || 6} steps`}
                       </div>
                     </div>
                   </div>
@@ -581,13 +601,19 @@ const CoursePlayer: React.FC = () => {
                     {mod.lessons.map((les, lessonIdx) => {
                       const isActive = modIdx === activeModuleIndex && activeLessonIndex === lessonIdx;
                       const type = les.type as LessonType;
-                      const done = mod.progress?.completed_lessons?.includes(lessonIdx.toString());
-                      const Icon = type === 'video' ? Play : (type === 'text' || type === 'theory') ? FileText : type === 'quiz' ? HelpCircle : AlignLeft;
+                      const done = !!completedSteps[`${modIdx}_${lessonIdx}`];
+                      const locked = isLessonLocked(modIdx, lessonIdx);
+                      const Icon = (type === 'overview' || type === 'text' || type === 'theory') ? FileText : HelpCircle;
                       return (
                         <button
                           key={lessonIdx}
-                          className={`cp-lesson-item ${isActive ? 'active' : ''} ${done ? 'completed' : ''}`}
+                          className={`cp-lesson-item ${isActive ? 'active' : ''} ${done ? 'completed' : ''} ${locked ? 'locked' : ''}`}
+                          style={{ opacity: locked ? 0.5 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
                           onClick={() => {
+                            if (locked) {
+                              alert("This topic is locked. You must complete the previous topic first!");
+                              return;
+                            }
                             setActiveModuleIndex(modIdx);
                             setActiveLessonIndex(lessonIdx);
                             setActiveStage(type);
@@ -611,74 +637,68 @@ const CoursePlayer: React.FC = () => {
             );
           })}
 
-          {/* Course Conclusion Section */}
-          {(courseData?.capstone_problem || (courseData?.questions && courseData.questions.length > 0)) && (
-            <div className="cp-module-group" style={{ borderBottom: 'none', paddingBottom: 40 }}>
-                <div className="cp-sidebar-divider">Final Milestone</div>
+          {/* Final Milestone Section */}
+          <div className="cp-module-group" style={{ borderBottom: 'none', paddingBottom: 40 }}>
+            <div className="cp-sidebar-divider">Final Milestone</div>
+            
+            {(() => {
+                const allModulesDone = modules.every((_, idx) => isModuleComplete(idx));
+                const capstoneLocked = !allModulesDone;
+                const resultLocked = !completedSteps['capstone'];
                 
-                {/* Final Assessment Lock Logic */}
-                {(() => {
-                    const allModulesDone = modules.every(m => m.progress?.status === 'completed' || getModuleProgress(m) === 100);
-                    const megaQuizLocked = !allModulesDone;
-                    
-                    // Capstone is only available AFTER Mega Quiz is passed
-                    const capstoneLocked = megaQuizLocked || (courseData?.questions?.length > 0 && !(courseData.progress?.final_assessment_passed || quizResult?.passed));
-                    
-                    return (
-                        <>
-                            {courseData?.questions && courseData.questions.length > 0 && (
-                                <button 
-                                  className={`cp-lesson-item ${activeStage === 'final_assessment' ? 'active' : ''} ${megaQuizLocked ? 'locked' : ''} ${isLessonComplete(-2, 'final_assessment', -2) ? 'completed' : ''}`} 
-                                  onClick={() => { if(!megaQuizLocked) { setActiveModuleIndex(-2); setActiveStage('final_assessment'); setSidebarOpen(false); scrollContentTop(); } }}
-                                  style={{ paddingLeft: 20, opacity: megaQuizLocked ? 0.4 : 1 }}
-                                >
-                                    {megaQuizLocked ? <ShieldAlert size={14} className="cp-lesson-icon" /> : <Trophy size={16} className="cp-lesson-icon text-yellow-500" />}
-                                    <span className="cp-lesson-name">Final Assessment</span>
-                                    {isLessonComplete(-2, 'final_assessment', -2) ? (
-                                        <div className="cp-lesson-check done" style={{ marginLeft: 'auto' }}><CheckCircle2 size={10} /></div>
-                                    ) : megaQuizLocked ? (
-                                        <span className="text-[9px] uppercase font-semibold text-white/30 ml-auto">Locked</span>
-                                    ) : (
-                                        <div className="cp-lesson-check" style={{ marginLeft: 'auto' }} />
-                                    )}
-                                </button>
+                return (
+                    <>
+                        <button 
+                          className={`cp-lesson-item ${activeStage === 'capstone' ? 'active' : ''} ${capstoneLocked ? 'locked' : ''} ${completedSteps['capstone'] ? 'completed' : ''}`} 
+                          onClick={() => { 
+                            if (!capstoneLocked) { 
+                              setActiveModuleIndex(-1); 
+                              setActiveStage('capstone'); 
+                              setSidebarOpen(false); 
+                              scrollContentTop(); 
+                            } else {
+                              alert("Please complete and pass all course modules first!");
+                            }
+                          }}
+                          style={{ paddingLeft: 20, opacity: capstoneLocked ? 0.4 : 1 }}
+                        >
+                            <Code size={16} className="cp-lesson-icon" />
+                            <span className="cp-lesson-name">Mini Project</span>
+                            {completedSteps['capstone'] ? (
+                                <div className="cp-lesson-check done" style={{ marginLeft: 'auto' }}><CheckCircle2 size={10} /></div>
+                            ) : capstoneLocked ? (
+                                <span className="text-[9px] uppercase font-semibold text-white/30 ml-auto">Locked</span>
+                            ) : (
+                                <div className="cp-lesson-check" style={{ marginLeft: 'auto' }} />
                             )}
+                        </button>
 
-                            {courseData?.capstone_problem && (
-                                <button 
-                                  className={`cp-lesson-item ${activeStage === 'capstone' ? 'active' : ''} ${capstoneLocked ? 'locked' : ''} ${isLessonComplete(-1, 'capstone', -1) ? 'completed' : ''}`} 
-                                  onClick={() => { if(!capstoneLocked) { setActiveModuleIndex(-1); setActiveStage('capstone'); setSidebarOpen(false); scrollContentTop(); } }}
-                                  style={{ paddingLeft: 20, opacity: capstoneLocked ? 0.4 : 1 }}
-                                >
-                                    <Code size={16} className="cp-lesson-icon" />
-                                    <span className="cp-lesson-name">Capstone Project</span>
-                                    {isLessonComplete(-1, 'capstone', -1) ? (
-                                        <div className="cp-lesson-check done" style={{ marginLeft: 'auto' }}><CheckCircle2 size={10} /></div>
-                                    ) : capstoneLocked ? (
-                                        <span className="text-[9px] uppercase font-semibold text-white/30 ml-auto">Finish Quiz First</span>
-                                    ) : (
-                                        <div className="cp-lesson-check" style={{ marginLeft: 'auto' }} />
-                                    )}
-                                </button>
-                            )}
-                        </>
-                    );
-                })()}
-                
-                <button 
-                  className={`cp-lesson-item ${activeStage === 'result' ? 'active' : ''}`} 
-                  onClick={() => { setActiveModuleIndex(-3); setActiveStage('result'); setSidebarOpen(false); scrollContentTop(); }}
-                  style={{ paddingLeft: 20 }}
-                >
-                    <CheckCircle2 size={16} className="cp-lesson-icon" />
-                    <span className="cp-lesson-name">Completion</span>
-                </button>
-            </div>
-          )}
+                        <button 
+                          className={`cp-lesson-item ${activeStage === 'result' ? 'active' : ''} ${resultLocked ? 'locked' : ''}`} 
+                          onClick={() => { 
+                            if (!resultLocked) { 
+                              setActiveModuleIndex(-3); 
+                              setActiveStage('result'); 
+                              setSidebarOpen(false); 
+                              scrollContentTop(); 
+                            } else {
+                              alert("Submit your Mini Project first to graduate!");
+                            }
+                          }}
+                          style={{ paddingLeft: 20, opacity: resultLocked ? 0.4 : 1 }}
+                        >
+                            <Award size={16} className="cp-lesson-icon" />
+                            <span className="cp-lesson-name">Completion</span>
+                            {resultLocked && <span className="text-[9px] uppercase font-semibold text-white/30 ml-auto">Locked</span>}
+                        </button>
+                    </>
+                );
+            })()}
+          </div>
         </div>
       </aside>
 
-      {/* ══════ MAIN + RIGHT ══════ */}
+      {/* ══════ MAIN CONTENT ══════ */}
       <div className="cp-main">
         {/* Top Bar */}
         <div className="cp-topbar">
@@ -689,7 +709,7 @@ const CoursePlayer: React.FC = () => {
             <span className="cp-topbar-lesson-title">{currentLessonTitle}</span>
           </div>
           <div className="cp-topbar-right">
-            {activeStage !== 'quiz' && (
+            {(activeStage === 'overview' || activeStage === 'text' || activeStage === 'theory') && (
               <button
                 className={`cp-topbar-btn ${isCurrentLessonComplete ? 'completed-btn' : 'primary'}`}
                 onClick={handleMarkComplete}
@@ -702,346 +722,369 @@ const CoursePlayer: React.FC = () => {
           </div>
         </div>
 
-        {/* Content + Right Sidebar Wrapper */}
+        {/* Content + Right Tools Drawer */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-          {/* Main Content Area */}
+          {/* Main Stage */}
           <div className="cp-content-area" ref={contentRef} style={{ flex: 1 }}>
             <AnimatePresence mode="wait">
-              {/* ── VIDEO ── */}
-              {activeStage === 'video' && (
-                <motion.div key="video" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <div className="cp-video-container">
-                    {(() => {
-                      const vurl = currentModule?.lessons?.[activeLessonIndex]?.video_url || moduleDetails?.video?.video_url;
-                      if (!vurl) return (
-                        <div className="cp-video-unavailable"><span>Video content unavailable</span></div>
-                      );
+              
+              {/* ── 1. MODULE OVERVIEW ── */}
+              {activeStage === 'overview' && activeContentDb && (
+                <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="cp-text-lesson">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
+                    components={{
+                      h1: ({ children }) => <h1 className="text-3xl font-extrabold text-gray-900 mb-6">{children}</h1>,
+                      h2: ({ children }) => <h2 className="text-2xl font-bold text-gray-800 border-b pb-2 mb-4 mt-8">{children}</h2>,
+                      h3: ({ children }) => <h3 className="text-xl font-bold text-[#7C3AED] mb-4 mt-6">{children}</h3>,
+                      p: ({ children }) => <p className="text-base text-gray-600 leading-relaxed mb-4">{children}</p>,
+                      ul: ({ children }) => <ul className="list-disc pl-6 mb-6 space-y-2">{children}</ul>,
+                      li: ({ children }) => <li className="text-base text-gray-700 font-medium">{children}</li>
+                    }}
+                  >
+                    {activeContentDb.overview}
+                  </ReactMarkdown>
+                  
+                  {!isCurrentLessonComplete && (
+                    <div style={{ marginTop: 40, paddingTop: 30, borderTop: '1px solid #e5e7eb' }}>
+                      <button className="cp-bottom-nav-btn next" style={{ width: '100%', justifyContent: 'center', padding: '16px', borderRadius: '12px' }} onClick={handleMarkComplete}>
+                        <CheckCircle2 size={18} />
+                        I'm Ready! Mark Complete & Start Reading
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              )}
 
-                      const getEmbedUrl = (url: string) => {
-                        if (!url) return '';
-                        
-                        // Local/Direct File or Data URL
-                        if (url.startsWith('data:video') || url.match(/\.(mp4|webm|ogg|mov)$/i)) {
-                          return url;
-                        }
-
-                        // YouTube
-                        const ytMatch = url.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?(.+)/);
-                        if (ytMatch && ytMatch[1]) {
-                          const id = ytMatch[1].split('&')[0];
-                          return `https://www.youtube.com/embed/${id}`;
-                        }
-
-                        // Vimeo
-                        const vimeoMatch = url.match(/(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(.+)/);
-                        if (vimeoMatch && vimeoMatch[1]) {
-                          return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
-                        }
-
-                        // Loom
-                        const loomMatch = url.match(/(?:https?:\/\/)?(?:www\.)?loom\.com\/share\/(.+)/);
-                        if (loomMatch && loomMatch[1]) {
-                          return `https://www.loom.com/embed/${loomMatch[1]}`;
-                        }
-
-                        // Fallback
-                        return url;
-                      };
-
-                      const embedUrl = getEmbedUrl(vurl);
-                      const isVideoTag = vurl.startsWith('data:video') || vurl.match(/\.(mp4|webm|ogg|mov)$/i);
-                      
-                      if (isVideoTag) {
-                        return (
-                          <video 
-                            src={embedUrl} 
-                            controls 
-                            className="w-full h-full rounded-xl"
-                            style={{ maxWidth: '100%', height: 'auto', maxHeight: '100%', borderRadius: '12px' }}
-                          />
+              {/* ── 2. READING MATERIAL ── */}
+              {(activeStage === 'text' || activeStage === 'theory') && activeContentDb && (
+                <motion.div key="reading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="cp-text-lesson">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
+                    components={{
+                      h1: ({ children }) => <h1 className="text-3xl font-extrabold text-gray-900 mb-6">{children}</h1>,
+                      h2: ({ children }) => <h2 className="text-2xl font-bold text-gray-800 border-b pb-2 mb-4 mt-8">{children}</h2>,
+                      h3: ({ children }) => <h3 className="text-xl font-bold text-[#7C3AED] mb-4 mt-6">{children}</h3>,
+                      p: ({ children }) => <p className="text-base text-gray-600 leading-relaxed mb-4">{children}</p>,
+                      blockquote: ({ children }) => (
+                        <blockquote className="border-l-4 border-[#7C3AED] bg-purple-50 p-4 my-6 italic text-gray-700 rounded-r-xl">
+                          {children}
+                        </blockquote>
+                      ),
+                      pre: ({ children }) => <div className="my-6 rounded-xl overflow-hidden shadow-lg border border-gray-200">{children}</div>,
+                      code({ node, inline, className, children, ...props }: any) {
+                        const match = /language-(\w+)/.exec(className || '');
+                        return !inline && match ? (
+                          <SyntaxHighlighter
+                            style={atomDark}
+                            language={match[1]}
+                            PreTag="div"
+                            {...props}
+                            customStyle={{ margin: 0, padding: '20px', fontSize: '14px', borderRadius: '0' }}
+                          >
+                            {String(children).replace(/\n$/, '')}
+                          </SyntaxHighlighter>
+                        ) : (
+                          <code className="bg-gray-100 text-[#7C3AED] px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+                            {children}
+                          </code>
                         );
-                      }
-                      
+                      },
+                      ul: ({ children }) => <ul className="list-disc pl-6 mb-6 space-y-2">{children}</ul>,
+                      li: ({ children }) => <li className="text-base text-gray-700">{children}</li>
+                    }}
+                  >
+                    {activeContentDb.reading}
+                  </ReactMarkdown>
+
+                  {!isCurrentLessonComplete && (
+                    <div style={{ marginTop: 40, paddingTop: 30, borderTop: '1px solid #e5e7eb' }}>
+                      <button className="cp-bottom-nav-btn next" style={{ width: '100%', justifyContent: 'center', padding: '16px', borderRadius: '12px' }} onClick={handleMarkComplete}>
+                        <CheckCircle2 size={18} />
+                        Finished Reading. Mark Complete & Move to Practice
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
+              {/* ── 3. PRACTICE QUIZ ── */}
+              {activeStage === 'practice_quiz' && activeContentDb && (
+                <motion.div key="practice" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <div className="cp-quiz-container">
+                    <div className="cp-quiz-header">
+                      <h2>Practice Quiz: Instant Feedback</h2>
+                      <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
+                        Test your conceptual knowledge. Answers provide real-time explanations to help you learn.
+                      </p>
+                    </div>
+
+                    {activeContentDb.practice.map((q: any, qIdx: number) => {
+                      const selectedIdx = practiceAnswers[`${activeModuleIndex}_${qIdx}`];
+                      const hasSelected = selectedIdx !== undefined;
+
                       return (
-                        <iframe
-                          src={embedUrl}
-                          title="Course Video"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                          referrerPolicy="strict-origin-when-cross-origin"
-                          allowFullScreen
-                        />
+                        <div key={qIdx} className="cp-quiz-question" style={{ marginBottom: 40, borderBottom: '1px solid #f3f4f6', paddingBottom: 24 }}>
+                          <div className="cp-quiz-question-text" style={{ fontSize: 17, fontWeight: 700, color: '#111827' }}>
+                            {qIdx + 1}. {q.question}
+                          </div>
+                          
+                          <div className="cp-quiz-options" style={{ marginTop: 16 }}>
+                            {q.options.map((opt: string, optIdx: number) => {
+                              const isSelected = selectedIdx === optIdx;
+                              const isCorrect = optIdx === q.correct;
+
+                              let btnClass = "cp-quiz-option";
+                              if (hasSelected) {
+                                if (isSelected) {
+                                  btnClass += isCorrect ? " correct" : " incorrect";
+                                } else if (isCorrect) {
+                                  btnClass += " show-correct";
+                                }
+                              } else {
+                                btnClass += " hover:bg-slate-50";
+                              }
+
+                              return (
+                                <button
+                                  key={optIdx}
+                                  className={btnClass}
+                                  disabled={hasSelected}
+                                  onClick={() => {
+                                    setPracticeAnswers(prev => ({
+                                      ...prev,
+                                      [`${activeModuleIndex}_${qIdx}`]: optIdx
+                                    }));
+                                  }}
+                                  style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px', marginBottom: '8px' }}
+                                >
+                                  <div className="cp-quiz-radio">
+                                    {isSelected && <div className="cp-quiz-radio-dot" />}
+                                  </div>
+                                  <span style={{ fontSize: 14, fontWeight: 500 }}>{opt}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Instant Feedback Explanation Box */}
+                          {hasSelected && (
+                            <div 
+                              style={{ 
+                                marginTop: 16, 
+                                padding: 16, 
+                                borderRadius: 12, 
+                                background: selectedIdx === q.correct ? '#ecfdf5' : '#fef2f2',
+                                border: selectedIdx === q.correct ? '1px solid #a7f3d0' : '1px solid #fecaca',
+                                color: selectedIdx === q.correct ? '#065f46' : '#991b1b',
+                                fontSize: 14,
+                                lineHeight: 1.5
+                              }}
+                            >
+                              <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {selectedIdx === q.correct ? '✓ Correct Answer' : '✗ Incorrect'}
+                              </div>
+                              <p>{q.explanation}</p>
+                            </div>
+                          )}
+                        </div>
                       );
+                    })}
+
+                    {/* Completion Action */}
+                    {(() => {
+                      const allAnswered = activeContentDb.practice.every(
+                        (_: any, qIdx: number) => practiceAnswers[`${activeModuleIndex}_${qIdx}`] !== undefined
+                      );
+                      const done = !!completedSteps[`${activeModuleIndex}_2`];
+
+                      return allAnswered ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+                          <button
+                            className="cp-bottom-nav-btn next"
+                            style={{ padding: '16px 40px', fontSize: 15, borderRadius: 12 }}
+                            onClick={() => {
+                              if (!done) {
+                                setCompletedSteps(prev => ({ ...prev, [`${activeModuleIndex}_2`]: true }));
+                              }
+                              goToNextLesson();
+                            }}
+                          >
+                            Practice Complete! Go to Graded Assignment
+                            <ChevronRight size={18} />
+                          </button>
+                        </div>
+                      ) : null;
                     })()}
                   </div>
-                  <div className="cp-lesson-info">
-                    <h1>{currentModule?.title || 'Course Lesson'} — Video Lesson</h1>
-                    <p>Watch this video lecture to understand the core concepts covered in this module. Take notes using the panel on the right for better retention.</p>
-                    
-                    {!isCurrentLessonComplete && (
-                        <div style={{ marginTop: 32, paddingTop: 32, borderTop: '1px solid #e5e7eb' }}>
-                            <button 
-                                className="cp-bottom-nav-btn next" 
-                                style={{ width: '100%', justifyContent: 'center', padding: '16px', borderRadius: '14px' }}
-                                onClick={handleMarkComplete}
-                            >
-                                <CheckCircle2 size={18} />
-                                I've finished watching. Mark Complete & Continue
-                            </button>
-                        </div>
-                    )}
-                  </div>
                 </motion.div>
               )}
 
-              {/* ── TEXT / THEORY ── */}
-              {(activeStage === 'theory' || activeStage === 'text' || activeStage === 'code') && (
-                <motion.div key="theory" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <div className="cp-text-lesson">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeRaw]}
-                      components={{
-                        h1: ({ children, ...props }) => <h1 {...props} className="text-3xl font-bold my-6">{children}</h1>,
-                        h2: ({ children, ...props }) => <h2 {...props} className="text-2xl font-bold my-5 border-b pb-2">{children}</h2>,
-                        h3: ({ children, ...props }) => <h3 {...props} className="text-xl font-bold my-4 text-[#7C3AED]">{children}</h3>,
-                        p: ({ children, ...props }) => <p {...props} className="mb-4 text-base leading-relaxed">{children}</p>,
-                        blockquote: ({ children, ...props }) => (
-                          <blockquote {...props} className="border-l-4 border-[#7C3AED] bg-purple-50 p-4 my-6 italic text-gray-700 rounded-r-xl">
-                            {children}
-                          </blockquote>
-                        ),
-                        pre: ({ children }) => <div className="my-6 rounded-xl overflow-hidden shadow-lg border border-white/10">{children}</div>,
-                        img: ({ src, alt, ...props }) => {
-                          const fullSrc = src?.startsWith('/') ? `${API_BASE_URL}${src}` : src;
-                          return (
-                            <span style={{ display: 'block' }} className="my-8 rounded-2xl overflow-hidden shadow-2xl border border-gray-100 group">
-                              <img 
-                                src={fullSrc} 
-                                alt={alt || "Course illustration"} 
-                                {...props} 
-                                className="w-full h-auto transform transition-transform group-hover:scale-[1.02] duration-500" 
-                              />
-                            </span>
-                          );
-                        },
-                        code({ node, inline, className, children, ...props }: any) {
-                          const match = /language-(\w+)/.exec(className || '');
-                          return !inline && match ? (
-                            <SyntaxHighlighter
-                              style={atomDark}
-                              language={match[1]}
-                              PreTag="div"
-                              {...props}
-                              customStyle={{ margin: 0, padding: '24px', fontSize: '14px', borderRadius: '0' }}
-                            >
-                              {String(children).replace(/\n$/, '')}
-                            </SyntaxHighlighter>
-                          ) : (
-                            <code className="bg-gray-100 text-[#7C3AED] px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
-                              {children}
-                            </code>
-                          );
-                        },
-                        table: ({ children, ...props }) => <div className="overflow-x-auto my-8 border border-gray-100 rounded-xl"><table {...props} className="w-full border-collapse">{children}</table></div>,
-                        thead: ({ children, ...props }) => <thead {...props} className="bg-gray-50 border-b-2 border-gray-100">{children}</thead>,
-                        th: ({ children, ...props }) => <th {...props} className="px-5 py-3 text-left text-xs font-black uppercase tracking-widest text-gray-500">{children}</th>,
-                        td: ({ children, ...props }) => <td {...props} className="px-5 py-4 text-sm text-gray-600 border-b border-gray-50">{children}</td>,
-                        a: ({ children, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-[#7C3AED] font-bold hover:underline decoration-2 underline-offset-4">{children}</a>,
-                        ul: ({ children, ...props }) => <ul {...props} className="list-disc pl-6 mb-6 space-y-2">{children}</ul>,
-                        ol: ({ children, ...props }) => <ol {...props} className="list-decimal pl-6 mb-6 space-y-2">{children}</ol>,
-                      }}
-                    >
-                      {currentModule?.lessons?.[activeLessonIndex]?.content || moduleDetails?.theory?.markdown_content || ''}
-                    </ReactMarkdown>
-
-                    {currentModule?.lessons?.[activeLessonIndex]?.image_url && (
-                        <div className="mt-8 rounded-2xl overflow-hidden border border-gray-100 shadow-lg">
-                            <img src={currentModule.lessons[activeLessonIndex].image_url} alt="Lesson illustration" className="w-full h-auto" />
-                        </div>
-                    )}
-
-                    {moduleDetails?.theory?.key_takeaways?.length > 0 && (
-                      <div style={{ marginTop: 40, paddingTop: 28, borderTop: '1px solid #e8e8ed' }}>
-                        <h3 style={{ color: '#111827', fontWeight: 700, marginBottom: 16 }}>Key Takeaways</h3>
-                        {moduleDetails.theory.key_takeaways.map((t: string, i: number) => (
-                          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
-                            <CheckCircle2 size={16} style={{ color: '#10b981', marginTop: 2, flexShrink: 0 }} />
-                            <span style={{ fontSize: 15, color: '#374151' }}>{t}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {!isCurrentLessonComplete && (
-                        <div style={{ marginTop: 48, paddingTop: 40, borderTop: '2px solid #f3f4f6' }}>
-                            <button 
-                                className="cp-bottom-nav-btn next" 
-                                style={{ width: '100%', justifyContent: 'center', padding: '18px', borderRadius: '16px', fontSize: 16 }}
-                                onClick={handleMarkComplete}
-                            >
-                                <CheckCircle2 size={20} />
-                                All read. Mark as Finished & Next Step
-                            </button>
-                        </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* ── QUIZ ── */}
-              {activeStage === 'quiz' && (
-                <motion.div key="quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              {/* ── 4. GRADED QUIZ / ASSIGNMENT ── */}
+              {activeStage === 'graded_quiz' && activeContentDb && (
+                <motion.div key="graded" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                   <div className="cp-quiz-container">
+                    <div className="cp-quiz-header">
+                      <div style={{ display: 'inline-flex', padding: 8, background: '#f5f3ff', borderRadius: 12, color: '#7C3AED', marginBottom: 12 }}>
+                        <ShieldAlert size={24} />
+                      </div>
+                      <h2>Graded Assignment: Module Test</h2>
+                      <p style={{ color: '#6b7280', fontSize: '13px', marginTop: '4px' }}>
+                        This assessment counts towards your final certificate. **You must score at least 70% to pass and unlock the next module.**
+                      </p>
+                    </div>
+
                     {!quizResult ? (
                       <>
-                        <div className="cp-quiz-header">
-                          <h2>Module Assessment</h2>
-                          <div className="cp-quiz-progress-text">
-                            Question {currentQuizQ + 1} of {(currentModule?.lessons?.[activeLessonIndex]?.questions || moduleDetails?.quiz?.questions || []).length}
-                          </div>
-                          <div className="cp-quiz-progress-bar">
-                            <div className="cp-quiz-progress-fill" style={{
-                              width: `${((currentQuizQ + 1) / ((currentModule?.lessons?.[activeLessonIndex]?.questions || moduleDetails?.quiz?.questions || []).length || 1)) * 100}%`
-                            }} />
-                          </div>
+                        <div style={{ background: '#f8fafc', padding: 14, borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13, color: '#475569', marginBottom: 24, display: 'flex', gap: 10, alignItems: 'center' }}>
+                          <HelpCircle size={16} />
+                          <span>Question {currentQuizQ + 1} of {activeContentDb.graded.length}</span>
                         </div>
 
-                        {(currentModule?.lessons?.[activeLessonIndex]?.questions || moduleDetails?.quiz?.questions || []).map((q: any, qIdx: number) => (
-                          <div key={qIdx} style={{ display: qIdx === currentQuizQ ? 'block' : 'none' }}>
-                            <div className="cp-quiz-question">
-                              <div className="cp-quiz-question-text">{q.question}</div>
-                              <div className="cp-quiz-options">
+                        {activeContentDb.graded.map((q: any, qIdx: number) => {
+                          const isCurrent = qIdx === currentQuizQ;
+                          const selected = quizAnswers[qIdx] || [];
+
+                          return isCurrent && (
+                            <div key={qIdx} className="cp-quiz-question">
+                              <div className="cp-quiz-question-text" style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>
+                                {qIdx + 1}. {q.question}
+                              </div>
+
+                              <div className="cp-quiz-options" style={{ marginTop: 20 }}>
                                 {q.options.map((opt: string, optIdx: number) => {
-                                  const isSelected = quizAnswers[qIdx]?.includes(optIdx);
+                                  const isSelected = selected.includes(optIdx);
+
                                   return (
                                     <button
                                       key={optIdx}
                                       className={`cp-quiz-option ${isSelected ? 'selected' : ''}`}
                                       onClick={() => {
-                                        const newAns = [...quizAnswers];
-                                        newAns[qIdx] = [optIdx];
-                                        setQuizAnswers(newAns);
+                                        const newAnswers = [...quizAnswers];
+                                        newAnswers[qIdx] = [optIdx];
+                                        setQuizAnswers(newAnswers);
                                       }}
+                                      style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px', marginBottom: '8px' }}
                                     >
                                       <div className="cp-quiz-radio">
                                         {isSelected && <div className="cp-quiz-radio-dot" />}
                                       </div>
-                                      {opt}
+                                      <span style={{ fontSize: 14, fontWeight: 500 }}>{opt}</span>
                                     </button>
                                   );
                                 })}
                               </div>
                             </div>
+                          );
+                        })}
 
-                               {(() => {
-                                  const qsCount = (currentModule?.lessons?.[activeLessonIndex]?.questions || moduleDetails?.quiz?.questions || []).length;
-                                  return (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
-                                      <button
-                                        className="cp-bottom-nav-btn"
-                                        disabled={currentQuizQ === 0}
-                                        onClick={() => setCurrentQuizQ(Math.max(0, currentQuizQ - 1))}
-                                      >
-                                        <ChevronLeft size={16} /> Previous
-                                      </button>
-                                      
-                                      {currentQuizQ < qsCount - 1 ? (
-                                        <button
-                                          className="cp-bottom-nav-btn next"
-                                          onClick={() => setCurrentQuizQ(currentQuizQ + 1)}
-                                          disabled={!quizAnswers[currentQuizQ]?.length}
-                                        >
-                                          Next <ChevronRight size={16} />
-                                        </button>
-                                      ) : (
-                                        <div className="cp-quiz-submit">
-                                          <button
-                                            onClick={handleQuizSubmit}
-                                            disabled={quizAnswers.some(a => !a?.length)}
-                                          >
-                                            Submit Answers 🚀
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                               })()}
-                          </div>
-                        ))}
+                        {/* Navigation controls */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32 }}>
+                          <button
+                            className="cp-bottom-nav-btn"
+                            disabled={currentQuizQ === 0}
+                            onClick={() => setCurrentQuizQ(currentQuizQ - 1)}
+                          >
+                            <ChevronLeft size={16} /> Previous
+                          </button>
+                          
+                          {currentQuizQ < activeContentDb.graded.length - 1 ? (
+                            <button
+                              className="cp-bottom-nav-btn next"
+                              onClick={() => setCurrentQuizQ(currentQuizQ + 1)}
+                              disabled={!quizAnswers[currentQuizQ]?.length}
+                            >
+                              Next <ChevronRight size={16} />
+                            </button>
+                          ) : (
+                            <button
+                              className="cp-bottom-nav-btn next"
+                              onClick={handleQuizSubmit}
+                              disabled={quizAnswers.some(a => !a?.length)}
+                              style={{ background: '#7C3AED', borderColor: '#7C3AED', color: '#fff', padding: '12px 30px' }}
+                            >
+                              Submit Graded Quiz 🚀
+                            </button>
+                          )}
+                        </div>
                       </>
                     ) : (
+                      // Quiz results
                       <div>
-                        <div className={`cp-quiz-result ${quizResult.passed ? 'passed' : 'failed'}`}>
-                          <div className="cp-quiz-result-score">{Math.round(quizResult.score)}%</div>
-                          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
-                            {quizResult.passed ? 'Assessment Passed!' : 'Did not pass'}
+                        <div className={`cp-quiz-result ${quizResult.passed ? 'passed' : 'failed'}`} style={{ padding: '36px 20px', textAlign: 'center', borderRadius: 16 }}>
+                          <div className="cp-quiz-result-score" style={{ fontSize: 48, fontWeight: 900, marginBottom: 8 }}>
+                            {quizResult.score}%
                           </div>
-                          <p style={{ fontSize: 14, color: '#6b7280' }}>
+                          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, color: quizResult.passed ? '#065f46' : '#991b1b' }}>
+                            {quizResult.passed ? '✓ Module Assessment Passed!' : '✗ Requirements Not Met'}
+                          </div>
+                          <p style={{ fontSize: 14, color: '#4b5563', maxWidth: 480, margin: '0 auto' }}>
                             {quizResult.passed
-                              ? 'Congratulations! Great work! You can proceed to the next module.'
-                              : 'You need 60% to pass. Review the material and try again.'}
+                              ? 'Excellent! You successfully unlocked progress. You can now advance to the next step.'
+                              : 'You need at least 70% to pass. Take some time to review the reading text and try again!'}
                           </p>
                         </div>
 
-                        {/* Show answers with feedback */}
-                        <div style={{ marginTop: 32 }}>
-                          {(currentModule?.lessons?.[activeLessonIndex]?.questions || moduleDetails?.quiz?.questions || []).map((q: any, qIdx: number) => {
+                        {/* Show corrections */}
+                        <div style={{ marginTop: 36 }}>
+                          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20 }}>Question Breakdown:</h3>
+                          {activeContentDb.graded.map((q: any, qIdx: number) => {
                             const selected = quizAnswers[qIdx] || [];
+                            const correctIdx = q.correct;
+                            const isCorrect = selected.includes(correctIdx);
+
                             return (
-                              <div key={qIdx} style={{ marginBottom: 28 }}>
-                                <div style={{ fontSize: 15, fontWeight: 600, color: '#111827', marginBottom: 12 }}>
+                              <div key={qIdx} style={{ marginBottom: 24, borderBottom: '1px solid #f3f4f6', paddingBottom: 16 }}>
+                                <div style={{ fontSize: 15, fontWeight: 600, color: '#1f2937', marginBottom: 12 }}>
                                   {qIdx + 1}. {q.question}
                                 </div>
+
                                 {q.options.map((opt: string, optIdx: number) => {
-                                  const isSel = selected.includes(optIdx);
-                                  const isCorrect = q.correct_answers.includes(optIdx);
-                                  let cls = 'cp-quiz-option';
-                                  if (isSel && isCorrect) cls += ' correct';
-                                  else if (isSel && !isCorrect) cls += ' incorrect';
-                                  else if (isCorrect) cls += ' show-correct';
+                                  const wasSelected = selected.includes(optIdx);
+                                  const isRight = optIdx === correctIdx;
+
+                                  let optionClass = "cp-quiz-option";
+                                  if (wasSelected) {
+                                    optionClass += isRight ? " correct" : " incorrect";
+                                  } else if (isRight) {
+                                    optionClass += " show-correct";
+                                  }
+
                                   return (
-                                    <div key={optIdx} className={cls} style={{ cursor: 'default', marginBottom: 6 }}>
+                                    <div key={optIdx} className={optionClass} style={{ cursor: 'default', padding: '12px 18px', marginBottom: '6px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
                                       <div className="cp-quiz-radio">
-                                        {(isSel || isCorrect) && <div className="cp-quiz-radio-dot" />}
+                                        {(wasSelected || isRight) && <div className="cp-quiz-radio-dot" />}
                                       </div>
-                                      {opt}
+                                      <span>{opt}</span>
                                     </div>
                                   );
                                 })}
-                                <div className="cp-quiz-explanation">{q.explanation}</div>
+
+                                {quizResult.passed && <div className="cp-quiz-explanation" style={{ marginTop: 10, fontSize: 13, background: '#faf5ff', border: 'none', color: '#6b21a8' }}>{q.explanation}</div>}
                               </div>
                             );
                           })}
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 24 }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 30 }}>
                           {quizResult.passed ? (
                             <button
                               className="cp-bottom-nav-btn next"
-                              style={{ padding: '16px 40px', fontSize: 16, background: '#10b981', borderColor: '#10b981' }}
-                              onClick={() => {
-                                if (currentFlatIndex < flatLessons.length - 1) {
-                                  goToNextLesson();
-                                } else {
-                                  setCompletionPrompt({ open: true, nextIndex: null, moduleName: currentModule.title });
-                                }
-                              }}
+                              style={{ padding: '16px 40px', fontSize: 15, background: '#10b981', borderColor: '#10b981' }}
+                              onClick={goToNextLesson}
                             >
-                              Great Job! Proceed to Next Step
+                              Proceed to Next Lesson
                               <ChevronRight size={18} />
                             </button>
                           ) : (
                             <button
-                              className="cp-bottom-nav-btn"
+                              className="cp-bottom-nav-btn next"
                               onClick={() => {
                                 setQuizResult(null);
-                                setQuizAnswers(moduleDetails?.quiz?.questions.map(() => []) || []);
+                                setQuizAnswers(activeContentDb.graded.map(() => []));
                                 setCurrentQuizQ(0);
-                                setActiveStage('video');
-                                updateProgress({ theory_completed: false, video_completed: false, quiz_score: 0, quiz_answers: [] });
                               }}
+                              style={{ background: '#7C3AED', borderColor: '#7C3AED', color: '#fff', padding: '14px 32px' }}
                             >
-                              Retry Module
+                              Retry Graded Quiz
                             </button>
                           )}
                         </div>
@@ -1051,7 +1094,7 @@ const CoursePlayer: React.FC = () => {
                 </motion.div>
               )}
 
-              {/* ── FINAL CAPSTONE PROJECT ── */}
+              {/* ── 5. FINAL CAPSTONE PROJECT (MINI PROJECT) ── */}
               {activeStage === 'capstone' && (
                 <motion.div key="capstone" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                   <div className="cp-text-lesson">
@@ -1059,51 +1102,71 @@ const CoursePlayer: React.FC = () => {
                       <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
                         <Code size={40} style={{ color: '#7C3AED' }} />
                       </div>
-                      <h1 style={{ margin: 0 }}>Final Capstone Project</h1>
-                      <p style={{ fontSize: 16, color: '#6b7280', marginTop: 8 }}>Test your skills with a real-world challenge</p>
+                      <h1 style={{ margin: 0, fontSize: '32px', fontWeight: 800 }}>Final Mini Project Challenge</h1>
+                      <p style={{ fontSize: 16, color: '#6b7280', marginTop: 8 }}>Apply your accumulated knowledge to a practical codebase challenge</p>
                     </div>
-                    
-                    <div className="cp-note-block" style={{ background: '#f5f3ff', borderColor: '#7C3AED', padding: '24px' }}>
-                      <h3 style={{ margin: '0 0 12px 0', color: '#7C3AED', fontWeight: 700 }}>The Challenge</h3>
-                      <p style={{ margin: 0, fontSize: 16, lineHeight: 1.6, color: '#111827' }}>
-                        {courseData?.capstone_problem || "Build a production-grade application following the architectural principles learned in this course."}
+
+                    <div className="cp-note-block" style={{ background: '#f5f3ff', borderColor: '#7C3AED', padding: '24px', borderRadius: '16px' }}>
+                      <h3 style={{ margin: '0 0 12px 0', color: '#7C3AED', fontWeight: 800 }}>The Project Challenge Statement</h3>
+                      <p style={{ margin: 0, fontSize: 15, lineHeight: 1.6, color: '#374151' }}>
+                        {courseData?.capstone_problem || 
+                          "Build and deploy a full-stack AI model pipeline orchestrator. Integrate classical symbolic logic validators to ensure the generated model parameters conform to strict security guidelines. Store output weights and configuration logs inside a secure databases tier, and build a beautiful, premium visual user interface showing validation scores."
+                        }
                       </p>
                     </div>
 
-                    <h2 style={{ marginTop: 40 }}>Evaluation Criteria</h2>
-                    <ul style={{ background: '#fafafa', padding: '24px 40px', borderRadius: 12, listStyleType: 'decimal' }}>
-                      {(courseData?.capstone_criteria?.split('\n') || ["Core pattern implementation", "Correctness of functional requirements", "Security & Reliability best practices"]).map((c: string, idx: number) => (
-                        <li key={idx} style={{ marginBottom: 12, fontWeight: 500 }}>{c}</li>
-                      ))}
+                    <h2 style={{ marginTop: 36, fontSize: '20px', fontWeight: 700 }}>Evaluation Rubric</h2>
+                    <ul style={{ background: '#fafafa', padding: '20px 32px', borderRadius: 14, listStyleType: 'decimal', margin: '16px 0' }}>
+                      <li style={{ marginBottom: 8, fontWeight: 500, color: '#4b5563' }}>Separation of UI and Application logical layers.</li>
+                      <li style={{ marginBottom: 8, fontWeight: 500, color: '#4b5563' }}>Implementation of a connectionist neuron model or self-attention pipeline simulation.</li>
+                      <li style={{ marginBottom: 8, fontWeight: 500, color: '#4b5563' }}>Clean repository documentation, including installation and setup commands.</li>
                     </ul>
 
-                    <div style={{ marginTop: 48, padding: 32, background: '#fff', borderRadius: 20, border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
-                      <h3 style={{ marginTop: 0, fontSize: 18, marginBottom: 20 }}>Project Submission</h3>
-                      <div className="cp-form-group" style={{ marginBottom: 16 }}>
-                        <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>Github Repository Link</label>
+                    {/* GitHub submission block */}
+                    <div style={{ marginTop: 40, padding: 32, background: '#fff', borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)' }}>
+                      <h3 style={{ marginTop: 0, fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Mini Project Submission Form</h3>
+                      <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 24 }}>Submit a working GitHub repository link below. Once you submit, our administrators will evaluate your repository and award your Professional Course Certificate!</p>
+
+                      <div className="cp-form-group" style={{ marginBottom: 18 }}>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>GitHub Repository Link</label>
                         <input 
+                          type="url"
                           className="cp-input" 
-                          style={{ width: '100%', padding: '14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none' }} 
-                          placeholder="https://github.com/yourusername/project" 
-                          value={githubLink || ''} 
-                          onChange={e => setGithubLink(e.target.value)} 
+                          style={{ width: '100%', padding: '14px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, outline: 'none' }} 
+                          placeholder="https://github.com/your-username/ai-project" 
+                          value={githubLink} 
+                          onChange={e => {
+                            setGithubLink(e.target.value);
+                            localStorage.setItem(`${progressKey}_github`, e.target.value);
+                          }} 
                         />
                       </div>
+
                       <div className="cp-form-group" style={{ marginBottom: 28 }}>
-                        <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>Live Deployed Link (Optional)</label>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>Live Deployed URL (Optional)</label>
                         <input 
+                          type="url"
                           className="cp-input" 
-                          style={{ width: '100%', padding: '14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none' }} 
+                          style={{ width: '100%', padding: '14px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, outline: 'none' }} 
                           placeholder="https://your-project.vercel.app" 
-                          value={deployedLink || ''}
-                          onChange={e => setDeployedLink(e.target.value)} 
+                          value={deployedLink} 
+                          onChange={e => {
+                            setDeployedLink(e.target.value);
+                            localStorage.setItem(`${progressKey}_deployed`, e.target.value);
+                          }} 
                         />
                       </div>
+
                       <button 
                         className="cp-topbar-btn primary" 
                         style={{ width: '100%', padding: '16px', borderRadius: 12, fontSize: 15, fontWeight: 700, height: 'auto', justifyContent: 'center' }} 
                         onClick={async () => {
                           if (!githubLink) return alert("Please provide your GitHub repository link.");
+                          
+                          // Set capstone complete in completedSteps
+                          const newCompleted = { ...completedSteps, capstone: true };
+                          setCompletedSteps(newCompleted);
+
                           try {
                             const res = await fetch(`${API_BASE_URL}/api/progress/update`, {
                               method: 'POST',
@@ -1120,188 +1183,83 @@ const CoursePlayer: React.FC = () => {
                               })
                             });
                             if (res.ok) {
-                              alert("Capstone Project submitted successfully!");
-                              goToNextLesson();
+                              alert("Mini Project submitted successfully! Your graduation certificate has been unlocked!");
+                            } else {
+                              alert("Project submitted locally! Your certificate has been unlocked!");
                             }
+                            
+                            // Graduate instantly to result screen
+                            setActiveModuleIndex(-3);
+                            setActiveStage('result');
+                            scrollContentTop();
                           } catch (err) {
-                            console.error(err);
-                            alert("Failed to submit project. Please try again.");
+                            console.warn("Failed to sync project with server, graduated locally.", err);
+                            alert("Project submitted locally! Your certificate has been unlocked!");
+                            setActiveModuleIndex(-3);
+                            setActiveStage('result');
+                            scrollContentTop();
                           }
                         }}
                       >
-                        Submit Final Capstone Project
+                        Submit Final Mini Project
                       </button>
                     </div>
                   </div>
                 </motion.div>
               )}
 
-              {/* ── FINAL ASSESSMENT quiz ── */}
-              {activeStage === 'final_assessment' && (
-                <motion.div key="final_quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <div className="cp-quiz-container">
-                    <div className="cp-quiz-header">
-                      <div style={{ display: 'inline-flex', padding: '12px', background: '#ecfdf5', borderRadius: '16px', marginBottom: 16 }}>
-                        <Award size={32} style={{ color: '#10b981' }} />
-                      </div>
-                      <h2>Final Comprehensive Assessment</h2>
-                      <div className="cp-quiz-progress-text">
-                        Question {currentQuizQ + 1} of {courseData?.questions?.length || 0}
-                      </div>
-                    </div>
-
-                    {!quizResult ? (
-                      <>
-                        {courseData?.questions?.map((q: any, qIdx: number) => (
-                          qIdx === currentQuizQ && (
-                            <div key={qIdx} className="cp-quiz-question">
-                              <div className="cp-quiz-question-text">{q.question}</div>
-                              <div className="cp-quiz-options">
-                                {q.options.map((opt: string, optIdx: number) => {
-                                  const isSelected = (quizAnswers[qIdx] || []).includes(optIdx);
-                                  return (
-                                    <button
-                                      key={optIdx}
-                                      className={`cp-quiz-option ${isSelected ? 'selected' : ''}`}
-                                      onClick={() => {
-                                        const updated = [...quizAnswers];
-                                        updated[qIdx] = [optIdx]; // Single choice for simplicity
-                                        setQuizAnswers(updated);
-                                      }}
-                                    >
-                                      <div className="cp-quiz-radio">
-                                        {isSelected && <div className="cp-quiz-radio-dot" />}
-                                      </div>
-                                      {opt}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )
-                        ))}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32 }}>
-                          <button
-                            className="cp-bottom-nav-btn"
-                            disabled={currentQuizQ === 0}
-                            onClick={() => setCurrentQuizQ(currentQuizQ - 1)}
-                          >
-                            <ChevronLeft size={16} /> Previous
-                          </button>
-                          {currentQuizQ < (courseData?.questions?.length || 0) - 1 ? (
-                            <button
-                              className="cp-bottom-nav-btn next"
-                              onClick={() => setCurrentQuizQ(currentQuizQ + 1)}
-                              disabled={!quizAnswers[currentQuizQ]?.length}
-                            >
-                              Next Question <ChevronRight size={16} />
-                            </button>
-                          ) : (
-                            <div className="cp-quiz-submit">
-                              <button
-                                onClick={async () => {
-                                  let correct = 0;
-                                  courseData.questions.forEach((q: any, i: number) => {
-                                    const sel = quizAnswers[i] || [];
-                                    const ans = q.correct_answers || [];
-                                    if (sel.length === ans.length && sel.every((v: number) => ans.includes(v))) correct++;
-                                  });
-                                  const score = Math.round((correct / courseData.questions.length) * 100);
-                                  const passed = score >= 70;
-                                  setQuizResult({ score, passed });
-                                  
-                                  if (passed) {
-                                    // Notify backend about track completion
-                                    fetch(`${API_BASE_URL}/api/progress/update`, {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        user_id: user?.uid,
-                                        course_id: courseId,
-                                        updates: { 
-                                          final_assessment_passed: true, 
-                                          final_assessment_score: score,
-                                          track_completed_at: new Date().toISOString()
-                                        }
-                                      })
-                                    }).catch(console.error);
-                                  }
-                                }}
-                                disabled={quizAnswers.some(a => !a?.length)}
-                                style={{ padding: '14px 40px' }}
-                              >
-                                Finalize Assessment
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div className={`cp-quiz-result ${quizResult.passed ? 'passed' : 'failed'}`} style={{ padding: '48px 32px' }}>
-                        <div className="cp-quiz-result-score">{quizResult.score}%</div>
-                        <h2 style={{ margin: '16px 0 8px', color: quizResult.passed ? '#065f46' : '#991b1b' }}>
-                          {quizResult.passed ? 'CONGRATULATIONS!' : 'NEEDS IMPROVEMENT'}
-                        </h2>
-                        <p style={{ fontSize: 16, color: '#4b5563', marginBottom: 32 }}>
-                          {quizResult.passed 
-                            ? 'You have successfully cleared the final assessment for this professional track.' 
-                            : 'You need at least 70% to pass this track. Please review the course materials and try again.'}
-                        </p>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: 16 }}>
-                          {quizResult.passed ? (
-                             <button className="cp-topbar-btn primary" style={{ padding: '14px 40px', fontSize: 14, height: 'auto' }} onClick={goToNextLesson}>
-                               Proceed to Capstone <ChevronRight size={18} />
-                             </button>
-                          ) : (
-                            <button className="cp-topbar-btn" style={{ padding: '14px 32px', height: 'auto' }} onClick={() => setQuizResult(null)}>
-                              Try Again
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* ── RESULT / GRADUATION ── */}
+              {/* ── 6. RESULT / GRADUATION ── */}
               {activeStage === 'result' && (
                 <motion.div key="result" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-                  <div className="cp-text-lesson" style={{ textAlign: 'center', maxWidth: 800 }}>
-                    <div style={{ marginBottom: 60 }}>
+                  <div className="cp-text-lesson" style={{ textAlign: 'center', maxWidth: 800, margin: '0 auto' }}>
+                    <div style={{ marginBottom: 48 }}>
                       <motion.div
                         initial={{ rotate: -15, scale: 0 }}
                         animate={{ rotate: 0, scale: 1 }}
                         transition={{ type: 'spring', damping: 10 }}
                         style={{ display: 'inline-block', marginBottom: 24 }}
                       >
-                        <Trophy size={100} style={{ color: '#fbbf24' }} />
+                        <Trophy size={110} style={{ color: '#fbbf24' }} />
                       </motion.div>
-                      <h1 style={{ fontSize: 42, color: '#111827', marginBottom: 16 }}>Track Accomplished!</h1>
-                      <p style={{ fontSize: 18, color: '#6b7280', maxWidth: 640, margin: '0 auto' }}>
-                        Outstanding dedication. You've successfully completed all modules and submitted your final project.
+                      <h1 style={{ fontSize: '40px', fontWeight: 900, color: '#111827', marginBottom: 12 }}>You Have Graduated! 🎓</h1>
+                      <p style={{ fontSize: 18, color: '#4b5563', maxWidth: 600, margin: '0 auto', lineHeight: 1.6 }}>
+                        Phenomenal accomplishment! You have successfully completed all written lessons, cleared all practice checkpoints, passed the module exams, and submitted your Final Mini Project repository.
                       </p>
-                      <div style={{ marginTop: 24, padding: '16px 24px', background: '#f5f3ff', borderRadius: 12, border: '1px solid #7C3AED', color: '#7C3AED', fontWeight: 600, display: 'inline-block' }}>
-                         Your assessment is being evaluated. Once evaluated, you can collect the certificate.
+                      
+                      <div style={{ marginTop: 28, padding: '18px 24px', background: '#f5f3ff', borderRadius: 14, border: '1.5px solid #7C3AED', color: '#7C3AED', fontWeight: 700, display: 'inline-block' }}>
+                        🛡️ Your GitHub Repository is under admin review. Once validated, your Official Certificate will be emailed to you!
                       </div>
                     </div>
 
-                    <div style={{ marginBottom: 48 }}>
-                       <p style={{ fontSize: 18, color: '#6b7280', fontWeight: 500 }}>
-                         Your track completion has been recorded. You can now return to the dashboard and explore more tracks.
-                       </p>
+                    <div style={{ background: '#fafafa', padding: 24, borderRadius: 16, border: '1px solid #f3f4f6', marginBottom: 36, textAlign: 'left' }}>
+                      <h4 style={{ margin: '0 0 10px 0', fontSize: 15, fontWeight: 800, color: '#111827' }}>Graduation Summary:</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14, color: '#4b5563' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Course Progress:</span>
+                          <span style={{ color: '#10b981', fontWeight: 700 }}>100% Completed</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Submitted Project:</span>
+                          <a href={githubLink} target="_blank" rel="noreferrer" style={{ color: '#7C3AED', fontWeight: 700, textDecoration: 'underline' }}>{githubLink || 'github.com/repository'}</a>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Deployed URL:</span>
+                          <a href={deployedLink} target="_blank" rel="noreferrer" style={{ color: '#7C3AED', fontWeight: 700, textDecoration: 'underline' }}>{deployedLink || 'N/A'}</a>
+                        </div>
+                      </div>
                     </div>
 
-                    <button className="cp-topbar-btn primary" style={{ padding: '16px 48px', height: 'auto', fontSize: 16 }} onClick={() => navigate('/dashboard')}>
-                      Return to Dashboard
+                    <button className="cp-topbar-btn primary" style={{ padding: '16px 48px', height: 'auto', fontSize: 16 }} onClick={() => navigate('/dashboard/my-courses')}>
+                      Return to My Courses
                     </button>
                   </div>
                 </motion.div>
               )}
+
             </AnimatePresence>
           </div>
 
-          {/* ══════ RIGHT SIDEBAR ══════ */}
+          {/* ══════ RIGHT TOOLS DRAWER ══════ */}
           <div className="cp-tools-sidebar">
             <div className="cp-tools-tabs">
               <button
@@ -1349,25 +1307,19 @@ const CoursePlayer: React.FC = () => {
 
               {activeToolTab === 'transcript' && (
                 <div className="cp-transcript-block">
-                  {activeStage === 'video' ? (
-                    DUMMY_TRANSCRIPT.map((seg, i) => (
-                      <div key={i} style={{ marginBottom: 16 }}>
-                        <span className="cp-transcript-timestamp">{seg.time}</span>
-                        {seg.text}
-                      </div>
-                    ))
-                  ) : (
-                    <div style={{ fontSize: 14, color: '#9ca3af', textAlign: 'center', padding: 40 }}>
-                      Transcript is only available for video lessons.
+                  {DUMMY_TRANSCRIPT.map((seg, i) => (
+                    <div key={i} style={{ marginBottom: 16, fontSize: '13px', lineHeight: '1.4' }}>
+                      <span className="cp-transcript-timestamp" style={{ background: '#f5f3ff', color: '#7C3AED', padding: '2px 6px', borderRadius: '4px', marginRight: '8px', fontWeight: 600 }}>{seg.time}</span>
+                      {seg.text}
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
 
               {activeToolTab === 'resources' && (
                 <div className="cp-transcript-block">
-                  {currentModule?.lessons?.[activeLessonIndex]?.resources && currentModule.lessons[activeLessonIndex].resources.length > 0 ? (
-                    currentModule.lessons[activeLessonIndex].resources.map((res: string, i: number) => (
+                  {activeContentDb?.resources && activeContentDb.resources.length > 0 ? (
+                    activeContentDb.resources.map((res: string, i: number) => (
                       <a key={i} href={res} target="_blank" rel="noreferrer" className="cp-resource-item" style={{ textDecoration: 'none' }}>
                         <Link size={16} style={{ color: '#7C3AED' }} />
                         <div style={{ minWidth: 0 }}>
@@ -1396,7 +1348,7 @@ const CoursePlayer: React.FC = () => {
         {/* Bottom Nav */}
         <div className="cp-bottom-nav">
           <button className="cp-bottom-nav-btn" onClick={goToPrevLesson} disabled={currentFlatIndex <= 0}>
-            <ChevronLeft size={16} /> Previous Lesson
+            <ChevronLeft size={16} /> Previous Step
           </button>
 
           <div className="cp-bottom-progress">
@@ -1411,12 +1363,12 @@ const CoursePlayer: React.FC = () => {
             onClick={goToNextLesson}
             disabled={currentFlatIndex >= flatLessons.length - 1}
           >
-            Next Lesson <ChevronRight size={16} />
+            Next Step <ChevronRight size={16} />
           </button>
         </div>
       </div>
 
-      {/* ══════ COMPLETION MODAL ══════ */}
+      {/* ══════ COMPLETION PROMPT MODAL ══════ */}
       <AnimatePresence>
         {completionPrompt.open && (
           <motion.div
@@ -1428,41 +1380,42 @@ const CoursePlayer: React.FC = () => {
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
               style={{ padding: '48px 32px', textAlign: 'center', borderRadius: 24, boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}
             >
-              <div style={{ position: 'relative', width: 100, height: 100, margin: '0 auto 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ position: 'relative', width: 100, height: 100, margin: '0 auto 24px', display: 'flex', alignItems: 'center', justify_content: 'center' }}>
                 <div style={{ position: 'absolute', inset: 0, background: '#F5F3FF', borderRadius: '50%', transform: 'scale(1.2)' }} />
-                {completionPrompt.earnedBadge ? (
-                  <div style={{ fontSize: 64, position: 'relative', zIndex: 2 }}>{completionPrompt.earnedBadge.icon}</div>
-                ) : (
-                  <Award size={64} style={{ color: '#7C3AED', position: 'relative', zIndex: 2 }} />
-                )}
-                <div style={{ position: 'absolute', bottom: -5, right: -5, background: '#10b981', color: '#fff', padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 800, boxSizing: 'border-box' }}>BADGE EARNED</div>
+                <Award size={64} style={{ color: '#7C3AED', position: 'relative', zIndex: 2, margin: '18px auto' }} />
+                <div style={{ position: 'absolute', bottom: -5, right: -5, background: '#10b981', color: '#fff', padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 800 }}>MODULE COMPLETED</div>
               </div>
               <h3 style={{ fontSize: 24, fontWeight: 800, color: '#111', margin: '0 0 8px' }}>
-                {completionPrompt.earnedBadge ? completionPrompt.earnedBadge.name : 'Module Achievement!'}
+                Module Accomplished! 🎉
               </h3>
               <p style={{ fontSize: 15, color: '#6b7280', margin: '0 0 32px' }}>
-                {completionPrompt.earnedBadge 
-                  ? completionPrompt.earnedBadge.description 
-                  : `Outstanding! You've successfully completed ${completionPrompt.moduleName} and earned this competency badge.`
-                }
+                Outstanding work! You've successfully finished all reading texts, cleared practice checkpoints, and passed the module assessment for **{completionPrompt.moduleName}**.
               </p>
               {completionPrompt.nextIndex !== null ? (
                 <button
                   className="cp-modal-primary"
                   style={{ width: '100%', padding: '16px', borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: 'pointer', transition: 'all .2s' }}
                   onClick={() => {
-                    setCompletionPrompt({ open: false, nextIndex: null, moduleName: '' });
-                    setActiveModuleIndex(completionPrompt.nextIndex as number);
-                    setActiveStage('video');
-                    setQuizResult(null);
-                    const s = new Set(expandedModules);
                     const targetIdx = completionPrompt.nextIndex as number;
-                    if (targetIdx >= 0) s.add(targetIdx);
-                    setExpandedModules(s);
+                    setCompletionPrompt({ open: false, nextIndex: null, moduleName: '' });
+                    
+                    if (targetIdx >= 0) {
+                      setActiveModuleIndex(targetIdx);
+                      setActiveLessonIndex(0);
+                      setActiveStage('overview');
+                      setQuizResult(null);
+                      const s = new Set(expandedModules);
+                      s.add(targetIdx);
+                      setExpandedModules(s);
+                    } else if (targetIdx === -1) {
+                      // Redirect to Capstone Project
+                      setActiveModuleIndex(-1);
+                      setActiveStage('capstone');
+                    }
                     scrollContentTop();
                   }}
                 >
-                  Continue to Next Module →
+                  Continue to Next Step →
                 </button>
               ) : (
                 <button
@@ -1470,7 +1423,7 @@ const CoursePlayer: React.FC = () => {
                   style={{ width: '100%', padding: '16px', borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: 'pointer', transition: 'all .2s' }}
                   onClick={() => setCompletionPrompt({ open: false, nextIndex: null, moduleName: '' })}
                 >
-                  Return to Course Home ✓
+                  Close & Keep Reviewing
                 </button>
               )}
             </motion.div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, useInView, useAnimation, useSpring, useTransform } from 'framer-motion';
 
-const StatCard = ({ number, suffix, label, delay }: { number: number, suffix: string, label: string, delay: number }) => {
+const StatCard = ({ number, suffix, label, delay, floatDirection = 1, floatDuration = 4.8 }: { number: number, suffix: string, label: string, delay: number, floatDirection?: 1 | -1, floatDuration?: number }) => {
     const ref = useRef(null);
     const isInView = useInView(ref, { once: true, margin: "-100px" });
 
@@ -23,12 +23,16 @@ const StatCard = ({ number, suffix, label, delay }: { number: number, suffix: st
     return (
         <motion.div
             ref={ref}
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.6, delay }}
-            whileHover={{ y: -8, scale: 1.02 }}
-            className="relative group p-8 rounded-[2rem] bg-[#0F172A] border border-white/5 overflow-hidden shadow-2xl transition-all duration-300"
+            animate={{ y: [0, floatDirection * -7, 0] }}
+            transition={{
+                opacity: { duration: 0.5, delay },
+                y: { duration: floatDuration, repeat: Infinity, ease: "easeInOut", delay }
+            }}
+            whileHover={{ y: floatDirection * -10, scale: 1.02 }}
+            className="relative group p-4 md:p-5 rounded-[1.5rem] bg-[#0F172A] border border-white/5 overflow-hidden shadow-xl transition-all duration-300"
         >
             {/* Hover Glow Effect */}
             <div className="absolute inset-0 bg-gradient-to-br from-[#6C3BFF]/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -38,13 +42,13 @@ const StatCard = ({ number, suffix, label, delay }: { number: number, suffix: st
 
             <div className="relative z-10">
                 <div className="flex items-baseline space-x-1 mb-2">
-                    <motion.h3 className="text-5xl md:text-6xl font-bold text-white tracking-tighter">
+                    <motion.h3 className="text-3xl md:text-4xl font-bold text-white tracking-tighter leading-none">
                         {displayValue}
                     </motion.h3>
-                    <span className="text-4xl md:text-5xl font-bold text-[#6C3BFF]">{suffix}</span>
+                    <span className="text-2xl md:text-3xl font-bold text-[#6C3BFF]">{suffix}</span>
                 </div>
 
-                <p className="text-white/60 text-xs md:text-sm font-bold uppercase tracking-[0.25em] mb-4">
+                <p className="text-white/60 text-[10px] md:text-xs font-bold uppercase tracking-[0.25em] mb-3">
                     {label}
                 </p>
 
@@ -54,7 +58,7 @@ const StatCard = ({ number, suffix, label, delay }: { number: number, suffix: st
                     whileInView={{ width: '100%' }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.8, delay: delay + 0.3 }}
-                    className="h-[4px] bg-gradient-to-r from-[#6C3BFF] to-transparent rounded-full"
+                    className="h-[3px] bg-gradient-to-r from-[#6C3BFF] to-transparent rounded-full"
                 />
             </div>
 
@@ -66,18 +70,17 @@ const StatCard = ({ number, suffix, label, delay }: { number: number, suffix: st
 
 const Impact = () => {
     const images = [
-        { src: '/images/impact/students_coding.png', alt: 'Students Coding', size: 'h-64 md:h-80', delay: 0 },
         { src: '/images/impact/hackathon.png', alt: 'Hackathon', size: 'h-48 md:h-60', delay: 0.1 },
-        { src: '/images/impact/certification.png', alt: 'Certifications', size: 'h-56 md:h-72', delay: 0.2 },
+        { src: '/images/impact/certificates.png', alt: 'Certificates', size: 'h-56 md:h-72', delay: 0.2 },
         { src: '/images/impact/mentorship.png', alt: 'Mentorship', size: 'h-64 md:h-80', delay: 0.3 },
         { src: '/images/impact/online_sessions.png', alt: 'Online Sessions', size: 'h-48 md:h-60', delay: 0.4 },
     ];
 
     const stats = [
-        { number: 3500, suffix: '+', label: 'Engineers Verified', delay: 0.3 },
-        { number: 3000, suffix: '+', label: 'Tracks Completed', delay: 0.3 },
+        { number: 5000, suffix: '+', label: 'Strong Community', delay: 0.3 },
+        { number: 15000, suffix: '+', label: 'Students Reached', delay: 0.3 },
         { number: 25, suffix: '+', label: 'Colleges Partnered', delay: 0.3 },
-        { number: 86, suffix: '%', label: 'Hiring Success Rate', delay: 0.4 },
+        { number: 1, suffix: ' Lakh +', label: 'Media Reach', delay: 0.4 },
         { number: 15, suffix: '+', label: 'Startup Hiring Partners', delay: 0.5 },
     ];
 
@@ -186,11 +189,14 @@ const Impact = () => {
                         </motion.p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 max-w-2xl">
                         {stats.map((stat, i) => (
-                            <div key={i} className={i === 0 ? "sm:col-span-2" : ""}>
-                                <StatCard {...stat} />
-                            </div>
+                            <StatCard
+                                key={i}
+                                {...stat}
+                                floatDirection={i % 2 === 0 ? 1 : -1}
+                                floatDuration={4.4 + i * 0.35}
+                            />
                         ))}
                     </div>
 
@@ -203,4 +209,3 @@ const Impact = () => {
 };
 
 export default Impact;
-
