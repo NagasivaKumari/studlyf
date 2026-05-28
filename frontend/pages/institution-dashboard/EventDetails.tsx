@@ -1398,10 +1398,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             ...(hackathonSubmissions || []).map((s: any) => ({
                 ...s,
                 _sourceType: 'hackathon',
-                project_title: s.project_title || s.teamName || s.team_name || 'Hackathon Submission',
-                team_name: s.team_name || s.teamLead || s.teamLeadName || 'Hackathon Team',
-                event_title: s.event_title || s.eventName || 'Hackathon Event',
-                status: s.status || 'Pending',
+                project_title: s.project_title || s.teamName || s.team_name || '',
+                team_name: s.team_name || s.teamLead || s.teamLeadName || '',
+                event_title: s.event_title || s.eventName || '',
+                status: s.status || '',
             })),
             ...(submissions || []).map((s: any) => {
                 const isStage = s.source === 'stage_deliverable';
@@ -1413,8 +1413,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 return {
                     ...s,
                     _sourceType: isStage ? 'stage' : 'regular',
-                    teamName: s.teamName || s.team_name || s.user_name || s.name || 'Participant',
-                    teamLead: s.teamLead || s.team_lead || s.team_name || s.user_name || s.name || 'N/A',
+                    teamName: s.teamName || s.team_name || s.user_name || s.name || '',
+                    teamLead: s.teamLead || s.team_lead || s.team_name || s.user_name || s.name || '',
                     problemStatement: isStage
                         ? (stageDesc || (stageUrlField ? 'Submitted link' : stageFileField ? 'Submitted file' : '') || s.stage_name || '')
                         : (s.problemStatement || s.problem_statement || s.stage_name || s.stage_type || ''),
@@ -1425,11 +1425,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     assignedJudgeId: s.assignedJudgeId || s.assigned_judge_id || '',
                     totalScore: s.totalScore ?? s.total_score ?? 0,
                     project_title: isStage
-                        ? (s.stage_name || s.stage_type || 'Stage Submission')
-                        : (s.project_title || s.title || s.team_name || 'Submission'),
-                    team_name: s.team_name || s.user_name || s.name || 'Participant',
-                    event_title: s.event_title || event?.title || s.stage_name || 'Event Submission',
-                    status: s.status || 'Pending',
+                        ? (s.stage_name || s.stage_type || '')
+                        : (s.project_title || s.title || s.team_name || ''),
+                    team_name: s.team_name || s.user_name || s.name || '',
+                    event_title: s.event_title || event?.title || s.stage_name || '',
+                    status: s.status || '',
                 };
             }),
         ];
@@ -1773,7 +1773,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         <td className="px-10 py-8">
                                             <div className="flex flex-col">
                                                 <span className="font-black text-slate-900 text-lg tracking-tight">{sub.teamName || sub.team_name || sub.user_name || sub.name}</span>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || sub.team_lead || sub.team_name || "N/A"}</span>
+                                                {sub.teamLead || sub.team_lead || sub.team_name ? (
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || sub.team_lead || sub.team_name}</span>
+                                                ) : null}
                                                 {sub.domain && <span className="text-[9px] font-black text-purple-600 uppercase tracking-[0.2em] mt-2">{sub.domain}</span>}
                                                 {sub._sourceType === 'stage' && sub.stage_name ? (
                                                     <span className="mt-2 inline-flex w-fit px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[9px] font-black uppercase tracking-widest">
