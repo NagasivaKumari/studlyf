@@ -1128,12 +1128,12 @@ async def get_qualified_bundle(event_id: str, threshold: float = 80.0, user: dic
         all_items[tid] = {
             "type": "team",
             "team_id": tid,
-            "team_name": t.get("name") or t.get("team_name") or "Unnamed Team",
+            "team_name": t.get("name") or t.get("team_name") or "",
             "score": 0,
             "judges_completed": 0,
             "total_judges": total_judges,
             "is_fully_evaluated": False,
-            "status": t.get("institution_selection") or "Pending",
+            "status": t.get("institution_selection") or "",
             "assigned_judges": [],
             "source": "team_registry"
         }
@@ -1149,12 +1149,12 @@ async def get_qualified_bundle(event_id: str, threshold: float = 80.0, user: dic
         all_items[f"solo:{uid}"] = {
             "type": "solo",
             "user_id": uid,
-            "team_name": s.get("user_name") or s.get("full_name") or "Solo Participant",
+            "team_name": s.get("user_name") or s.get("full_name") or "",
             "score": 0,
             "judges_completed": 0,
             "total_judges": total_judges,
             "is_fully_evaluated": False,
-            "status": s.get("status") or "Pending",
+            "status": s.get("status") or "",
             "assigned_judges": [],
             "submission_id": sid,
             "source": "solo_registry"
@@ -1527,8 +1527,8 @@ async def list_event_submissions_enriched(event_id: str, user: dict = Depends(ge
                 "_id": sid,
                 "event_id": event_id,
                 "user_id": sub.get("submittedBy") or sub.get("user_id"),
-                "team_name": sub.get("teamName") or sub.get("teamLead") or "Hackathon Team",
-                "status": sub.get("status", "Submitted"),
+                "team_name": sub.get("teamName") or sub.get("teamLead") or "",
+                "status": sub.get("status", ""),
                 "submitted_at": sub.get("createdAt").isoformat() if hasattr(sub.get("createdAt"), "isoformat") else sub.get("createdAt"),
                 "total_score": sub.get("totalScore", 0.0),
                 "source": "hackathon_submission",
@@ -1548,8 +1548,8 @@ async def list_event_submissions_enriched(event_id: str, user: dict = Depends(ge
                 "_id": sid,
                 "event_id": event_id,
                 "user_id": sd.get("user_id", ""),
-                "team_name": sd.get("user_name") or "Participant",
-                "status": sd.get("status", "Submitted"),
+                "team_name": sd.get("user_name") or "",
+                "status": sd.get("status", ""),
                 "submitted_at": sd.get("submitted_at").isoformat() if hasattr(sd.get("submitted_at"), "isoformat") else sd.get("submitted_at"),
                 "data": sd.get("data", {}),
                 "source": "stage_deliverable",
@@ -2133,14 +2133,14 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
         all_items[tid] = {
             "type": "team",
             "team_id": tid,
-            "team_name": t.get("name") or t.get("team_name") or "Unnamed Team",
-            "project_title": t.get("project_title") or t.get("name") or "Project",
+            "team_name": t.get("name") or t.get("team_name") or "",
+            "project_title": t.get("project_title") or t.get("name") or "",
             "event_id": eid,
-            "event_title": event_titles.get(eid, "Unknown Event"),
+            "event_title": event_titles.get(eid, ""),
             "score": 0,
             "judges_completed": 0,
             "total_judges": event_judges.get(eid, 0),
-            "status": t.get("institution_selection") or "Pending",
+            "status": t.get("institution_selection") or "",
             "assigned_judges": [],
             "source": "team_registry"
         }
@@ -2158,14 +2158,14 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
         all_items[f"solo:{uid}"] = {
             "type": "solo",
             "user_id": uid,
-            "team_name": s.get("user_name") or s.get("full_name") or "Solo Participant",
-            "project_title": s.get("project_title") or "Project",
+            "team_name": s.get("user_name") or s.get("full_name") or "",
+            "project_title": s.get("project_title") or "",
             "event_id": eid,
-            "event_title": event_titles.get(eid, "Unknown Event"),
+            "event_title": event_titles.get(eid, ""),
             "score": 0,
             "judges_completed": 0,
             "total_judges": event_judges.get(eid, 0),
-            "status": s.get("status") or "Pending",
+            "status": s.get("status") or "",
             "assigned_judges": [],
             "submission_id": sid,
             "source": "solo_registry"
@@ -2177,7 +2177,7 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
         sid = str(sd.get("_id"))
         tid = sd.get("team_id")
         uid = sd.get("user_id")
-        stage_name = sd.get("stage_name") or sd.get("stage_type") or "Stage Submission"
+        stage_name = sd.get("stage_name") or sd.get("stage_type") or ""
         stage_key = f"stage:{sid}"
 
         stage_item = {
@@ -2185,18 +2185,18 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
             "submission_id": sid,
             "stage_id": sd.get("stage_id"),
             "stage_name": stage_name,
-            "stage_type": sd.get("stage_type") or "SUBMISSION",
+            "stage_type": sd.get("stage_type") or "",
             "team_id": str(tid) if tid else None,
             "user_id": str(uid) if uid else None,
-            "team_name": sd.get("team_name") or sd.get("user_name") or sd.get("name") or "Participant",
+            "team_name": sd.get("team_name") or sd.get("user_name") or sd.get("name") or "",
             "project_title": stage_name,
             "project_description": sd.get("project_description") or sd.get("description", ""),
             "event_id": str(sd.get("event_id") or ""),
-            "event_title": event_titles.get(str(sd.get("event_id") or ""), "Unknown Event"),
+            "event_title": event_titles.get(str(sd.get("event_id") or ""), ""),
             "score": 0,
             "judges_completed": len(sd.get("assigned_judges", []) or []),
             "total_judges": len(sd.get("assigned_judges", []) or []) or event_judges.get(str(sd.get("event_id") or ""), 0),
-            "status": sd.get("status") or "Submitted",
+            "status": sd.get("status") or "",
             "assigned_judges": sd.get("assigned_judges", []),
             "source": "stage_deliverable",
             "submitted_at": sd.get("submitted_at"),
