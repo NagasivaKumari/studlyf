@@ -54,6 +54,10 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
     const [criteria, setCriteria] = useState<any[]>([]);
     const [user, setUser] = useState<any>(null);
     const [eventPackages, setEventPackages] = useState<any[] | null>(null);
+    const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string } | null>(null);
+    const [page, setPage] = useState(1);
+    const [assetPage, setAssetPage] = useState(1);
+    const limit = 25;
 
     useEffect(() => {
         const userData = localStorage.getItem('user');
@@ -291,6 +295,19 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
         return 'bg-slate-50 text-slate-500 border-slate-100';
     };
 
+    const mimeMap: Record<string, string> = {
+        'application/pdf': '.pdf',
+        'image/png': '.png', 'image/jpeg': '.jpg', 'image/jpg': '.jpg',
+        'image/gif': '.gif', 'image/webp': '.webp', 'image/svg+xml': '.svg',
+        'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
+    };
+
+    const getAssetFilename = (dataUrl: string): string => {
+        const mime = dataUrl.split(';')[0].split(':')[1] || '';
+        const ext = mimeMap[mime] || '';
+        return 'Deliverable' + ext;
+    };
+
     const currentBundle: any[] = (() => {
         const bucket = (submissions as any)?.[activeTab];
         if (Array.isArray(bucket)) return bucket;
@@ -302,7 +319,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
     const filteredSubmissions = [
         ...currentBundle.map(s => ({
             ...s,
-            sourceType: 'legacy',
+            sourceType: s.source === 'stage_deliverable' || s.type === 'stage' ? 'stage' : 'legacy',
             id: s.submission_id || s.team_id || s._id
         })),
         ...hackathonSubmissions.map(s => ({
@@ -323,12 +340,19 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
             domain: s.domain
         }))
     ].filter(s => {
-        const matchesSearch = (s.project_title || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                             (s.team_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        const matchesSearch = (s.project_title || s.stage_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                             (s.team_name || s.user_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                              (s.event_title || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesJudge = judgeFilter === 'All Judges' || s.assignedJudgeId === judgeFilter;
         return matchesSearch && matchesJudge;
     });
+
+    const filteredTotalPages = Math.max(1, Math.ceil(filteredSubmissions.length / limit));
+    const safeFilteredPage = Math.min(page, filteredTotalPages);
+    const paginatedSubmissions = filteredSubmissions.slice((safeFilteredPage - 1) * limit, safeFilteredPage * limit);
+    const assetTotalPages = Math.max(1, Math.ceil(stageSubmissions.length / limit));
+    const safeAssetPage = Math.min(assetPage, assetTotalPages);
+    const paginatedAssets = stageSubmissions.slice((safeAssetPage - 1) * limit, safeAssetPage * limit);
 
     if (loading) return (
         <div className="h-96 flex flex-col items-center justify-center gap-4">
@@ -496,7 +520,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
-                                {filteredSubmissions.length > 0 ? filteredSubmissions.map((item, idx) => (
+                                {paginatedSubmissions.length > 0 ? paginatedSubmissions.map((item, idx) => (
                                     <motion.tr 
                                         key={item._id || item.submission_id || idx}
                                         initial={{ opacity: 0, y: 10 }}
@@ -667,22 +691,28 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                     </td>
                                     <td className="px-10 py-8">
                                         <div className="flex items-center gap-3">
-                                            {sub.data?.file_url ? (
-                                                <a 
-                                                    href={sub.data.file_url.startsWith('http') ? sub.data.file_url : `${API_BASE_URL}${sub.data.file_url}`}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
-                                                >
-                                                    <Eye size={14} /> Preview Asset
-                                                </a>
-                                            ) : sub.data?.url ? (
-                                                <a href={sub.data.url} target="_blank" rel="noreferrer" className="px-4 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-[#6C3BFF] transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
-                                                    <ExternalLink size={14} /> View Submission
-                                                </a>
-                                            ) : (
-                                                <span className="text-slate-300 italic text-xs font-bold">No assets found</span>
-                                            )}
+                                            {(() => {
+                                                const data = sub.data || {};
+                                                const fileField = Object.keys(data).find(k => typeof data[k] === 'string' && data[k].startsWith('data:'));
+                                                const urlField = Object.keys(data).find(k => typeof data[k] === 'string' && (data[k].startsWith('http://') || data[k].startsWith('https://')));
+                                                if (fileField && data[fileField]) {
+                                                    return (
+                                                        <button onClick={() => setPreviewAsset({ url: data[fileField], filename: getAssetFilename(data[fileField]) })}
+                                                            className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
+                                                        >
+                                                            <Eye size={14} /> Preview Asset
+                                                        </button>
+                                                    );
+                                                }
+                                                if (urlField && data[urlField]) {
+                                                    return (
+                                                        <a href={data[urlField]} target="_blank" rel="noreferrer" className="px-4 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-[#6C3BFF] transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                                                            <ExternalLink size={14} /> View Submission
+                                                        </a>
+                                                    );
+                                                }
+                                                return <span className="text-slate-300 italic text-xs font-bold">No assets found</span>;
+                                            })()}
                                         </div>
                                     </td>
                                     <td className="px-10 py-8 text-center">
@@ -792,6 +822,67 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                             Reject Bundle
                                         </button>
                                     </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Asset Preview Modal */}
+            <AnimatePresence>
+                {previewAsset && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
+                        onClick={() => setPreviewAsset(null)}
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                            className="bg-white w-full max-w-5xl h-[85vh] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+                                <h3 className="text-lg font-black text-slate-900 truncate">{previewAsset.filename}</h3>
+                                <div className="flex items-center gap-3">
+                                    <a href={previewAsset.url} target="_blank" rel="noopener noreferrer"
+                                        className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] hover:text-white transition-all"
+                                    >
+                                        <ExternalLink size={14} /> Open Original
+                                    </a>
+                                    <button onClick={() => setPreviewAsset(null)}
+                                        className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 rounded-xl transition-all"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex-1 bg-slate-100 p-4 relative">
+                                <div className="w-full h-full rounded-2xl overflow-hidden bg-white flex items-center justify-center">
+                                    {previewAsset.url.startsWith('data:') ? (
+                                        previewAsset.filename.endsWith('.pdf') ? (
+                                            <embed src={previewAsset.url} type="application/pdf" className="w-full h-full" />
+                                        ) : previewAsset.filename.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) ? (
+                                            <img src={previewAsset.url} className="max-w-full max-h-full object-contain" alt={previewAsset.filename} />
+                                        ) : previewAsset.filename.match(/\.(mp4|webm|mov)$/i) ? (
+                                            <video src={previewAsset.url} controls className="max-w-full max-h-full" />
+                                        ) : (
+                                            <div className="flex flex-col items-center gap-4 p-8">
+                                                <FileText size={64} className="text-slate-300" />
+                                                <p className="text-sm font-bold text-slate-500">Preview not available — <a href={previewAsset.url} download className="text-[#6C3BFF] underline">Download</a></p>
+                                            </div>
+                                        )
+                                    ) : previewAsset.filename.endsWith('.pdf') ? (
+                                        <iframe src={previewAsset.url} className="w-full h-full border-none" title="PDF Preview" />
+                                    ) : previewAsset.filename.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) ? (
+                                        <img src={previewAsset.url} className="max-w-full max-h-full object-contain" alt={previewAsset.filename} />
+                                    ) : (
+                                        <iframe src={previewAsset.url} className="w-full h-full border-none" title="File Preview" />
+                                    )}
                                 </div>
                             </div>
                         </motion.div>

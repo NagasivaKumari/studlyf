@@ -482,6 +482,26 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     const subData = await subRes.json();
                     setSubmissions(Array.isArray(subData) ? subData : []);
                 } catch { setSubmissions([]); }
+
+                // If admin, fetch the richer admin view that includes every stage and participant lists
+                try {
+                    const adminRes = await fetch(`${API_BASE_URL}/api/admin/events/${eventId}/submissions`, { headers: { ...authHeaders() } });
+                    if (adminRes.ok) {
+                        const adminData = await adminRes.json();
+                        // Replace stages with admin-provided stages (preserves empty stages)
+                        if (adminData.stages && Array.isArray(adminData.stages)) {
+                            setStages(adminData.stages);
+                            // Flatten submissions for existing submission management UI
+                            const flatSubs = adminData.stages.flatMap((s: any) => (Array.isArray(s.submissions) ? s.submissions : []));
+                            setSubmissions(flatSubs);
+                            // Aggregate participants from stages
+                            const aggregatedParts = adminData.stages.flatMap((s: any) => (Array.isArray(s.participants) ? s.participants : []));
+                            setParticipants(aggregatedParts);
+                        }
+                    }
+                } catch (e) {
+                    // non-fatal
+                }
                 
                 // Only use judging criteria from DB — no static fallback
                 setCriteria(eventData.judging_criteria || []);
@@ -1239,8 +1259,32 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const renderTabContent_SubmissionManagement = () => {
         // Merge hackathon + regular submissions for ALL event types
         const allSubmissions = [
-            ...(hackathonSubmissions || []).map((s: any) => ({ ...s, _sourceType: 'hackathon' })),
-            ...(submissions || []).map((s: any) => ({ ...s, _sourceType: 'regular' })),
+            ...(hackathonSubmissions || []).map((s: any) => ({
+                ...s,
+                _sourceType: 'hackathon',
+                project_title: s.project_title || s.teamName || s.team_name || 'Hackathon Submission',
+                team_name: s.team_name || s.teamLead || s.teamLeadName || 'Hackathon Team',
+                event_title: s.event_title || s.eventName || 'Hackathon Event',
+                status: s.status || 'Pending',
+            })),
+            ...(submissions || []).map((s: any) => ({
+                ...s,
+                _sourceType: s.source === 'stage_deliverable' ? 'stage' : 'regular',
+                teamName: s.teamName || s.team_name || s.user_name || s.name || 'Participant',
+                teamLead: s.teamLead || s.team_lead || s.user_name || s.name || 'N/A',
+                problemStatement: s.problemStatement || s.problem_statement || s.stage_name || s.stage_type || '',
+                pptLink: s.pptLink || s.ppt_link || '',
+                githubLink: s.githubLink || s.github_link || '',
+                assignedJudgeId: s.assignedJudgeId || s.assigned_judge_id || '',
+                totalScore: s.totalScore ?? s.total_score ?? 0,
+                project_title: s.source === 'stage_deliverable'
+                    ? (s.stage_name || s.stage_type || 'Stage Submission')
+                    : (s.project_title || s.title || s.team_name || 'Submission'),
+                team_name: s.team_name || s.user_name || s.name || 'Participant',
+                event_title: s.event_title || event?.title || s.stage_name || 'Event Submission',
+                problemStatement: s.problemStatement || s.problem_statement || s.stage_name || s.stage_type || '',
+                status: s.status || 'Pending',
+            })),
         ];
         const allDomains = [...new Set(allSubmissions.map(s => s.domain).filter(Boolean))];
         const domains = ['All Domains', ...allDomains];
@@ -1344,14 +1388,19 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         )}
                                         <td className="px-10 py-8">
                                             <div className="flex flex-col">
-                                                <span className="font-black text-slate-900 text-lg tracking-tight">{sub.teamName}</span>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || "N/A"}</span>
-                                                <span className="text-[9px] font-black text-purple-600 uppercase tracking-[0.2em] mt-2">{sub.domain}</span>
+                                                <span className="font-black text-slate-900 text-lg tracking-tight">{sub.teamName || sub.team_name || sub.user_name || sub.name}</span>
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || sub.team_lead || "N/A"}</span>
+                                                <span className="text-[9px] font-black text-purple-600 uppercase tracking-[0.2em] mt-2">{sub.domain || sub.stage_type || 'STAGE'}</span>
+                                                {sub._sourceType === 'stage' ? (
+                                                    <span className="mt-2 inline-flex w-fit px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[9px] font-black uppercase tracking-widest">
+                                                        {sub.stage_name || 'Stage Submission'}
+                                                    </span>
+                                                ) : null}
                                             </div>
                                         </td>
                                         <td className="px-10 py-8 max-w-md">
                                             <div className="space-y-2">
-                                                <p className="text-sm font-bold text-slate-800 line-clamp-2">{sub.problemStatement}</p>
+                                                <p className="text-sm font-bold text-slate-800 line-clamp-2">{sub.problemStatement || sub.stage_name || sub.project_title || 'Submission'}</p>
                                                 <div className="flex items-center gap-3">
                                                     <a href={sub.pptLink} target="_blank" className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100"><FileText size={12} /> PPT</a>
                                                     {sub.githubLink && <a href={sub.githubLink} target="_blank" className="flex items-center gap-1.5 px-3 py-1 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-wider"><LinkIcon size={12} /> Git</a>}
@@ -2021,8 +2070,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             </div>
                                         </td>
                                     </tr>
-                                )}
-                            </tbody>
+                                        )}
+                                    </tbody>
                         </table>
                     </div>
 
@@ -2616,23 +2665,30 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                 <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Authorization</th>
                                                 <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score Aggregate</th>
                                                 <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                                                        {item._sourceType === 'stage' ? (
+                                                            <span className="mt-2 inline-flex w-fit px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[9px] font-black uppercase tracking-widest">
+                                                                Stage Submission
+                                                            </span>
+                                                        ) : null}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50">
                                             {(bundleData?.[bundleTab] || []).length > 0 ? (
                                                 bundleData[bundleTab].map((item: any, idx: number) => (
-                                                    <motion.tr 
-                                                        key={item.team_id || idx}
+                                                    <motion.tr
+                                                        key={item._id || item.team_id || idx}
                                                         initial={{ opacity: 0, y: 10 }}
                                                         animate={{ opacity: 1, y: 0 }}
                                                         transition={{ delay: idx * 0.03 }}
-                                                        className="hover:bg-slate-50/30 transition-colors group"
+                                                        className="hover:bg-slate-50/30 transition-colors group cursor-pointer"
+                                                        onClick={() => setSelectedSubmission(item)}
                                                     >
                                                         <td className="px-10 py-8">
                                                             <div className="w-5 h-5 rounded border-2 border-slate-200 group-hover:border-[#6C3BFF] transition-all" />
                                                         </td>
                                                         <td className="px-10 py-8">
                                                             <div className="flex flex-col">
+                                                                <span className="line-clamp-1 text-sm text-slate-500">{item.event_title || item.stage_name || 'Event'}</span>
                                                                 <span className="font-black text-slate-900 text-lg tracking-tight group-hover:text-[#6C3BFF] transition-colors">
                                                                     {item.team_name}
                                                                 </span>
@@ -2780,7 +2836,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
-                                        {stageSubmissions.length > 0 ? stageSubmissions.map((sub: any, idx: number) => (
+                                        {(() => {
+                                            const deliverables = submissions.filter((s: any) => s.source === 'stage_deliverable');
+                                            return deliverables.length > 0 ? deliverables.map((sub: any, idx: number) => (
                                             <tr key={sub._id || idx} className="hover:bg-slate-50/30 transition-colors group">
                                                 <td className="px-10 py-8">
                                                     <div className="font-black text-slate-900 text-lg tracking-tight">
@@ -2792,24 +2850,54 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                 </td>
                                                 <td className="px-10 py-8">
                                                     <div className="flex items-center gap-3">
-                                                        {sub.data?.file_url ? (
-                                                            <button 
-                                                                onClick={() => setPreviewAsset({
-                                                                    url: sub.data.file_url.startsWith('http') ? sub.data.file_url : `${API_BASE_URL}${sub.data.file_url}`,
-                                                                    filename: sub.data.filename || 'Deliverable',
-                                                                    type: 'file'
-                                                                })}
-                                                                className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
-                                                            >
-                                                                <Eye size={14} /> Preview Asset
-                                                            </button>
-                                                        ) : sub.data?.url ? (
-                                                            <a href={sub.data.url} target="_blank" rel="noreferrer" className="px-4 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-[#6C3BFF] transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
-                                                                <ExternalLink size={14} /> View Submission
-                                                            </a>
-                                                        ) : (
-                                                            <span className="text-slate-300 italic text-xs font-bold">No assets found</span>
-                                                        )}
+                                                        {(() => {
+                                                            const data = sub.data || {};
+                                                            const fileField = Object.keys(data).find(k => typeof data[k] === 'string' && data[k].startsWith('data:'));
+                                                            const urlField = Object.keys(data).find(k => typeof data[k] === 'string' && (data[k].startsWith('http://') || data[k].startsWith('https://')));
+                                                            if (fileField && data[fileField]) {
+                                                                const mimeMap: Record<string, string> = {
+                                                                    'application/pdf': '.pdf',
+                                                                    'image/png': '.png',
+                                                                    'image/jpeg': '.jpg',
+                                                                    'image/jpg': '.jpg',
+                                                                    'image/gif': '.gif',
+                                                                    'image/webp': '.webp',
+                                                                    'image/svg+xml': '.svg',
+                                                                    'video/mp4': '.mp4',
+                                                                    'video/webm': '.webm',
+                                                                    'video/quicktime': '.mov',
+                                                                    'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+                                                                    'application/vnd.ms-powerpoint': '.ppt',
+                                                                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+                                                                    'application/msword': '.doc',
+                                                                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+                                                                    'application/vnd.ms-excel': '.xls',
+                                                                };
+                                                                const mime = data[fileField].split(';')[0].split(':')[1] || '';
+                                                                const ext = mimeMap[mime] || '';
+                                                                const name = 'Deliverable' + ext;
+                                                                return (
+                                                                    <button 
+                                                                        onClick={() => setPreviewAsset({
+                                                                            url: data[fileField],
+                                                                            filename: name,
+                                                                            type: 'file'
+                                                                        })}
+                                                                        className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
+                                                                    >
+                                                                        <Eye size={14} /> Preview Asset
+                                                                    </button>
+                                                                );
+                                                            }
+                                                            if (urlField && data[urlField]) {
+                                                                return (
+                                                                    <a href={data[urlField]} target="_blank" rel="noreferrer" className="px-4 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-[#6C3BFF] transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                                                                        <ExternalLink size={14} /> View Submission
+                                                                    </a>
+                                                                );
+                                                            }
+                                                            return <span className="text-slate-300 italic text-xs font-bold">No assets found</span>;
+                                                        })()}
                                                     </div>
                                                 </td>
                                                 <td className="px-10 py-8">
@@ -2858,7 +2946,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                     </div>
                                                 </td>
                                             </tr>
-                                        )}
+                                        );})()}
                                     </tbody>
                                 </table>
                             </div>

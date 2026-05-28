@@ -29,6 +29,9 @@ app = FastAPI()
 
 load_dotenv()
 
+# Touch file to trigger uvicorn reload when env changes during local dev
+# reload trigger
+
 # Jinja2 templates environment (templates are placed in backend/templates)
 templates_env = Environment(loader=FileSystemLoader('templates'))
 
@@ -304,6 +307,7 @@ from db import (
     participants_col,
     teams_col,
     submissions_col,
+    submission_data_col,
     judges_col,
     scores_col,
     notifications_col,
@@ -319,6 +323,9 @@ async def serve_portal(event_id: str):
     ev = None
     try:
         from bson import ObjectId
+        # Local import to ensure collection references are available when this
+        # endpoint is used (keeps top-level import ordering flexible).
+        from db import submission_data_col, participants_col, events_col, progress_col
         ev = await events_col.find_one({"_id": ObjectId(event_id)})
     except Exception:
         ev = await events_col.find_one({"event_id": event_id})
@@ -3973,6 +3980,19 @@ async def get_project_submissions():
         if not any(s["_id"] == str(prog["_id"]) for s in submissions):
             submissions.append(fix_id(prog))
             
+    # Include stage-level submissions stored in submission_data_col so admins see all uploads
+    try:
+        async for sub in submission_data_col.find({}).sort('submitted_at', -1):
+            sub_id = str(sub.get("_id"))
+            if not any(s["_id"] == sub_id for s in submissions):
+                # Mark source so callers can distinguish stage submissions
+                sub_doc = dict(sub)
+                sub_doc["source"] = "stage_submission"
+                submissions.append(fix_id(sub_doc))
+    except Exception:
+        # If submission_data_col is unavailable or empty, silently continue
+        pass
+
     return submissions
 
 @app.get("/api/admin/evaluations-history", dependencies=[Depends(admin_required)])
@@ -3982,6 +4002,91 @@ async def get_evaluations_history():
     async for prog in progress_col.find({"review_status": {"$in": ["approved", "rejected"]}}).sort("review_date", -1):
         history.append(fix_id(prog))
     return history
+
+
+@app.get("/api/admin/events/{event_id}/submissions", dependencies=[Depends(admin_required)])
+async def get_admin_event_submissions(event_id: str):
+    """Return all submissions for an event, grouped by stage (includes stage-level submission_data)."""
+    try:
+        # Ensure local import to avoid NameError from import-order or reload issues
+        from db import submission_data_col
+        from bson import ObjectId
+        try:
+            event = await events_col.find_one({"_id": ObjectId(event_id)})
+        except Exception:
+            event = await events_col.find_one({"_id": event_id})
+
+        if not event:
+            return {"error": "event_not_found"}
+
+        # Prepare stage buckets from event definition so empty stages are visible
+        stages = {st.get("id"): {"id": st.get("id"), "name": st.get("name"), "type": st.get("type"), "submissions": []} for st in event.get("stages", [])}
+
+        # Fetch stage-level submissions
+        submissions_by_stage = {}
+        async for sub in submission_data_col.find({"event_id": event_id}).sort("submitted_at", -1):
+            sid = sub.get("stage_id") or "unknown"
+            doc = fix_id(dict(sub))
+            doc["source"] = "stage_submission"
+            # Attach participant info if available
+            try:
+                participant = await participants_col.find_one({"event_id": event_id, "user_id": sub.get("user_id")})
+                if participant:
+                    doc["participant"] = fix_id(participant)
+            except Exception:
+                pass
+
+            submissions_by_stage.setdefault(sid, []).append(doc)
+
+        # Attach submissions into stage buckets (preserve empty stages)
+        for sid, bucket in stages.items():
+            bucket_subs = submissions_by_stage.get(sid, [])
+            bucket["submissions"] = bucket_subs
+
+        # Add any submissions for unknown stages
+        for sid, subs in submissions_by_stage.items():
+            if sid not in stages:
+                stages[sid] = {"id": sid, "name": subs[0].get("stage_name") or "Unknown", "type": subs[0].get("stage_type"), "submissions": subs}
+
+        # Include participants per stage and map participant -> submission (if any)
+        try:
+            for sid, st in stages.items():
+                try:
+                    # Participants use current_stage as stage name in many events
+                    participants = [fix_id(p) async for p in participants_col.find({"event_id": event_id, "$or": [{"current_stage": st.get("name")}, {"current_stage": st.get("id")}]})]
+                except Exception:
+                    participants = []
+
+                # Map each participant to their submission if present
+                for p in participants:
+                    p_sub = None
+                    for sdoc in st.get("submissions", []):
+                        if sdoc.get("user_id") == p.get("user_id") or sdoc.get("team_id") == p.get("team_id"):
+                            p_sub = sdoc
+                            break
+                    p["submission"] = p_sub
+                st["participants"] = participants
+
+        except Exception:
+            pass
+
+        # Also include any relevant progress entries for the event (legacy project submissions)
+        progress_entries = []
+        try:
+            async for prog in progress_col.find({"event_id": event_id}).sort("_id", -1):
+                progress_entries.append(fix_id(prog))
+        except Exception:
+            # If progress_col doesn't store event_id, skip silently
+            pass
+
+        return {
+            "event": fix_id(event),
+            "stages": list(stages.values()),
+            "progress_entries": progress_entries
+        }
+    except Exception as e:
+        print(f"Error in admin event submissions: {e}")
+        return {"error": "internal_error", "detail": str(e)}
 
 @app.post("/api/admin/submissions/review", dependencies=[Depends(admin_required)])
 async def review_submission(data: dict, x_admin_email: str = Header(...)):
@@ -5046,6 +5151,59 @@ async def delete_cert_template(template_id: str):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Template not found")
     return {"message": "Template deleted"}
+
+
+@app.post("/api/admin/events/{event_id}/certificates/issue", dependencies=[Depends(admin_required)])
+async def admin_issue_certificates(event_id: str, payload: dict, x_admin_email: str = Header(...)):
+    """Admin-only: issue certificates for specific users (manual Unstop-like flow).
+
+    Payload: { "user_ids": ["uid1","uid2"], "template_id": "tpl-id" }
+    """
+    try:
+        user_ids = payload.get("user_ids") or []
+        template_id = payload.get("template_id")
+        if not user_ids:
+            raise HTTPException(status_code=400, detail="user_ids required")
+
+        from bson import ObjectId
+        from services.institutional_certificate_service import certificate_service
+
+        # Resolve event
+        try:
+            event = await events_col.find_one({"_id": ObjectId(event_id)})
+        except Exception:
+            event = await events_col.find_one({"_id": event_id})
+
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        issued = []
+        for uid in user_ids:
+            try:
+                participant = await participants_col.find_one({"event_id": str(event.get("_id") or event_id), "user_id": uid})
+                pname = (participant or {}).get("name") or uid
+                rec = await certificate_service.issue_event_certificate(
+                    event_id=str(event.get("_id") or event_id),
+                    user_id=str(uid),
+                    participant_name=pname,
+                    event_title=event.get("title") or "",
+                    organization_name=event.get("organisation") or event.get("organization") or "",
+                    event_date=event.get("start_date") or "",
+                    achievement_type="participation",
+                    template_id=template_id
+                )
+                issued.append(rec)
+            except Exception as e:
+                # collect errors per-user rather than failing entire batch
+                issued.append({"user_id": uid, "error": str(e)})
+
+        await log_admin_action(x_admin_email, f"Issue Certificates", f"Event: {event_id}, Users: {len(user_ids)}, Template: {template_id}")
+        return {"issued": len([i for i in issued if isinstance(i, dict) and i.get('certificate_id')]), "results": issued}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": "internal_error", "detail": str(e)}
 
 
 # ─── Career Onboarding AI API ───────────────────────────────────────────

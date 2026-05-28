@@ -1537,6 +1537,28 @@ async def list_event_submissions_enriched(event_id: str, user: dict = Depends(ge
     except Exception as e:
         logger.error(f"[SUBMISSIONS] Failed to merge hackathon data: {e}")
 
+    # 3. Merge Stage / Phase Deliverables from submission_data_col
+    try:
+        sd_cursor = submission_data_col.find({"event_id": event_id})
+        async for sd in sd_cursor:
+            sid = str(sd["_id"])
+            if any(str(o.get("_id")) == sid for o in out):
+                continue
+            out.append({
+                "_id": sid,
+                "event_id": event_id,
+                "user_id": sd.get("user_id", ""),
+                "team_name": sd.get("user_name") or "Participant",
+                "status": sd.get("status", "Submitted"),
+                "submitted_at": sd.get("submitted_at").isoformat() if hasattr(sd.get("submitted_at"), "isoformat") else sd.get("submitted_at"),
+                "data": sd.get("data", {}),
+                "source": "stage_deliverable",
+                "stage_name": sd.get("stage_name", ""),
+                "stage_type": sd.get("stage_type", ""),
+            })
+    except Exception as e:
+        logger.error(f"[SUBMISSIONS] Failed to merge stage deliverables: {e}")
+
     return out
 
 
@@ -2152,24 +2174,43 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
     # 3. Sync with Submission Data
     sd_cursor = submission_data_col.find({"event_id": {"$in": event_ids}})
     async for sd in sd_cursor:
+        sid = str(sd.get("_id"))
         tid = sd.get("team_id")
         uid = sd.get("user_id")
-        key = tid if tid else (f"solo:{uid}" if uid else None)
-        if not key or key not in all_items: continue
-        
-        item = all_items[key]
-        item["assigned_judges"] = sd.get("assigned_judges", [])
-        # Update total judges based on actual assignment if available
-        if item["assigned_judges"]:
-            item["total_judges"] = len(item["assigned_judges"])
-            
-        item["submission_id"] = str(sd["_id"])
-        item["project_description"] = sd.get("project_description") or sd.get("description", "")
-        
+        stage_name = sd.get("stage_name") or sd.get("stage_type") or "Stage Submission"
+        stage_key = f"stage:{sid}"
+
+        stage_item = {
+            "type": "stage",
+            "submission_id": sid,
+            "stage_id": sd.get("stage_id"),
+            "stage_name": stage_name,
+            "stage_type": sd.get("stage_type") or "SUBMISSION",
+            "team_id": str(tid) if tid else None,
+            "user_id": str(uid) if uid else None,
+            "team_name": sd.get("team_name") or sd.get("user_name") or sd.get("name") or "Participant",
+            "project_title": stage_name,
+            "project_description": sd.get("project_description") or sd.get("description", ""),
+            "event_id": str(sd.get("event_id") or ""),
+            "event_title": event_titles.get(str(sd.get("event_id") or ""), "Unknown Event"),
+            "score": 0,
+            "judges_completed": len(sd.get("assigned_judges", []) or []),
+            "total_judges": len(sd.get("assigned_judges", []) or []) or event_judges.get(str(sd.get("event_id") or ""), 0),
+            "status": sd.get("status") or "Submitted",
+            "assigned_judges": sd.get("assigned_judges", []),
+            "source": "stage_deliverable",
+            "submitted_at": sd.get("submitted_at"),
+        }
+
         rec = str(sd.get("evaluation_recommendation") or "").lower()
-        if "shortlist" in rec: item["status"] = "Shortlisted"
-        elif "reject" in rec: item["status"] = "Rejected"
-        elif "approve" in rec or "accept" in rec: item["status"] = "Approved"
+        if "shortlist" in rec:
+            stage_item["status"] = "Shortlisted"
+        elif "reject" in rec:
+            stage_item["status"] = "Rejected"
+        elif "approve" in rec or "accept" in rec:
+            stage_item["status"] = "Approved"
+
+        all_items[stage_key] = stage_item
 
     # 4. Sync Scores
     sc_cursor = scores_col.find({"event_id": {"$in": event_ids}})

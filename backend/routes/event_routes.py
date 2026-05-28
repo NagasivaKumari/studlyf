@@ -56,6 +56,98 @@ async def list_events(
         filters["status"] = "LIVE"
     return await get_all_events(filters)
 
+@router.get("/my-registrations")
+async def get_my_event_registrations(user: dict = Depends(get_auth_user)):
+    """Student: Get all events + standalone opportunities the user is registered/applied for."""
+    from db import participants_col, events_col, opportunities_col, opportunity_applications_col
+    uid = str(user.get("user_id") or "")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    tracked_event_ids = set()
+    results = []
+    
+    # --- Part 1: Event participants ---
+    cursor = participants_col.find({"user_id": uid}).sort("registered_at", -1)
+    async for p in cursor:
+        eid = str(p.get("event_id") or "")
+        if not eid:
+            continue
+        tracked_event_ids.add(eid)
+        try:
+            event = await events_col.find_one({"_id": ObjectId(eid)})
+        except Exception:
+            event = None
+        if not event:
+            continue
+        
+        event_stages = event.get("stages", [])
+        total_stages = len(event_stages) if isinstance(event_stages, list) else 0
+        
+        current_stage = p.get("current_stage")
+        last_submitted = p.get("last_stage_submitted")
+        completed_stages = p.get("completed_stages", [])
+        if not isinstance(completed_stages, list):
+            completed_stages = []
+
+        stages_cleared = len(completed_stages)
+        pct = round((stages_cleared / total_stages) * 100) if total_stages > 0 else 0
+
+        results.append({
+            "event_id": eid,
+            "event_title": event.get("title", "Untitled Event"),
+            "event_status": event.get("status", "DRAFT"),
+            "event_category": event.get("category", ""),
+            "participant_id": str(p["_id"]),
+            "current_stage": current_stage,
+            "last_stage_submitted": last_submitted,
+            "completed_stages": completed_stages,
+            "status": p.get("status", "registered"),
+            "registered_at": p.get("registered_at"),
+            "total_stages": total_stages,
+            "stages_cleared": stages_cleared,
+            "progress_pct": pct,
+            "source": "event",
+            "type": event.get("category", "Event"),
+        })
+    
+    # --- Part 2: Standalone opportunity applications (no linked event) ---
+    opp_cursor = opportunity_applications_col.find({"user_id": uid}).sort("applied_at", -1)
+    async for app in opp_cursor:
+        oid = str(app.get("opportunity_id") or "")
+        if not oid:
+            continue
+        try:
+            opp = await opportunities_col.find_one({"_id": ObjectId(oid)})
+        except Exception:
+            opp = None
+        if not opp:
+            continue
+        # Skip if already linked to a tracked event participant record
+        if opp.get("event_link_id"):
+            linked_eid = str(opp["event_link_id"])
+            if linked_eid in tracked_event_ids:
+                continue
+        
+        results.append({
+            "event_id": oid,
+            "event_title": opp.get("title", "Untitled Opportunity"),
+            "event_status": opp.get("status", "active"),
+            "event_category": opp.get("type", "Opportunity"),
+            "participant_id": str(app["_id"]),
+            "current_stage": None,
+            "last_stage_submitted": None,
+            "status": app.get("status", "pending"),
+            "registered_at": app.get("applied_at"),
+            "total_stages": 0,
+            "stages_cleared": 0,
+            "progress_pct": 0,
+            "source": "opportunity",
+            "type": opp.get("type", "Opportunity"),
+        })
+    
+    return results
+
 @router.get("/{event_id}")
 async def view_event(event_id: str, user: Optional[dict] = Depends(get_auth_user_optional)):
     event = await get_event_by_id(event_id)
@@ -171,98 +263,6 @@ async def upload_event_media(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
-@router.get("/my-registrations")
-async def get_my_event_registrations(user: dict = Depends(get_auth_user)):
-    """Student: Get all events + standalone opportunities the user is registered/applied for."""
-    from db import participants_col, events_col, opportunities_col, opportunity_applications_col
-    uid = str(user.get("user_id") or "")
-    if not uid:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    tracked_event_ids = set()
-    results = []
-    
-    # --- Part 1: Event participants ---
-    cursor = participants_col.find({"user_id": uid}).sort("registered_at", -1)
-    async for p in cursor:
-        eid = str(p.get("event_id") or "")
-        if not eid:
-            continue
-        tracked_event_ids.add(eid)
-        try:
-            event = await events_col.find_one({"_id": ObjectId(eid)})
-        except Exception:
-            event = None
-        if not event:
-            continue
-        
-        event_stages = event.get("stages", [])
-        total_stages = len(event_stages) if isinstance(event_stages, list) else 0
-        
-        current_stage = p.get("current_stage")
-        last_submitted = p.get("last_stage_submitted")
-        completed_stages = p.get("completed_stages", [])
-        if not isinstance(completed_stages, list):
-            completed_stages = []
-
-        stages_cleared = len(completed_stages)
-        pct = round((stages_cleared / total_stages) * 100) if total_stages > 0 else 0
-
-        results.append({
-            "event_id": eid,
-            "event_title": event.get("title", "Untitled Event"),
-            "event_status": event.get("status", "DRAFT"),
-            "event_category": event.get("category", ""),
-            "participant_id": str(p["_id"]),
-            "current_stage": current_stage,
-            "last_stage_submitted": last_submitted,
-            "completed_stages": completed_stages,
-            "status": p.get("status", "registered"),
-            "registered_at": p.get("registered_at"),
-            "total_stages": total_stages,
-            "stages_cleared": stages_cleared,
-            "progress_pct": pct,
-            "source": "event",
-            "type": event.get("category", "Event"),
-        })
-    
-    # --- Part 2: Standalone opportunity applications (no linked event) ---
-    opp_cursor = opportunity_applications_col.find({"user_id": uid}).sort("applied_at", -1)
-    async for app in opp_cursor:
-        oid = str(app.get("opportunity_id") or "")
-        if not oid:
-            continue
-        try:
-            opp = await opportunities_col.find_one({"_id": ObjectId(oid)})
-        except Exception:
-            opp = None
-        if not opp:
-            continue
-        # Skip if already linked to a tracked event participant record
-        if opp.get("event_link_id"):
-            linked_eid = str(opp["event_link_id"])
-            if linked_eid in tracked_event_ids:
-                continue
-        
-        results.append({
-            "event_id": oid,
-            "event_title": opp.get("title", "Untitled Opportunity"),
-            "event_status": opp.get("status", "active"),
-            "event_category": opp.get("type", "Opportunity"),
-            "participant_id": str(app["_id"]),
-            "current_stage": None,
-            "last_stage_submitted": None,
-            "status": app.get("status", "pending"),
-            "registered_at": app.get("applied_at"),
-            "total_stages": 0,
-            "stages_cleared": 0,
-            "progress_pct": 0,
-            "source": "opportunity",
-            "type": opp.get("type", "Opportunity"),
-        })
-    
-    return results
 
 @router.get("/{event_id}/hub")
 async def get_event_hub_data(event_id: str, user: dict = Depends(get_auth_user)):

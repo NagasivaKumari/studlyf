@@ -88,9 +88,7 @@ function applicationDecisionCopy(status: string | undefined) {
 
 const getImageUrl = (url: string | undefined) => {
     if (!url) return '';
-    // If the URL is already absolute, return as-is (don't rewrite)
     if (/^https?:\/\//i.test(url)) return url;
-    // Normalize internal upload paths to API base
     if (url.includes('/uploads/')) {
         const path = url.substring(url.indexOf('/uploads/'));
         return `${API_BASE_URL}${path}`;

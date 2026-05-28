@@ -42,6 +42,30 @@ class DatabaseManager:
                 await self.client.admin.command('ping')
                 logger.info(f"Connected to MongoDB: {self.db_name}")
             except Exception as e:
+                err_str = str(e).lower()
+                # Retry with direct connection if SRV DNS resolution fails
+                if "dns" in err_str or "resolution" in err_str or "srv" in err_str:
+                    logger.warning("DNS resolution failed, retrying with direct connection...")
+                    direct_url = self.url.replace("mongodb+srv://", "mongodb://")
+                    if "?" in direct_url:
+                        direct_url += "&directConnection=true&ssl=true"
+                    else:
+                        direct_url += "?directConnection=true&ssl=true"
+                    try:
+                        self.client = AsyncIOMotorClient(
+                            direct_url,
+                            serverSelectionTimeoutMS=15000,
+                            tlsCAFile=certifi.where()
+                        )
+                        self.db = self.client[self.db_name]
+                        await self.client.admin.command('ping')
+                        logger.info(f"Connected to MongoDB via direct connection: {self.db_name}")
+                        return
+                    except Exception as e2:
+                        logger.error(f"Direct connection also failed: {e2}")
+                        self.client = None
+                        self.db = None
+                        raise RuntimeError("Database connection failed") from e2
                 logger.error(f"Database Connection Failed: {e}")
                 self.client = None
                 self.db = None

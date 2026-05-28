@@ -2,7 +2,7 @@
 Dynamic Submission Service - Handle stage submissions with admin-defined fields
 """
 
-from db import submission_data_col, participants_col, events_col, users_col, opportunities_col, opportunity_applications_col
+from db import submission_data_col, participants_col, events_col, users_col, teams_col, opportunities_col, opportunity_applications_col
 from notification_service import notification_service
 from bson import ObjectId
 from datetime import datetime, timezone
@@ -194,9 +194,11 @@ async def submit_stage_data(
         
         submission_doc = {
             "event_id": str(event_id),
+            "institution_id": str(event.get("institution_id", "")),
             "stage_id": str(stage_id),
             "stage_name": target_stage.get("name", ""),
             "stage_type": target_stage.get("type", "SUBMISSION"),
+            "submission_kind": "stage",
             "user_id": str(user_id),
             "team_id": str(team_id) if team_id else None,
             "data": form_data,
@@ -222,6 +224,9 @@ async def submit_stage_data(
                 }
             }
         )
+
+        # Auto-issuance disabled for admin-approval workflow: certificates
+        # should be created only by admins via the admin UI or API.
 
         # Mirror submission into portal opportunity applications so it shows up in "My applications"
         mirrored = False
