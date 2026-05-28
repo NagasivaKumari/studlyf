@@ -465,8 +465,7 @@ const CoursePlayer: React.FC = () => {
       <div className="cp-spinner" />
       <span className="cp-loading-text">Loading course modules...</span>
     </div>
-  );
-
+);
   if (!modules.length) return (
     <div className="cp-empty">
       <h2>No Modules Found</h2>
@@ -477,8 +476,6 @@ const CoursePlayer: React.FC = () => {
 
   return (
     <div className="cp-shell">
-  {showToast && (
-    <div style={{
       {showToast && (
         <div style={{
           position: 'fixed',

@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import * as QRCode from 'qrcode';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
+import html2canvas from 'html2canvas';
 import { useAuth } from '../AuthContext';
 import { API_BASE_URL } from '../apiConfig';
 import { 

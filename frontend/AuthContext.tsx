@@ -14,6 +14,9 @@ interface User {
     college_name?: string;
     graduation_year?: string;
     status?: string;
+    displayName?: string; // added for compatibility
+    name?: string; // added for compatibility
+    // any additional fields can be added as needed
 }
 
 interface AuthContextType {
@@ -38,6 +41,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     const checkAuth = async () => {
+        if (typeof window === 'undefined') {
+            // Server-side rendering: skip auth check
+            setLoading(false);
+            return;
+        }
         const token = localStorage.getItem('auth_token');
         if (!token) {
             setLoading(false);
@@ -88,10 +96,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const logout = () => {
-        localStorage.removeItem('auth_token');
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('auth_token');
+            window.location.href = '/';
+        }
         setUser(null);
         setRole(null);
-        window.location.href = '/';
     };
 
     return (
