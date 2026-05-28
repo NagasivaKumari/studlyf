@@ -40,9 +40,6 @@ export default function useCourseProgress({ userId, courseId }: UseCourseProgres
 
   // Initialise from localStorage, handling corrupted JSON safely.
   const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>(() => {
-    if (typeof window === 'undefined') {
-      return {};
-    }
     try {
       const saved = localStorage.getItem(progressKey);
       return saved ? JSON.parse(saved) : {};

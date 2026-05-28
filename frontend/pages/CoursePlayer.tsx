@@ -77,11 +77,24 @@ const CoursePlayer: React.FC = () => {
   const navigate = useNavigate();
 
   const [modules, setModules] = useState<Module[]>([]);
-  const [activeModuleIndex, setActiveModuleIndex] = useState(0);
-  const [activeLessonIndex, setActiveLessonIndex] = useState(0);
+  const resolvedCourseId = extractCourseId(courseId);
+
+  const [activeModuleIndex, setActiveModuleIndex] = useState(() => {
+    const saved = localStorage.getItem(`studlyf_last_module_${resolvedCourseId}`);
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [activeLessonIndex, setActiveLessonIndex] = useState(() => {
+    const saved = localStorage.getItem(`studlyf_last_lesson_${resolvedCourseId}`);
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [activeStage, setActiveStage] = useState<LessonType>(() => {
+    const saved = localStorage.getItem(`studlyf_last_stage_${resolvedCourseId}`);
+    return (saved as LessonType) || 'overview';
+  });
+  const [showToast, setShowToast] = useState(false);
+
   const [moduleDetails, setModuleDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeStage, setActiveStage] = useState<LessonType>('overview');
   const [courseData, setCourseData] = useState<any>(null);
 
   // Sidebar and UI state
@@ -92,7 +105,6 @@ const CoursePlayer: React.FC = () => {
   const [notesSaved, setNotesSaved] = useState(false);
 
   // Persistent localStorage Progress State
-  const resolvedCourseId = extractCourseId(courseId);
   const {
     progressKey,
     completedSteps,
@@ -104,6 +116,14 @@ const CoursePlayer: React.FC = () => {
     submitGradedQuiz,
     updateModules,
   } = useCourseProgress({ userId: user?.uid, courseId: resolvedCourseId });
+
+  useEffect(() => {
+    if (resolvedCourseId) {
+      localStorage.setItem(`studlyf_last_module_${resolvedCourseId}`, activeModuleIndex.toString());
+      localStorage.setItem(`studlyf_last_lesson_${resolvedCourseId}`, activeLessonIndex.toString());
+      localStorage.setItem(`studlyf_last_stage_${resolvedCourseId}`, activeStage);
+    }
+  }, [activeModuleIndex, activeLessonIndex, activeStage, resolvedCourseId]);
 
   // Ensure all modules are expanded whenever modules list changes
   useEffect(() => {
@@ -380,41 +400,67 @@ const CoursePlayer: React.FC = () => {
   };
 
   const handleMarkComplete = async () => {
-  // Mark current lesson as completed via hook
-  markLessonComplete(activeModuleIndex, activeLessonIndex);
+    // Mark current lesson as completed via hook
+    markLessonComplete(activeModuleIndex, activeLessonIndex);
 
-  // Sync with backend using existing updateProgress helper
-  const curMod = modules[activeModuleIndex];
-  if (curMod) {
-    const numLessons = curMod.lessons?.length || 6;
-    // Build list of completed lesson indices, ensuring current lesson is included
-    const completedIndices: string[] = [];
-    for (let i = 0; i < numLessons; i++) {
-      if (i === activeLessonIndex || completedSteps[`${activeModuleIndex}_${i}`]) {
-        completedIndices.push(i.toString());
+    // Show completed toast
+    setShowToast(true);
+    setTimeout(() => {
+      setShowToast(false);
+    }, 3000);
+
+    // Sync with backend using existing updateProgress helper
+    const curMod = modules[activeModuleIndex];
+    if (curMod) {
+      const numLessons = curMod.lessons?.length || 6;
+      // Build list of completed lesson indices, ensuring current lesson is included
+      const completedIndices: string[] = [];
+      for (let i = 0; i < numLessons; i++) {
+        if (i === activeLessonIndex || completedSteps[`${activeModuleIndex}_${i}`]) {
+          completedIndices.push(i.toString());
+        }
+      }
+      const isFinishingModule = completedIndices.length === numLessons;
+      const updates: any = {
+        completed_lessons: completedIndices,
+        status: isFinishingModule ? 'completed' : 'unlocked',
+      };
+      if (activeStage === 'overview') updates.video_completed = true;
+      if (activeStage === 'text' || activeStage === 'theory') updates.theory_completed = true;
+      await updateProgress(updates);
+      if (isFinishingModule) {
+        setCompletionPrompt({
+          open: true,
+          nextIndex: activeModuleIndex + 1 < modules.length ? activeModuleIndex + 1 : -1,
+          moduleName: curMod.title,
+        });
+        return;
       }
     }
-    const isFinishingModule = completedIndices.length === numLessons;
-    const updates: any = {
-      completed_lessons: completedIndices,
-      status: isFinishingModule ? 'completed' : 'unlocked',
-    };
-    if (activeStage === 'overview') updates.video_completed = true;
-    if (activeStage === 'text' || activeStage === 'theory') updates.theory_completed = true;
-    await updateProgress(updates);
-    if (isFinishingModule) {
-      setCompletionPrompt({
-        open: true,
-        nextIndex: activeModuleIndex + 1 < modules.length ? activeModuleIndex + 1 : -1,
-        moduleName: curMod.title,
-      });
-      return;
+    if (currentFlatIndex < flatLessons.length - 1) {
+      goToNextLesson();
     }
-  }
-  if (currentFlatIndex < flatLessons.length - 1) {
-    goToNextLesson();
-  }
-};
+  };
+
+  const continueLearning = () => {
+    if (!flatLessons.length) return;
+    
+    let target = flatLessons.find(l => {
+      if (l.type === 'result') return false;
+      return !isLessonComplete(l.moduleIndex, l.type, l.lessonIndex);
+    });
+    
+    if (!target) {
+      target = flatLessons.find(l => l.type === 'result') || flatLessons[flatLessons.length - 1];
+    }
+    
+    if (target) {
+      setActiveModuleIndex(target.moduleIndex);
+      setActiveLessonIndex(target.lessonIndex);
+      setActiveStage(target.type);
+      scrollContentTop();
+    }
+  };
 
   const isLessonComplete = (modIdx: number, type: LessonType, lessonIdx: number): boolean => {
     if (modIdx === -1) return !!completedSteps['capstone'];
@@ -465,7 +511,8 @@ const CoursePlayer: React.FC = () => {
       <div className="cp-spinner" />
       <span className="cp-loading-text">Loading course modules...</span>
     </div>
-);
+  );
+
   if (!modules.length) return (
     <div className="cp-empty">
       <h2>No Modules Found</h2>
