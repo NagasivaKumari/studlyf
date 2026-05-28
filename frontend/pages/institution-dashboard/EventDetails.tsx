@@ -1412,7 +1412,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     teamName: s.teamName || s.team_name || s.user_name || s.name || 'Participant',
                     teamLead: s.teamLead || s.team_lead || s.user_name || s.name || 'N/A',
                     problemStatement: isStage
-                        ? (stageDesc || (stageUrlField ? data[stageUrlField] : '') || s.stage_name || '')
+                        ? (stageDesc || (stageUrlField ? 'Submitted link' : stageFileField ? 'Submitted file' : '') || s.stage_name || '')
                         : (s.problemStatement || s.problem_statement || s.stage_name || s.stage_type || ''),
                     pptLink: isStage
                         ? (stageFileField ? data[stageFileField] : stageUrlField ? data[stageUrlField] : '')
