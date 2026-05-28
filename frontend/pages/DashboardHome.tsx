@@ -184,7 +184,7 @@ const DashboardHome: React.FC = () => {
 
   const typewriterWords = [
     { text: 'YOUR', className: 'text-black' },
-    { text: 'CAREER', className: 'text-black' },
+    { text: 'GROWTH', className: 'text-black' },
     { text: 'STARTS', className: 'text-black' },
     { text: 'HERE', className: 'text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B]' },
   ];
@@ -322,14 +322,14 @@ const DashboardHome: React.FC = () => {
                   <TypewriterEffectSmooth words={typewriterWords} />
                 </div>
                 <p className="text-[9px] sm:text-[14px] font-bold text-black uppercase tracking-[0.3em] max-w-2xl text-center leading-relaxed px-4">
-                  Studlyf -- Building the student internet <br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B]">FOR NEXT GENERATION</span>
+                  Studlyf -- Building the student ecosystem <br />
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B]">FOR AMBITIOUS STUDENTS</span>
                 </p>
               </div>
 
               <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 relative z-20 mt-2 px-6 sm:px-16">
                 <div className="flex flex-col items-center gap-6 md:gap-10">
-                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Built by alumni of</span>
+                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Connected with</span>
                   <div className="flex items-center gap-8 sm:gap-16">
                     <div className="flex items-center gap-3 sm:gap-4 group">
                       <img src="/images/google.png" className="h-6 sm:h-8 transition-transform group-hover:scale-110" alt="Google" />
@@ -342,7 +342,7 @@ const DashboardHome: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex flex-col items-center gap-6 md:gap-10">
-                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Backed by</span>
+                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Collaborated with</span>
                   <div className="flex items-center gap-8 sm:gap-16 justify-center">
                     <div className="flex items-center gap-3 sm:gap-4 group">
                       <img src="https://cdn.simpleicons.org/ycombinator" className="h-6 sm:h-8 transition-transform group-hover:scale-110" alt="Y Combinator" />
@@ -516,10 +516,10 @@ const DashboardHome: React.FC = () => {
                           )}
                           {ev.source === 'opportunity' && (
                             <span className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${ev.status === 'accepted' || ev.status === 'shortlisted'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : ev.status === 'rejected'
-                                  ? 'bg-red-50 text-red-700 border-red-200'
-                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : ev.status === 'rejected'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
                               }`}>
                               {ev.status}
                             </span>
@@ -559,13 +559,13 @@ const DashboardHome: React.FC = () => {
             {/* First half */}
             <div className="flex items-center gap-10 md:gap-20 pr-10 md:pr-20 flex-shrink-0">
               {[...Array(10)].map((_, i) => (
-                <img key={`first-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
+                <img key={`first-${i}`} src="/images/studlyf1.jpg" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
               ))}
             </div>
             {/* Second half (Duplicate for seamless loop) */}
             <div className="flex items-center gap-10 md:gap-20 pr-10 md:pr-20 flex-shrink-0">
               {[...Array(10)].map((_, i) => (
-                <img key={`second-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
+                <img key={`second-${i}`} src="/images/studlyf1.jpg" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
               ))}
             </div>
           </div>

@@ -55,7 +55,12 @@ import {
     FileCheck,
     Trash2,
     Zap,
-    Lightbulb
+    Lightbulb,
+    Globe,
+    Github,
+    GitBranch,
+    FileImage,
+    FileVideo
 } from 'lucide-react';
 import { motion, AnimatePresence as FramerAnimatePresence } from 'framer-motion';
 import LeaderboardPage from './LeaderboardPage';
@@ -85,6 +90,29 @@ const BUNDLE_TAB_LABEL: Record<string, string> = {
     approved: 'Approved',
     pending: 'Pending',
     rejected: 'Rejected',
+};
+
+const getBundleSourceLabel = (item: any) => {
+    if (item?.source === 'stage_deliverable' || item?._sourceType === 'stage') return 'Stage Deliverable';
+    if (item?.source === 'hackathon_submission' || item?._sourceType === 'hackathon') return 'Hackathon Submission';
+    if (item?.team_id) return 'Team Submission';
+    return 'Submission';
+};
+
+const getBundleStatusLabel = (status: string) => {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'accepted') return 'Approved';
+    if (normalized === 'shortlisted') return 'Shortlisted';
+    if (normalized === 'rejected') return 'Rejected';
+    if (normalized === 'pending review' || normalized === 'under review') return 'Pending Review';
+    if (normalized === 'evaluated') return 'Evaluated';
+    return status || 'Pending';
+};
+
+const getBundleActionHint = (item: any) => {
+    const sourceLabel = getBundleSourceLabel(item);
+    const statusLabel = getBundleStatusLabel(item?.status || 'Pending');
+    return `${sourceLabel} • Current: ${statusLabel}`;
 };
 
 const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutionId: institutionIdProp, initialSection, onEditEvent }) => {
@@ -179,6 +207,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [regActionBusy, setRegActionBusy] = useState<string | null>(null);
     const [expandedRegId, setExpandedRegId] = useState<string | null>(null);
     const [notifyingApproved, setNotifyingApproved] = useState(false);
+    const [issuingCertificates, setIssuingCertificates] = useState(false);
 
     const fetchRegistrations = async () => {
         if (!eventId || activeTab !== 'registrations') return;
@@ -267,6 +296,58 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             alert('Network error.');
         } finally {
             setNotifyingApproved(false);
+        }
+    };
+
+    const handleIssueCertificates = async () => {
+        if (!eventId || !event) return;
+
+        const approvedRows = Array.isArray(bundleData?.approved) ? bundleData.approved : [];
+        const userIds = Array.from(new Set(
+            approvedRows.flatMap((item: any) => {
+                if (Array.isArray(item?.member_user_ids) && item.member_user_ids.length > 0) {
+                    return item.member_user_ids;
+                }
+                if (item?.user_id) {
+                    return [item.user_id];
+                }
+                return [];
+            }).map((value: any) => String(value).trim()).filter(Boolean)
+        ));
+
+        if (userIds.length === 0) {
+            alert('No approved recipients were resolved for certificate issuance.');
+            return;
+        }
+
+        if (!confirm(`Issue certificates to ${userIds.length} approved recipient${userIds.length === 1 ? '' : 's'}?`)) return;
+
+        setIssuingCertificates(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/admin/events/${eventId}/certificates/issue`, {
+                method: 'POST',
+                headers: {
+                    ...authHeaders(),
+                    'Content-Type': 'application/json',
+                    'X-Admin-Email': user?.email || ''
+                },
+                body: JSON.stringify({
+                    user_ids: userIds,
+                    template_id: event?.certificate_template_id || event?.template_id || ''
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data?.detail || data?.error || 'Failed to issue certificates');
+            }
+
+            const issuedCount = data?.issued ?? 0;
+            alert(`Issued ${issuedCount} certificate${issuedCount === 1 ? '' : 's'} to ${userIds.length} recipient${userIds.length === 1 ? '' : 's'}.`);
+        } catch (error: any) {
+            alert(error?.message || 'Failed to issue certificates');
+        } finally {
+            setIssuingCertificates(false);
         }
     };
 
@@ -492,6 +573,35 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     const subData = await subRes.json();
                     setSubmissions(Array.isArray(subData) ? subData : []);
                 } catch { setSubmissions([]); }
+
+                // Admin-only enhancement: super-admins/admins can use the richer event submission view.
+                // Institution users must stay on institution-scoped endpoints to avoid 403s.
+                try {
+                    if (role === 'super_admin' || role === 'admin') {
+                        const adminRes = await fetch(`${API_BASE_URL}/api/admin/events/${eventId}/submissions`, {
+                            headers: {
+                                ...authHeaders(),
+                                'X-Admin-Email': user?.email || ''
+                            }
+                        });
+
+                        if (adminRes.ok) {
+                            const adminData = await adminRes.json();
+                            // Replace stages with admin-provided stages (preserves empty stages)
+                            if (adminData.stages && Array.isArray(adminData.stages)) {
+                                setStages(adminData.stages);
+                                // Flatten submissions for existing submission management UI
+                                const flatSubs = adminData.stages.flatMap((s: any) => (Array.isArray(s.submissions) ? s.submissions : []));
+                                setSubmissions(flatSubs);
+                                // Aggregate participants from stages
+                                const aggregatedParts = adminData.stages.flatMap((s: any) => (Array.isArray(s.participants) ? s.participants : []));
+                                setParticipants(aggregatedParts);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // non-fatal
+                }
                 
                 // Only use judging criteria from DB — no static fallback
                 setCriteria(eventData.judging_criteria || []);
@@ -505,17 +615,24 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     }, [eventId, refreshCounter]);
 
     const fetchBundle = async (tVal: number) => {
-        if (!eventId || activeTab !== 'submissions') return;
+        console.log('[BUNDLE] fetchBundle called', { eventId, activeTab, tVal });
+        if (!eventId || activeTab !== 'submissions') { console.log('[BUNDLE] Skipped:', { eventId, activeTab }); return; }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/qualified-bundle?threshold=${tVal}`, {
+            const url = `${API_BASE_URL}/api/v1/institution/events/${eventId}/qualified-bundle?threshold=${tVal}`;
+            console.log('[BUNDLE] Fetching:', url);
+            const res = await fetch(url, {
                 headers: { ...authHeaders() }
             });
+            console.log('[BUNDLE] Response status:', res.status);
             if (res.ok) {
                 const data = await res.json();
+                console.log('[BUNDLE] Data received:', JSON.stringify(data));
                 setBundleData(data);
+            } else {
+                console.log('[BUNDLE] Response not OK:', res.status, await res.text().catch(() => ''));
             }
         } catch (e) {
-            console.error('Failed to fetch evaluation bundle:', e);
+            console.error('[BUNDLE] Failed to fetch evaluation bundle:', e);
         }
     };
 
@@ -676,6 +793,30 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
+    const handleSaveRubrics = async () => {
+        if (!eventId) return;
+        setSaving(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/criteria`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify(criteria)
+            });
+            if (res.ok) {
+                setEvent(prev => prev ? { ...prev, judging_criteria: criteria } : prev);
+                setHasUnsavedChanges(false);
+                setShowSaveSuccess(true);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(`Failed to save rubrics: ${err.detail || 'Unknown error'}`);
+            }
+        } catch {
+            alert('Network error while saving rubrics');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleSaveEvent = async () => {
         if (!eventId || !event) return;
         setSaving(true);
@@ -688,9 +829,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             if (!s.start_date || !s.end_date) continue;
             const orig = origStageMap.get(s.id);
             const isNew = !orig;
-            const dateChanged = !orig || orig.start_date !== s.start_date || orig.end_date !== s.end_date;
-            if (!isNew && !dateChanged) continue;
-            if (new Date(s.start_date) < today) {
+            const startChanged = !orig || orig.start_date !== s.start_date;
+            const endChanged = !orig || orig.end_date !== s.end_date;
+            if (!isNew && !startChanged && !endChanged) continue;
+            // Only validate start date is not in the past when start date actually changed
+            if (startChanged && new Date(s.start_date) < today) {
                 alert(`Stage "${s.name}" start date (${s.start_date}) cannot be in the past.`);
                 setSaving(false);
                 return;
@@ -719,11 +862,14 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
 
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ ...finalEvent, stages, judging_criteria: criteria })
-            });
+        // Strip large binary fields and read-only fields before sending to reduce payload
+        const { logo_url, banner_url, _id, created_at, updated_at, institution_id, participant_count, ...cleanEvent } = finalEvent;
+
+        const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({ ...cleanEvent, stages, judging_criteria: criteria })
+        });
             if (res.ok) {
                 const updatedEvent = { ...finalEvent, stages, judging_criteria: criteria };
                 setEvent(updatedEvent);
@@ -1063,6 +1209,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
 
     const handleUpdateStatus = async (teamId: string, newStatus: string, item?: any) => {
         const instId = institutionIdProp || event?.institution_id;
+        const sourceType = item?.source || item?._sourceType || '';
+        const submissionId = item?.submission_id || teamId;
+
         if (teamId.startsWith('portal_app:')) {
             const appId = teamId.replace(/^portal_app:/, '');
             if (!appId) return;
@@ -1085,10 +1234,31 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             } catch (err) {
                 console.error('Failed to update application status:', err);
             }
-        } else {
+        } else if (sourceType === 'stage_deliverable') {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/submission-data/${submissionId}/status`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                if (res.ok) {
+                    setBundleData(prev => ({
+                        ...prev,
+                        [bundleTab]: prev?.[bundleTab]?.map((row: any) => 
+                            row.submission_id === submissionId ? { ...row, status: newStatus } : row
+                        )
+                    }));
+                    setShowSaveSuccess(true);
+                    setTimeout(() => setShowSaveSuccess(false), 2000);
+                }
+            } catch (err) {
+                console.error('Failed to update stage submission status:', err);
+            }
+        } else if (item?.team_id || teamId) {
+            const resolvedTeamId = item?.team_id || teamId;
             // Update team status in participants collection
             try {
-                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams/${teamId}/status`, {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams/${resolvedTeamId}/status`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', ...authHeaders() },
                     body: JSON.stringify({ status: newStatus })
@@ -1097,7 +1267,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     setBundleData(prev => ({
                         ...prev,
                         [bundleTab]: prev?.[bundleTab]?.map((item: any) => 
-                            item.team_id === teamId ? { ...item, status: newStatus } : item
+                            item.team_id === resolvedTeamId ? { ...item, status: newStatus } : item
                         )
                     }));
                     setShowSaveSuccess(true);
@@ -1111,7 +1281,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                                 body: JSON.stringify({
-                                    team_id: teamId,
+                                    team_id: resolvedTeamId,
                                     status: newStatus,
                                     team_name: item.team_name,
                                     emails: item.member_emails || [],
@@ -1125,6 +1295,26 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 }
             } catch (err) {
                 console.error('Failed to update team status:', err);
+            }
+        } else if (submissionId) {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/submissions/${submissionId}/status`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                if (res.ok) {
+                    setBundleData(prev => ({
+                        ...prev,
+                        [bundleTab]: prev?.[bundleTab]?.map((row: any) => 
+                            row.submission_id === submissionId ? { ...row, status: newStatus } : row
+                        )
+                    }));
+                    setShowSaveSuccess(true);
+                    setTimeout(() => setShowSaveSuccess(false), 2000);
+                }
+            } catch (err) {
+                console.error('Failed to update submission status:', err);
             }
         }
     };
@@ -1270,16 +1460,30 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const handleEvaluateSubmission = async () => {
         if (!evaluatingSubmission || !user) return;
         try {
-            const payload = {
-                judgeId: user.user_id,
-                rubricScores: evaluationScores,
-                feedback: evaluationComment
-            };
-            const res = await fetch(`${API_BASE_URL}/api/hackathons/submissions/${evaluatingSubmission._id}/evaluate`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify(payload)
-            });
+            const hackathonIdSet = new Set((hackathonSubmissions || []).map((s: any) => String(s?._id || s?.id || s?.submissionId)));
+            const isHackathon = hackathonIdSet.has(String(evaluatingSubmission._id));
+            const res = isHackathon
+                ? await fetch(`${API_BASE_URL}/api/hackathons/submissions/${evaluatingSubmission._id}/evaluate`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: JSON.stringify({
+                        judgeId: user.user_id,
+                        rubricScores: evaluationScores,
+                        feedback: evaluationComment
+                    })
+                  })
+                : await fetch(`${API_BASE_URL}/api/judges/score`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: JSON.stringify({
+                        submission_id: evaluatingSubmission._id,
+                        judge_id: user.user_id,
+                        scores: evaluationScores,
+                        comments: evaluationComment,
+                        event_id: eventId,
+                        team_id: evaluatingSubmission.team_id || evaluatingSubmission.teamId || ''
+                    })
+                  });
             if (res.ok) {
                 setEvaluatingSubmission(null);
                 setRefreshCounter(prev => prev + 1);
@@ -1301,8 +1505,13 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             return;
         }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/hackathons/submissions/assign-judge`, {
-                method: 'PATCH',
+            const hackathonIdSet = new Set((hackathonSubmissions || []).map((s: any) => String(s?._id || s?.id || s?.submissionId)));
+            const isHackathon = targetIds.every((id: string) => hackathonIdSet.has(String(id)));
+            const endpoint = isHackathon
+                ? `${API_BASE_URL}/api/hackathons/submissions/assign-judge`
+                : `${API_BASE_URL}/api/judges/assign`;
+            const res = await fetch(endpoint, {
+                method: isHackathon ? 'PATCH' : 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({
                     submission_ids: targetIds,
@@ -1345,12 +1554,55 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const renderTabContent_SubmissionManagement = () => {
         // Merge hackathon + regular submissions for ALL event types
         const allSubmissions = [
-            ...(hackathonSubmissions || []).map((s: any) => ({ ...s, _sourceType: 'hackathon' })),
-            ...(submissions || []).map((s: any) => ({ ...s, _sourceType: 'regular' })),
+            ...(hackathonSubmissions || []).map((s: any) => ({
+                ...s,
+                _sourceType: 'hackathon',
+                project_title: s.project_title || s.teamName || s.team_name || '',
+                team_name: s.team_name || s.teamLead || s.teamLeadName || '',
+                event_title: s.event_title || s.eventName || '',
+                status: s.status || '',
+            })),
+            ...(submissions || []).map((s: any) => {
+                const isStage = s.source === 'stage_deliverable';
+                const data = s.data || {};
+                // For stage deliverables, the actual content is in the data field
+                const stageFileField = isStage ? Object.keys(data).find(k => typeof data[k] === 'string' && data[k].startsWith('data:')) : null;
+                const stageUrlField = isStage ? Object.keys(data).find(k => typeof data[k] === 'string' && (data[k].startsWith('http://') || data[k].startsWith('https://'))) : null;
+                const stageDesc = isStage ? (data.description || data.problem_statement || data.solution || '') : '';
+                return {
+                    ...s,
+                    _sourceType: isStage ? 'stage' : 'regular',
+                    teamName: s.teamName || s.team_name || s.user_name || s.name || '',
+                    teamLead: s.teamLead || s.team_lead || s.team_name || s.user_name || s.name || '',
+                    problemStatement: isStage
+                        ? (stageDesc || (stageUrlField ? 'Submitted link' : stageFileField ? 'Submitted file' : '') || s.stage_name || '')
+                        : (s.problemStatement || s.problem_statement || s.stage_name || s.stage_type || ''),
+                    pptLink: isStage
+                        ? (stageFileField ? data[stageFileField] : stageUrlField ? data[stageUrlField] : '')
+                        : (s.pptLink || s.ppt_link || ''),
+                    githubLink: s.githubLink || s.github_link || '',
+                    assignedJudgeId: s.assignedJudgeId || s.assigned_judge_id || (Array.isArray(s.assigned_judges) && s.assigned_judges.length > 0 ? s.assigned_judges[0].judge_id : ''),
+                    totalScore: s.totalScore ?? s.total_score ?? 0,
+                    project_title: isStage
+                        ? (s.stage_name || s.stage_type || '')
+                        : (s.project_title || s.title || s.team_name || ''),
+                    team_name: s.team_name || s.user_name || s.name || '',
+                    event_title: s.event_title || event?.title || s.stage_name || '',
+                    status: s.status || '',
+                };
+            }),
         ];
-        const allDomains = [...new Set(allSubmissions.map(s => s.domain).filter(Boolean))];
+        // Dedup by _id or composite key
+        const seenKeys = new Set<string>();
+        const dedupedSubmissions = allSubmissions.filter(s => {
+            const key = s._id || `${s.team_id || s.teamId}_${s.stage_id || ''}`;
+            if (seenKeys.has(key)) return false;
+            seenKeys.add(key);
+            return true;
+        });
+        const allDomains = [...new Set(dedupedSubmissions.map(s => s.domain).filter(Boolean))];
         const domains = ['All Domains', ...allDomains];
-        const filtered = allSubmissions.filter(s => {
+        const filtered = dedupedSubmissions.filter(s => {
             const name = s.teamName || s.team_name || s.user_name || '';
             const lead = s.teamLead || s.team_lead || '';
             const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || lead.toLowerCase().includes(searchQuery.toLowerCase());
@@ -1679,18 +1931,110 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         )}
                                         <td className="px-10 py-8">
                                             <div className="flex flex-col">
-                                                <span className="font-black text-slate-900 text-lg tracking-tight">{sub.teamName}</span>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || "N/A"}</span>
-                                                <span className="text-[9px] font-black text-purple-600 uppercase tracking-[0.2em] mt-2">{sub.domain}</span>
+                                                <span className="font-black text-slate-900 text-lg tracking-tight">{sub.teamName || sub.team_name || sub.teamLead || sub.team_lead || sub.user_name || sub.name}</span>
+                                                {sub.teamLead || sub.team_lead || sub.team_name ? (
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || sub.team_lead || sub.team_name}</span>
+                                                ) : null}
+                                                {sub.domain && <span className="text-[9px] font-black text-purple-600 uppercase tracking-[0.2em] mt-2">{sub.domain}</span>}
+                                                {sub._sourceType === 'stage' && sub.stage_name ? (
+                                                    <span className="mt-2 inline-flex w-fit px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[9px] font-black uppercase tracking-widest">
+                                                        {sub.stage_name}
+                                                    </span>
+                                                ) : null}
                                             </div>
                                         </td>
                                         <td className="px-10 py-8 max-w-md">
                                             <div className="space-y-2">
-                                                <p className="text-sm font-bold text-slate-800 line-clamp-2">{sub.problemStatement}</p>
-                                                <div className="flex items-center gap-3">
-                                                    <a href={sub.pptLink} target="_blank" className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100"><FileText size={12} /> PPT</a>
-                                                    {sub.githubLink && <a href={sub.githubLink} target="_blank" className="flex items-center gap-1.5 px-3 py-1 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-wider"><LinkIcon size={12} /> Git</a>}
-                                                </div>
+                                                {(() => {
+                                                    const stageData = sub._sourceType === 'stage' ? sub.data : null;
+                                                    const descText = stageData
+                                                        ? (stageData.description || stageData.problem_statement || stageData.solution || '')
+                                                        : (sub.problemStatement && sub.problemStatement !== 'Submitted link' && sub.problemStatement !== 'Submitted file' ? sub.problemStatement : '');
+                                                    interface FileAsset { type: 'file'; url: string; mime: string }
+                                                    interface LinkAsset { type: 'link'; url: string; domain: string }
+                                                    const assets: (FileAsset | LinkAsset)[] = [];
+                                                    if (stageData && typeof stageData === 'object') {
+                                                        for (const [key, value] of Object.entries(stageData)) {
+                                                            if (typeof value !== 'string') continue;
+                                                            if (['description', 'problem_statement', 'solution'].includes(key)) continue;
+                                                            if (value.startsWith('data:')) {
+                                                                const mime = value.split(';')[0].split(':')[1] || '';
+                                                                assets.push({ type: 'file', url: value, mime });
+                                                            } else if (value.startsWith('http://') || value.startsWith('https://')) {
+                                                                let domain = '';
+                                                                try { domain = new URL(value).hostname; } catch {}
+                                                                assets.push({ type: 'link', url: value, domain });
+                                                            }
+                                                        }
+                                                    } else {
+                                                        if (sub.pptLink) {
+                                                            if (sub.pptLink.startsWith('data:')) {
+                                                                const mime = sub.pptLink.split(';')[0].split(':')[1] || '';
+                                                                assets.push({ type: 'file', url: sub.pptLink, mime });
+                                                            } else {
+                                                                let domain = '';
+                                                                try { domain = new URL(sub.pptLink).hostname; } catch {}
+                                                                assets.push({ type: 'link', url: sub.pptLink, domain });
+                                                            }
+                                                        }
+                                                        if (sub.githubLink) {
+                                                            let domain = '';
+                                                            try { domain = new URL(sub.githubLink).hostname; } catch {}
+                                                            assets.push({ type: 'link', url: sub.githubLink, domain });
+                                                        }
+                                                    }
+                                                    const assetFilename = (url: string, mime: string) => {
+                                                        if (url.startsWith('data:')) {
+                                                            const ext = mime.split('/')[1] || 'bin';
+                                                            return `Attachment.${ext}`;
+                                                        }
+                                                        try {
+                                                            const u = new URL(url);
+                                                            return u.pathname.split('/').pop() || 'Attachment';
+                                                        } catch {
+                                                            return 'Attachment';
+                                                        }
+                                                    };
+                                                    const renderIcon = (asset: FileAsset | LinkAsset) => {
+                                                        if (asset.type === 'file') {
+                                                            const { mime } = asset;
+                                                            if (mime.includes('pdf')) return <FileText size={16} />;
+                                                            if (mime.includes('presentation') || mime.includes('pptx') || mime.includes('ppt')) return <FileCheck size={16} />;
+                                                            if (mime.startsWith('image/')) return <FileImage size={16} />;
+                                                            if (mime.startsWith('video/')) return <FileVideo size={16} />;
+                                                            return <FileText size={16} />;
+                                                        }
+                                                        if (asset.domain.includes('github.com')) return <Github size={16} />;
+                                                        return <Globe size={16} />;
+                                                    };
+                                                    return (
+                                                        <>
+                                                            {descText && <p className="text-sm font-bold text-slate-800 line-clamp-2">{descText}</p>}
+                                                            {assets.length > 0 && (
+                                                                <div className="flex items-center gap-2 mt-1">
+                                                                    {assets.map((asset, ai) => (
+                                                                        asset.type === 'file' ? (
+                                                                            <button key={ai}
+                                                                                onClick={() => setPreviewAsset({ url: asset.url, filename: assetFilename(asset.url, asset.mime), type: 'file' })}
+                                                                                title={`View ${asset.mime.includes('pdf') ? 'PDF' : asset.mime.includes('presentation') ? 'PPT' : 'file'}`}
+                                                                                className="flex items-center justify-center w-9 h-9 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 hover:bg-amber-100 transition-colors cursor-pointer">
+                                                                                {renderIcon(asset)}
+                                                                            </button>
+                                                                        ) : (
+                                                                            <a key={ai}
+                                                                                href={asset.url}
+                                                                                target="_blank" rel="noreferrer"
+                                                                                title={`Open ${asset.domain.includes('github.com') ? 'GitHub' : 'link'}`}
+                                                                                className="flex items-center justify-center w-9 h-9 bg-slate-100 text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors">
+                                                                                {renderIcon(asset)}
+                                                                            </a>
+                                                                        )
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
                                         </td>
                                         <td className="px-10 py-8">
@@ -1718,11 +2062,28 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         <td className="px-10 py-8 text-right">
                                             <div className="flex justify-end gap-2">
                                                 <button 
-                                                    onClick={() => {
+                                                    onClick={async () => {
                                                         setEvaluatingSubmission(sub);
-                                                        const myEval = sub.evaluations?.find((e: any) => e.judgeId === user?.user_id);
-                                                        setEvaluationScores(myEval?.scores || {});
-                                                        setEvaluationComment(myEval?.comment || '');
+                                                        try {
+                                                            const scoreRes = await fetch(`${API_BASE_URL}/api/judges/scores/${sub._id}`, { headers: { ...authHeaders() } });
+                                                            if (scoreRes.ok) {
+                                                                const scoresData = await scoreRes.json();
+                                                                const myScore = Array.isArray(scoresData) ? scoresData.find((s: any) => s.judge_id === user?.user_id) : null;
+                                                                if (myScore) {
+                                                                    setEvaluationScores(myScore.scores || {});
+                                                                    setEvaluationComment(myScore.comments || myScore.feedback || '');
+                                                                } else {
+                                                                    setEvaluationScores({});
+                                                                    setEvaluationComment('');
+                                                                }
+                                                            } else {
+                                                                setEvaluationScores({});
+                                                                setEvaluationComment('');
+                                                            }
+                                                        } catch {
+                                                            setEvaluationScores({});
+                                                            setEvaluationComment('');
+                                                        }
                                                     }}
                                                     className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-purple-600 hover:text-white hover:border-purple-600 transition-all shadow-sm"
                                                 >
@@ -1740,7 +2101,148 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         </tbody>
                     </table>
                 </div>
+
+            {/* Bundle Categorization Section */}
+            <div className="mt-16 space-y-8">
+                <div className="flex items-center gap-10 border-b border-slate-100 px-6">
+                    {BUNDLE_TABS.map((tab) => (
+                        <button
+                            key={tab}
+                            onClick={() => setBundleTab(tab)}
+                            className={`text-[10px] font-black uppercase tracking-[0.2em] pb-5 relative transition-all ${bundleTab === tab ? 'text-[#6C3BFF]' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            {BUNDLE_TAB_LABEL[tab]} ({bundleData?.summary?.[tab] || 0})
+                            {bundleTab === tab && (
+                                <motion.div layoutId="bundleSubTab" className="absolute bottom-0 left-0 right-0 h-1 bg-[#6C3BFF] rounded-full shadow-[0_2px_10px_rgba(108,59,255,0.4)]" />
+                            )}
+                        </button>
+                    ))}
+                    {getCurrentStageInfo().is_final_stage && (bundleData?.approved?.length || 0) > 0 && (
+                        <button
+                            onClick={handleIssueCertificates}
+                            disabled={issuingCertificates}
+                            className="ml-auto mb-5 px-4 py-2 rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-[0.2em]"
+                        >
+                            {issuingCertificates ? 'Issuing Certificates...' : 'Issue Certificates'}
+                        </button>
+                    )}
+                </div>
+
+                <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="bg-slate-50/50">
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Candidate Identity</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Judge Status</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score Aggregate</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {(bundleData?.[bundleTab] || []).length > 0 ? (
+                                (bundleData[bundleTab] || []).map((item: any, idx: number) => (
+                                    <motion.tr
+                                        key={item.team_id || item.user_id || idx}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: idx * 0.03 }}
+                                        className="hover:bg-slate-50/30 transition-colors group"
+                                    >
+                                        <td className="px-10 py-8">
+                                            <div className="flex flex-col">
+                                                <span className="font-black text-slate-900 text-lg tracking-tight group-hover:text-[#6C3BFF] transition-colors">
+                                                    {item.team_name}
+                                                </span>
+                                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                    <span className="px-2.5 py-1 rounded-full border border-slate-200 bg-slate-50 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">
+                                                        {getBundleSourceLabel(item)}
+                                                    </span>
+                                                    <span className="px-2.5 py-1 rounded-full border border-purple-100 bg-purple-50 text-[9px] font-black uppercase tracking-[0.2em] text-purple-600">
+                                                        {getBundleStatusLabel(item.status || 'Pending')}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-10 py-8">
+                                            <div className="flex flex-col gap-2">
+                                                {item.total_judges > 0 || item.score > 0 ? (
+                                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider w-fit ${item.judges_completed >= item.total_judges ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-purple-50 text-purple-600 border-purple-100'}`}>
+                                                        <CheckCircle2 size={12} />
+                                                        {item.judges_completed}/{item.total_judges} Judges Verified
+                                                    </div>
+                                                ) : null}
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">
+                                                    {getBundleActionHint(item)}
+                                                </p>
+                                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.18em]">
+                                                    {Array.isArray(item.member_emails) && item.member_emails.length > 0
+                                                        ? `Mail will go to ${item.member_emails.length} recipient${item.member_emails.length === 1 ? '' : 's'}`
+                                                        : 'No recipients resolved yet'}
+                                                </p>
+                                            </div>
+                                        </td>
+                                        <td className="px-10 py-8 text-center">
+                                            <span className={`text-base font-black ${item.score > 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                                {item.score ? item.score.toFixed(1) : '0.0'}
+                                            </span>
+                                        </td>
+                                        <td className="px-10 py-8 text-right">
+                                            <div className="flex gap-2 justify-end">
+                                                {(() => {
+                                                    const status = (item.status || '').toLowerCase();
+                                                    if (status === 'approved' || status === 'accepted') {
+                                                        return <div className="px-4 py-2 text-emerald-600 text-[10px] font-black uppercase tracking-widest bg-emerald-50 rounded-xl border border-emerald-100">Approved</div>;
+                                                    }
+                                                    if (status === 'rejected') {
+                                                        return <div className="px-4 py-2 text-rose-600 text-[10px] font-black uppercase tracking-widest bg-rose-50 rounded-xl border border-rose-100">Rejected</div>;
+                                                    }
+                                                    return (
+                                                        <>
+                                                            {status !== 'shortlisted' ? (
+                                                                <button
+                                                                    onClick={() => handleUpdateStatus(item.team_id || item.submission_id, 'Shortlisted', item)}
+                                                                    className="p-3 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
+                                                                    title={Array.isArray(item.member_emails) && item.member_emails.length > 0 ? `Shortlist and mail ${item.member_emails.length} recipient${item.member_emails.length === 1 ? '' : 's'}` : 'Shortlist for the next review round'}
+                                                                >
+                                                                    Shortlist
+                                                                </button>
+                                                            ) : null}
+                                                            <button
+                                                                onClick={() => handleUpdateStatus(item.team_id || item.submission_id, 'Accepted', item)}
+                                                                className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
+                                                                title={Array.isArray(item.member_emails) && item.member_emails.length > 0 ? `Approve and notify ${item.member_emails.length} recipient${item.member_emails.length === 1 ? '' : 's'}` : 'Accept / approve this entry'}
+                                                            >
+                                                                Approve
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleUpdateStatus(item.team_id || item.submission_id, 'Rejected', item)}
+                                                                className="p-3 text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
+                                                                title="Reject / remove from consideration"
+                                                            >
+                                                                Reject
+                                                            </button>
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </td>
+                                    </motion.tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={4} className="px-10 py-24 text-center">
+                                        <div className="flex flex-col items-center opacity-20">
+                                            <Filter size={64} className="mb-6" />
+                                            <p className="text-slate-400 font-black text-sm uppercase tracking-widest">No {BUNDLE_TAB_LABEL[bundleTab]?.toLowerCase() || ''} candidates</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
+        </div>
         );
     };
 
@@ -2356,8 +2858,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             </div>
                                         </td>
                                     </tr>
-                                )}
-                            </tbody>
+                                        )}
+                                    </tbody>
                         </table>
                     </div>
 
@@ -2807,399 +3309,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             case 'submissions':
                 return renderTabContent_SubmissionManagement();
             case '_submissions_legacy':
-                return (
-                    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {/* Selection Command Center Banner */}
-                        <div className="p-12 bg-slate-950 rounded-[3.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
-                            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
-                                <div className="space-y-6 max-w-2xl text-center md:text-left">
-                                    <div className="flex flex-col md:flex-row items-center gap-4">
-                                        <div className="px-5 py-2 bg-[#6C3BFF] text-white rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(108,59,255,0.4)]">
-                                            Selection Intelligence
-                                        </div>
-                                        <div className="px-5 py-2 bg-white/10 backdrop-blur-md text-[#6C3BFF] rounded-full text-[10px] font-black uppercase tracking-[0.2em] border border-[#6C3BFF]/20 animate-pulse">
-                                            {(() => {
-                                                const now = new Date();
-                                                const active = stages.find(s => {
-                                                    const start = new Date(s.start_date);
-                                                    const end = new Date(s.end_date);
-                                                    end.setUTCHours(23, 59, 59, 999);
-                                                    return now >= start && now <= end;
-                                                });
-                                                return active ? `${active.name} Active` : 'No Active Stage';
-                                            })()}
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <h3 className="text-5xl font-black tracking-tighter leading-tight">Selection Command Center</h3>
-                                        <p className="text-slate-400 text-lg font-medium leading-relaxed opacity-90">
-                                            Dynamically aggregate and approve candidate bundles using {event?.name || ''}'s scoring protocol. View deliverables or dispatch final authorizations.
-                                        </p>
-                                    </div>
-                                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
-                                        <button 
-                                            onClick={handleSendReminders}
-                                            className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 group"
-                                        >
-                                            <Bell size={18} className="text-[#6C3BFF] group-hover:scale-110 transition-transform" /> 
-                                            Broadcast Deadline Alerts
-                                        </button>
-                                        <button className="px-8 py-4 bg-slate-900 border border-white/10 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center gap-3">
-                                            <Download size={18} /> Export Protocol Data
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="relative hidden xl:block">
-                                    <div className="w-64 h-64 bg-[#6C3BFF]/20 rounded-full blur-[100px] absolute -top-10 -right-10"></div>
-                                    <div className="p-8 bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] shadow-2xl relative z-10 space-y-6 min-w-[280px]">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Global Progress</span>
-                                            <TrendingUp size={16} className="text-[#6C3BFF]" />
-                                        </div>
-                                        <div className="space-y-4">
-                                            {[
-                                                { label: 'Shortlisted', val: bundleData?.summary?.shortlisted || 0, color: 'bg-blue-500' },
-                                                { label: 'Evaluated', val: submissions.length, color: 'bg-emerald-500' }
-                                            ].map((m, i) => {
-                                                const total = (participants?.length || 1);
-                                                const progress = Math.min(100, (m.val / total) * 100);
-                                                return (
-                                                    <div key={i} className="space-y-2">
-                                                        <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
-                                                            <span className="text-slate-400">{m.label}</span>
-                                                            <span className="text-white">{m.val}</span>
-                                                        </div>
-                                                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                                                            <div className={`h-full ${m.color} transition-all duration-1000`} style={{ width: `${progress}%` }}></div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <LayoutDashboard size={280} className="absolute -right-20 -bottom-20 text-white/[0.03] -rotate-12 pointer-events-none" />
-                        </div>
-
-                        {/* View Selection Toggle */}
-                        <div className="flex justify-center">
-                            <div className="flex bg-slate-100 p-2 rounded-[2rem] shadow-inner border border-slate-200/50">
-                                <button 
-                                    onClick={() => setSubmissionSubTab('projects')}
-                                    className={`px-10 py-4 rounded-[1.5rem] text-[11px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'projects' ? 'bg-slate-900 text-white shadow-2xl shadow-black/20' : 'text-slate-500 hover:text-slate-800'}`}
-                                >
-                                    Candidate Selection Bundles
-                                </button>
-                                <button 
-                                    onClick={() => setSubmissionSubTab('assets')}
-                                    className={`px-10 py-4 rounded-[1.5rem] text-[11px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'assets' ? 'bg-slate-900 text-white shadow-2xl shadow-black/20' : 'text-slate-500 hover:text-slate-800'}`}
-                                >
-                                    Phase Deliverables (PPT/PDF)
-                                </button>
-                            </div>
-                        </div>
-
-                        {submissionSubTab === 'projects' ? (
-                            <>
-                                {hasUnsavedChanges && (
-                                    <div className="mx-6 mb-8 p-6 bg-amber-50 border border-amber-200 rounded-[2rem] flex items-center justify-between gap-6 animate-in fade-in slide-in-from-top-4">
-                                        <div className="flex items-center gap-4 text-amber-900">
-                                            <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 shadow-inner">
-                                                <AlertCircle size={20} />
-                                            </div>
-                                            <p className="text-sm font-bold leading-tight">
-                                                Unsaved Lifecycle Changes Detected<br />
-                                                <span className="text-[10px] font-medium opacity-70">Changes to your stages or deadlines might affect candidate qualification. Sync changes to refresh results.</span>
-                                            </p>
-                                        </div>
-                                        <button 
-                                            onClick={handleSaveEvent}
-                                            className="px-6 py-3 bg-amber-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 transition-colors shadow-lg shadow-amber-900/10"
-                                        >
-                                            Sync Now
-                                        </button>
-                                    </div>
-                                )}
-                                {/* Standardized Tabs (Matching Screenshot) */}
-                                <div className="flex items-center gap-10 border-b border-slate-100 px-6">
-                                    {['shortlisted', 'approved', 'pending', 'rejected'].map((tab) => (
-                                        <button
-                                            key={tab}
-                                            onClick={() => setBundleTab(tab)}
-                                            className={`text-[10px] font-black uppercase tracking-[0.2em] pb-5 relative transition-all ${
-                                                bundleTab === tab ? 'text-[#6C3BFF]' : 'text-slate-400 hover:text-slate-600'
-                                            }`}
-                                        >
-                                            {tab} ({bundleData?.summary?.[tab] || 0})
-                                            {bundleTab === tab && (
-                                                <motion.div layoutId="subTab" className="absolute bottom-0 left-0 right-0 h-1 bg-[#6C3BFF] rounded-full shadow-[0_2px_10px_rgba(108,59,255,0.4)]" />
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
-                                    <table className="w-full text-left">
-                                        <thead>
-                                            <tr className="bg-slate-50/50">
-                                                <th className="px-10 py-6 w-10">
-                                                    <div className="w-5 h-5 rounded border-2 border-slate-200" />
-                                                </th>
-                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Candidate Identity</th>
-                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Judge Status</th>
-                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Authorization</th>
-                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score Aggregate</th>
-                                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-50">
-                                            {(bundleData?.[bundleTab] || []).length > 0 ? (
-                                                bundleData[bundleTab].map((item: any, idx: number) => (
-                                                    <motion.tr 
-                                                        key={item.team_id || idx}
-                                                        initial={{ opacity: 0, y: 10 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        transition={{ delay: idx * 0.03 }}
-                                                        className="hover:bg-slate-50/30 transition-colors group"
-                                                    >
-                                                        <td className="px-10 py-8">
-                                                            <div className="w-5 h-5 rounded border-2 border-slate-200 group-hover:border-[#6C3BFF] transition-all" />
-                                                        </td>
-                                                        <td className="px-10 py-8">
-                                                            <div className="flex flex-col">
-                                                                <span className="font-black text-slate-900 text-lg tracking-tight group-hover:text-[#6C3BFF] transition-colors">
-                                                                    {item.team_name}
-                                                                </span>
-                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                                                    {item.source === 'portal_application' ? 'Portal Application' : 'Event Participant'}
-                                                                </span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-10 py-8">
-                                                            <div className="flex flex-col gap-2">
-                                                                {item.total_judges > 0 || item.score > 0 ? (
-                                                                    <>
-                                                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider w-fit ${item.judges_completed >= item.total_judges ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-purple-50 text-purple-600 border-purple-100'}`}>
-                                                                        <CheckCircle2 size={12} />
-                                                                        {item.judges_completed}/{item.total_judges} Judges Verified
-                                                                    </div>
-                                                                    <div className="text-center mt-2">
-                                                                        <span className="text-lg font-bold text-slate-900">{item.score || 0}%</span>
-                                                                    </div>
-                                                                    </>
-                                                                ) : null}
-                                                                <button 
-                                                                    onClick={() => handleOpenJudgeAssignment(item.submission_id || item.team_id)}
-                                                                    className="text-[10px] font-black text-[#6C3BFF] uppercase tracking-widest hover:underline flex items-center gap-2 transition-all w-fit"
-                                                                >
-                                                                    <Plus size={14} /> {item.total_judges > 0 ? 'Re-assign Judge' : 'Assign Judge'}
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-10 py-8 text-center">
-                                                            {(() => {
-                                                                const status = item.status || '';
-                                                                const s = status.toLowerCase();
-                                                                let colors = "bg-slate-50 text-slate-400 border-slate-100";
-                                                                if (s === 'approved' || s === 'accepted') colors = "bg-emerald-50 text-emerald-600 border-emerald-100";
-                                                                if (s === 'shortlisted') colors = "bg-blue-50 text-blue-600 border-blue-100";
-                                                                if (s === 'rejected') colors = "bg-rose-50 text-rose-600 border-rose-100";
-                                                                
-                                                                return (
-                                                                    <div className={`inline-flex items-center px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${colors}`}>
-                                                                        {status}
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                        </td>
-                                                        <td className="px-10 py-8">
-                                                            <div className="flex flex-col items-center justify-center gap-2">
-                                                                <span className={`text-base font-black ${item.score >= 80 ? 'text-emerald-600' : 'text-slate-900'}`}>
-                                                                    {item.score || 0}%
-                                                                </span>
-                                                                <div className="w-16 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                                    <div 
-                                                                        className="h-full bg-[#6C3BFF] shadow-[0_0_10px_rgba(108,59,255,0.4)] transition-all duration-1000" 
-                                                                        style={{ width: `${item.score || 0}%` }}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-10 py-8 text-right">
-                                                            <div className="flex gap-2 justify-end">
-                                                                {(() => {
-                                                                    const status = (item.status || '').toLowerCase();
-                                                                    if (status === 'approved') {
-                                                                        return <div className="text-emerald-600 text-xs font-black uppercase">Approved</div>;
-                                                                    }
-                                                                    if (status === 'rejected') {
-                                                                        return <div className="text-rose-600 text-xs font-black uppercase">Rejected</div>;
-                                                                    }
-                                                                    if (status === 'shortlisted') {
-                                                                        return (
-                                                                            <>
-                                                                                <button 
-                                                                                    onClick={() => handleUpdateStatus(item.team_id, 'Approved', item)}
-                                                                                    className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                                                    title="Approve"
-                                                                                >
-                                                                                    <CheckCircle2 size={18} />
-                                                                                </button>
-                                                                                <button 
-                                                                                    onClick={() => handleUpdateStatus(item.team_id, 'Rejected', item)}
-                                                                                    className="p-3 text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                                                    title="Reject"
-                                                                                >
-                                                                                    <XCircle size={18} />
-                                                                                </button>
-                                                                            </>
-                                                                        );
-                                                                    }
-                                                                    // Default: show all buttons for pending status
-                                                                    return (
-                                                                        <>
-                                                                            <button 
-                                                                                onClick={() => handleUpdateStatus(item.team_id, 'Approved', item)}
-                                                                                className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                                                title="Approve"
-                                                                            >
-                                                                                <CheckCircle2 size={18} />
-                                                                            </button>
-                                                                            <button 
-                                                                                onClick={() => handleUpdateStatus(item.team_id, 'Rejected', item)}
-                                                                                className="p-3 text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                                                title="Reject"
-                                                                            >
-                                                                                <XCircle size={18} />
-                                                                            </button>
-                                                                            <button 
-                                                                                onClick={() => handleUpdateStatus(item.team_id, 'Shortlisted', item)}
-                                                                                className="p-3 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm"
-                                                                                title="Shortlist"
-                                                                            >
-                                                                                <Star size={18} />
-                                                                            </button>
-                                                                        </>
-                                                                    );
-                                                                })()}
-                                                            </div>
-                                                        </td>
-                                                    </motion.tr>
-                                                ))
-                                            ) : (
-                                                <tr>
-                                                    <td colSpan={6} className="px-10 py-24 text-center">
-                                                        <div className="flex flex-col items-center opacity-20">
-                                                            <Filter size={64} className="mb-6" />
-                                                            <p className="font-black text-[11px] uppercase tracking-[0.3em]">No items found in {bundleTab} protocol</p>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </>
-                        ) : (
-                            /* Phase Deliverables View */
-                            <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
-                                <table className="w-full text-left">
-                                    <thead>
-                                        <tr className="bg-slate-50/50">
-                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Team/Participant</th>
-                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Asset Details</th>
-                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Evaluation Dispatched</th>
-                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Submitted At</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {stageSubmissions.length > 0 ? stageSubmissions.map((sub: any, idx: number) => (
-                                            <tr key={sub._id || idx} className="hover:bg-slate-50/30 transition-colors group">
-                                                <td className="px-10 py-8">
-                                                    <div className="font-black text-slate-900 text-lg tracking-tight">
-                                                        {sub.team_name || sub.user_name || 'Anonymous Participant'}
-                                                    </div>
-                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                                        {sub.team_id ? 'Team Deliverable' : 'Solo Submission'}
-                                                    </div>
-                                                </td>
-                                                <td className="px-10 py-8">
-                                                    <div className="flex items-center gap-3">
-                                                        {sub.data?.file_url ? (
-                                                            <button 
-                                                                onClick={() => setPreviewAsset({
-                                                                    url: sub.data.file_url.startsWith('http') ? sub.data.file_url : `${API_BASE_URL}${sub.data.file_url}`,
-                                                                    filename: sub.data.filename || 'Deliverable',
-                                                                    type: 'file'
-                                                                })}
-                                                                className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
-                                                            >
-                                                                <Eye size={14} /> Preview Asset
-                                                            </button>
-                                                        ) : sub.data?.url ? (
-                                                            <a href={sub.data.url} target="_blank" rel="noreferrer" className="px-4 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-[#6C3BFF] transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
-                                                                <ExternalLink size={14} /> View Submission
-                                                            </a>
-                                                        ) : (
-                                                            <span className="text-slate-300 italic text-xs font-bold">No assets found</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-10 py-8">
-                                                    <div className="space-y-3">
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {(sub.assigned_judge_emails || []).length > 0 ? (
-                                                                sub.assigned_judge_emails.map((email: string, i: number) => (
-                                                                    <div key={i} className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-xl border border-purple-100 text-[9px] font-black uppercase tracking-wider flex items-center gap-2">
-                                                                        <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" />
-                                                                        {email.split('@')[0]}
-                                                                    </div>
-                                                                ))
-                                                            ) : (
-                                                                <button 
-                                                                    onClick={() => handleOpenJudgeAssignment(sub._id)}
-                                                                    className="px-3 py-1.5 bg-white text-[#6C3BFF] border border-[#6C3BFF]/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-[#6C3BFF] hover:text-white transition-all"
-                                                                >
-                                                                    + Assign Evaluator
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-10 py-8 text-center">
-                                                    {sub.status ? (
-                                                        <div className={`inline-flex items-center px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${
-                                                            sub.status.toLowerCase() === 'submitted' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'
-                                                        }`}>
-                                                            {sub.status}
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-slate-300 text-[9px] font-black uppercase tracking-widest">—</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-10 py-8 text-right">
-                                                    <div className="text-xs font-bold text-slate-500">{new Date(sub.submitted_at).toLocaleString()}</div>
-                                                    <div className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mt-1">Live Sync Active</div>
-                                                </td>
-                                            </tr>
-                                        )) : (
-                                            <tr>
-                                                <td colSpan={5} className="px-10 py-24 text-center">
-                                                    <div className="flex flex-col items-center opacity-20">
-                                                        <FileText size={64} className="mb-6" />
-                                                        <p className="font-black text-[11px] uppercase tracking-[0.3em]">No phase deliverables detected yet</p>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </div>
-                );
+                return renderTabContent_SubmissionManagement();
             case 'submission-management':
                 return renderTabContent_SubmissionManagement();
 
@@ -3301,10 +3411,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         {criteria.length > 0 && (
                             <div className="flex justify-end">
                                 <button
-                                    onClick={handleSaveEvent}
-                                    className="px-10 py-5 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-purple-600/20"
+                                    onClick={handleSaveRubrics}
+                                    disabled={saving}
+                                    className="px-10 py-5 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-purple-600/20 disabled:opacity-50"
                                 >
-                                    Save Rubrics
+                                    {saving ? 'Saving...' : 'Save Rubrics'}
                                 </button>
                             </div>
                         )}
@@ -3927,8 +4038,42 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         
                         <div className="flex-1 p-8 space-y-8 overflow-y-auto max-h-[70vh]">
                             <div className="space-y-4">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Solution Summary</h4>
-                                <p className="text-sm font-medium text-slate-600 bg-slate-50 p-6 rounded-2xl border border-slate-100">{evaluatingSubmission.solution}</p>
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Submission Details</h4>
+                                <div className="text-sm font-medium text-slate-600 bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                                    {(() => {
+                                        const subData = evaluatingSubmission.data || {};
+                                        const desc = evaluatingSubmission.solution || subData.description || subData.problem_statement || '';
+                                        const fileField = Object.keys(subData).find(k => typeof subData[k] === 'string' && subData[k].startsWith('data:'));
+                                        const urlField = Object.keys(subData).find(k => typeof subData[k] === 'string' && (subData[k].startsWith('http://') || subData[k].startsWith('https://')));
+                                        return (
+                                            <>
+                                                {desc ? <p className="whitespace-pre-wrap mb-4">{desc}</p> : <p className="text-slate-400 italic">No description provided</p>}
+                                                {(fileField || urlField) && (
+                                                    <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-200">
+                                                        {fileField && (
+                                                            <button onClick={() => {
+                                                                const raw = subData[fileField];
+                                                                const mime = raw.startsWith('data:') ? raw.split(';')[0].split(':')[1] : '';
+                                                                const ext = mime.includes('pdf') ? '.pdf' : mime.includes('presentation') ? '.pptx' : mime.includes('image') ? '.png' : '.file';
+                                                                setPreviewAsset({ url: raw, filename: 'Asset' + ext });
+                                                            }}
+                                                                className="px-4 py-2 bg-amber-50 text-amber-700 rounded-xl text-[10px] font-black uppercase tracking-widest border border-amber-200 hover:bg-amber-100 cursor-pointer">
+                                                                <FileText size={12} className="inline mr-1.5" /> View File
+                                                            </button>
+                                                        )}
+                                                        {urlField && (
+                                                            <a href={subData[urlField].startsWith('http') ? subData[urlField] : `${API_BASE_URL}${subData[urlField]}`}
+                                                                target="_blank" rel="noreferrer"
+                                                                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all">
+                                                                <ExternalLink size={12} className="inline mr-1.5" /> Open Link
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
                             </div>
 
                             <div className="space-y-6">

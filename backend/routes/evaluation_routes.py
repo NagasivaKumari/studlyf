@@ -85,6 +85,7 @@ async def get_evaluation_submission(token: str):
         "judge_name": judge_name,
         "existing_evaluation": {
             "score": existing_evaluation.get("total_score"),
+            "criteria_scores": existing_evaluation.get("criteria_scores", {}),
             "recommendation": existing_evaluation.get("recommendation"),
             "comments": existing_evaluation.get("comments"),
             "submitted_at": existing_evaluation.get("evaluated_at")
@@ -122,6 +123,7 @@ async def submit_evaluation(token: str, evaluation_data: dict = Body(...)):
     score = evaluation_data.get("score")
     recommendation = evaluation_data.get("recommendation", "")
     comments = evaluation_data.get("comments", "")
+    criteria_scores = evaluation_data.get("criteria_scores", {})
     
     if not score or score < 0 or score > 100:
         raise HTTPException(status_code=400, detail="Invalid score. Must be between 0 and 100.")
@@ -141,6 +143,7 @@ async def submit_evaluation(token: str, evaluation_data: dict = Body(...)):
         "judge_id": judge_id,
         "event_id": submission["event_id"],
         "total_score": score, # Renamed to total_score for consistency with dashboard pipelines
+        "criteria_scores": criteria_scores,
         "recommendation": recommendation,
         "comments": comments,
         "evaluated_at": datetime.now(timezone.utc),
@@ -167,6 +170,30 @@ async def submit_evaluation(token: str, evaluation_data: dict = Body(...)):
             }
         }
     )
+    
+    # Send email notification to participant (only shortlisted/rejected status, no score)
+    try:
+        participant_email = submission.get("user_email") or submission.get("email") or ""
+        participant_name = submission.get("user_name") or submission.get("team_name") or "Participant"
+        event_title = submission.get("event_name") or submission.get("event_title") or "Event"
+        is_shortlisted = recommendation == "shortlist"
+        status_text = "shortlisted" if is_shortlisted else "not shortlisted"
+        if participant_email:
+            from services.email_service import send_notification_email
+            subj = f"Update on your {event_title} submission"
+            body = f"""Hello {participant_name},
+
+Your submission for {event_title} has been reviewed.
+
+Status: You have been {status_text} for the next stage.
+
+{comments if comments else ''}
+
+Best regards,
+Studlyf Team"""
+            await send_notification_email(participant_email, subj, body)
+    except Exception as e:
+        print(f"[Evaluation] Failed to send notification email: {e}")
     
     # Keep evaluation token valid for the full duration (7 days) to allow updates
     # if the judge needs to revise their evaluation.

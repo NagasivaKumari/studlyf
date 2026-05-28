@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react()],
     build: {
+      emptyOutDir: false,
       chunkSizeWarningLimit: 6000,
       rollupOptions: {
         output: {

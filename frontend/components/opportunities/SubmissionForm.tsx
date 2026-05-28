@@ -60,10 +60,19 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage, partici
     const stageDescription = String(resolvedStage?.description || resolvedStage?.config?.description || stage?.description || stage?.config?.description || '').trim();
     const stageVisibility = String(resolvedStage?.visibility || stage?.visibility || '').toLowerCase();
     const isPublicStage = stageVisibility === 'public';
-    const stageStatusRaw = String(resolvedStage?.status || resolvedStage?.config?.status || '').trim();
-    const stageStatus = stageStatusRaw ? stageStatusRaw.toLowerCase() : '';
-    const isStageActive = stageStatus === 'active' || stageStatus === 'active';
-    const stageDeadlineRaw = resolvedStage?.end_date || resolvedStage?.endDate || resolvedStage?.deadline;
+    const stageStartRaw = resolvedStage?.start_date || resolvedStage?.startDate;
+    const stageEndRaw = resolvedStage?.end_date || resolvedStage?.endDate || resolvedStage?.deadline;
+    const stageDeadlineRaw = stageEndRaw;
+    const now = Date.now();
+    const stageStartTs = stageStartRaw ? new Date(stageStartRaw).getTime() : 0;
+    const stageEndTs = stageEndRaw ? new Date(stageEndRaw).getTime() : 0;
+    const stageStatus = (() => {
+        if (stageStartTs && now < stageStartTs) return 'upcoming';
+        if (stageEndTs && now > stageEndTs) return 'closed';
+        if (stageStartTs && stageEndTs && now >= stageStartTs && now <= stageEndTs) return 'active';
+        return '';
+    })();
+    const isStageActive = stageStatus === 'active';
     const [deadlineLabel, setDeadlineLabel] = useState<string | null>(null);
 
     useEffect(() => {

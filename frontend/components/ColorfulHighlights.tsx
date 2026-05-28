@@ -5,40 +5,44 @@ import { Star, Sparkles, Calendar, Trophy, ArrowUpRight } from 'lucide-react';
 
 const highlights = [
   { 
-    title: 'Featured Tracks', 
-    desc: 'Role-focused curriculums engineered for modern builders. Go from basics to advanced systems.', 
+    title: 'Career Pathways', 
+    desc: 'Goal-based pathways designed to help students learn, build, and grow faster.', 
     icon: Star, 
     color: 'from-[#FF7AB6] to-[#7C3AED]',
     glow: 'bg-[#FF7AB6]',
     action: 'tracks' as const,
-    label: 'Curriculum'
+    label: 'Pathways',
+    btnText: 'Explore paths'
   },
   { 
-    title: 'Upcoming Events', 
-    desc: 'Join live workshops, code reviews, and exclusive hiring events with top tech companies.', 
+    title: 'Career Opportunities', 
+    desc: 'Discover internships, hackathons, startup roles, workshops, and real exposure.', 
     icon: Calendar, 
     color: 'from-[#06B6D4] to-[#4F46E5]',
     glow: 'bg-[#06B6D4]',
     action: 'learnHub' as const,
-    label: 'Community'
+    label: 'Opportunities',
+    btnText: 'Explore now'
   },
   { 
-    title: 'Success Stories', 
-    desc: 'Read how our learners shipped real products and landed roles at top tier startups.', 
+    title: 'Build & Showcase', 
+    desc: 'Build projects, create proof of work, and showcase your growth journey.', 
     icon: Trophy, 
     color: 'from-[#F59E0B] to-[#EF4444]',
     glow: 'bg-[#F59E0B]',
     action: 'testimonials' as const,
-    label: 'Outcomes'
+    label: 'Growth',
+    btnText: 'Explore work'
   },
   { 
-    title: 'Tooling & AI', 
-    desc: 'Leverage our integrated AI tools to speed up learning, debugging, and daily practice.', 
+    title: 'Mentors & Network', 
+    desc: 'Connect with founders, mentors, creators, and ambitious student communities.', 
     icon: Sparkles, 
     color: 'from-[#34D399] to-[#06B6D4]',
     glow: 'bg-[#34D399]',
     action: 'aiTools' as const,
-    label: 'Platform'
+    label: 'Ecosystem',
+    btnText: 'Explore network'
   },
 ];
 
@@ -91,14 +95,14 @@ const ColorfulHighlights: React.FC = () => {
           className="mb-16 sm:mb-20 flex flex-col md:flex-row md:items-end justify-between gap-6"
         >
           <div className="max-w-2xl">
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7C3AED] mb-3">Explore the ecosystem</h3>
+            <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7C3AED] mb-3">Explore Studlyf</h3>
             <p className="text-3xl sm:text-5xl font-black text-[#0F172A] tracking-tight">
-              Everything you need to <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-800 to-gray-400">scale your skills.</span>
+              Everything you need to <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-800 to-gray-400">build your future.</span>
             </p>
           </div>
           <div className="hidden md:block">
             <p className="text-[#64748B] text-sm max-w-xs font-medium leading-relaxed">
-              Navigate through curated tracks, upcoming events, and powerful tools built for modern developers.
+              Explore opportunities, mentorship, projects, communities, and tools built for ambitious students.
             </p>
           </div>
         </motion.div>
@@ -144,7 +148,7 @@ const ColorfulHighlights: React.FC = () => {
                   
                   <div className="mt-8 pt-4 border-t border-gray-50 flex items-center justify-between">
                     <span className="text-[12px] font-bold text-[#0F172A] group-hover:text-[#7C3AED] transition-colors duration-300">
-                      Explore section
+                      {h.btnText}
                     </span>
                     <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-[#7C3AED]/10 transition-colors duration-300">
                       <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-[#7C3AED] transition-colors duration-300" />

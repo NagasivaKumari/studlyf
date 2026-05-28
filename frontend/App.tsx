@@ -1,5 +1,5 @@
 // Studlyf Engineering Protocol - Core Routing Engine
-import React, { Suspense, useEffect, lazy, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, lazy, useState } from 'react';
 import { motion } from 'framer-motion';
 import { HashRouter as Router, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 
@@ -10,96 +10,88 @@ import ProtectedRoute from './ProtectedRoute';
 import PublicRoute from './PublicRoute';
 import { HeroUIProvider } from "@heroui/react";
 
-// Pages
-import Home from './pages/Home';
-import CourseDetail from './pages/CourseDetail';
-import CareerFit from './pages/CareerFit';
-import Assessment from './pages/Assessment';
-import AssessmentIntro from './pages/AssessmentIntro';
-import JobSimulation from './pages/JobSimulation';
-import PortfolioBuilder from './pages/PortfolioBuilder';
-import SystemDeconstructionLab from './pages/SystemDeconstructionLab';
-import SDLProjectCreate from './pages/SDLProjectCreate';
-import SDLProjectDetail from './pages/SDLProjectDetail';
-import MockInterview from './pages/MockInterview';
-import GroupDiscussion from './pages/GroupDiscussion';
-import PlayLearnEarn from './pages/PlayLearnEarn';
-import GoalSelector from './pages/GoalSelector';
-import About from './pages/About';
-import UnifiedAuth from './pages/UnifiedAuth';
-import JudgeInvitation from './pages/JudgeInvitation';
-import LearnerDashboard from './pages/LearnerDashboard';
-import PartnerDashboard from './pages/PartnerDashboard';
-import DashboardHome from './pages/DashboardHome';
-import Blog from './pages/Blog';
-import CompanyModules from './pages/CompanyModules';
-import ResumeBuilder from './pages/ResumeBuilder';
-import CoursePlayer from './pages/CoursePlayer';
-import Cart from './pages/Cart';
-import Checkout from './pages/Checkout';
-import MyCourses from './pages/MyCourses';
-import CareerOnboarding from './pages/CareerOnboarding';
-import CoursesOverview from './pages/CoursesOverview';
-import PublicProfile from './pages/PublicProfile';
-import TrackDetail from './pages/TrackDetail';
-import EnrollmentFlow from './pages/EnrollmentFlow';
-import StackPage from './pages/StackPage';
-import QueuePage from './pages/QueuePage';
-import LinkedListPage from './pages/LinkedListPage';
-import BSTPage from './pages/BSTPage';
-import HashTablePage from './pages/HashTablePage';
-import AITools from './pages/AITools';
-import StudOTT from './pages/StudOTT';
-import StudHub from './pages/StudHub';
-import StudentDiscounts from './pages/StudentDiscounts';
-import StudentSchemes from './pages/StudentSchemes';
-import FeaturePreview from './pages/FeaturePreview';
-import InstitutionDashboard from './pages/institution-dashboard/InstitutionDashboard';
-import RoleFixer from './RoleFixer';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import VerifyEmail from './pages/VerifyEmail';
-import RoadmapClone from './pages/RoadmapClone';
-
-
-import OpportunitiesList from './pages/opportunities/OpportunitiesList';
-import OpportunityDetails from './pages/opportunities/OpportunityDetails';
-import MyApplications from './pages/opportunities/MyApplications';
-
-import EventHub from './pages/events/EventHub';
-import EventPackagePage from './pages/events/EventPackagePage';
-import EventQuizPage from './pages/events/EventQuizPage';
-import ParticipantCardPage from './pages/events/ParticipantCardPage';
-import ParticipantPortal from './pages/events/ParticipantPortal';
-
-import JudgePortalLayout from './pages/judge/JudgePortalLayout';
-import EvaluationPage from './pages/EvaluationPage';
-
-
-// Unique Components
+// Non-route components (rendered directly in JSX outside <Routes>)
 import EnquiryForm from './components/EnquiryForm';
 import ResourceCenter from './components/ResourceCenter';
 import Testimonials from './components/Testimonials';
 import Impact from './components/Impact';
-import Achievements from './components/Achievements';
 import RightHoverPanel from './components/RightHoverPanel';
 import SplashScreen from './components/SplashScreen';
+import RoleFixer from './RoleFixer';
 
-// Admin Pages
-import AdminLayout from './pages/admin/layout/AdminLayout';
-import AdminDashboardOverview from './pages/admin/dashboard/Overview';
-import AdminStudentManagement from './pages/admin/students/StudentManagement';
-import AdminCourseManagement from './pages/admin/courses/CourseManagement';
-import AdminAssessmentManagement from './pages/admin/assessments/AssessmentManagement';
-import AdminAnalytics from './pages/admin/analytics/Analytics';
-import AdminSDLManagement from './pages/admin/sdl/SDLManagement';
-import AdminProtectedRoute from './AdminProtectedRoute';
-import AdsManagement from './pages/admin/ads/AdsManagement';
-import AdminMentorManagement from './pages/admin/mentors/MentorManagement';
-import AdminCompanyManagement from './pages/admin/companies/CompanyManagement';
-import AdminPaymentManagement from './pages/admin/payments/PaymentManagement';
-import AdminResumeManagement from './pages/admin/resumes/ResumeManagement';
-import AdminAuditLogs from './pages/admin/audit/AuditLogs';
+// Lazy-loaded pages (code-split per route)
+const Home = lazy(() => import('./pages/Home'));
+const CourseDetail = lazy(() => import('./pages/CourseDetail'));
+const CareerFit = lazy(() => import('./pages/CareerFit'));
+const Assessment = lazy(() => import('./pages/Assessment'));
+const AssessmentIntro = lazy(() => import('./pages/AssessmentIntro'));
+const JobSimulation = lazy(() => import('./pages/JobSimulation'));
+const PortfolioBuilder = lazy(() => import('./pages/PortfolioBuilder'));
+const SystemDeconstructionLab = lazy(() => import('./pages/SystemDeconstructionLab'));
+const SDLProjectCreate = lazy(() => import('./pages/SDLProjectCreate'));
+const SDLProjectDetail = lazy(() => import('./pages/SDLProjectDetail'));
+const MockInterview = lazy(() => import('./pages/MockInterview'));
+const GroupDiscussion = lazy(() => import('./pages/GroupDiscussion'));
+const PlayLearnEarn = lazy(() => import('./pages/PlayLearnEarn'));
+const GoalSelector = lazy(() => import('./pages/GoalSelector'));
+const About = lazy(() => import('./pages/About'));
+const UnifiedAuth = lazy(() => import('./pages/UnifiedAuth'));
+const JudgeInvitation = lazy(() => import('./pages/JudgeInvitation'));
+const LearnerDashboard = lazy(() => import('./pages/LearnerDashboard'));
+const PartnerDashboard = lazy(() => import('./pages/PartnerDashboard'));
+const DashboardHome = lazy(() => import('./pages/DashboardHome'));
+const Blog = lazy(() => import('./pages/Blog'));
+const CompanyModules = lazy(() => import('./pages/CompanyModules'));
+const ResumeBuilder = lazy(() => import('./pages/ResumeBuilder'));
+const CoursePlayer = lazy(() => import('./pages/CoursePlayer'));
+const Cart = lazy(() => import('./pages/Cart'));
+const Checkout = lazy(() => import('./pages/Checkout'));
+const MyCourses = lazy(() => import('./pages/MyCourses'));
+const CareerOnboarding = lazy(() => import('./pages/CareerOnboarding'));
+const CoursesOverview = lazy(() => import('./pages/CoursesOverview'));
+const PublicProfile = lazy(() => import('./pages/PublicProfile'));
+const TrackDetail = lazy(() => import('./pages/TrackDetail'));
+const EnrollmentFlow = lazy(() => import('./pages/EnrollmentFlow'));
+const StackPage = lazy(() => import('./pages/StackPage'));
+const QueuePage = lazy(() => import('./pages/QueuePage'));
+const LinkedListPage = lazy(() => import('./pages/LinkedListPage'));
+const BSTPage = lazy(() => import('./pages/BSTPage'));
+const HashTablePage = lazy(() => import('./pages/HashTablePage'));
+const AITools = lazy(() => import('./pages/AITools'));
+const StudOTT = lazy(() => import('./pages/StudOTT'));
+const StudHub = lazy(() => import('./pages/StudHub'));
+const StudentDiscounts = lazy(() => import('./pages/StudentDiscounts'));
+const StudentSchemes = lazy(() => import('./pages/StudentSchemes'));
+const FeaturePreview = lazy(() => import('./pages/FeaturePreview'));
+const InstitutionDashboard = lazy(() => import('./pages/institution-dashboard/InstitutionDashboard'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
+const RoadmapClone = lazy(() => import('./pages/RoadmapClone'));
+const OpportunitiesList = lazy(() => import('./pages/opportunities/OpportunitiesList'));
+const OpportunityDetails = lazy(() => import('./pages/opportunities/OpportunityDetails'));
+const MyApplications = lazy(() => import('./pages/opportunities/MyApplications'));
+const EventHub = lazy(() => import('./pages/events/EventHub'));
+const EventPackagePage = lazy(() => import('./pages/events/EventPackagePage'));
+const EventQuizPage = lazy(() => import('./pages/events/EventQuizPage'));
+const ParticipantCardPage = lazy(() => import('./pages/events/ParticipantCardPage'));
+const ParticipantPortal = lazy(() => import('./pages/events/ParticipantPortal'));
+const JudgePortalLayout = lazy(() => import('./pages/judge/JudgePortalLayout'));
+const EvaluationPage = lazy(() => import('./pages/EvaluationPage'));
+const AdminLayout = lazy(() => import('./pages/admin/layout/AdminLayout'));
+const AdminDashboardOverview = lazy(() => import('./pages/admin/dashboard/Overview'));
+const AdminStudentManagement = lazy(() => import('./pages/admin/students/StudentManagement'));
+const AdminCourseManagement = lazy(() => import('./pages/admin/courses/CourseManagement'));
+const AdminAssessmentManagement = lazy(() => import('./pages/admin/assessments/AssessmentManagement'));
+const AdminAnalytics = lazy(() => import('./pages/admin/analytics/Analytics'));
+const AdminSDLManagement = lazy(() => import('./pages/admin/sdl/SDLManagement'));
+const AdminProtectedRoute = lazy(() => import('./AdminProtectedRoute'));
+const AdsManagement = lazy(() => import('./pages/admin/ads/AdsManagement'));
+const AdminMentorManagement = lazy(() => import('./pages/admin/mentors/MentorManagement'));
+const AdminCompanyManagement = lazy(() => import('./pages/admin/companies/CompanyManagement'));
+const AdminPaymentManagement = lazy(() => import('./pages/admin/payments/PaymentManagement'));
+const AdminResumeManagement = lazy(() => import('./pages/admin/resumes/ResumeManagement'));
+const AdminAuditLogs = lazy(() => import('./pages/admin/audit/AuditLogs'));
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -466,15 +458,10 @@ const App: React.FC = () => {
             {/* Evaluation */}
             <Route path="/evaluate/:token" element={<EvaluationPage />} />
 
-            {/* Misc
+            {/* Misc */}
             <Route path="/roadmaps" element={<RoadmapClone />} />
             <Route path="/roadmaps/:roleId" element={<RoadmapClone />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/blog" element={<Blog />} />
-            <Route path="/judge-invitation" element={<JudgeInvitation />} />
             <Route path="/goal-selector" element={<ProtectedRoute><GoalSelector /></ProtectedRoute>} />
-            <Route path="/ai-tools" element={<AITools />} />
-            <Route path="/fix-role" element={<RoleFixer />} />
             <Route path="/learn/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
             <Route path="/learn/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
             <Route path="/learn/career-onboarding" element={<ProtectedRoute><CareerOnboarding /></ProtectedRoute>} />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Eye, ExternalLink, Save, Gavel, Users, Calendar, FileText, X, Download, CheckCircle2 } from 'lucide-react';
+import { Eye, ExternalLink, Save, Gavel, Users, Calendar, FileText, X, Download, CheckCircle2, ClipboardList } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from '../apiConfig';
 import { useAuth } from '../AuthContext';
@@ -20,6 +20,7 @@ const EvaluationPage: React.FC = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string } | null>(null);
+    const [criteriaScores, setCriteriaScores] = useState<Record<string, number>>({});
 
     // No forced redirect - allow judges to use the direct evaluation page
     // even if they are logged in. This prevents access issues if they
@@ -45,6 +46,14 @@ const EvaluationPage: React.FC = () => {
                     setRecommendation(data.existing_evaluation.recommendation || '');
                     setComments(data.existing_evaluation.comments || '');
                 }
+                // Initialize rubric scores
+                if (data.criteria?.length) {
+                    const init: Record<string, number> = {};
+                    data.criteria.forEach((c: any) => {
+                        init[c.name] = (data.existing_evaluation?.criteria_scores?.[c.name]) || 0;
+                    });
+                    setCriteriaScores(init);
+                }
             } else {
                 setError('Invalid or expired evaluation link');
             }
@@ -69,7 +78,8 @@ const EvaluationPage: React.FC = () => {
                 body: JSON.stringify({
                     score: parseInt(score),
                     recommendation,
-                    comments
+                    comments,
+                    criteria_scores: criteriaScores
                 })
             });
 
@@ -312,8 +322,57 @@ const EvaluationPage: React.FC = () => {
                     )}
 
                     <div className="space-y-6">
+                        {/* Rubric Criteria Scoring */}
+                        {submission.criteria?.length > 0 && (
+                            <div className="space-y-4 p-6 bg-purple-50 rounded-2xl border border-purple-100">
+                                <h4 className="text-sm font-bold text-purple-900 uppercase tracking-wider flex items-center gap-2">
+                                    <ClipboardList size={16} /> Scoring Rubrics
+                                </h4>
+                                {submission.criteria.map((criterion: any, idx: number) => (
+                                    <div key={idx} className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-sm font-semibold text-slate-700">{criterion.name}</label>
+                                            <span className="text-xs font-bold text-slate-400">Max {criterion.max_points}</span>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <input
+                                                type="range"
+                                                min={0}
+                                                max={criterion.max_points}
+                                                value={criteriaScores[criterion.name] || 0}
+                                                onChange={(e) => setCriteriaScores({
+                                                    ...criteriaScores,
+                                                    [criterion.name]: parseInt(e.target.value)
+                                                })}
+                                                disabled={!!submission.existing_evaluation}
+                                                className="flex-1 accent-purple-600"
+                                            />
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={criterion.max_points}
+                                                value={criteriaScores[criterion.name] || 0}
+                                                onChange={(e) => setCriteriaScores({
+                                                    ...criteriaScores,
+                                                    [criterion.name]: Math.min(criterion.max_points, Math.max(0, parseInt(e.target.value) || 0))
+                                                })}
+                                                disabled={!!submission.existing_evaluation}
+                                                className="w-16 px-3 py-2 text-center border border-slate-300 rounded-lg text-sm font-bold disabled:bg-slate-50"
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                                <div className="pt-3 border-t border-purple-200 flex justify-between items-center">
+                                    <span className="text-sm font-bold text-slate-700">Total</span>
+                                    <span className="text-lg font-black text-purple-700">
+                                        {Object.values(criteriaScores).reduce((a, b) => a + b, 0)} / {submission.criteria.reduce((a: number, c: any) => a + c.max_points, 0)}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Score (0-100)</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Overall Score (0-100)</label>
                             <input 
                                 type="number" 
                                 min="0" 
