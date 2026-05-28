@@ -55,7 +55,11 @@ import {
     FileCheck,
     Trash2,
     Zap,
-    Lightbulb
+    Lightbulb,
+    Globe,
+    GitBranch,
+    FileImage,
+    FileVideo
 } from 'lucide-react';
 import { motion, AnimatePresence as FramerAnimatePresence } from 'framer-motion';
 import LeaderboardPage from './LeaderboardPage';
@@ -1410,7 +1414,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     ...s,
                     _sourceType: isStage ? 'stage' : 'regular',
                     teamName: s.teamName || s.team_name || s.user_name || s.name || 'Participant',
-                    teamLead: s.teamLead || s.team_lead || s.user_name || s.name || 'N/A',
+                    teamLead: s.teamLead || s.team_lead || s.team_name || s.user_name || s.name || 'N/A',
                     problemStatement: isStage
                         ? (stageDesc || (stageUrlField ? 'Submitted link' : stageFileField ? 'Submitted file' : '') || s.stage_name || '')
                         : (s.problemStatement || s.problem_statement || s.stage_name || s.stage_type || ''),
@@ -1429,9 +1433,17 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 };
             }),
         ];
-        const allDomains = [...new Set(allSubmissions.map(s => s.domain).filter(Boolean))];
+        // Dedup by _id or composite key
+        const seenKeys = new Set<string>();
+        const dedupedSubmissions = allSubmissions.filter(s => {
+            const key = s._id || `${s.team_id || s.teamId}_${s.stage_id || ''}`;
+            if (seenKeys.has(key)) return false;
+            seenKeys.add(key);
+            return true;
+        });
+        const allDomains = [...new Set(dedupedSubmissions.map(s => s.domain).filter(Boolean))];
         const domains = ['All Domains', ...allDomains];
-        const filtered = allSubmissions.filter(s => {
+        const filtered = dedupedSubmissions.filter(s => {
             const name = s.teamName || s.team_name || s.user_name || '';
             const lead = s.teamLead || s.team_lead || '';
             const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || lead.toLowerCase().includes(searchQuery.toLowerCase());
@@ -1761,11 +1773,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         <td className="px-10 py-8">
                                             <div className="flex flex-col">
                                                 <span className="font-black text-slate-900 text-lg tracking-tight">{sub.teamName || sub.team_name || sub.user_name || sub.name}</span>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || sub.team_lead || "N/A"}</span>
-                                                <span className="text-[9px] font-black text-purple-600 uppercase tracking-[0.2em] mt-2">{sub.domain || sub.stage_type || 'STAGE'}</span>
-                                                {sub._sourceType === 'stage' ? (
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || sub.team_lead || sub.team_name || "N/A"}</span>
+                                                {sub.domain && <span className="text-[9px] font-black text-purple-600 uppercase tracking-[0.2em] mt-2">{sub.domain}</span>}
+                                                {sub._sourceType === 'stage' && sub.stage_name ? (
                                                     <span className="mt-2 inline-flex w-fit px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[9px] font-black uppercase tracking-widest">
-                                                        {sub.stage_name || 'Stage Submission'}
+                                                        {sub.stage_name}
                                                     </span>
                                                 ) : null}
                                             </div>
@@ -1773,52 +1785,91 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         <td className="px-10 py-8 max-w-md">
                                             <div className="space-y-2">
                                                 {(() => {
-                                                    const isUrlContent = sub.problemStatement === 'Submitted link' && sub.pptLink;
-                                                    const isFileContent = sub.problemStatement === 'Submitted file' && sub.pptLink;
-                                                    const hasDesc = sub.problemStatement && !isUrlContent && !isFileContent;
-                                                    if (isUrlContent) {
-                                                        const href = sub.pptLink.startsWith('http') ? sub.pptLink : `${API_BASE_URL}${sub.pptLink}`;
-                                                        return (
-                                                            <a href={href} target="_blank" rel="noreferrer"
-                                                                className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600 hover:text-blue-800 hover:underline truncate max-w-full">
-                                                                <LinkIcon size={14} /> {sub.pptLink}
-                                                            </a>
-                                                        );
+                                                    const stageData = sub._sourceType === 'stage' ? sub.data : null;
+                                                    const descText = stageData
+                                                        ? (stageData.description || stageData.problem_statement || stageData.solution || '')
+                                                        : (sub.problemStatement && sub.problemStatement !== 'Submitted link' && sub.problemStatement !== 'Submitted file' ? sub.problemStatement : '');
+                                                    interface FileAsset { type: 'file'; url: string; mime: string }
+                                                    interface LinkAsset { type: 'link'; url: string; domain: string }
+                                                    const assets: (FileAsset | LinkAsset)[] = [];
+                                                    if (stageData && typeof stageData === 'object') {
+                                                        for (const [key, value] of Object.entries(stageData)) {
+                                                            if (typeof value !== 'string') continue;
+                                                            if (['description', 'problem_statement', 'solution'].includes(key)) continue;
+                                                            if (value.startsWith('data:')) {
+                                                                const mime = value.split(';')[0].split(':')[1] || '';
+                                                                assets.push({ type: 'file', url: value, mime });
+                                                            } else if (value.startsWith('http://') || value.startsWith('https://')) {
+                                                                let domain = '';
+                                                                try { domain = new URL(value).hostname; } catch {}
+                                                                assets.push({ type: 'link', url: value, domain });
+                                                            }
+                                                        }
+                                                    } else {
+                                                        if (sub.pptLink) {
+                                                            if (sub.pptLink.startsWith('data:')) {
+                                                                const mime = sub.pptLink.split(';')[0].split(':')[1] || '';
+                                                                assets.push({ type: 'file', url: sub.pptLink, mime });
+                                                            } else {
+                                                                let domain = '';
+                                                                try { domain = new URL(sub.pptLink).hostname; } catch {}
+                                                                assets.push({ type: 'link', url: sub.pptLink, domain });
+                                                            }
+                                                        }
+                                                        if (sub.githubLink) {
+                                                            let domain = '';
+                                                            try { domain = new URL(sub.githubLink).hostname; } catch {}
+                                                            assets.push({ type: 'link', url: sub.githubLink, domain });
+                                                        }
                                                     }
-                                                    if (isFileContent) {
-                                                        return (
-                                                            <>
-                                                                <p className="text-sm font-bold text-slate-500 italic flex items-center gap-1.5">
-                                                                    <FileText size={14} /> File submitted
-                                                                </p>
-                                                                <button onClick={() => setPreviewAsset({ url: sub.pptLink, filename: 'PPT' + (sub.pptLink.includes('pdf') ? '.pdf' : '.pptx') })}
-                                                                    className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100 cursor-pointer">
-                                                                    <FileText size={12} /> View File
-                                                                </button>
-                                                            </>
-                                                        );
-                                                    }
+                                                    const assetFilename = (url: string, mime: string) => {
+                                                        if (url.startsWith('data:')) {
+                                                            const ext = mime.split('/')[1] || 'bin';
+                                                            return `Attachment.${ext}`;
+                                                        }
+                                                        try {
+                                                            const u = new URL(url);
+                                                            return u.pathname.split('/').pop() || 'Attachment';
+                                                        } catch {
+                                                            return 'Attachment';
+                                                        }
+                                                    };
+                                                    const renderIcon = (asset: FileAsset | LinkAsset) => {
+                                                        if (asset.type === 'file') {
+                                                            const { mime } = asset;
+                                                            if (mime.includes('pdf')) return <FileText size={16} />;
+                                                            if (mime.includes('presentation') || mime.includes('pptx') || mime.includes('ppt')) return <FileCheck size={16} />;
+                                                            if (mime.startsWith('image/')) return <FileImage size={16} />;
+                                                            if (mime.startsWith('video/')) return <FileVideo size={16} />;
+                                                            return <FileText size={16} />;
+                                                        }
+                                                        if (asset.domain.includes('github.com')) return <GitBranch size={16} />;
+                                                        return <Globe size={16} />;
+                                                    };
                                                     return (
                                                         <>
-                                                            <p className="text-sm font-bold text-slate-800 line-clamp-2">{hasDesc ? sub.problemStatement : (sub.stage_name || sub.project_title || 'Submission')}</p>
-                                                            {sub.githubLink && (
-                                                                <a href={sub.githubLink} target="_blank" rel="noreferrer"
-                                                                    className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-500 hover:text-slate-700 truncate max-w-full">
-                                                                    <LinkIcon size={14} /> {sub.githubLink}
-                                                                </a>
-                                                            )}
-                                                            {sub.pptLink && !isUrlContent && (
-                                                                sub.pptLink.startsWith('data:') ? (
-                                                                    <button onClick={() => setPreviewAsset({ url: sub.pptLink, filename: 'PPT' })}
-                                                                        className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100 cursor-pointer">
-                                                                        <FileText size={12} /> View File
-                                                                    </button>
-                                                                ) : (
-                                                                    <a href={sub.pptLink.startsWith('http') ? sub.pptLink : `${API_BASE_URL}${sub.pptLink}`} target="_blank" rel="noreferrer"
-                                                                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100">
-                                                                        <FileText size={12} /> PPT
-                                                                    </a>
-                                                                )
+                                                            {descText && <p className="text-sm font-bold text-slate-800 line-clamp-2">{descText}</p>}
+                                                            {assets.length > 0 && (
+                                                                <div className="flex items-center gap-2 mt-1">
+                                                                    {assets.map((asset, ai) => (
+                                                                        asset.type === 'file' ? (
+                                                                            <button key={ai}
+                                                                                onClick={() => setPreviewAsset({ url: asset.url, filename: assetFilename(asset.url, asset.mime), type: 'file' })}
+                                                                                title={`View ${asset.mime.includes('pdf') ? 'PDF' : asset.mime.includes('presentation') ? 'PPT' : 'file'}`}
+                                                                                className="flex items-center justify-center w-9 h-9 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 hover:bg-amber-100 transition-colors cursor-pointer">
+                                                                                {renderIcon(asset)}
+                                                                            </button>
+                                                                        ) : (
+                                                                            <a key={ai}
+                                                                                href={asset.url}
+                                                                                target="_blank" rel="noreferrer"
+                                                                                title={`Open ${asset.domain.includes('github.com') ? 'GitHub' : 'link'}`}
+                                                                                className="flex items-center justify-center w-9 h-9 bg-slate-100 text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors">
+                                                                                {renderIcon(asset)}
+                                                                            </a>
+                                                                        )
+                                                                    ))}
+                                                                </div>
                                                             )}
                                                         </>
                                                     );
