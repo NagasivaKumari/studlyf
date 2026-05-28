@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Award, Search, Download, ExternalLink, Calendar, CheckCircle2, ShieldCheck, Loader2, LayoutTemplate, Sparkles, Send, Trophy } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Award, Search, Download, ExternalLink, Calendar, CheckCircle2, ShieldCheck, Loader2, LayoutTemplate, Sparkles, Send, Trophy, Medal, Users, Info } from 'lucide-react';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import CertificateTemplateBuilder from './components/CertificateTemplateBuilder';
 
@@ -18,6 +18,13 @@ interface TemplateOption {
     name: string;
     description?: string;
 }
+interface LeaderboardEntry {
+    rank: number;
+    team_name?: string;
+    student_name?: string;
+    project_title?: string;
+    total_score?: number;
+}
 interface CertificatesPageProps { institutionId: string; }
 
 const TABS = [
@@ -32,7 +39,12 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
     const [templates, setTemplates] = useState<TemplateOption[]>([]);
     const [selectedEventId, setSelectedEventId] = useState('');
     const [selectedTemplateId, setSelectedTemplateId] = useState('');
-    const [issueMode, setIssueMode] = useState<'finalize' | 'participation'>('finalize');
+    const [issueMode, setIssueMode] = useState<'ranked' | 'participation'>('ranked');
+    const [awardPolicy, setAwardPolicy] = useState<'all_ranked' | 'top_n' | 'min_score'>('top_n');
+    const [topNValue, setTopNValue] = useState('3');
+    const [minScoreValue, setMinScoreValue] = useState('80');
+    const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+    const [loadingPreview, setLoadingPreview] = useState(false);
     const [loading, setLoading] = useState(true);
     const [issuing, setIssuing] = useState(false);
     const [issueMessage, setIssueMessage] = useState<string | null>(null);
@@ -60,6 +72,48 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
             }
         })();
     }, [institutionId]);
+
+    useEffect(() => {
+        if (!selectedEventId) {
+            setLeaderboard([]);
+            return;
+        }
+
+        (async () => {
+            try {
+                setLoadingPreview(true);
+                let res = await fetch(`${API_BASE_URL}/api/hackathons/events/${selectedEventId}/leaderboard?include_all=true`, {
+                    headers: { ...authHeaders() },
+                });
+
+                if (!res.ok) {
+                    res = await fetch(`${API_BASE_URL}/api/judging/leaderboard/${selectedEventId}`, {
+                        headers: { ...authHeaders() },
+                    });
+                }
+
+                if (!res.ok) {
+                    setLeaderboard([]);
+                    return;
+                }
+
+                const data = await res.json();
+                const mapped = (Array.isArray(data) ? data : []).map((entry: any) => ({
+                    rank: Number(entry.rank || 0),
+                    team_name: entry.teamName || entry.team_name || entry.student_name || '',
+                    student_name: entry.student_name || entry.recipient_name || '',
+                    project_title: entry.projectTitle || entry.project_title || '',
+                    total_score: Number(entry.totalScore ?? entry.total_score ?? 0),
+                }));
+                setLeaderboard(mapped);
+            } catch (error) {
+                console.error(error);
+                setLeaderboard([]);
+            } finally {
+                setLoadingPreview(false);
+            }
+        })();
+    }, [selectedEventId]);
 
     useEffect(() => {
         if (!institutionId) return;
@@ -99,6 +153,24 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
         if (res.ok) setCertificates(await res.json());
     };
 
+    const awardPreview = useMemo(() => {
+        const limit = awardPolicy === 'top_n' ? Math.max(Number(topNValue) || 0, 0) : leaderboard.length;
+        const minScore = awardPolicy === 'min_score' ? Number(minScoreValue) || 0 : null;
+        const selected = awardPolicy === 'min_score'
+            ? leaderboard.filter(item => Number(item.total_score || 0) >= Number(minScore))
+            : leaderboard.slice(0, limit || leaderboard.length);
+        return {
+            limit,
+            minScore,
+            winnerCount: selected.filter(item => item.rank === 1).length,
+            runnerUpCount: selected.filter(item => item.rank === 2).length,
+            secondRunnerUpCount: selected.filter(item => item.rank === 3).length,
+            finalistCount: Math.max(selected.length - 3, 0),
+            total: selected.length,
+            selected,
+        };
+    }, [awardPolicy, leaderboard]);
+
     const handleIssueCertificates = async () => {
         if (!selectedEventId) {
             setIssueMessage('Select an event first.');
@@ -108,20 +180,26 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
         setIssuing(true);
         setIssueMessage(null);
         try {
-            const endpoint = issueMode === 'finalize'
-                ? `${API_BASE_URL}/api/v1/institution/finalize-event/${selectedEventId}`
-                : `${API_BASE_URL}/api/v1/events/${selectedEventId}/certificates/generate`;
-            const requestUrl = selectedTemplateId ? `${endpoint}?template_id=${encodeURIComponent(selectedTemplateId)}` : endpoint;
+            const isParticipation = issueMode === 'participation';
+            const endpoint = isParticipation
+                ? `${API_BASE_URL}/api/v1/events/${selectedEventId}/certificates/generate`
+                : `${API_BASE_URL}/api/v1/institution/events/${selectedEventId}/certificates/issue-ranked`;
+            const body = isParticipation
+                ? JSON.stringify({ achievement_type: 'participation' })
+                : JSON.stringify({
+                    template_id: selectedTemplateId || undefined,
+                    limit: awardPolicy === 'top_n' ? Number(topNValue) || undefined : undefined,
+                    min_score: awardPolicy === 'min_score' ? Number(minScoreValue) || undefined : undefined,
+                    send_email: true,
+                });
 
-            const res = await fetch(requestUrl, {
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     ...authHeaders(),
                 },
-                body: issueMode === 'finalize'
-                    ? undefined
-                    : JSON.stringify({ achievement_type: 'participation' }),
+                body,
             });
 
             if (!res.ok) {
@@ -130,9 +208,9 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
             }
 
             const data = await res.json().catch(() => ({}));
-            setIssueMessage(issueMode === 'finalize'
-                ? `Event finalized. Certificates are being generated automatically.${data.certificates_issued ? ` Issued ${data.certificates_issued} certificates.` : ''}`
-                : 'Participation certificates queued for generation.');
+            setIssueMessage(isParticipation
+                ? 'Participation certificates queued for generation.'
+                : `Ranked certificates issued.${data.certificates_issued ? ` Issued ${data.certificates_issued} certificates.` : ''}`);
             await refreshCertificates();
         } catch (error: any) {
             setIssueMessage(error?.message || 'Failed to issue certificates.');
@@ -187,11 +265,11 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                 </div>
                                 <h2 className="text-3xl md:text-4xl font-black tracking-tight">Issue certificates in one action</h2>
                                 <p className="text-white/70 mt-3 leading-relaxed">
-                                    Finalize the event to automatically award winners, runner-ups, and participants, or queue participation certificates for the full event audience.
+                                    Select one template, pick an award policy, and issue either ranked awards or participation certificates in a controlled batch.
                                 </p>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto lg:min-w-[720px]">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto lg:min-w-[860px]">
                                 <select
                                     value={selectedEventId}
                                     onChange={e => setSelectedEventId(e.target.value)}
@@ -203,6 +281,16 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                             {event.title} {event.status ? `(${event.status})` : ''}
                                         </option>
                                     ))}
+                                </select>
+                                <select
+                                    value={awardPolicy}
+                                    onChange={e => setAwardPolicy(e.target.value as 'all_ranked' | 'top_n' | 'min_score')}
+                                    className="px-4 py-3 rounded-2xl bg-white text-slate-900 font-medium outline-none"
+                                    disabled={issueMode === 'participation'}
+                                >
+                                    <option value="top_n">Top N by rank</option>
+                                    <option value="min_score">Minimum score cutoff</option>
+                                    <option value="all_ranked">All ranked</option>
                                 </select>
                                 <select
                                     value={selectedTemplateId}
@@ -218,19 +306,41 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                 </select>
                                 <select
                                     value={issueMode}
-                                    onChange={e => setIssueMode(e.target.value as 'finalize' | 'participation')}
+                                    onChange={e => setIssueMode(e.target.value as 'ranked' | 'participation')}
                                     className="px-4 py-3 rounded-2xl bg-white text-slate-900 font-medium outline-none"
                                 >
-                                    <option value="finalize">Final Results</option>
+                                    <option value="ranked">Ranked Awards</option>
                                     <option value="participation">Participation</option>
                                 </select>
+                                {issueMode === 'ranked' && awardPolicy === 'top_n' && (
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        value={topNValue}
+                                        onChange={e => setTopNValue(e.target.value)}
+                                        placeholder="Top N"
+                                        className="px-4 py-3 rounded-2xl bg-white text-slate-900 font-medium outline-none"
+                                    />
+                                )}
+                                {issueMode === 'ranked' && awardPolicy === 'min_score' && (
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        value={minScoreValue}
+                                        onChange={e => setMinScoreValue(e.target.value)}
+                                        placeholder="Min score"
+                                        className="px-4 py-3 rounded-2xl bg-white text-slate-900 font-medium outline-none"
+                                    />
+                                )}
                                 <button
                                     onClick={handleIssueCertificates}
                                     disabled={issuing}
                                     className="sm:col-span-3 flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#6C3BFF] hover:bg-[#5B2EEB] transition-all font-black uppercase tracking-[0.2em] text-[10px] disabled:opacity-60"
                                 >
-                                    {issueMode === 'finalize' ? <Trophy size={16} /> : <Send size={16} />}
-                                    {issuing ? 'Processing...' : issueMode === 'finalize' ? 'Finalize & Issue Awards' : 'Queue Participation Certificates'}
+                                    {issueMode === 'participation' ? <Send size={16} /> : <Trophy size={16} />}
+                                    {issuing ? 'Processing...' : issueMode === 'participation' ? 'Queue Participation Certificates' : 'Issue Ranked Awards'}
                                 </button>
                             </div>
                         </div>
@@ -240,6 +350,49 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                 {issueMessage}
                             </div>
                         )}
+
+                        <div className="relative mt-6 grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-4">
+                            <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-white/60 mb-3">
+                                    <Info size={12} /> Award Rule
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                                    <div className="rounded-2xl bg-white/10 p-3">
+                                        <p className="text-white font-black">Admin decides</p>
+                                        <p className="text-white/70">Top N or minimum score</p>
+                                    </div>
+                                    <div className="rounded-2xl bg-white/10 p-3">
+                                        <p className="text-white font-black">Snapshot based</p>
+                                        <p className="text-white/70">Uses current leaderboard</p>
+                                    </div>
+                                    <div className="rounded-2xl bg-white/10 p-3">
+                                        <p className="text-white font-black">One template</p>
+                                        <p className="text-white/70">Chosen by admin</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-white/60 mb-3">
+                                    <Medal size={12} /> Preview
+                                </div>
+                                {loadingPreview ? (
+                                    <p className="text-sm text-white/60">Loading leaderboard preview...</p>
+                                ) : (
+                                    <div className="space-y-2 text-sm text-white/80">
+                                        <p><span className="font-black text-white">{awardPreview.total}</span> recipients in this issuance set</p>
+                                                {awardPreview.minScore !== null ? (
+                                                    <p>Minimum score: <span className="font-black text-white">{awardPreview.minScore}</span></p>
+                                                ) : (
+                                                    <p>Top N: <span className="font-black text-white">{awardPreview.limit}</span></p>
+                                                )}
+                                                <p>Winners: <span className="font-black text-white">{awardPreview.winnerCount}</span></p>
+                                                <p>Runner Ups: <span className="font-black text-white">{awardPreview.runnerUpCount}</span></p>
+                                                <p>Second Runner Ups: <span className="font-black text-white">{awardPreview.secondRunnerUpCount}</span></p>
+                                                <p>Other finalists: <span className="font-black text-white">{awardPreview.finalistCount}</span></p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
                     {/* Stats */}

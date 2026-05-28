@@ -1883,6 +1883,104 @@ async def finalize_event(event_id: str, template_id: str | None = None):
     await log_admin_action("admin@institution.com", "EVENT_FINALIZED", f"Finalized event {event_id} and generated {len(issued_certificates)} certificates.")
     return {"status": "success", "results": final_rankings, "certificates_issued": len(issued_certificates)}
 
+
+@router.post("/events/{event_id}/certificates/issue-ranked")
+async def issue_ranked_certificates(
+    event_id: str,
+    payload: dict = Body(default_factory=dict),
+    user: dict = Depends(get_auth_user),
+):
+    """Issue certificates from a saved leaderboard snapshot using a production award policy.
+
+    Supported payload fields:
+    - template_id: optional certificate template id
+    - limit: optional top-N cutoff
+    - min_score: optional minimum score cutoff
+    - bands: optional list of { label, achievement_type, min_score, max_score }
+    - send_email: optional boolean, defaults to true
+    """
+    await assert_institution_owns_event(event_id, user)
+
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    template_id = payload.get("template_id")
+    limit = payload.get("limit")
+    min_score = payload.get("min_score")
+    bands = payload.get("bands") or []
+    send_email = bool(payload.get("send_email", True))
+
+    final_rankings = await leaderboard_service.calculate_event_leaderboard(event_id)
+    if not final_rankings:
+        raise HTTPException(status_code=404, detail="No rankings found for this event")
+
+    issued_certificates = []
+
+    if isinstance(bands, list) and bands:
+        seen_user_ids: set[str] = set()
+        for band in bands:
+            if not isinstance(band, dict):
+                continue
+            band_label = str(band.get("label") or band.get("name") or "Award").strip() or "Award"
+            achievement_type = str(band.get("achievement_type") or "top_performer").strip() or "top_performer"
+            band_min = band.get("min_score")
+            band_max = band.get("max_score")
+            band_limit = band.get("limit")
+
+            band_rows = final_rankings
+            if isinstance(band_min, (int, float)):
+                band_rows = [row for row in band_rows if float(row.get("total_score") or 0) >= float(band_min)]
+            if isinstance(band_max, (int, float)):
+                band_rows = [row for row in band_rows if float(row.get("total_score") or 0) <= float(band_max)]
+            if isinstance(band_limit, int) and band_limit > 0:
+                band_rows = band_rows[:band_limit]
+
+            for row in band_rows:
+                team_id = row.get("team_id")
+                participant_id = row.get("participant_id")
+                user_key = str(team_id or participant_id or row.get("user_id") or row.get("submission_id") or row.get("_id") or "")
+                if not user_key or user_key in seen_user_ids:
+                    continue
+                seen_user_ids.add(user_key)
+                row_copy = dict(row)
+                row_copy["achievement_type"] = achievement_type
+                row_copy["award_label"] = band_label
+                row_copy["_issued_from_band"] = band_label
+                if isinstance(band_min, (int, float)):
+                    row_copy["min_score"] = band_min
+                if isinstance(band_max, (int, float)):
+                    row_copy["max_score"] = band_max
+                result = await certificate_service.issue_ranked_event_certificates(
+                    event_id,
+                    [row_copy],
+                    send_email=send_email,
+                    template_id=template_id,
+                )
+                issued_certificates.extend(result)
+    else:
+        if isinstance(limit, int) and limit > 0:
+            final_rankings = final_rankings[:limit]
+        elif isinstance(min_score, (int, float)):
+            final_rankings = [row for row in final_rankings if float(row.get("total_score") or 0) >= float(min_score)]
+
+        issued_certificates = await certificate_service.issue_ranked_event_certificates(
+            event_id,
+            final_rankings,
+            send_email=send_email,
+            template_id=template_id,
+        )
+
+    return {
+        "status": "success",
+        "award_policy": "bands" if isinstance(bands, list) and bands else "top_n" if isinstance(limit, int) and limit > 0 else "min_score" if isinstance(min_score, (int, float)) else "all_ranked",
+        "limit": limit,
+        "min_score": min_score,
+        "bands": bands,
+        "results": final_rankings,
+        "certificates_issued": len(issued_certificates),
+    }
+
 async def generate_event_certificates(event_id: str, rankings: list):
     """Backward-compatible wrapper for rank-based certificate issuance."""
     return await certificate_service.issue_ranked_event_certificates(event_id, rankings, send_email=True)
