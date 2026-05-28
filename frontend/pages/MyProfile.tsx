@@ -69,6 +69,8 @@ const MyProfile: React.FC = () => {
     portfolio: '',
     leetcode: '',
     hackerrank: '',
+    oneStrongWord: '',
+    githubUsername: '',
     searchStatus: 'active',
     profileVisible: true,
     newsletter: false,
@@ -82,15 +84,31 @@ const MyProfile: React.FC = () => {
   const [newSkillInput, setNewSkillInput] = useState('');
   const [profileLoading, setProfileLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [lastToastSnapshot, setLastToastSnapshot] = useState<string | null>(null);
   const [isGeneratingTemplate, setIsGeneratingTemplate] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<{ target: 'accountShare' | 'profilePanel'; type: 'success' | 'error'; message: string } | null>(null);
+  const [sectionStatus, setSectionStatus] = useState<{ section: string; type: 'success' | 'error'; message: string } | null>(null);
+  const [githubAnalytics, setGithubAnalytics] = useState<{
+    username: string;
+    displayName: string;
+    avatarUrl: string;
+    profileUrl: string;
+    repoCount: number;
+    totalStars: number;
+    totalForks: number;
+    totalWatchers: number;
+    followers: number;
+    score: number;
+    topLanguages: string[];
+    bio: string;
+    computedAt: string;
+  } | null>(null);
+  const [githubError, setGithubError] = useState<string | null>(null);
+  const [isFetchingGithub, setIsFetchingGithub] = useState(false);
   const [shareQrDataUrl, setShareQrDataUrl] = useState<string | null>(null);
+  const [isEditingStrongWord, setIsEditingStrongWord] = useState(true);
   const navigate = useNavigate();
   const shareTemplateRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (saveStatus && saveStatus.message) setLastToastSnapshot(saveStatus.message);
-  }, [saveStatus]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const target = e.target as HTMLInputElement & HTMLSelectElement & HTMLTextAreaElement;
@@ -105,6 +123,17 @@ const MyProfile: React.FC = () => {
       ...prev,
       [name]: value,
     }));
+  };
+
+  const chooseStrongWord = (word: string) => {
+    setFormData(prev => ({ ...prev, oneStrongWord: word }));
+    setIsEditingStrongWord(false);
+  };
+
+  const handleStrongWordInputBlur = () => {
+    if (formData.oneStrongWord.trim()) {
+      setIsEditingStrongWord(false);
+    }
   };
 
   const copyImageToClipboard = async (blob: Blob) => {
@@ -390,11 +419,20 @@ const MyProfile: React.FC = () => {
         throw new Error(errData.detail || 'Save failed');
       }
 
-      setSaveStatus({ type: 'success', message: `${section} saved successfully!` });
+      const message = `${section} saved successfully!`;
+      setSaveStatus({ type: 'success', message });
+      if (section === 'Education') {
+        setSectionStatus({ section, type: 'success', message });
+        setTimeout(() => setSectionStatus(current => current?.section === section ? null : current), 3000);
+      }
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to save. Please try again.';
       setSaveStatus({ type: 'error', message: errorMessage });
+      if (section === 'Education') {
+        setSectionStatus({ section, type: 'error', message: errorMessage });
+        setTimeout(() => setSectionStatus(current => current?.section === section ? null : current), 4000);
+      }
       setTimeout(() => setSaveStatus(null), 4000);
     } finally {
       setIsSaving(false);
@@ -425,7 +463,7 @@ const MyProfile: React.FC = () => {
   const profileCompletion = Math.min(100, calculateStrength());
   const profileDisplayName = [formData.firstName, formData.lastName].filter(Boolean).join(' ') || user?.full_name || 'Your Profile';
   const profileRole = formData.userType || user?.role || 'Contributor';
-  const profileHeadline = formData.bio || formData.careerGoal || 'A polished contributor profile for modern learning and hiring workflows.';
+  const profileHeadline = formData.bio || formData.careerGoal || '';
   const profileInitials = [formData.firstName, formData.lastName]
     .filter(Boolean)
     .map(part => part.trim().charAt(0).toUpperCase())
@@ -649,6 +687,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
   ].join('\n');
 
   const profileTemplateFileName = `${profileDisplayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'studlyf-profile'}-template.png`;
+  const profileHeadlineText = profileHeadline || 'A mission-driven learner building real-world projects and growth.';
 
   const captureProfileTemplate = async () => {
     if (!shareTemplateRef.current) {
@@ -694,12 +733,49 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
     }
   };
   const generateProfileCardBlob = async (): Promise<{ blob: Blob; dataUrl: string }> => {
+  const issueDate = new Date().toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  const profileSummaryText = formData.bio || formData.careerGoal || 'A motivated community member building credible project experience, collaborative skills, and a professional public profile.';
+  const communityQuote = 'Dreaming something huge in life? Then Studlyf is the best opportunity to build, learn, and lead.';
+  const skills = formData.skills.map(skill => skill.name).filter(Boolean).slice(0, 16);
+  const certifications = formData.certifications.map(cert => cert.name).filter(Boolean).slice(0, 10);
+  const educationList = [...formData.educationList, formData.education]
+    .filter(item => item.institution || item.degree || item.specialization)
+    .slice(0, 3);
+  const experienceList = formData.experienceList.slice(0, 4);
+  const projectList = formData.projects.slice(0, 4).map(project => project.title || project.description || 'Project');
+  const achievements = formData.achievements.slice(0, 4).map(item => item.title || item.organization || 'Achievement');
+  const interests = formData.interests.filter(Boolean).slice(0, 10);
+  const qrDataUrl = publicProfileUrl
+    ? await QRCode.toDataURL(publicProfileUrl, {
+        width: 160,
+        margin: 1,
+        color: {
+          dark: '#0f172a',
+          light: '#f8fafc',
+        },
+      })
+    : null;
+
+  const contactItems = [
+    { label: 'Location', value: formData.location || 'Not provided' },
+    { label: 'Phone', value: formData.phone || 'Not provided' },
+    { label: 'LinkedIn', value: formData.linkedin || 'Not provided' },
+    { label: 'Portfolio', value: formData.portfolio || 'Not provided' },
+  ];
+  if (formData.githubUsername) {
+    contactItems.push({ label: 'GitHub', value: `github.com/${formData.githubUsername}` });
+  }
+
   const container = document.createElement('div');
   container.style.width = '900px';
   container.style.margin = '0';
   container.style.padding = '0';
   container.style.boxSizing = 'border-box';
-  container.style.background = '#0f0f13';
+  container.style.background = '#e5e7eb';
   container.style.fontFamily = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial';
   container.style.position = 'fixed';
   container.style.left = '-99999px';
@@ -707,149 +783,273 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
 
   const card = document.createElement('div');
   card.style.width = '900px';
-  card.style.minHeight = '1100px';
+  card.style.minHeight = '1250px';
   card.style.boxSizing = 'border-box';
-  card.style.background = '#0f0f13';
+  card.style.background = '#ffffff';
   card.style.position = 'relative';
   card.style.overflow = 'hidden';
+  card.style.border = '1px solid #d1d5db';
+  card.style.boxShadow = '0 24px 80px rgba(15, 23, 42, 0.12)';
 
-  const blob1 = document.createElement('div');
-  blob1.style.cssText = `position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,#7C3AED55,transparent 70%);top:-100px;left:-100px;pointer-events:none;`;
-  const blob2 = document.createElement('div');
-  blob2.style.cssText = `position:absolute;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,#06b6d455,transparent 70%);bottom:-80px;right:-80px;pointer-events:none;`;
-  const blob3 = document.createElement('div');
-  blob3.style.cssText = `position:absolute;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,#f59e0b33,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;`;
-  card.appendChild(blob1);
-  card.appendChild(blob2);
-  card.appendChild(blob3);
-
-  const accentBar = document.createElement('div');
-  accentBar.style.cssText = `height:5px;background:linear-gradient(90deg,#7C3AED,#06b6d4,#f59e0b);width:100%;`;
-  card.appendChild(accentBar);
-
-  const brandStrip = document.createElement('div');
-  brandStrip.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:20px 56px 0;position:relative;z-index:2;`;
-  const brandLeft = document.createElement('div');
-  brandLeft.style.cssText = `display:flex;align-items:center;gap:14px;`;
-  const brandLogoWrap = document.createElement('div');
-  brandLogoWrap.style.cssText = `width:140px;height:48px;padding:8px 12px;border-radius:16px;background:#ffffff;border:1px solid #e5e7eb;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(0,0,0,0.08);`;
-  const brandLogo = document.createElement('img');
-  brandLogo.src = '/images/studlyf_secondary.png';
-  brandLogo.alt = 'Studlyf';
-  brandLogo.style.cssText = `width:100%;height:100%;object-fit:contain;`;
-  brandLogo.crossOrigin = 'anonymous';
-  brandLogoWrap.appendChild(brandLogo);
-  const brandCopy = document.createElement('div');
-  brandCopy.style.cssText = `display:flex;flex-direction:column;gap:3px;`;
-  const brandEyebrow = document.createElement('div');
-  brandEyebrow.style.cssText = `font-size:10px;font-weight:900;color:#06b6d4;text-transform:uppercase;letter-spacing:0.24em;`;
-  brandEyebrow.innerText = 'Profile Template';
-  const brandTitle = document.createElement('div');
-  brandTitle.style.cssText = `font-size:14px;font-weight:800;color:#ffffff;line-height:1.2;`;
-  brandTitle.innerText = 'Share-ready public profile';
-  brandCopy.appendChild(brandEyebrow);
-  brandCopy.appendChild(brandTitle);
-  brandLeft.appendChild(brandLogoWrap);
-  brandLeft.appendChild(brandCopy);
-  brandStrip.appendChild(brandLeft);
-  card.appendChild(brandStrip);
+  const topAccent = document.createElement('div');
+  topAccent.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:260px;background:linear-gradient(135deg,#fde68a 0%,#fbcfe8 100%);clip-path:polygon(0 0,100% 0,100% 62%,0 100%);z-index:1;';
+  card.appendChild(topAccent);
 
   const header = document.createElement('div');
-  header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:28px 56px 32px;position:relative;z-index:2;`;
+  header.style.cssText = 'position:relative;display:flex;align-items:flex-start;justify-content:space-between;padding:40px 56px 0;gap:24px;z-index:2;';
 
-  const headerLeft = document.createElement('div');
-  headerLeft.style.cssText = `display:flex;align-items:center;gap:28px;`;
+  const nameBlock = document.createElement('div');
+  nameBlock.style.cssText = 'display:flex;flex-direction:column;gap:10px;max-width:620px;';
+  const nameTitle = document.createElement('div');
+  nameTitle.style.cssText = 'font-size:42px;font-weight:900;color:#0f172a;line-height:1.05;font-family:Georgia, "Times New Roman", serif;';
+  nameTitle.innerText = profileDisplayName || 'Your Name';
+  const roleSubtitle = document.createElement('div');
+  roleSubtitle.style.cssText = 'font-size:18px;font-weight:700;color:#334155;letter-spacing:0.01em;';
+  roleSubtitle.innerText = profileRole || 'Professional Profile';
+  const tagline = document.createElement('div');
+  tagline.style.cssText = 'font-size:14px;line-height:1.8;color:#475569;max-width:760px;';
+  tagline.innerText = profileHeadlineText;
+  const dateText = document.createElement('div');
+  dateText.style.cssText = 'font-size:12px;color:#475569;';
+  dateText.innerText = `Prepared on ${issueDate}`;
+  nameBlock.appendChild(nameTitle);
+  nameBlock.appendChild(roleSubtitle);
+  nameBlock.appendChild(tagline);
+  nameBlock.appendChild(dateText);
 
-  const photoRing = document.createElement('div');
-  photoRing.style.cssText = `width:110px;height:110px;border-radius:28px;padding:3px;background:linear-gradient(135deg,#7C3AED,#06b6d4);flex-shrink:0;box-shadow:0 0 40px #7C3AED55;`;
-  const photoInner = document.createElement('div');
-  photoInner.style.cssText = `width:100%;height:100%;border-radius:25px;overflow:hidden;background:#1a1a2e;`;
+  const avatarFrame = document.createElement('div');
+  avatarFrame.style.cssText = 'width:140px;height:140px;border-radius:28px;overflow:hidden;background:#fff;border:4px solid rgba(255,255,255,0.88);box-shadow:0 20px 40px rgba(15,23,42,0.14);display:flex;align-items:center;justify-content:center;flex-shrink:0;';
   if (formData.profilePhoto) {
-    const img = document.createElement('img');
-    img.src = formData.profilePhoto;
-    img.style.cssText = `width:100%;height:100%;object-fit:cover;`;
-    img.crossOrigin = 'anonymous';
-    photoInner.appendChild(img);
+    const avatarImg = document.createElement('img');
+    avatarImg.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+    avatarImg.src = formData.profilePhoto;
+    avatarImg.alt = 'Profile';
+    avatarFrame.appendChild(avatarImg);
   } else {
-    photoInner.style.cssText += `display:flex;align-items:center;justify-content:center;`;
-    const userIcon = document.createElement('div');
-    userIcon.style.cssText = `width:54px;height:54px;border-radius:50%;border:3px solid #7C3AED;color:#7C3AED;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;`;
-    userIcon.innerText = '◎';
-    photoInner.appendChild(userIcon);
+    const placeholder = document.createElement('div');
+    placeholder.style.cssText = 'font-size:36px;font-weight:900;color:#64748b;';
+    placeholder.innerText = profileDisplayName
+      ? profileDisplayName.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase()
+      : 'NA';
+    avatarFrame.appendChild(placeholder);
   }
-  photoRing.appendChild(photoInner);
 
-  headerLeft.appendChild(photoRing);
-
-  const scoreCircle = document.createElement('div');
-  scoreCircle.style.cssText = `width:100px;height:100px;border-radius:50%;background:conic-gradient(#7C3AED ${profileCompletion * 3.6}deg, #ffffff11 0deg);display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px #7C3AED44;flex-shrink:0;`;
-  const scoreInner = document.createElement('div');
-  scoreInner.style.cssText = `width:80px;height:80px;border-radius:50%;background:#0f0f13;display:flex;flex-direction:column;align-items:center;justify-content:center;`;
-  const scoreNum = document.createElement('div');
-  scoreNum.style.cssText = `font-size:22px;font-weight:900;color:#fff;line-height:1;`;
-  scoreNum.innerText = `${profileCompletion}%`;
-  const scoreLabel = document.createElement('div');
-  scoreLabel.style.cssText = `font-size:8px;font-weight:800;color:#7C3AED;text-transform:uppercase;letter-spacing:0.1em;margin-top:2px;`;
-  scoreLabel.innerText = 'Score';
-  scoreInner.appendChild(scoreNum);
-  scoreInner.appendChild(scoreLabel);
-  scoreCircle.appendChild(scoreInner);
-
-  header.appendChild(headerLeft);
-  header.appendChild(scoreCircle);
+  header.appendChild(nameBlock);
+  header.appendChild(avatarFrame);
   card.appendChild(header);
 
-  if (formData.bio || formData.careerGoal) {
-    const bioWrap = document.createElement('div');
-    bioWrap.style.cssText = `margin:0 56px 32px;padding:20px 24px;background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;position:relative;z-index:2;border-left:3px solid #7C3AED;`;
-    const bioText = document.createElement('div');
-    bioText.style.cssText = `font-size:13px;color:#cbd5e1;line-height:1.7;font-weight:500;`;
-    bioText.innerText = formData.bio || formData.careerGoal;
-    bioWrap.appendChild(bioText);
-    card.appendChild(bioWrap);
+  const profileLabel = document.createElement('div');
+  profileLabel.style.cssText = 'position:relative;z-index:2;text-align:center;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:0.3em;color:#334155;margin:18px 56px 0;';
+  profileLabel.innerText = 'Profile';
+  card.appendChild(profileLabel);
+
+  const divider = document.createElement('div');
+  divider.style.cssText = 'height:1px;background:#e2e8f0;margin:16px 56px 24px;';
+  card.appendChild(divider);
+
+  const main = document.createElement('div');
+  main.style.cssText = 'display:grid;grid-template-columns:1.15fr 0.85fr;gap:24px;padding:0 56px 44px;';
+
+  const leftColumn = document.createElement('div');
+  leftColumn.style.cssText = 'display:flex;flex-direction:column;gap:20px;';
+
+  const section = (title: string, content: HTMLElement[]) => {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'padding:24px;border-radius:24px;background:#f8fafc;border:1px solid #e2e8f0;';
+    const heading = document.createElement('div');
+    heading.style.cssText = 'font-size:14px;font-weight:900;color:#0f172a;text-transform:uppercase;letter-spacing:0.2em;margin-bottom:16px;';
+    heading.innerText = title;
+    wrapper.appendChild(heading);
+    content.forEach(node => wrapper.appendChild(node));
+    return wrapper;
+  };
+
+  const summaryBlock = document.createElement('div');
+  summaryBlock.style.cssText = 'font-size:14px;line-height:1.8;color:#475569;';
+  summaryBlock.innerText = profileSummaryText;
+  leftColumn.appendChild(section('Professional Summary', [summaryBlock]));
+
+  const createList = (items: string[]) => {
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:12px;align-items:flex-start;';
+      const dot = document.createElement('div');
+      dot.style.cssText = 'width:8px;height:8px;margin-top:7px;border-radius:999px;background:#0f172a;flex-shrink:0;';
+      const text = document.createElement('div');
+      text.style.cssText = 'font-size:13px;line-height:1.75;color:#475569;';
+      text.innerText = item;
+      row.appendChild(dot);
+      row.appendChild(text);
+      list.appendChild(row);
+    });
+    return list;
+  };
+
+  const experienceItems = experienceList.length > 0
+    ? experienceList.map(exp => `${exp.role || 'Role'} at ${exp.company || 'Company'} (${exp.type || 'Type'})`) 
+    : projectList.map((project, index) => `Project ${index + 1}: ${project}`);
+  if (experienceItems.length) {
+    leftColumn.appendChild(section('Work & Projects', [createList(experienceItems)]));
   }
 
-  const statsRow = document.createElement('div');
-  statsRow.style.cssText = `display:flex;gap:16px;padding:0 56px 36px;position:relative;z-index:2;`;
-  const stats = [
-    { label: 'Skills', value: formData.skills.length, color: '#7C3AED' },
-    { label: 'Projects', value: formData.projects.length, color: '#06b6d4' },
-    { label: 'Experience', value: formData.experienceList.length, color: '#f59e0b' },
-    { label: 'Certificates', value: formData.certifications.length, color: '#10b981' },
-  ];
-  stats.forEach(stat => {
-    const s = document.createElement('div');
-    s.style.cssText = `flex:1;background:#ffffff08;border:1px solid #ffffff11;border-radius:18px;padding:18px 16px;text-align:center;border-top:2px solid ${stat.color};`;
-    const sv = document.createElement('div');
-    sv.style.cssText = `font-size:30px;font-weight:900;color:#fff;line-height:1;`;
-    sv.innerText = String(stat.value);
-    const sl = document.createElement('div');
-    sl.style.cssText = `font-size:9px;font-weight:800;color:${stat.color};text-transform:uppercase;letter-spacing:0.15em;margin-top:6px;`;
-    sl.innerText = stat.label;
-    s.appendChild(sv);
-    s.appendChild(sl);
-    statsRow.appendChild(s);
+  const educationNodes = educationList.map(item => {
+    const block = document.createElement('div');
+    block.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding-bottom:12px;border-bottom:1px solid #e2e8f0;';
+    const titleLine = document.createElement('div');
+    titleLine.style.cssText = 'font-size:14px;font-weight:700;color:#0f172a;';
+    titleLine.innerText = `${item.degree || item.specialization || 'Education'} • ${item.institution || 'Institution'}`;
+    const period = document.createElement('div');
+    period.style.cssText = 'font-size:12px;color:#64748b;';
+    period.innerText = `${item.startYear || ''} – ${item.endYear || ''}`.trim();
+    block.appendChild(titleLine);
+    if (period.innerText) block.appendChild(period);
+    return block;
   });
-  card.appendChild(statsRow);
+  if (educationNodes.length) {
+    leftColumn.appendChild(section('Education', educationNodes));
+  }
+
+  const rightColumn = document.createElement('div');
+  rightColumn.style.cssText = 'display:flex;flex-direction:column;gap:20px;';
+
+  const contactItemsNodes = contactItems.map(item => {
+    const itemRow = document.createElement('div');
+    itemRow.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.18em;';
+    label.innerText = item.label;
+    const value = document.createElement('div');
+    value.style.cssText = 'font-size:13px;color:#0f172a;font-weight:700;word-break:break-word;';
+    value.innerText = item.value;
+    itemRow.appendChild(label);
+    itemRow.appendChild(value);
+    return itemRow;
+  });
+  rightColumn.appendChild(section('Contact', contactItemsNodes));
+
+  if (skills.length) {
+    const skillsList = createList(skills);
+    rightColumn.appendChild(section('Skills', [skillsList]));
+  }
+
+  if (certifications.length) {
+    const certList = createList(certifications);
+    rightColumn.appendChild(section('Certifications', [certList]));
+  }
+
+  if (interests.length) {
+    const interestGrid = document.createElement('div');
+    interestGrid.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;';
+    interests.forEach(interest => {
+      const tag = document.createElement('div');
+      tag.style.cssText = 'padding:10px 12px;border-radius:999px;background:#f8fafc;color:#0f172a;font-size:12px;font-weight:700;border:1px solid #e2e8f0;';
+      tag.innerText = interest;
+      interestGrid.appendChild(tag);
+    });
+    rightColumn.appendChild(section('Interests', [interestGrid]));
+  }
+
+  if (achievements.length) {
+    rightColumn.appendChild(section('Achievements', [createList(achievements)]));
+  }
+
+  if (formData.githubUsername || githubAnalytics) {
+    const githubBlock = document.createElement('div');
+    githubBlock.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+    const githubLabel = document.createElement('div');
+    githubLabel.style.cssText = 'font-size:12px;font-weight:700;color:#0f172a;';
+    githubLabel.innerText = 'GitHub Insights';
+    const githubLink = document.createElement('div');
+    githubLink.style.cssText = 'font-size:13px;font-weight:700;color:#1d4ed8;word-break:break-word;';
+    githubLink.innerText = formData.githubUsername ? `github.com/${formData.githubUsername}` : 'No GitHub username provided';
+    githubBlock.appendChild(githubLabel);
+    githubBlock.appendChild(githubLink);
+
+    if (githubAnalytics) {
+      const scoreRow = document.createElement('div');
+      scoreRow.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;';
+      const addMetric = (label: string, value: string) => {
+        const metric = document.createElement('div');
+        metric.style.cssText = 'padding:12px;border-radius:18px;background:#eff6ff;';
+        const metricLabel = document.createElement('div');
+        metricLabel.style.cssText = 'font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.16em;color:#0f172a;margin-bottom:6px;';
+        metricLabel.innerText = label;
+        const metricValue = document.createElement('div');
+        metricValue.style.cssText = 'font-size:18px;font-weight:900;color:#111827;';
+        metricValue.innerText = value;
+        metric.appendChild(metricLabel);
+        metric.appendChild(metricValue);
+        return metric;
+      };
+      scoreRow.appendChild(addMetric('Score', `${githubAnalytics.score}/100`));
+      scoreRow.appendChild(addMetric('Repos', String(githubAnalytics.repoCount)));
+      scoreRow.appendChild(addMetric('Stars', String(githubAnalytics.totalStars)));
+      scoreRow.appendChild(addMetric('Forks', String(githubAnalytics.totalForks)));
+      githubBlock.appendChild(scoreRow);
+      const languagesRow = document.createElement('div');
+      languagesRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;';
+      githubAnalytics.topLanguages.slice(0, 5).forEach(lang => {
+        const chip = document.createElement('div');
+        chip.style.cssText = 'padding:8px 12px;border-radius:999px;background:#e0e7ff;color:#3730a3;font-size:12px;font-weight:800;';
+        chip.innerText = lang;
+        languagesRow.appendChild(chip);
+      });
+      githubBlock.appendChild(languagesRow);
+    }
+
+    rightColumn.appendChild(section('GitHub', [githubBlock]));
+  }
+
+  const qrSection = document.createElement('div');
+  qrSection.style.cssText = 'padding:20px;border-radius:24px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;flex-direction:column;gap:14px;align-items:center;';
+  const qrTitle = document.createElement('div');
+  qrTitle.style.cssText = 'font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.18em;';
+  qrTitle.innerText = 'Profile QR Code';
+  qrSection.appendChild(qrTitle);
+  if (qrDataUrl) {
+    const qrImg = document.createElement('img');
+    qrImg.src = qrDataUrl;
+    qrImg.alt = 'Profile QR code';
+    qrImg.style.cssText = 'width:140px;height:140px;border-radius:20px;background:#fff;padding:10px;';
+    qrSection.appendChild(qrImg);
+  }
+  const qrDescription = document.createElement('div');
+  qrDescription.style.cssText = 'font-size:12px;color:#475569;text-align:center;line-height:1.6;';
+  qrDescription.innerText = publicProfileUrl ? 'Scan to open the public profile instantly.' : 'Save the profile to enable the QR link.';
+  qrSection.appendChild(qrDescription);
+  rightColumn.appendChild(qrSection);
+
+  main.appendChild(leftColumn);
+  main.appendChild(rightColumn);
+  card.appendChild(main);
 
   const footer = document.createElement('div');
-  footer.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:20px 56px 32px;position:relative;z-index:2;border-top:1px solid #ffffff11;`;
-  const footerBrand = document.createElement('div');
-  footerBrand.style.cssText = `font-size:11px;font-weight:900;color:#7C3AED;letter-spacing:0.1em;text-transform:uppercase;`;
-  footerBrand.innerText = 'Studlyf';
-  footer.appendChild(footerBrand);
+  footer.style.cssText = 'padding:24px 56px 28px;display:flex;justify-content:space-between;align-items:center;gap:20px;border-top:1px solid #e2e8f0;background:#f8fafc;';
+  const footerLeft = document.createElement('div');
+  footerLeft.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+  const footerTitle = document.createElement('div');
+  footerTitle.style.cssText = 'font-size:12px;font-weight:800;color:#0f172a;';
+  footerTitle.innerText = 'Studlyf Professional Resume';
+  const footerNote = document.createElement('div');
+  footerNote.style.cssText = 'font-size:12px;color:#64748b;line-height:1.6;';
+  footerNote.innerText = 'Organized, readable, and ready to share with recruiters and network connections.';
+  footerLeft.appendChild(footerTitle);
+  footerLeft.appendChild(footerNote);
+  const footerRight = document.createElement('div');
+  footerRight.style.cssText = 'font-size:10px;font-weight:700;color:#0f172a;text-transform:uppercase;letter-spacing:0.18em;';
+  footerRight.innerText = 'studlyf.com';
+  footer.appendChild(footerLeft);
+  footer.appendChild(footerRight);
   card.appendChild(footer);
-
-  const bottomBar = document.createElement('div');
-  bottomBar.style.cssText = `height:5px;background:linear-gradient(90deg,#f59e0b,#7C3AED,#06b6d4);width:100%;`;
-  card.appendChild(bottomBar);
 
   container.appendChild(card);
   document.body.appendChild(container);
 
   try {
     const canvas = await html2canvas(container, {
-      backgroundColor: '#0f0f13',
+      backgroundColor: '#e5e7eb',
       scale: 2,
       useCORS: true,
       allowTaint: true,
@@ -873,7 +1073,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
       link.download = profileTemplateFileName;
       link.href = URL.createObjectURL(blob);
       link.click();
-      setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
+      setSaveStatus({ type: 'success', message: 'Profile downloaded successfully — your profile is downloaded.' });
       setTimeout(() => setSaveStatus(null), 4500);
     } catch (err) {
       const errorMessage = (err as Error)?.message || 'Unable to download.';
@@ -1376,7 +1576,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
   }
   };
 
-  const copyProfileLink = async () => {
+  const copyProfileLink = async (target: 'accountShare' | 'profilePanel' = 'accountShare') => {
     if (!publicProfileUrl) return;
     try {
       if (navigator.clipboard && window.isSecureContext) {
@@ -1394,11 +1594,91 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
         document.execCommand('copy');
         document.body.removeChild(textArea);
       }
-      setSaveStatus({ type: 'success', message: 'Profile link copied to clipboard.' });
-      setTimeout(() => setSaveStatus(null), 2500);
+      setCopyFeedback({ target, type: 'success', message: 'Profile link copied to clipboard.' });
+      setTimeout(() => setCopyFeedback(current => current?.target === target ? null : current), 2500);
     } catch {
-      setSaveStatus({ type: 'error', message: 'Unable to copy the profile link.' });
-      setTimeout(() => setSaveStatus(null), 2500);
+      setCopyFeedback({ target, type: 'error', message: 'Unable to copy the profile link.' });
+      setTimeout(() => setCopyFeedback(current => current?.target === target ? null : current), 2500);
+    }
+  };
+
+  const analyzeGithubProfile = async () => {
+    const username = formData.githubUsername.trim();
+    if (!username) {
+      setGithubError('Please enter a GitHub username to analyze.');
+      return;
+    }
+
+    setGithubError(null);
+    setIsFetchingGithub(true);
+
+    try {
+      const userResponse = await fetch(`https://api.github.com/users/${username}`);
+      if (!userResponse.ok) throw new Error('GitHub profile not found.');
+      const userData = await userResponse.json() as any;
+
+      const repoResponse = await fetch(`https://api.github.com/users/${username}/repos?per_page=100&type=owner&sort=pushed`);
+      if (!repoResponse.ok) throw new Error('Unable to load GitHub repositories.');
+      const repos = await repoResponse.json() as any[];
+      if (!Array.isArray(repos)) throw new Error('Unexpected GitHub repo response.');
+
+      const stats = repos.reduce<{
+        repoCount: number;
+        totalStars: number;
+        totalForks: number;
+        totalWatchers: number;
+        languages: Record<string, number>;
+      }>((acc, repo: any) => {
+        const language = repo.language || 'Other';
+        acc.repoCount += 1;
+        acc.totalStars += Number(repo.stargazers_count || 0);
+        acc.totalForks += Number(repo.forks_count || 0);
+        acc.totalWatchers += Number(repo.watchers_count || 0);
+        acc.languages[language] = (acc.languages[language] || 0) + 1;
+        return acc;
+      }, {
+        repoCount: 0,
+        totalStars: 0,
+        totalForks: 0,
+        totalWatchers: 0,
+        languages: {} as Record<string, number>,
+      });
+
+      const topLanguages = Object.entries(stats.languages)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([lang, count]) => `${lang} (${count})`);
+
+      const rawScore = Math.min(100,
+        Math.round(
+          stats.totalStars * 1.8 +
+          stats.totalForks * 1.4 +
+          stats.totalWatchers * 1.0 +
+          stats.repoCount * 3 +
+          Object.keys(stats.languages).length * 6 +
+          (Number(userData.followers || 0) * 2)
+        )
+      );
+
+      setGithubAnalytics({
+        username: userData.login,
+        displayName: userData.name || userData.login,
+        avatarUrl: userData.avatar_url,
+        profileUrl: userData.html_url,
+        repoCount: stats.repoCount,
+        totalStars: stats.totalStars,
+        totalForks: stats.totalForks,
+        totalWatchers: stats.totalWatchers,
+        followers: Number(userData.followers || 0),
+        score: rawScore,
+        topLanguages,
+        bio: userData.bio || '',
+        computedAt: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      });
+    } catch (err: any) {
+      setGithubError(err?.message || 'GitHub analysis failed.');
+    } finally {
+      setIsFetchingGithub(false);
     }
   };
 
@@ -1449,8 +1729,6 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
     if (!publicProfileUrl) return;
     setCopiedForPlatform(null);
     setShowShareModal(true);
-    setSaveStatus({ type: 'success', message: 'Choose a social template to share.' });
-    setTimeout(() => setSaveStatus(null), 2000);
   };
 
   const activityTimeline = [
@@ -1685,7 +1963,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
                <button 
                 onClick={() => handleSave('Basic Details')}
                 disabled={isSaving}
-                className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50"
+                className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all duration-300 ease-out shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50 active:scale-95"
                >
                  {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                  {isSaving ? 'Saving...' : 'Save Changes'}
@@ -1862,15 +2140,20 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
             </div>
 
             {formData.educationList.length > 0 && (
-              <div className="pt-8 flex justify-end">
-                <button 
-                  onClick={() => handleSave('Education')}
-                  disabled={isSaving}
-                  className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50"
-                >
-                  {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  {isSaving ? 'Saving...' : `Save ${formData.educationList.length} Education`}
-                </button>
+              <div className="pt-8 space-y-3">
+                <div className="flex justify-end">
+                  <button 
+                    onClick={() => handleSave('Education')}
+                    disabled={isSaving}
+                    className="px-12 py-4 bg-[#7C3AED] text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all shadow-xl shadow-[#7C3AED]/20 flex items-center gap-3 disabled:opacity-50"
+                  >
+                    {isSaving ? <Plus className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {isSaving ? 'Saving...' : 'Save Education'}
+                  </button>
+                </div>
+                {sectionStatus?.section === 'Education' && (
+                  <div className={`text-[10px] font-bold ${sectionStatus.type === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>{sectionStatus.message}</div>
+                )}
               </div>
             )}
           </motion.div>
@@ -2760,10 +3043,13 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
                   </div>
                   <div className="rounded-2xl border border-white/70 bg-white px-4 py-3 text-sm font-medium text-gray-700 break-all shadow-sm">{publicProfileUrl || 'Save your profile to generate a public link.'}</div>
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <button type="button" onClick={copyProfileLink} disabled={!publicProfileUrl} className="flex-1 px-5 py-3 rounded-2xl bg-white border border-gray-200 text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50 cursor-pointer touch-manipulation">Copy Profile Link</button>
+                    <button type="button" onClick={() => copyProfileLink('accountShare')} disabled={!publicProfileUrl} className="flex-1 px-5 py-3 rounded-2xl bg-white border border-gray-200 text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50 cursor-pointer touch-manipulation">Copy Profile Link</button>
                     <button type="button" onClick={downloadProfileTemplate} disabled={!publicProfileUrl || isGeneratingTemplate} className="flex-1 px-5 py-3 rounded-2xl bg-white border border-gray-200 text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50 cursor-pointer touch-manipulation">Download Template</button>
                     <button type="button" onClick={shareProfile} disabled={!publicProfileUrl || isGeneratingTemplate} className="flex-1 px-5 py-3 rounded-2xl bg-[#7C3AED] text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all disabled:opacity-50 cursor-pointer touch-manipulation">Share Template</button>
                   </div>
+                  {copyFeedback?.target === 'accountShare' && (
+                    <div className={`mt-3 text-[10px] font-bold ${copyFeedback.type === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>{copyFeedback.message}</div>
+                  )}
                </div>
 
                <div className="p-8 bg-gray-50 rounded-[2.5rem] border border-gray-100 space-y-8">
@@ -2841,7 +3127,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto min-h-screen bg-transparent p-4 sm:p-8 lg:p-12 font-sans selection:bg-[#7C3AED] selection:text-white">
+    <div className="max-w-[1400px] mx-auto min-h-screen bg-white/90 backdrop-blur-sm pt-0 px-4 sm:px-8 lg:px-12 pb-12 font-sans selection:bg-[#7C3AED] selection:text-white">
 
       {/* ── Global Save Toast ── */}
       <AnimatePresence>
@@ -2849,9 +3135,9 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
           <motion.div
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            exit={{ opacity: 0, y: 24, scale: 0.98 }}
             transition={{ duration: 0.45, ease: 'easeOut' }}
-            className={`fixed top-6 left-1/2 -translate-x-1/2 z-[70] px-8 py-4 rounded-2xl text-white text-sm font-bold shadow-2xl flex items-center gap-3 backdrop-blur-md pointer-events-none
+            className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[70] px-8 py-4 rounded-2xl text-white text-sm font-bold shadow-2xl flex items-center gap-3 backdrop-blur-md pointer-events-none
               ${saveStatus.type === 'success' ? 'bg-emerald-500/90' : 'bg-red-500/90'}`}
           >
             <span>{saveStatus.type === 'success' ? '✓' : '✗'}</span>
@@ -2859,13 +3145,6 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Persistent debug banner for automated verification */}
-      {lastToastSnapshot && (
-        <div id="debug-last-toast" className="fixed top-6 right-6 z-60 px-4 py-3 rounded-lg bg-black text-white text-sm font-bold shadow-lg">
-          {lastToastSnapshot}
-        </div>
-      )}
 
       {/* ── Loading Overlay ── */}
       {profileLoading && (
@@ -2876,7 +3155,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
       )}
 
       {/* Header with Back Button */}
-      <div className="flex items-center gap-6 mb-12">
+      <div className="flex items-center gap-6 mb-6 pt-0 sm:pt-0 lg:pt-1">
         <button 
           onClick={() => navigate('/dashboard/learner')}
           className="w-12 h-12 bg-white flex items-center justify-center rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group"
@@ -2893,53 +3172,286 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative overflow-hidden rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_20px_60px_rgba(15,23,42,0.06)]"
+          className="relative overflow-hidden rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_18px_50px_rgba(15,23,42,0.05)]"
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-[#7C3AED]/6 via-transparent to-[#06B6D4]/8 pointer-events-none" />
-          <div className="relative flex flex-col gap-8">
-            <div className="flex items-start gap-5 flex-1">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-[2rem] overflow-hidden border border-white shadow-xl bg-gray-50 ring-4 ring-[#7C3AED]/10 flex items-center justify-center shrink-0">
-                {formData.profilePhoto ? <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" /> : <User className="w-10 h-10 text-gray-300" />}
-              </div>
-              <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#7C3AED]/10 text-[#7C3AED] text-[10px] font-black uppercase tracking-[0.2em] mb-4">
-                  <Sparkles className="w-3 h-3" /> Profile Overview
+          <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-br from-[#7C3AED]/10 via-transparent to-transparent pointer-events-none" />
+          <div className="relative grid gap-8">
+            <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="space-y-8">
+                <div className="flex flex-col gap-4">
+                  <span className="text-[10px] font-black uppercase tracking-[0.28em] text-gray-400">Professional Profile</span>
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <h2 className="text-4xl sm:text-5xl font-black uppercase tracking-tight text-gray-900">{profileDisplayName}</h2>
+                      <p className="mt-3 uppercase tracking-[0.24em] text-sm font-bold text-gray-600">{profileRole}</p>
+                      {formData.oneStrongWord && (
+                        <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#7C3AED]/10 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-[#1D4ED8]">
+                          <Sparkles className="w-4 h-4" /> {formData.oneStrongWord}
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-6">
+                      <div className="relative inline-flex items-center justify-center w-36 h-36 rounded-[2.5rem] overflow-hidden border-4 border-white bg-[#F8FAFC] shadow-2xl">
+                        {formData.profilePhoto ? (
+                          <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-3xl font-black text-gray-500">{profileInitials}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900 leading-tight break-words">
-                  {profileDisplayName}
-                </h2>
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-500 font-medium">
-                  <span className="px-3 py-1 rounded-full bg-gray-50 border border-gray-100 text-gray-700">{profileRole}</span>
-                  {formData.location && <span className="inline-flex items-center gap-1"><MapPin className="w-4 h-4" /> {formData.location}</span>}
-                  {formData.domain && <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">{formData.domain}</span>}
+
+                <div className="grid gap-4">
+                  <div className="rounded-[2rem] border border-gray-100 bg-white/95 p-6 shadow-sm">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Contact</div>
+                    <div className="mt-5 space-y-4 text-sm text-gray-700">
+                      {formData.location && (
+                        <div className="flex items-start gap-3">
+                          <span className="mt-1 w-2 h-2 rounded-full bg-[#7C3AED]" />
+                          <div>
+                            <div className="font-bold text-gray-900">Location</div>
+                            <div>{formData.location}</div>
+                          </div>
+                        </div>
+                      )}
+                      {formData.phone && (
+                        <div className="flex items-start gap-3">
+                          <span className="mt-1 w-2 h-2 rounded-full bg-[#7C3AED]" />
+                          <div>
+                            <div className="font-bold text-gray-900">Phone</div>
+                            <div>{formData.phone}</div>
+                          </div>
+                        </div>
+                      )}
+                      {(user?.email || formData.linkedin || formData.portfolio) && (
+                        <div className="flex items-start gap-3">
+                          <span className="mt-1 w-2 h-2 rounded-full bg-[#7C3AED]" />
+                          <div>
+                            <div className="font-bold text-gray-900">Reach</div>
+                            <div className="space-y-1 text-sm text-gray-700">
+                              {user?.email && <div>{user.email}</div>}
+                              {formData.linkedin && <div>{formData.linkedin}</div>}
+                              {formData.portfolio && <div>{formData.portfolio}</div>}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="relative overflow-hidden rounded-[2rem] border border-[#7C3AED]/20 bg-gradient-to-br from-[#eef2ff] via-[#eff6ff] to-[#eef2ff] p-6 shadow-lg shadow-[#7C3AED]/10">
+                    <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-[#7C3AED]/20 blur-2xl" />
+                    <div className="pointer-events-none absolute left-4 top-12 h-16 w-16 rounded-full bg-[#93c5fd]/30 blur-xl" />
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#4338ca]">Describe yourself</div>
+                    <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="text-2xl font-black text-[#1e40af] uppercase tracking-tight">One strong word</h3>
+                        <p className="mt-4 text-sm leading-7 text-[#334155]">Choose a word that defines your ambition and makes your profile stand out.</p>
+                      </div>
+                      {formData.oneStrongWord && !isEditingStrongWord && (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingStrongWord(true)}
+                          className="self-start rounded-full border border-[#7C3AED]/30 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#1D4ED8] shadow-sm transition hover:bg-[#7C3AED]/5"
+                        >
+                          Change
+                        </button>
+                      )}
+                    </div>
+
+                    {formData.oneStrongWord && !isEditingStrongWord ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, ease: 'easeOut' }}
+                        className="mt-6 rounded-[1.75rem] bg-white/95 p-6 shadow-xl ring-1 ring-[#7C3AED]/20"
+                      >
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#4338ca]">Live preview</div>
+                        <div className="mt-2 text-sm font-black uppercase tracking-[0.18em] text-[#4338ca]">One strong word which describes me:</div>
+                        <p className="mt-4 text-5xl sm:text-6xl font-black italic tracking-tight text-[#1D4ED8]">{formData.oneStrongWord}</p>
+                      </motion.div>
+                    ) : (
+                      <>
+                        <input
+                          name="oneStrongWord"
+                          value={formData.oneStrongWord}
+                          onChange={handleChange}
+                          onBlur={handleStrongWordInputBlur}
+                          placeholder="Aspiring entrepreneur"
+                          className="mt-5 w-full rounded-[1.75rem] border border-gray-200 bg-white px-5 py-4 text-lg font-semibold text-gray-900 outline-none transition-all focus:border-[#7C3AED]/50 focus:ring-4 focus:ring-[#7C3AED]/10"
+                        />
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {['Bold', 'Curious', 'Driven', 'Purposeful'].map(tag => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => chooseStrongWord(tag)}
+                              className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.18em] transition ${tag === 'Purposeful' ? 'border-pink-600 bg-pink-100 text-pink-700 text-[9px]' : 'border-[#7C3AED]/20 bg-[#7C3AED]/10 text-[#1D4ED8] hover:border-[#7C3AED] hover:bg-[#7C3AED]/15'}`}
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <p className="mt-5 max-w-3xl text-sm sm:text-base leading-7 text-gray-600">{profileHeadline}</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 w-full">
-              <div className="rounded-3xl border border-gray-100 bg-gray-50/80 p-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Profile Completion</div>
-                <div className="mt-3 text-3xl font-black text-gray-900">{profileCompletion}%</div>
-                <div className="mt-3 h-2 rounded-full bg-gray-200 overflow-hidden">
-                  <div className="h-full rounded-full bg-[#7C3AED]" style={{ width: `${profileCompletion}%` }} />
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: false, amount: 0.2 }}
+              transition={{ duration: 0.55, delay: 0.08, ease: 'easeOut' }}
+              className="rounded-[2rem] border border-[#7C3AED]/10 bg-gradient-to-br from-[#eef2ff] via-[#eff6ff] to-[#eef2ff] p-6 shadow-xl shadow-[#7C3AED]/10"
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#4338ca]">GitHub Developer Score</div>
+                  <h3 className="mt-3 text-2xl font-black text-[#1e40af] uppercase tracking-tight">Analyze your GitHub impact</h3>
+                  <p className="mt-3 max-w-xl text-sm leading-7 text-[#334155]">Enter your GitHub username to generate a professional score based on repos, stars, forks, and language coverage.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={analyzeGithubProfile}
+                  disabled={isFetchingGithub || !formData.githubUsername.trim()}
+                  className="inline-flex items-center justify-center rounded-full bg-[#4338ca] px-6 py-3 text-xs font-black uppercase tracking-[0.22em] text-white shadow-lg shadow-[#4338ca]/20 transition hover:bg-[#3730a3] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isFetchingGithub ? 'Analyzing…' : 'Analyze GitHub'}
+                </button>
+              </div>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-[1.75rem] border border-gray-100 bg-white p-5 shadow-sm">
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#64748b]">GitHub handle</div>
+                  <input
+                    name="githubUsername"
+                    value={formData.githubUsername}
+                    onChange={handleChange}
+                    placeholder="e.g. githubusername"
+                    className="mt-3 w-full rounded-[1.5rem] border border-gray-200 bg-gray-50 px-5 py-4 text-sm font-semibold text-gray-900 outline-none transition-all focus:border-[#7C3AED]/40 focus:bg-white focus:ring-4 focus:ring-[#7C3AED]/10"
+                  />
+                </div>
+                <div className="rounded-[1.75rem] border border-gray-100 bg-white p-5 shadow-sm">
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#64748b]">Profile reach</div>
+                  <div className="mt-3 text-3xl font-black text-[#1d4ed8]">{githubAnalytics?.score ?? '—'}/100</div>
+                  <p className="mt-3 text-sm text-gray-600">A professional measure of your public work on GitHub.</p>
                 </div>
               </div>
-              <div className="rounded-3xl border border-gray-100 bg-gray-50/80 p-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Public URL</div>
-                <div className="mt-3 text-sm font-bold text-gray-900 break-all">{publicProfileUrl || 'Ready after save'}</div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button onClick={copyProfileLink} disabled={!publicProfileUrl} className="rounded-full border border-gray-200 bg-white px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy</button>
-                  <button onClick={downloadProfileTemplate} disabled={!publicProfileUrl || isGeneratingTemplate} className="rounded-full border border-gray-200 bg-white px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Download</button>
-                  <button onClick={shareProfile} disabled={!publicProfileUrl || isGeneratingTemplate} className="rounded-full bg-[#7C3AED] px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-white hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share</button>
-                </div>
+              {githubError && (
+                <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{githubError}</div>
+              )}
+              {githubAnalytics && (
+                <motion.div
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, ease: 'easeOut' }}
+                  className="mt-6 rounded-[2rem] border border-[#c7d2fe] bg-white p-6 shadow-lg"
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="inline-flex h-14 w-14 items-center justify-center rounded-3xl bg-[#4338ca]/10 text-2xl text-[#4338ca]">🐙</div>
+                      <div>
+                        <div className="text-sm font-black uppercase tracking-[0.18em] text-[#4338ca]">{githubAnalytics.displayName}</div>
+                        <a href={githubAnalytics.profileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold uppercase tracking-[0.24em] text-[#7c3aed] hover:text-[#4338ca]">View GitHub profile</a>
+                      </div>
+                    </div>
+                    <div className="rounded-full bg-[#eef2ff] px-4 py-2 text-xs font-black uppercase tracking-[0.24em] text-[#4338ca]">Updated {githubAnalytics.computedAt}</div>
+                  </div>
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-[1.75rem] border border-[#e0e7ff] bg-[#eff6ff] p-5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#1d4ed8]">Repos</div>
+                      <div className="mt-3 text-3xl font-black text-[#0f172a]">{githubAnalytics.repoCount}</div>
+                    </div>
+                    <div className="rounded-[1.75rem] border border-[#e0f2fe] bg-[#f0f9ff] p-5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#0369a1]">Followers</div>
+                      <div className="mt-3 text-3xl font-black text-[#0f172a]">{githubAnalytics.followers}</div>
+                    </div>
+                    <div className="rounded-[1.75rem] border border-[#d1fae5] bg-[#ecfdf5] p-5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#047857]">Stars</div>
+                      <div className="mt-3 text-3xl font-black text-[#0f172a]">{githubAnalytics.totalStars}</div>
+                    </div>
+                    <div className="rounded-[1.75rem] border border-[#fee2e2] bg-[#fef2f2] p-5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#b91c1c]">Forks</div>
+                      <div className="mt-3 text-3xl font-black text-[#0f172a]">{githubAnalytics.totalForks}</div>
+                    </div>
+                  </div>
+                  <div className="mt-6 rounded-[1.75rem] border border-[#e2e8f0] bg-[#f8fafc] p-5">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#334155]">Top languages</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {githubAnalytics.topLanguages.map(lang => (
+                        <span key={lang} className="rounded-full bg-[#e0e7ff] px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#4338ca]">{lang}</span>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </motion.div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-6"
+        >
+          <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-[#6366f1] via-[#8b5cf6] to-[#ec4899] p-8 text-white shadow-[0_28px_80px_rgba(139,92,246,0.22)]">
+            <div className="absolute inset-x-0 top-0 h-24 bg-white/10 blur-3xl" />
+            <div className="absolute -right-10 top-12 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
+            <div className="absolute left-8 top-16 h-24 w-24 rounded-full bg-[#f9a8d4]/25 blur-2xl" />
+            <div className="relative">
+              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-white/80">Profile snapshot</div>
+              <div className="mt-6 grid gap-4">
+                {[
+                  { label: 'Contributions', value: formData.projects.length + formData.experienceList.length + formData.achievements.length },
+                  { label: 'Tests completed', value: Math.max(formData.resume.atsScore > 0 ? 1 : 0, formData.skills.length ? 1 : 0) + formData.certifications.length },
+                  { label: 'Skills', value: formData.skills.length },
+                  { label: 'Activity score', value: profileCompletion },
+                ].map((card, index) => (
+                  <motion.div
+                    key={card.label}
+                    whileHover={{ y: -6 }}
+                    transition={{ duration: 0.25, ease: 'easeOut' }}
+                    className="rounded-[2rem] border border-white/20 bg-white/10 p-5 shadow-xl backdrop-blur-sm"
+                    style={{ borderImage: 'linear-gradient(135deg, rgba(255,255,255,0.45), rgba(255,255,255,0.08)) 1' }}
+                  >
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/75">{card.label}</div>
+                    <div className="mt-3 text-3xl font-black text-white">{card.value}</div>
+                    <div className="mt-3 h-1 rounded-full bg-white/20" style={{ width: `${70 + index * 10}%` }} />
+                  </motion.div>
+                ))}
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-[2.5rem] border border-white/20 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-gray-500">Quick actions</div>
+            <div className="mt-6 space-y-4">
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className="rounded-[2rem] border border-[#c7d2fe] bg-gradient-to-r from-[#eef2ff] to-[#e0e7ff] p-5"
+              >
+                <div className="text-sm font-black uppercase tracking-[0.18em] text-[#4338ca]">Profile score</div>
+                <div className="mt-3 text-5xl font-black text-[#1f2937]">{profileCompletion}%</div>
+                <p className="mt-3 text-sm text-[#475569]">Complete more sections to raise your score.</p>
+              </motion.div>
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className="rounded-[2rem] border border-[#c7d2fe] bg-gradient-to-r from-[#fdf2f8] via-[#fce7f3] to-[#fef2f2] p-5"
+              >
+                <div className="text-sm font-black uppercase tracking-[0.18em] text-[#be185d]">Your nickname</div>
+                <div className="mt-3 text-2xl font-black text-[#1f2937]">{formData.oneStrongWord || 'Choose a keyword'}</div>
+                <p className="mt-3 text-sm text-[#6b7280]">This word appears in your professional profile preview.</p>
+              </motion.div>
             </div>
           </div>
         </motion.div>
 
         {showShareModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
             <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-black">Share Profile</h3>
@@ -2962,8 +3474,20 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
               )}
               <div className="mt-2 text-xs text-gray-500">Tip: Use the download button to save the profile image, then attach it where needed.</div>
               <div className="mt-4 flex gap-3">
-                <button onClick={() => { downloadProfileTemplate(); }} className="flex-1 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black text-white">Download Profile</button>
+                <button
+                  onClick={() => { downloadProfileTemplate(); }}
+                  disabled={!publicProfileUrl || isGeneratingTemplate}
+                  className="flex-1 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black text-white transition-all duration-300 ease-out hover:bg-[#6D28D9] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Download Profile
+                </button>
               </div>
+
+              {(saveStatus?.type === 'success' && saveStatus.message.toLowerCase().includes('downloaded')) && (
+                <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
+                  {saveStatus.message}
+                </div>
+              )}
 
               {copiedForPlatform === 'whatsapp' && (
                 <div className="mt-3 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center justify-between gap-3">
@@ -2987,46 +3511,52 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
           </div>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-          {[
-            { label: 'Tests completed', value: Math.max(formData.resume.atsScore > 0 ? 1 : 0, formData.skills.length ? 1 : 0) + formData.certifications.length, tone: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { label: 'Contributions', value: formData.projects.length + formData.experienceList.length + formData.achievements.length, tone: 'text-[#7C3AED]', bg: 'bg-[#F5F3FF]' },
-            { label: 'Skills', value: formData.skills.length, tone: 'text-sky-600', bg: 'bg-sky-50' },
-            { label: 'Activity score', value: profileCompletion, tone: 'text-orange-600', bg: 'bg-orange-50' },
-          ].map(card => (
-            <div key={card.label} className="rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-              <div className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.2em] ${card.bg} ${card.tone}`}>{card.label}</div>
-              <div className="mt-4 text-3xl font-black text-gray-900">{card.value}</div>
-              <p className="mt-2 text-xs leading-5 text-gray-500">Tracked from your profile, resume, and portfolio activity.</p>
-            </div>
-          ))}
-        </div>
       </div>
 
       <div className="mb-12 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_20px_60px_rgba(15,23,42,0.04)]">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-xl font-black uppercase tracking-tight text-gray-900">Activity Timeline</h3>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-1">Recent signals from your profile workspace</p>
-            </div>
-            <Calendar className="w-5 h-5 text-gray-300" />
+<motion.div
+        initial={{ opacity: 0, y: 22 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: false, amount: 0.25 }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+        className="rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_20px_60px_rgba(15,23,42,0.04)]"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-xl font-black uppercase tracking-tight text-gray-900">Activity Timeline</h3>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-1">Recent signals from your profile workspace</p>
           </div>
-          <div className="space-y-4">
-            {activityTimeline.map((item, index) => (
-              <div key={item.title} className="flex gap-4 rounded-3xl border border-gray-100 bg-gray-50/60 p-4">
-                <div className={`w-3 h-3 rounded-full mt-2 shrink-0 ${item.tone === 'emerald' ? 'bg-emerald-500' : item.tone === 'amber' ? 'bg-amber-500' : item.tone === 'sky' ? 'bg-sky-500' : 'bg-gray-400'}`} />
-                <div className="min-w-0">
-                  <div className="text-sm font-black text-gray-900">{item.title}</div>
-                  <div className="text-sm text-gray-600 leading-6">{item.detail}</div>
-                  <div className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">0{index + 1}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <Calendar className="w-5 h-5 text-gray-300" />
         </div>
+        <div className="space-y-4">
+          {activityTimeline.map((item, index) => (
+            <motion.div
+              key={item.title}
+              initial={{ opacity: 0, x: -10 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: false, amount: 0.2 }}
+              transition={{ duration: 0.45, delay: index * 0.08, ease: 'easeOut' }}
+              whileHover={{ scale: 1.01 }}
+              className="flex gap-4 rounded-3xl border border-gray-100 bg-gradient-to-r from-gray-50/80 to-white p-4 hover:shadow-sm transition-all duration-300"
+            >
+              <div className={`w-3 h-3 rounded-full mt-2 shrink-0 ${item.tone === 'emerald' ? 'bg-emerald-500' : item.tone === 'amber' ? 'bg-amber-500' : item.tone === 'sky' ? 'bg-sky-500' : 'bg-gray-400'}`} />
+              <div className="min-w-0">
+                <div className="text-sm font-black text-gray-900">{item.title}</div>
+                <div className="text-sm text-gray-600 leading-6">{item.detail}</div>
+                <div className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">0{index + 1}</div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
 
-        <div className="rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_20px_60px_rgba(15,23,42,0.04)]">
+        <motion.div
+          initial={{ opacity: 0, y: 28 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: false, amount: 0.2 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className="rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_20px_60px_rgba(15,23,42,0.04)]"
+        >
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-xl font-black uppercase tracking-tight text-gray-900">Achievement Badges</h3>
@@ -3035,11 +3565,19 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
             <Award className="w-5 h-5 text-[#7C3AED]" />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            {achievementBadges.map(badge => (
-              <div key={badge.label} className="rounded-3xl border border-gray-100 bg-[#FAFAFA] p-4 hover:border-[#7C3AED]/20 transition-colors">
+            {achievementBadges.map((badge, index) => (
+              <motion.div
+                key={badge.label}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: false, amount: 0.2 }}
+                transition={{ duration: 0.45, delay: index * 0.07, ease: 'easeOut' }}
+                whileHover={{ scale: 1.01 }}
+                className="rounded-3xl border border-gray-100 bg-[#FAFAFA] p-4 hover:border-[#7C3AED]/20 transition-all duration-300"
+              >
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{badge.label}</div>
                 <div className="mt-2 text-sm font-bold text-gray-900">{badge.value}</div>
-              </div>
+              </motion.div>
             ))}
           </div>
           <div className="mt-6 rounded-3xl border border-[#7C3AED]/10 bg-[#F5F3FF]/70 p-5">
@@ -3047,14 +3585,17 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
             <div className="mt-3 text-sm text-gray-700 leading-6">Generate a public URL, copy it instantly, or share it through your device's native share sheet.</div>
                   <div className="mt-3 break-all rounded-2xl border border-white/80 bg-white/80 px-4 py-3 text-[10px] font-medium text-gray-700 shadow-sm">{publicProfileUrl || 'Save your profile to generate a public link.'}</div>
             <div className="mt-4 flex flex-col sm:flex-row gap-3">
-              <button onClick={copyProfileLink} disabled={!publicProfileUrl} className="flex-1 rounded-2xl bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-gray-900 border border-gray-200 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy Profile Link</button>
+              <button onClick={() => copyProfileLink('profilePanel')} disabled={!publicProfileUrl} className="flex-1 rounded-2xl bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-gray-900 border border-gray-200 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy Profile Link</button>
               <button onClick={shareProfile} disabled={!publicProfileUrl} className="flex-1 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-[#7C3AED]/20 hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share Profile</button>
             </div>
+            {copyFeedback?.target === 'profilePanel' && (
+              <div className={`mt-3 text-[10px] font-bold ${copyFeedback.type === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>{copyFeedback.message}</div>
+            )}
                   {publicProfileUrl && (
                     <a href={publicProfileUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-[10px] font-black uppercase tracking-[0.2em] text-[#7C3AED] hover:text-[#6D28D9]">Open public profile</a>
                   )}
           </div>
-        </div>
+        </motion.div>
       </div>
 
 
