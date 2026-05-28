@@ -2820,6 +2820,14 @@ async def get_complex_event_details(event_id: str, user: dict = Depends(get_auth
 
     return event
 
+def _format_deadline(dl: str) -> str:
+    """Convert ISO deadline string to human-readable format (e.g. 'May 28, 2026 11:59 PM')."""
+    try:
+        dt = datetime.fromisoformat(dl.replace('Z', '+00:00'))
+        return dt.strftime('%B %d, %Y %I:%M %p')
+    except Exception:
+        return dl
+
 async def _notify_deadline_extensions(event_id: str, changed_deadlines: list):
     """Send deadline extension notifications to all participants."""
     from services.email_template_service import get_active_template, render_template
@@ -2848,23 +2856,24 @@ async def _notify_deadline_extensions(event_id: str, changed_deadlines: list):
             except Exception:
                 pass
         for cd in changed_deadlines:
+            human_dl = _format_deadline(cd["new_deadline"])
             context = {
                 "team_name": team_name,
                 "event_name": event_title,
                 "stage_name": cd["stage_name"],
                 "participant_name": p_name,
-                "new_deadline": cd["new_deadline"],
+                "new_deadline": human_dl,
             }
             if tmpl:
                 subject, body = render_template(tmpl, context)
             else:
                 subject = f"Deadline Extended: {event_title} - {cd['stage_name']}"
-                body = f"<p>The deadline for <strong>{cd['stage_name']}</strong> in <strong>{event_title}</strong> has been extended to <strong>{cd['new_deadline']}</strong>.</p>"
+                body = f"<p>The deadline for <strong>{cd['stage_name']}</strong> in <strong>{event_title}</strong> has been extended to <strong>{human_dl}</strong>.</p>"
             await notifications_col.insert_one({
                 "user_id": uid or p_email,
                 "type": "deadline_extension",
                 "title": subject,
-                "message": f"Deadline for '{cd['stage_name']}' extended to {cd['new_deadline']}",
+                "message": f"Deadline for '{cd['stage_name']}' extended to {human_dl}",
                 "is_read": False,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "meta": {"event_id": event_id, "stage_name": cd["stage_name"]}
