@@ -84,13 +84,10 @@ const CoursePlayer: React.FC = () => {
   const [activeStage, setActiveStage] = useState<LessonType>('overview');
   const [courseData, setCourseData] = useState<any>(null);
 
-  // Sidebar
-  const [expandedModules, setExpandedModules] = useState<Set<number>>(new Set([0]));
-  const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile sidebar toggle
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // Desktop sidebar collapse
-
-  // Right tools
-  const [activeToolTab, setActiveToolTab] = useState<'notes' | 'transcript' | 'resources'>('notes');
+  // Sidebar and UI state
+  const [expandedModules, setExpandedModules] = useState<Set<number>>(new Set());
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [notes, setNotes] = useState('');
   const [notesSaved, setNotesSaved] = useState(false);
 
@@ -108,9 +105,11 @@ const CoursePlayer: React.FC = () => {
     updateModules,
   } = useCourseProgress({ userId: user?.uid, courseId: resolvedCourseId });
 
-  // Keep modules reference up‑to‑date for lock calculations
+  // Ensure all modules are expanded whenever modules list changes
   useEffect(() => {
-    updateModules(modules);
+    const all = new Set<number>();
+    modules.forEach((_, idx) => all.add(idx));
+    setExpandedModules(all);
   }, [modules]);
 
   // Quizzes State
@@ -182,14 +181,16 @@ const CoursePlayer: React.FC = () => {
       // Enforce the dynamic subtopics schema using the imported CURRICULUM_DATA
       const formatted = fetched.map((mod: any, i: number) => {
         const curChapter = CURRICULUM_DATA[i] || CURRICULUM_DATA[i % CURRICULUM_DATA.length];
+        // Build module with data from CURRICULUM_DATA for correct titles and lessons
         return {
           ...mod,
+          title: curChapter.title,
+          order_index: i + 1,
           lessons: curChapter.topics.map(t => ({
             type: t.type,
-            title: t.title
-          }))
-        };
-      });
+            title: t.title,
+          })),
+        };      });
 
       // Initialize completedSteps from backend progress
       const initialCompleted: Record<string, boolean> = {};
@@ -451,8 +452,8 @@ const CoursePlayer: React.FC = () => {
 
   const activeContentDb = modules.length > 0 && activeModuleIndex >= 0
     ? {
-        overview: activeTopicData?.content || `### ${activeTopicData?.title}\n\nNo overview content loaded.`,
-        reading: activeTopicData?.content || `### ${activeTopicData?.title}\n\nNo reading content loaded.`,
+        overview: activeTopicData?.overview || activeTopicData?.content || `### ${activeTopicData?.title}\n\nNo overview content loaded.`,
+        reading: activeTopicData?.reading || activeTopicData?.content || `### ${activeTopicData?.title}\n\nNo reading content loaded.`,
         practice: activeTopicData?.practice || [],
         graded: activeTopicData?.graded || [],
         resources: []
@@ -476,9 +477,30 @@ const CoursePlayer: React.FC = () => {
 
   return (
     <div className="cp-shell">
+  {showToast && (
+    <div style={{
+      {showToast && (
+        <div style={{
+          position: 'fixed',
+          top: '80px',
+          right: '20px',
+          background: '#4ade80',
+          color: '#fff',
+          padding: '12px 20px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          zIndex: 1000,
+        }}>
+          Lesson completed! 🎉
+        </div>
+      )}
       {/* Mobile Toggle */}
       <button className="cp-mobile-toggle" onClick={() => setSidebarOpen(true)}>
         <Menu size={20} />
+      </button>
+      {/* Continue Learning Button - secondary style */}
+      <button className="cp-topbar-btn secondary" onClick={continueLearning} style={{ marginLeft: '8px' }}>
+        Continue Learning
       </button>
       <div className={`cp-mobile-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
 
@@ -499,22 +521,24 @@ const CoursePlayer: React.FC = () => {
           </div>
         </div>
 
-        <div className="cp-sidebar-modules">
+        <div className="cp-sidebar-modules" style={{ overflowY: 'auto', flex: 1 }}>
           {modules.map((mod, modIdx) => {
             const isExpanded = expandedModules.has(modIdx);
             
             // Enforce Coursera sequential module locking
-            let isLocked = false;
-            if (modIdx > 0) {
-              isLocked = !isModuleComplete(modIdx - 1);
-            }
+            let isLocked = false; // Modules are always visible regardless of completion
             
             const isCompleted = isModuleComplete(modIdx);
             const modProgress = getModuleProgressPercent(modIdx);
 
             return (
               <div key={mod._id} className="cp-module-group" style={{ opacity: isLocked ? 0.45 : 1 }}>
-                <button className="cp-module-header" onClick={() => !isLocked && toggleModule(modIdx)}>
+                  <button className="cp-module-header" onClick={() => {
+                    if (!isLocked) {
+                      setActiveModuleIndex(modIdx);
+                    }
+                  }}>
+
                   <div className="cp-module-header-left">
                     <div className={`cp-module-number ${isCompleted ? 'completed' : modIdx === activeModuleIndex ? 'active' : ''}`}>
                       {isCompleted ? <CheckCircle2 size={14} /> : mod.order_index}
@@ -535,13 +559,13 @@ const CoursePlayer: React.FC = () => {
                   </div>
                 )}
 
-                {isExpanded && !isLocked && mod.lessons && mod.lessons.length > 0 && (
+                {mod.lessons && mod.lessons.length > 0 && (
                   <div className="cp-lesson-list">
                     {mod.lessons.map((les, lessonIdx) => {
                       const isActive = modIdx === activeModuleIndex && activeLessonIndex === lessonIdx;
                       const type = les.type as LessonType;
                       const done = !!completedSteps[`${modIdx}_${lessonIdx}`];
-                      const locked = isLessonLocked(modIdx, lessonIdx);
+                      const locked = isLocked || isLessonLocked(modIdx, lessonIdx);
                       const Icon = (type === 'overview' || type === 'text' || type === 'theory') ? FileText : HelpCircle;
                       return (
                         <button
@@ -640,7 +664,7 @@ const CoursePlayer: React.FC = () => {
       {/* ══════ MAIN CONTENT ══════ */}
       <div className="cp-main">
         {/* Top Bar */}
-        <div className="cp-topbar">
+        <div className="cp-topbar sticky top-0 bg-white/80 backdrop-blur-sm" style={{ zIndex: 10 }}>
           <div className="cp-topbar-left">
             <button className="cp-collapse-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}>
               <Menu size={18} />
@@ -1196,6 +1220,24 @@ const CoursePlayer: React.FC = () => {
               )}
 
             </AnimatePresence>
+          {activeStage !== 'result' && activeStage !== 'capstone' && (
+            <div className="cp-lesson-navigation" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
+              <button
+                className="cp-bottom-nav-btn"
+                disabled={currentFlatIndex <= 0}
+                onClick={goToPrevLesson}
+              >
+                ← Previous Lesson
+              </button>
+              <button
+                className="cp-bottom-nav-btn"
+                disabled={currentFlatIndex >= flatLessons.length - 1 || activeStage === 'result' || activeStage === 'capstone'}
+                onClick={goToNextLesson}
+              >
+                Next Lesson →
+              </button>
+            </div>
+          )}
           </div>
 
           {/* ══════ RIGHT TOOLS DRAWER ══════ */}
