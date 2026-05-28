@@ -477,8 +477,6 @@ const CoursePlayer: React.FC = () => {
 
   return (
     <div className="cp-shell">
-  {showToast && (
-    <div style={{
       {showToast && (
         <div style={{
           position: 'fixed',
