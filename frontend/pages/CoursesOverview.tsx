@@ -660,33 +660,33 @@ const CoursesOverview: React.FC = () => {
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-4xl mx-auto mb-20">
             <h2 className="text-5xl md:text-6xl lg:text-7xl font-black mb-6 tracking-tighter leading-[1.05] flex flex-col items-center justify-center gap-2">
-              <span className="text-[#1A1A1A]">What You'll</span>
+              <span className="text-[#1A1A1A]">How Our Courses</span>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C2BFF] via-[#A88CFF] to-[#EC4899] drop-shadow-sm pb-2">
-                Walk Away With
+                Build Your Future
               </span>
             </h2>
             <p className="text-gray-600 text-xl font-medium leading-relaxed max-w-2xl mx-auto">
-              You aren't just watching tutorials. You are building a tangible foundation for your career. Here is exactly what you get after completing our courses.
+              You are not just learning skills. Our courses are designed to help you build experience, create proof of work, and unlock real opportunities.
             </p>
           </div>
 
           <div className="flex flex-col gap-10">
             {[
               {
-                heading: "A Production-Ready Portfolio",
-                text: "Walk away with a repository of deployed, full-scale applications and real-world projects that prove your capabilities to top-tier recruiters.",
+                heading: "Course Projects That Prove You",
+                text: "Build real-world projects during your courses, create tangible proof of work, and showcase experiences that strengthen your profile.",
                 image: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&q=80",
                 reverse: false
               },
               {
-                heading: "Deep Technical Mastery",
-                text: "Go beyond surface-level tutorials. Walk away with an architectural understanding of AI, System Design, Data Structures, and scalable Web Development.",
+                heading: "Mentorship Built Into Learning",
+                text: "Learn through course-integrated mentorship, hands-on collaboration, and practical exposure designed for ambitious students.",
                 image: "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=800&q=80",
                 reverse: true
               },
               {
-                heading: "Placement-Ready Confidence",
-                text: "Earn verified credentials, build an ATS-friendly resume, and conquer mock interviews so you can walk into any hiring round fully prepared.",
+                heading: "Career-Ready Course Outcomes",
+                text: "Leverage your course achievements to access exclusive opportunities, communities, and experiences that help you grow beyond the curriculum.",
                 image: "https://images.unsplash.com/photo-1573164713988-8665fc963095?w=800&q=80",
                 reverse: false
               }
