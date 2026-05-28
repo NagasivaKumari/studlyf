@@ -2179,7 +2179,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             </div>
                                         </td>
                                         <td className="px-10 py-8 text-center">
-                                            <span className={`text-base font-black ${item.score >= 8.0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                            <span className={`text-base font-black ${item.score > 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
                                                 {item.score ? item.score.toFixed(1) : '0.0'}
                                             </span>
                                         </td>

@@ -323,7 +323,7 @@ class InstitutionalCertificateService:
 
         for rank_data in rankings or []:
             rank = rank_data.get("rank")
-            achievement_type = resolve_rank_achievement(rank)
+            achievement_type = str(rank_data.get("achievement_type") or "").strip() or resolve_rank_achievement(rank)
             team_id = rank_data.get("team_id")
             participant_id = rank_data.get("participant_id")
             recipients: list[dict] = []

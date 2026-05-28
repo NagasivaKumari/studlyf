@@ -78,65 +78,6 @@ async def _list_submissions_for_judge_user(user: dict, event_id: Optional[str] =
         doc["_id"] = str(doc["_id"])
         out.append(doc)
     return out
-    s_id_query = {"$or": [{"_id": target_id}]}
-    try: s_id_query["$or"].append({"_id": ObjectId(target_id)})
-    except: pass
-
-    try:
-        s_res = await submissions_col.update_one(
-            s_id_query,
-            {"$set": {
-                "status": status,
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }}
-        )
-        if s_res.modified_count > 0:
-            return {"status": "success", "message": f"Submission status updated to {status}"}
-    except Exception as e:
-        logger.error(f"[STATUS ERROR] Submission update failed: {str(e)}")
-
-    # 3. Try updating Opportunity Applications (Crucial for Student Dashboard)
-    try:
-        # Determine the user_id to update
-        # If target_id is a team_id, we should find the leader's user_id
-        actual_user_id = target_id
-        team = await teams_col.find_one({"team_id": target_id})
-        if not team:
-            try:
-                if len(target_id) == 24: team = await teams_col.find_one({"_id": ObjectId(target_id)})
-            except: pass
-            
-        if team:
-            actual_user_id = team.get("team_leader_id") or team.get("leader_id")
-            logger.info(f"[STATUS] Team detected. Updating opportunity application for leader: {actual_user_id}")
-
-        if actual_user_id:
-            oa_res = await opportunity_applications_col.update_many(
-                {"user_id": actual_user_id},
-                {"$set": {
-                    "status": status.lower(),
-                    "reviewed_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            if oa_res.modified_count > 0:
-                logger.info(f"[STATUS] Updated {oa_res.modified_count} opportunity applications for {actual_user_id}")
-    except Exception as e:
-        logger.error(f"[STATUS ERROR] Opportunity application update failed: {str(e)}")
-
-    # 4. Check if it was already that status
-    exists_team = await teams_col.find_one(t_id_query)
-    exists_sub = await submissions_col.find_one(s_id_query)
-    
-    # [NEW] Dispatch Email Notifications
-    if status in ["Shortlisted", "Approved", "Rejected"]:
-        target_doc = exists_team or exists_sub
-        if target_doc:
-            asyncio.create_task(_dispatch_status_email(target_id, status, target_doc))
-
-    if exists_team or exists_sub:
-        return {"status": "success", "message": "Status synchronized"}
-
-    raise HTTPException(status_code=404, detail=f"Entity {target_id} not found for status update")
 
 @router.post("/test-email")
 async def test_email_configuration(user: dict = Depends(get_auth_user)):
@@ -816,7 +757,7 @@ async def send_event_deadline_reminders(event_id: str, user: dict = Depends(get_
     Institution triggers deadline reminder emails to all registered participants
     for the current active stage.
     """
-    await assert_institution_owns_event(user, event_id)
+    await assert_institution_owns_event(event_id, user)
     
     ev = await events_col.find_one({"_id": ObjectId(event_id)})
     if not ev:
@@ -1174,16 +1115,23 @@ async def get_qualified_bundle(event_id: str, threshold: float = 80.0, user: dic
             item["assigned_judges"] = s.get("assigned_judges") or []
 
     score_judges_by_submission: dict[str, set[str]] = {}
+    scores_by_submission: dict[str, list[float]] = {}
     for sc in raw_scores:
         sc_sid = sc.get("submission_id")
         if not sc_sid:
             continue
         sid = str(sc_sid)
-        item = _ensure_item(sid, "scores_col", f"Submission {sid[-8:]}")
-        item["score"] = _score_sum(sc)
+        _ensure_item(sid, "scores_col", f"Submission {sid[-8:]}")
+        score_val = _score_sum(sc)
+        scores_by_submission.setdefault(sid, []).append(score_val)
         judge_key = str(sc.get("judge_email") or sc.get("judge_id") or sc.get("judge") or "").strip().lower()
         if judge_key:
             score_judges_by_submission.setdefault(sid, set()).add(judge_key)
+
+    # Average scores across all judges for each submission
+    for sid, score_list in scores_by_submission.items():
+        if score_list and sid in all_items:
+            all_items[sid]["score"] = round(sum(score_list) / len(score_list), 1)
 
     for sd in raw_sd:
         sid = _normalized_submission_id(sd)
@@ -1503,13 +1451,23 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
 
 def _score_sum(sc: dict) -> float:
     """Extract the rubric SUM from a scores_col doc (handles both scores and criteria_scores fields)."""
-    rubric = sc.get("scores") or sc.get("criteria_scores") or {}
-    if isinstance(rubric, dict) and rubric:
+    rubric = None
+    if "scores" in sc and sc["scores"]:
+        rubric = sc["scores"]
+    elif "criteria_scores" in sc and sc["criteria_scores"]:
+        rubric = sc["criteria_scores"]
+    if isinstance(rubric, dict):
         try:
             return sum(float(v) for v in rubric.values())
         except (TypeError, ValueError):
             pass
-    return float(sc.get("total_score") or sc.get("score") or 0)
+    total = sc.get("total_score")
+    if total is not None:
+        return float(total)
+    score = sc.get("score")
+    if score is not None:
+        return float(score)
+    return 0.0
 
 @router.get("/events/{event_id}/submissions")
 async def list_event_submissions_enriched(event_id: str, user: dict = Depends(get_auth_user)):
@@ -2434,9 +2392,15 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
                     target = it
                     break
         if target:
-            # Aggregate or take latest score
-            target["score"] = _score_sum(sc)
+            scores_list = target.setdefault("_score_values", [])
+            scores_list.append(_score_sum(sc))
             target["judges_completed"] += 1
+
+    # Average scores across all judges
+    for item in all_items.values():
+        score_list = item.pop("_score_values", [])
+        if score_list:
+            item["score"] = round(sum(score_list) / len(score_list), 1)
 
     # 5. Categorization
     shortlisted = []
@@ -2650,14 +2614,23 @@ async def save_judge_score(score_data: dict, user: dict = Depends(get_auth_user)
     if je and je != ue:
         raise HTTPException(status_code=403, detail="judge_email must match the authenticated account")
 
+    judge_id = score_data.get("judge_id") or user.get("id") or ""
+    upsert_filter = {"submission_id": submission_id}
+    if judge_id:
+        upsert_filter["judge_id"] = judge_id
+    else:
+        upsert_filter["judge_email"] = ue
+
     now = datetime.utcnow()
     await scores_col.update_one(
-        {"submission_id": submission_id, "judge_email": ue},
+        upsert_filter,
         {"$set": {
             "event_id": event_id,
             "team_id": team_id,
             "submission_id": submission_id,
             "judge_email": ue,
+            "judge_id": judge_id,
+            "scores": criteria_scores,
             "criteria_scores": criteria_scores,
             "total_score": total_score,
             "feedback": score_data.get("feedback") or score_data.get("comments") or "",
@@ -3268,6 +3241,12 @@ async def update_event_details(event_id: str, update_data: dict, user: dict = De
     just_published = old_status != "LIVE" and new_status == "LIVE"
 
     if "_id" in update_data: del update_data["_id"]
+
+    # Persist certificate award setup as part of the event document.
+    cert_award_config = update_data.pop("certificate_award_config", None)
+    if cert_award_config is not None:
+        update_data["certificate_award_config"] = cert_award_config
+
     # Normalize stages: ensure stable ids are persisted.
     if isinstance(update_data.get("stages"), list):
         for s in update_data["stages"]:

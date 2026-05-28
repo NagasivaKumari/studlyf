@@ -40,7 +40,7 @@ async def submit_score(submission_id: str, judge_id: str, scores: dict, comments
             pass
     await submissions_col.update_one(
         {"_id": ObjectId(submission_id)},
-        {"$set": {"score": rubric_sum, "status": "Reviewed"}}
+        {"$set": {"status": "Reviewed"}}
     )
     
     # Retrieve the document to return the _id

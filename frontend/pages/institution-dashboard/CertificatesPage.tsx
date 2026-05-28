@@ -25,6 +25,14 @@ interface LeaderboardEntry {
     project_title?: string;
     total_score?: number;
 }
+interface AwardBand {
+    id: string;
+    label: string;
+    achievement_type: string;
+    min_score: string;
+    max_score: string;
+    limit: string;
+}
 interface CertificatesPageProps { institutionId: string; }
 
 const TABS = [
@@ -40,9 +48,14 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
     const [selectedEventId, setSelectedEventId] = useState('');
     const [selectedTemplateId, setSelectedTemplateId] = useState('');
     const [issueMode, setIssueMode] = useState<'ranked' | 'participation'>('ranked');
-    const [awardPolicy, setAwardPolicy] = useState<'all_ranked' | 'top_n' | 'min_score'>('top_n');
+    const [awardPolicy, setAwardPolicy] = useState<'all_ranked' | 'top_n' | 'min_score' | 'bands'>('bands');
     const [topNValue, setTopNValue] = useState('3');
     const [minScoreValue, setMinScoreValue] = useState('80');
+    const [awardBands, setAwardBands] = useState<AwardBand[]>([
+        { id: 'winner', label: 'Winner', achievement_type: 'winner', min_score: '90', max_score: '', limit: '1' },
+        { id: 'runner-up', label: 'Runner Up', achievement_type: 'runner_up', min_score: '80', max_score: '89.99', limit: '1' },
+        { id: 'finalist', label: 'Finalist', achievement_type: 'finalist', min_score: '70', max_score: '79.99', limit: '' },
+    ]);
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [loadingPreview, setLoadingPreview] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -78,6 +91,40 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
             setLeaderboard([]);
             return;
         }
+
+        (async () => {
+            try {
+                const detailRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${selectedEventId}/details`, {
+                    headers: { ...authHeaders() },
+                });
+                if (!detailRes.ok) return;
+                const detail = await detailRes.json();
+                const savedConfig = detail?.certificate_award_config;
+                if (savedConfig) {
+                    if (savedConfig.awardPolicy) {
+                        setAwardPolicy(savedConfig.awardPolicy);
+                    }
+                    if (savedConfig.topNValue !== undefined && savedConfig.topNValue !== null) {
+                        setTopNValue(String(savedConfig.topNValue));
+                    }
+                    if (savedConfig.minScoreValue !== undefined && savedConfig.minScoreValue !== null) {
+                        setMinScoreValue(String(savedConfig.minScoreValue));
+                    }
+                    if (Array.isArray(savedConfig.awardBands) && savedConfig.awardBands.length > 0) {
+                        setAwardBands(savedConfig.awardBands.map((band: any, index: number) => ({
+                            id: String(band.id || `saved-band-${index}`),
+                            label: String(band.label || 'Award'),
+                            achievement_type: String(band.achievement_type || 'top_performer'),
+                            min_score: band.min_score === undefined || band.min_score === null ? '' : String(band.min_score),
+                            max_score: band.max_score === undefined || band.max_score === null ? '' : String(band.max_score),
+                            limit: band.limit === undefined || band.limit === null ? '' : String(band.limit),
+                        })));
+                    }
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        })();
 
         (async () => {
             try {
@@ -153,15 +200,68 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
         if (res.ok) setCertificates(await res.json());
     };
 
+    const saveAwardSetup = async () => {
+        if (!selectedEventId) {
+            setIssueMessage('Select an event first.');
+            return;
+        }
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${selectedEventId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({
+                    certificate_award_config: {
+                        awardPolicy,
+                        topNValue,
+                        minScoreValue,
+                        awardBands,
+                    },
+                }),
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || err.message || 'Failed to save award setup');
+            }
+
+            setIssueMessage('Award setup saved for this event.');
+        } catch (error: any) {
+            setIssueMessage(error?.message || 'Failed to save award setup.');
+        }
+    };
+
     const awardPreview = useMemo(() => {
         const limit = awardPolicy === 'top_n' ? Math.max(Number(topNValue) || 0, 0) : leaderboard.length;
         const minScore = awardPolicy === 'min_score' ? Number(minScoreValue) || 0 : null;
-        const selected = awardPolicy === 'min_score'
-            ? leaderboard.filter(item => Number(item.total_score || 0) >= Number(minScore))
-            : leaderboard.slice(0, limit || leaderboard.length);
+        const selected = awardPolicy === 'bands'
+            ? (() => {
+                const seen = new Set<number>();
+                const results: LeaderboardEntry[] = [];
+                awardBands.forEach((band) => {
+                    const min = band.min_score !== '' ? Number(band.min_score) : Number.NEGATIVE_INFINITY;
+                    const max = band.max_score !== '' ? Number(band.max_score) : Number.POSITIVE_INFINITY;
+                    let rows = leaderboard.filter(item => Number(item.total_score || 0) >= min && Number(item.total_score || 0) <= max);
+                    if (band.limit !== '') {
+                        rows = rows.slice(0, Math.max(Number(band.limit) || 0, 0));
+                    }
+                    rows.forEach((row) => {
+                        const key = row.rank || results.length;
+                        if (!seen.has(key)) {
+                            seen.add(key);
+                            results.push(row);
+                        }
+                    });
+                });
+                return results;
+            })()
+            : awardPolicy === 'min_score'
+                ? leaderboard.filter(item => Number(item.total_score || 0) >= Number(minScore))
+                : leaderboard.slice(0, limit || leaderboard.length);
         return {
             limit,
             minScore,
+            bands: awardBands,
             winnerCount: selected.filter(item => item.rank === 1).length,
             runnerUpCount: selected.filter(item => item.rank === 2).length,
             secondRunnerUpCount: selected.filter(item => item.rank === 3).length,
@@ -190,6 +290,13 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                     template_id: selectedTemplateId || undefined,
                     limit: awardPolicy === 'top_n' ? Number(topNValue) || undefined : undefined,
                     min_score: awardPolicy === 'min_score' ? Number(minScoreValue) || undefined : undefined,
+                    bands: awardPolicy === 'bands' ? awardBands.map((band) => ({
+                        label: band.label,
+                        achievement_type: band.achievement_type,
+                        min_score: band.min_score === '' ? undefined : Number(band.min_score),
+                        max_score: band.max_score === '' ? undefined : Number(band.max_score),
+                        limit: band.limit === '' ? undefined : Number(band.limit),
+                    })) : undefined,
                     send_email: true,
                 });
 
@@ -284,10 +391,11 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                 </select>
                                 <select
                                     value={awardPolicy}
-                                    onChange={e => setAwardPolicy(e.target.value as 'all_ranked' | 'top_n' | 'min_score')}
+                                    onChange={e => setAwardPolicy(e.target.value as 'all_ranked' | 'top_n' | 'min_score' | 'bands')}
                                     className="px-4 py-3 rounded-2xl bg-white text-slate-900 font-medium outline-none"
                                     disabled={issueMode === 'participation'}
                                 >
+                                    <option value="bands">Custom bands</option>
                                     <option value="top_n">Top N by rank</option>
                                     <option value="min_score">Minimum score cutoff</option>
                                     <option value="all_ranked">All ranked</option>
@@ -342,8 +450,82 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                     {issueMode === 'participation' ? <Send size={16} /> : <Trophy size={16} />}
                                     {issuing ? 'Processing...' : issueMode === 'participation' ? 'Queue Participation Certificates' : 'Issue Ranked Awards'}
                                 </button>
+                                <button
+                                    onClick={saveAwardSetup}
+                                    disabled={issuing}
+                                    className="sm:col-span-3 flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 transition-all font-black uppercase tracking-[0.2em] text-[10px] disabled:opacity-60"
+                                >
+                                    Save Award Setup
+                                </button>
                             </div>
                         </div>
+
+                        {issueMode === 'ranked' && awardPolicy === 'bands' && (
+                            <div className="relative mt-6 bg-white/5 border border-white/10 rounded-2xl p-4 space-y-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-white/60">Custom Award Bands</p>
+                                        <p className="text-sm text-white/70">Admin decides the labels and score windows for certificates.</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setAwardBands(prev => [...prev, { id: `band-${Date.now()}`, label: 'New Band', achievement_type: 'top_performer', min_score: '', max_score: '', limit: '' }])}
+                                        className="px-4 py-2 rounded-xl bg-white/10 border border-white/10 text-white text-[10px] font-black uppercase tracking-[0.2em]"
+                                    >
+                                        Add Band
+                                    </button>
+                                </div>
+                                <div className="space-y-3">
+                                    {awardBands.map((band, index) => (
+                                        <div key={band.id} className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr_1fr_0.8fr_0.6fr_auto] gap-3 items-center bg-white/5 rounded-2xl p-3">
+                                            <input
+                                                value={band.label}
+                                                onChange={e => setAwardBands(prev => prev.map(item => item.id === band.id ? { ...item, label: e.target.value } : item))}
+                                                className="px-3 py-2 rounded-xl bg-white text-slate-900 text-sm font-medium outline-none"
+                                                placeholder="Band label"
+                                            />
+                                            <input
+                                                value={band.achievement_type}
+                                                onChange={e => setAwardBands(prev => prev.map(item => item.id === band.id ? { ...item, achievement_type: e.target.value } : item))}
+                                                className="px-3 py-2 rounded-xl bg-white text-slate-900 text-sm font-medium outline-none"
+                                                placeholder="achievement_type"
+                                            />
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                value={band.min_score}
+                                                onChange={e => setAwardBands(prev => prev.map(item => item.id === band.id ? { ...item, min_score: e.target.value } : item))}
+                                                className="px-3 py-2 rounded-xl bg-white text-slate-900 text-sm font-medium outline-none"
+                                                placeholder="Min score"
+                                            />
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                value={band.max_score}
+                                                onChange={e => setAwardBands(prev => prev.map(item => item.id === band.id ? { ...item, max_score: e.target.value } : item))}
+                                                className="px-3 py-2 rounded-xl bg-white text-slate-900 text-sm font-medium outline-none"
+                                                placeholder="Max score"
+                                            />
+                                            <input
+                                                type="number"
+                                                step="1"
+                                                value={band.limit}
+                                                onChange={e => setAwardBands(prev => prev.map(item => item.id === band.id ? { ...item, limit: e.target.value } : item))}
+                                                className="px-3 py-2 rounded-xl bg-white text-slate-900 text-sm font-medium outline-none"
+                                                placeholder="Limit"
+                                            />
+                                            <button
+                                                onClick={() => setAwardBands(prev => prev.filter(item => item.id !== band.id))}
+                                                className="px-3 py-2 rounded-xl bg-rose-500/20 text-rose-200 text-[10px] font-black uppercase tracking-[0.2em]"
+                                                disabled={awardBands.length === 1}
+                                            >
+                                                Remove
+                                            </button>
+                                            <div className="lg:col-span-6 text-[10px] uppercase tracking-[0.2em] text-white/40 pl-1">Band {index + 1}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {issueMessage && (
                             <div className="relative mt-6 text-sm font-medium text-white/80 bg-white/10 border border-white/10 rounded-2xl px-4 py-3">
@@ -380,7 +562,9 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                 ) : (
                                     <div className="space-y-2 text-sm text-white/80">
                                         <p><span className="font-black text-white">{awardPreview.total}</span> recipients in this issuance set</p>
-                                                {awardPreview.minScore !== null ? (
+                                                {awardPolicy === 'bands' ? (
+                                                    <p>Custom bands: <span className="font-black text-white">{awardBands.length}</span></p>
+                                                ) : awardPreview.minScore !== null ? (
                                                     <p>Minimum score: <span className="font-black text-white">{awardPreview.minScore}</span></p>
                                                 ) : (
                                                     <p>Top N: <span className="font-black text-white">{awardPreview.limit}</span></p>
