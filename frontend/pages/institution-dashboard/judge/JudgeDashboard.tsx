@@ -135,6 +135,8 @@ const JudgeDashboard: React.FC = () => {
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({
                     submission_id: selectedAssignment._id,
+                    event_id: selectedAssignment.event_id,
+                    team_id: selectedAssignment.team_id || selectedAssignment.teamId || '',
                     scores,
                     comments
                 }),
@@ -143,6 +145,9 @@ const JudgeDashboard: React.FC = () => {
                 alert('Score synchronized to blockchain.');
                 setSelectedAssignment(null);
                 fetchData();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                console.error('Score submission failed:', err);
             }
         } catch (error) {
             alert('Sync failed.');

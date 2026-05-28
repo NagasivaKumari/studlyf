@@ -796,7 +796,7 @@ app.include_router(submission_routes.router)
 app.include_router(judge_routes.router)
 app.include_router(event_routes.router)
 app.include_router(dashboard_routes.router)
-app.include_router(integration_routes.router)
+app.include_router(integration_routes.router, prefix="/api/v1/institution")
 app.include_router(opportunity_routes.router)
 app.include_router(team_routes.router)
 app.include_router(evaluation_routes.router)
@@ -4232,6 +4232,32 @@ async def get_admin_event_submissions(event_id: str):
             sid = sub.get("stage_id") or "unknown"
             doc = fix_id(dict(sub))
             doc["source"] = "stage_submission"
+            # Look up scores_col for this submission
+            try:
+                sub_id = str(doc.get("_id", ""))
+                db_scores = scores_col
+                score_query = {"$or": [{"submission_id": sub_id}]}
+                try:
+                    score_query["$or"].append({"submission_id": ObjectId(sub_id)})
+                except Exception:
+                    pass
+                tid = doc.get("team_id")
+                if tid:
+                    score_query["$or"].append({"team_id": str(tid)})
+                totals = []
+                async for sc in db_scores.find(score_query):
+                    rubric = sc.get("scores") or sc.get("criteria_scores") or {}
+                    if isinstance(rubric, dict) and rubric:
+                        try:
+                            totals.append(sum(float(v) for v in rubric.values()))
+                        except (TypeError, ValueError):
+                            totals.append(float(sc.get("total_score") or 0))
+                    else:
+                        totals.append(float(sc.get("total_score") or 0))
+                if totals:
+                    doc["total_score"] = round(sum(totals) / len(totals), 1)
+            except Exception:
+                pass
             # Attach participant info if available
             try:
                 participant = await participants_col.find_one({"event_id": event_id, "user_id": sub.get("user_id")})

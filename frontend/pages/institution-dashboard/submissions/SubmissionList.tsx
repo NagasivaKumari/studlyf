@@ -291,6 +291,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
         const s = (status || '').toLowerCase();
         if (s === 'approved' || s === 'accepted') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
         if (s === 'shortlisted') return 'bg-blue-50 text-blue-600 border-blue-100';
+        if (s === 'pending review' || s === 'pending_review' || s === 'evaluated') return 'bg-amber-50 text-amber-600 border-amber-100';
         if (s === 'rejected') return 'bg-rose-50 text-rose-600 border-rose-100';
         return 'bg-slate-50 text-slate-500 border-slate-100';
     };
@@ -330,7 +331,7 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                             team_name: s.teamLead || 'Hackathon Team',
                             event_title: s.eventName || s.hackathonId || 'Hackathon Submission',
             total_judges: s.assignedJudgeId ? 1 : 0,
-            judges_completed: s.status === 'Evaluated' ? 1 : 0,
+            judges_completed: (s.evaluation_status === 'Evaluated' || s.status === 'Evaluated' || s.status === 'Pending Review') ? 1 : 0,
             score: s.totalScore || 0,
             status: s.status || 'Pending',
             assignedJudgeId: s.assignedJudgeId,
@@ -595,6 +596,9 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                                     const status = (item.status || '').toLowerCase();
                                                     if (status === 'approved' || status === 'accepted') {
                                                         return <div className="px-4 py-2 text-emerald-600 text-[10px] font-black uppercase tracking-widest bg-emerald-50 rounded-xl border border-emerald-100">Approved</div>;
+                                                    }
+                                                    if (status === 'pending review' || status === 'pending_review' || status === 'evaluated') {
+                                                        return <div className="px-4 py-2 text-amber-600 text-[10px] font-black uppercase tracking-widest bg-amber-50 rounded-xl border border-amber-100">Pending Review</div>;
                                                     }
                                                     if (status === 'rejected') {
                                                         return <div className="px-4 py-2 text-rose-600 text-[10px] font-black uppercase tracking-widest bg-rose-50 rounded-xl border border-rose-100">Rejected</div>;

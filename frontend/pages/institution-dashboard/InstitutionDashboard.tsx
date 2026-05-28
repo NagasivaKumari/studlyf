@@ -187,7 +187,22 @@ const InstitutionDashboard: React.FC = () => {
             case 'teams':
                 return <TeamsManagement institutionId={institutionId} />;
             case 'submissions':
-                return <SubmissionList institutionId={institutionId} />;
+                return selectedEventId ? (
+                    <EventDetails
+                        institutionId={institutionId}
+                        eventId={selectedEventId}
+                        onBack={() => handleTabChange('events')}
+                        initialSection="submissions"
+                        onEditEvent={(eventId) => {
+                            setEditingEventId(eventId);
+                            setIsPostModalOpen(true);
+                        }}
+                    />
+                ) : (
+                    <div className="py-24 text-center text-slate-400 font-bold">
+                        Select an event to view its submissions.
+                    </div>
+                );
             case 'judges':
                 return <JudgeManagement />;
             case 'leaderboard':

@@ -48,7 +48,9 @@ async def score_submission(
     submission_id: str = Body(...), 
     judge_id: str = Body(...), 
     scores: dict = Body(...), 
-    comments: str = Body(...)
+    comments: str = Body(...),
+    team_id: str = Body(default=""),
+    event_id: str = Body(default=""),
 ):
     # Integration Enhancement: Refresh leaderboard in background
     import asyncio
@@ -59,7 +61,7 @@ async def score_submission(
         if sub: await leaderboard_service.calculate_event_leaderboard(sub.get("event_id"))
     asyncio.create_task(_refresh())
 
-    return await submit_score(submission_id, judge_id, scores, comments)
+    return await submit_score(submission_id, judge_id, scores, comments, team_id=team_id, event_id=event_id)
 
 @router.get("/scores/{submission_id}")
 async def view_scores(submission_id: str):
