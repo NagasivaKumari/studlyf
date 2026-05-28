@@ -39,14 +39,14 @@ const BentoCard = ({ title, desc, children, className = "", to = "#", onClick }:
 );
 
 const LearnDropdown = ({ onItemClick }: { onItemClick: () => void }) => (
-  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 w-full">
-    <BentoCard onClick={onItemClick} to="/learn/courses-overview" title="Courses" desc="Role-focused tracks for elite engineering readiness." className="md:col-span-2 md:row-span-2 min-h-[160px] md:min-h-[180px]">
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
+    <BentoCard onClick={onItemClick} to="/learn/courses-overview" title="Courses" desc="Role-focused tracks for elite engineering readiness." className="lg:col-span-2 lg:row-span-2 min-h-[160px] lg:min-h-[180px]">
       <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=600" className="absolute bottom-0 right-0 w-1/2 h-full object-cover opacity-100 transition-all duration-700" alt="Courses" />
     </BentoCard>
-    <BentoCard onClick={onItemClick} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="md:col-span-1 md:row-span-2 min-h-[160px] md:min-h-[180px]">
+    <BentoCard onClick={onItemClick} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="lg:col-span-1 lg:row-span-2 min-h-[160px] lg:min-h-[180px]">
       <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-full h-1/2 object-cover opacity-100 transition-all duration-700 rounded-b-[1.5rem]" alt="Corporate" />
     </BentoCard>
-    <BentoCard onClick={onItemClick} to="/studhub" title="STUDHub" desc="The central nervous system for your student growth." className="md:col-span-1 md:row-span-2 min-h-[160px] md:min-h-[180px] bg-[#6C2BFF]/5 hover:border-[#6C2BFF]/30">
+    <BentoCard onClick={onItemClick} to="/studhub" title="STUDHub" desc="The central nervous system for your student growth." className="lg:col-span-1 lg:row-span-2 min-h-[160px] lg:min-h-[180px] bg-[#6C2BFF]/5 hover:border-[#6C2BFF]/30">
       <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-full h-1/2 object-cover opacity-100 transition-all duration-700 rounded-b-[1.5rem]" alt="STUDHub" />
     </BentoCard>
   </div>
@@ -358,6 +358,9 @@ const Navigation: React.FC = () => {
                           </BentoCard>
                           <BentoCard onClick={() => setActiveMobileOverlay(null)} to="/learn/company-modules" title="Company Learning Modules" desc="Institutional training for corporate internal teams." className="min-h-[140px] bg-white/5 border-white/10">
                             <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-20" alt="Corporate" />
+                          </BentoCard>
+                          <BentoCard onClick={() => setActiveMobileOverlay(null)} to="/studhub" title="STUDHub" desc="The central nervous system for your student growth." className="min-h-[140px] bg-[#6C2BFF]/5 border-white/10 hover:border-[#6C2BFF]/30">
+                            <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&q=80&w=400" className="absolute bottom-0 right-0 w-1/3 h-full object-cover opacity-20" alt="STUDHub" />
                           </BentoCard>
                         </>
                       ) : (
