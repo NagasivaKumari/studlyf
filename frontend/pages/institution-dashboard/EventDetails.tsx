@@ -57,6 +57,7 @@ import {
     Zap,
     Lightbulb,
     Globe,
+    Github,
     GitBranch,
     FileImage,
     FileVideo
@@ -1772,7 +1773,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         )}
                                         <td className="px-10 py-8">
                                             <div className="flex flex-col">
-                                                <span className="font-black text-slate-900 text-lg tracking-tight">{sub.teamName || sub.team_name || sub.user_name || sub.name}</span>
+                                                <span className="font-black text-slate-900 text-lg tracking-tight">{sub.teamName || sub.team_name || sub.teamLead || sub.team_lead || sub.user_name || sub.name}</span>
                                                 {sub.teamLead || sub.team_lead || sub.team_name ? (
                                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || sub.team_lead || sub.team_name}</span>
                                                 ) : null}
@@ -1845,7 +1846,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                             if (mime.startsWith('video/')) return <FileVideo size={16} />;
                                                             return <FileText size={16} />;
                                                         }
-                                                        if (asset.domain.includes('github.com')) return <GitBranch size={16} />;
+                                                        if (asset.domain.includes('github.com')) return <Github size={16} />;
                                                         return <Globe size={16} />;
                                                     };
                                                     return (
