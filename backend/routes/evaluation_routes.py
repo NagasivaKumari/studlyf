@@ -171,23 +171,23 @@ async def submit_evaluation(token: str, evaluation_data: dict = Body(...)):
         }
     )
     
-    # Send email notification to participant
+    # Send email notification to participant (only shortlisted/rejected status, no score)
     try:
         participant_email = submission.get("user_email") or submission.get("email") or ""
         participant_name = submission.get("user_name") or submission.get("team_name") or "Participant"
         event_title = submission.get("event_name") or submission.get("event_title") or "Event"
+        is_shortlisted = recommendation == "shortlist"
+        status_text = "shortlisted" if is_shortlisted else "not shortlisted"
         if participant_email:
             from services.email_service import send_notification_email
-            subj = f"Your {event_title} submission has been evaluated!"
+            subj = f"Update on your {event_title} submission"
             body = f"""Hello {participant_name},
 
-Your submission for {event_title} has been reviewed by the judge.
+Your submission for {event_title} has been reviewed.
 
-Score: {score}/100
-Recommendation: {recommendation}
-Comments: {comments}
+Status: You have been {status_text} for the next stage.
 
-Check the results in your dashboard.
+{comments if comments else ''}
 
 Best regards,
 Studlyf Team"""

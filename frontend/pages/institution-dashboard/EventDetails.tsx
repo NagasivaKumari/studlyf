@@ -732,9 +732,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             if (!s.start_date || !s.end_date) continue;
             const orig = origStageMap.get(s.id);
             const isNew = !orig;
-            const dateChanged = !orig || orig.start_date !== s.start_date || orig.end_date !== s.end_date;
-            if (!isNew && !dateChanged) continue;
-            if (new Date(s.start_date) < today) {
+            const startChanged = !orig || orig.start_date !== s.start_date;
+            const endChanged = !orig || orig.end_date !== s.end_date;
+            if (!isNew && !startChanged && !endChanged) continue;
+            // Only validate start date is not in the past when start date actually changed
+            if (startChanged && new Date(s.start_date) < today) {
                 alert(`Stage "${s.name}" start date (${s.start_date}) cannot be in the past.`);
                 setSaving(false);
                 return;
