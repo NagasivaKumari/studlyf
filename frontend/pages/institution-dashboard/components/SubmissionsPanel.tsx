@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     CheckSquare, Square, UserCheck, ExternalLink, RefreshCw,
     Loader2, AlertCircle, ChevronDown, X, Star, CheckCircle2,
-    ClipboardList, Users
+    ClipboardList, Users, Download
 } from 'lucide-react';
 import { API_BASE_URL, authHeaders } from '../../../apiConfig';
 import JudgeManager from './JudgeManager';
@@ -51,6 +51,8 @@ const SubmissionsPanel: React.FC<SubmissionsPanelProps> = ({ eventId, opportunit
     const [bulkModalOpen, setBulkModalOpen] = useState(false);
     const [selectedJudge, setSelectedJudge] = useState<any>(null);
     const [assigning, setAssigning] = useState(false);
+
+    const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string } | null>(null);
 
     // Evaluation modal
     const [evalSub, setEvalSub] = useState<Submission | null>(null);
@@ -254,13 +256,28 @@ const SubmissionsPanel: React.FC<SubmissionsPanelProps> = ({ eventId, opportunit
                                     </td>
                                     <td className="px-6 py-5">
                                         <div className="flex items-center gap-2">
-                                            {sub.ppt_link && (
-                                                <a href={sub.ppt_link} target="_blank" rel="noreferrer"
-                                                    className="p-2 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-all"
-                                                    title="View PPT">
-                                                    <ExternalLink size={14} className="text-slate-500" />
-                                                </a>
-                                            )}
+                                            {sub.ppt_link ? (
+                                                sub.ppt_link.startsWith('data:') ? (
+                                                    <button
+                                                        onClick={() => {
+                                                            const mime = sub.ppt_link.split(';')[0].split(':')[1] || '';
+                                                            const ext = mime.includes('pdf') ? '.pdf' : mime.includes('presentation') ? '.pptx' : '.file';
+                                                            setPreviewAsset({ url: sub.ppt_link, filename: 'PPT' + ext });
+                                                        }}
+                                                        className="p-2 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-all cursor-pointer"
+                                                        title="View PPT"
+                                                    >
+                                                        <ExternalLink size={14} className="text-slate-500" />
+                                                    </button>
+                                                ) : (
+                                                    <a href={sub.ppt_link.startsWith('http') ? sub.ppt_link : `${API_BASE_URL}${sub.ppt_link}`}
+                                                        target="_blank" rel="noreferrer"
+                                                        className="p-2 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-all"
+                                                        title="View PPT">
+                                                        <ExternalLink size={14} className="text-slate-500" />
+                                                    </a>
+                                                )
+                                            ) : null}
                                             <button
                                                 onClick={() => openEval(sub)}
                                                 className="px-4 py-2 bg-gradient-to-r from-[#6C3BFF] to-purple-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:shadow-lg hover:shadow-purple-500/20 transition-all"
@@ -368,10 +385,22 @@ const SubmissionsPanel: React.FC<SubmissionsPanelProps> = ({ eventId, opportunit
                                     )}
                                     <div className="flex gap-3 flex-wrap">
                                         {evalSub.ppt_link && (
-                                            <a href={evalSub.ppt_link} target="_blank" rel="noreferrer"
-                                                className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all">
-                                                <ExternalLink size={12} /> View PPT
-                                            </a>
+                                            evalSub.ppt_link.startsWith('data:') ? (
+                                                <button onClick={() => {
+                                                    const mime = evalSub.ppt_link!.split(';')[0].split(':')[1] || '';
+                                                    const ext = mime.includes('pdf') ? '.pdf' : mime.includes('presentation') ? '.pptx' : '.file';
+                                                    setPreviewAsset({ url: evalSub.ppt_link!, filename: 'PPT' + ext });
+                                                }}
+                                                    className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all cursor-pointer">
+                                                    <ExternalLink size={12} /> View PPT
+                                                </button>
+                                            ) : (
+                                                <a href={evalSub.ppt_link.startsWith('http') ? evalSub.ppt_link : `${API_BASE_URL}${evalSub.ppt_link}`}
+                                                    target="_blank" rel="noreferrer"
+                                                    className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all">
+                                                    <ExternalLink size={12} /> View PPT
+                                                </a>
+                                            )
                                         )}
                                         {evalSub.deployed_link && (
                                             <a href={evalSub.deployed_link} target="_blank" rel="noreferrer"
@@ -449,6 +478,65 @@ const SubmissionsPanel: React.FC<SubmissionsPanelProps> = ({ eventId, opportunit
                                         ? <><Loader2 size={16} className="animate-spin" /> Saving Evaluation...</>
                                         : <><CheckCircle2 size={16} /> Submit Evaluation — {totalScore} pts</>}
                                 </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Preview Modal */}
+            <AnimatePresence>
+                {previewAsset && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                            className="bg-white w-full max-w-6xl h-[90vh] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden"
+                        >
+                            <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">{previewAsset.filename}</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Secure Asset Preview</p>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <a href={previewAsset.url} target="_blank" rel="noopener noreferrer"
+                                        className="flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] hover:text-white transition-all">
+                                        <ExternalLink size={14} /> Open Original
+                                    </a>
+                                    <a href={previewAsset.url} download
+                                        className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:shadow-xl transition-all">
+                                        <Download size={14} /> Download
+                                    </a>
+                                    <button onClick={() => setPreviewAsset(null)}
+                                        className="p-4 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex-1 bg-slate-100 p-8 relative">
+                                <div className="w-full h-full rounded-[2rem] overflow-hidden shadow-2xl bg-white relative">
+                                    {previewAsset.filename.match(/\.(pdf)$/i) ? (
+                                        <iframe src={previewAsset.url} className="w-full h-full border-none" title="PDF Preview" />
+                                    ) : previewAsset.filename.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) ? (
+                                        <img src={previewAsset.url} className="w-full h-full object-contain" alt={previewAsset.filename} />
+                                    ) : previewAsset.filename.match(/\.(mp4|webm|mov)$/i) ? (
+                                        <video src={previewAsset.url} controls className="w-full h-full" />
+                                    ) : previewAsset.url.startsWith('data:') ? (
+                                        <iframe src={previewAsset.url} className="w-full h-full border-none" title="Preview" />
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full gap-6 p-8 text-center">
+                                            <div className="w-24 h-24 bg-slate-50 rounded-3xl flex items-center justify-center text-5xl">📁</div>
+                                            <p className="text-2xl font-black text-slate-900">{previewAsset.filename}</p>
+                                            <p className="text-slate-500 mt-2">Preview not available for this file type.</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </motion.div>
                     </motion.div>

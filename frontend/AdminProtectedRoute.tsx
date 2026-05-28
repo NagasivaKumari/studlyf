@@ -10,7 +10,7 @@ interface AdminRouteProps {
 
 const AdminProtectedRoute: React.FC<AdminRouteProps> = ({
     children,
-    allowedRoles = ['super_admin', 'admin']
+    allowedRoles = ['super_admin']
 }) => {
     const { user, role, loading } = useAuth();
 

@@ -38,6 +38,7 @@ os.makedirs(EVENTS_UPLOAD_DIR, exist_ok=True)
 BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
 
 logger = logging.getLogger(__name__)
+router = APIRouter()
 
 
 def _is_live_like_status(value: str) -> bool:
@@ -74,186 +75,9 @@ async def _list_submissions_for_judge_user(user: dict, event_id: Optional[str] =
         norm = {str(a).strip().lower() for a in assigned if a}
         if email not in norm:
             continue
-            
-        row = dict(doc)
-        row["_id"] = str(row["_id"])
-        
-        # PRIVACY: Sanitize student contact data
-        sanitized_data = row.get("data", {}).copy()
-        for field in ['user_email', 'user_name', 'email', 'contact', 'phone']:
-            if field in sanitized_data:
-                del sanitized_data[field]
-        row["data"] = sanitized_data
-        
-        # CLEANUP: Remove other judge emails for privacy
-        if "assigned_judge_emails" in row:
-            del row["assigned_judge_emails"]
-            
-        out.append(row)
+        doc["_id"] = str(doc["_id"])
+        out.append(doc)
     return out
-
-
-async def _dispatch_status_email(target_id: str, status: str, doc: dict):
-    """Sends a status update email to team leader AND all team members."""
-    from services.email_service import send_notification_email
-    
-    # Get all team member emails
-    recipient_emails = []
-    user_name = "Participant"
-    event_id = doc.get("event_id")
-    
-    # 1. Try to get emails from doc directly
-    leader_email = doc.get("email") or doc.get("user_email")
-    leader_name = doc.get("team_name") or doc.get("full_name") or doc.get("user_name") or "Participant"
-    
-    if leader_email:
-        recipient_emails.append(leader_email)
-        user_name = leader_name
-    
-    # 2. If team, get all team member emails
-    team_id = doc.get("team_id") or doc.get("_id")
-    if team_id:
-        try:
-            team = await teams_col.find_one({"_id": ObjectId(team_id)})
-            if team:
-                # Get leader email
-                leader_id = team.get("team_leader_id") or team.get("leader_id")
-                if leader_id:
-                    leader_rec = await users_col.find_one({"user_id": leader_id})
-                    if leader_rec and leader_rec.get("email"):
-                        if leader_rec.get("email") not in recipient_emails:
-                            recipient_emails.append(leader_rec.get("email"))
-                            if not leader_email:  # Use leader name if not set earlier
-                                user_name = leader_rec.get("full_name") or leader_rec.get("name") or "Team"
-                
-                # Get all team member emails
-                members = team.get("members", [])
-                for member in members:
-                    member_id = member.get("user_id")
-                    if member_id:
-                        member_rec = await users_col.find_one({"user_id": member_id})
-                        if member_rec and member_rec.get("email"):
-                            member_email = member_rec.get("email")
-                            if member_email not in recipient_emails:
-                                recipient_emails.append(member_email)
-        except (TypeError, ValueError, KeyError) as e:
-            logger.warning(f"[EMAIL] Could not fetch team members: {e}")
-    
-    # 3. Fallback for solo participants
-    if not recipient_emails:
-        uid = doc.get("team_leader_id") or doc.get("user_id")
-        if uid:
-            user_rec = await users_col.find_one({"user_id": uid})
-            if user_rec:
-                recipient_emails.append(user_rec.get("email"))
-                user_name = user_rec.get("full_name") or user_rec.get("name") or "Participant"
-
-    if not recipient_emails:
-        logger.warning(f"[EMAIL] Skipping status email for {target_id}: No emails found")
-        return
-
-    # Get event title
-    event_title = "your event"
-    next_round_name = ""
-    if event_id:
-        event = await events_col.find_one(_event_id_query(str(event_id)))
-        if event:
-            event_title = event.get("title", "your event")
-            # Smart Round Detection: Try to find what they qualified for
-            stages = event.get("stages") or []
-            current_stage_name = doc.get("current_stage")
-            
-            if current_stage_name:
-                for i, s in enumerate(stages):
-                    if s.get("name") == current_stage_name and i + 1 < len(stages):
-                        next_round_name = stages[i+1].get("name")
-                        break
-            elif stages:
-                next_round_name = stages[0].get("name")
-
-    from services.email_service import get_shortlist_template
-    
-    if status == "Shortlisted":
-        subject = f"CONGRATULATIONS: {user_name} is moving to {next_round_name}!"
-        body_html = get_shortlist_template(user_name, event_title, next_round_name)
-    else:
-        subject = f"Update on your submission for {event_title}"
-        body_html = get_status_update_template(
-            user_name=user_name,
-            event_name=event_title,
-            status=status,
-            status_message=(
-                f"Congratulations! You have been {status.lower()}. Next steps will be shared soon."
-                if status != "Rejected"
-                else "Thank you for your participation. Unfortunately, your project was not selected for the next phase."
-            ),
-        )
-
-    try:
-        # Send to all team members
-        success_count = 0
-        for email in recipient_emails:
-            try:
-                await send_notification_email(email, subject, body_html)
-                success_count += 1
-                logger.info(f"[EMAIL SUCCESS] Sent {status} notification to {email}")
-            except Exception as e:
-                logger.error(f"[EMAIL ERROR] Failed to send {status} email to {email}: {str(e)}")
-        
-        logger.info(f"[EMAIL SUMMARY] Sent {status} notification to {success_count}/{len(recipient_emails)} team members")
-    except Exception as e:
-        logger.error(f"[EMAIL ERROR] Failed to send {status} emails: {str(e)}")
-
-
-router = APIRouter(prefix="/api/v1/institution", tags=["Institutional Integration"])
-
-@router.patch("/submissions/{submission_id}/status")
-@router.get("/submissions/{submission_id}/status") # Debug GET
-async def update_institutional_status(submission_id: str, status_data: dict = Body(None), user: dict = Depends(get_auth_user)):
-    """
-    Updates the institutional status (Shortlisted, Approved, Rejected) for a team or solo project.
-    Intelligently handles team_id, submission_id (solo), or submission_data_id.
-    """
-    # For GET requests, we just return current status if possible
-    if status_data is None:
-        # Debug logic to check if route is reachable
-        return {"status": "reachable", "id": submission_id}
-        
-    status = status_data.get("status")
-    if not status:
-        raise HTTPException(status_code=400, detail="Missing status")
-
-    # 0. Check if the ID is a submission_data_id (asset ID)
-    sd_id_query = {"$or": [{"_id": submission_id}]}
-    try: sd_id_query["$or"].append({"_id": ObjectId(submission_id)})
-    except: pass
-    
-    asset_doc = await submission_data_col.find_one(sd_id_query)
-    target_id = submission_id
-    
-    if asset_doc:
-        target_id = asset_doc.get("team_id") or asset_doc.get("user_id") or submission_id
-        await submission_data_col.update_one(sd_id_query, {"$set": {"status": status}})
-
-    # 1. Try updating as a team
-    t_id_query = {"$or": [{"_id": target_id}]}
-    try: t_id_query["$or"].append({"_id": ObjectId(target_id)})
-    except: pass
-
-    try:
-        t_res = await teams_col.update_one(
-            t_id_query,
-            {"$set": {
-                "institution_selection": status,
-                "selection_updated_at": datetime.now(timezone.utc).isoformat()
-            }}
-        )
-        if t_res.modified_count > 0:
-            return {"status": "success", "message": f"Team status updated to {status}"}
-    except Exception as e:
-        logger.error(f"[STATUS ERROR] Team update failed: {str(e)}")
-
-    # 2. Try updating as a solo submission
     s_id_query = {"$or": [{"_id": target_id}]}
     try: s_id_query["$or"].append({"_id": ObjectId(target_id)})
     except: pass
@@ -1108,104 +932,307 @@ async def get_all_institution_participants(institution_id: str, user: dict = Dep
 
 @router.get("/events/{event_id}/qualified-bundle")
 async def get_qualified_bundle(event_id: str, threshold: float = 80.0, user: dict = Depends(get_auth_user)):
-    ev_id_variants = [event_id]
+    logger.info(f"[QUALIFIED-BUNDLE] Called event_id={event_id}")
+
+    event = await events_col.find_one({"_id": event_id})
+    if not event:
+        try:
+            event = await events_col.find_one({"_id": ObjectId(event_id)})
+        except Exception:
+            pass
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    total_judges = len(event.get("judges", []))
+    all_items: dict = {}
+    enriched_count = 0
+    event_judges = event.get("judges") or []
+    all_items: dict = {}
+
+    event_id_variants = [event_id, str(event_id)]
     try:
-        ev_id_variants.append(ObjectId(event_id))
+        if len(str(event_id)) == 24:
+            event_id_variants.append(ObjectId(event_id))
     except Exception:
         pass
-    
-    event = await events_col.find_one({"_id": {"$in": ev_id_variants}})
-    if not event: raise HTTPException(status_code=404, detail="Event not found")
-    
-    # --- NEW ROBUST CATEGORIZATION LOGIC ---
-    # 1. Start with ALL TEAMS and SOLO participants in this event
-    all_items = {} # key: team_id or solo_user_id
-    total_judges = len(event.get("judges", []))
-    
-    t_cursor = teams_col.find({"event_id": {"$in": ev_id_variants}})
-    async for t in t_cursor:
-        tid = str(t["_id"])
-        all_items[tid] = {
-            "type": "team",
-            "team_id": tid,
-            "team_name": t.get("name") or t.get("team_name") or "Unnamed Team",
-            "score": 0,
-            "judges_completed": 0,
-            "total_judges": total_judges,
-            "is_fully_evaluated": False,
-            "status": t.get("institution_selection") or "Pending",
-            "assigned_judges": [],
-            "source": "team_registry"
-        }
 
-    s_cursor = submissions_col.find({
-        "event_id": {"$in": ev_id_variants},
-        "team_id": {"$exists": False}
-    })
-    async for s in s_cursor:
-        uid = str(s.get("user_id") or "")
-        if not uid: continue
-        sid = str(s["_id"])
-        all_items[f"solo:{uid}"] = {
-            "type": "solo",
-            "user_id": uid,
-            "team_name": s.get("user_name") or s.get("full_name") or "Solo Participant",
-            "score": 0,
-            "judges_completed": 0,
-            "total_judges": total_judges,
-            "is_fully_evaluated": False,
-            "status": s.get("status") or "Pending",
-            "assigned_judges": [],
-            "submission_id": sid,
-            "source": "solo_registry"
-        }
+    raw_subs = await submissions_col.find({"event_id": {"$in": event_id_variants}}).to_list(length=10000)
+    raw_scores = await scores_col.find({"event_id": {"$in": event_id_variants}}).to_list(length=10000)
+    raw_sd = await submission_data_col.find({"event_id": {"$in": event_id_variants}}).to_list(length=10000)
 
-    # 2. Synchronize with Submission Data (Assignments & Recs)
-    sd_cursor = submission_data_col.find({"event_id": {"$in": ev_id_variants}})
-    async for sd in sd_cursor:
-        tid = sd.get("team_id")
-        uid = sd.get("user_id")
-        key = tid if tid else (f"solo:{uid}" if uid else None)
-        if not key or key not in all_items: continue
-        
-        item = all_items[key]
-        item["assigned_judges"] = sd.get("assigned_judges", [])
-        item["total_judges"] = len(item["assigned_judges"]) if item["assigned_judges"] else total_judges
-        item["submission_id"] = str(sd["_id"])
-        
-        rec = str(sd.get("evaluation_recommendation") or "").lower()
-        if "shortlist" in rec: item["status"] = "Shortlisted"
-        elif "reject" in rec: item["status"] = "Rejected"
-        elif "approve" in rec or "accept" in rec: item["status"] = "Approved"
+    team_ids = set()
+    user_ids = set()
+    for doc in raw_subs:
+        if doc.get("team_id"):
+            team_ids.add(str(doc.get("team_id")))
+        if doc.get("user_id"):
+            user_ids.add(str(doc.get("user_id")))
+        if doc.get("submittedBy"):
+            user_ids.add(str(doc.get("submittedBy")))
+    for doc in raw_sd:
+        if doc.get("team_id"):
+            team_ids.add(str(doc.get("team_id")))
+        if doc.get("user_id"):
+            user_ids.add(str(doc.get("user_id")))
+        if doc.get("submittedBy"):
+            user_ids.add(str(doc.get("submittedBy")))
 
-    # 3. Apply Real-time Scores
-    sc_cursor = scores_col.find({"event_id": {"$in": ev_id_variants}})
-    async for sc in sc_cursor:
-        tid = sc.get("team_id")
-        sid = sc.get("submission_id")
-        target = all_items.get(str(tid)) if tid else None
-        if not target:
-            for it in all_items.values():
-                if it.get("submission_id") == str(sid):
-                    target = it
-                    break
-        if target:
-            target["score"] = sc.get("total_score") or sc.get("score") or 0
-            target["judges_completed"] += 1
-            target["is_fully_evaluated"] = target["judges_completed"] >= target["total_judges"]
+    team_lookup = {}
+    for tid in team_ids:
+        team_doc = None
+        try:
+            if ObjectId.is_valid(tid):
+                team_doc = await teams_col.find_one({"_id": ObjectId(tid)})
+        except Exception:
+            team_doc = None
+        if not team_doc:
+            team_doc = await teams_col.find_one({"team_id": tid})
+        if team_doc:
+            team_lookup[tid] = team_doc
 
-    # 4. Final Categorization
-    shortlisted = []
-    approved = []
-    rejected = []
-    pending = []
-    
-    for item in all_items.values():
-        st = str(item["status"]).lower()
-        if "shortlist" in st: shortlisted.append(item)
-        elif "approve" in st or "accept" in st: approved.append(item)
-        elif "reject" in st: rejected.append(item)
-        else: pending.append(item)
+    user_lookup = {}
+    for uid in user_ids:
+        user_doc = None
+        try:
+            user_doc = await users_col.find_one({"user_id": uid})
+        except Exception:
+            user_doc = None
+        if not user_doc and ObjectId.is_valid(uid):
+            try:
+                user_doc = await users_col.find_one({"_id": ObjectId(uid)})
+            except Exception:
+                user_doc = None
+        if user_doc:
+            user_lookup[uid] = user_doc
+
+    def _collect_member_emails(team_id_value: str | None, user_id_value: str | None = None) -> list[str]:
+        emails: list[str] = []
+
+        def _push(email_value: str | None):
+            if not email_value:
+                return
+            email_str = str(email_value).strip().lower()
+            if email_str and email_str not in emails:
+                emails.append(email_str)
+
+        if team_id_value:
+            team_doc = team_lookup.get(str(team_id_value))
+            if team_doc:
+                for member in team_doc.get("members", []) or []:
+                    _push(member.get("email"))
+                    member_uid = member.get("user_id")
+                    if not member_uid:
+                        continue
+                    user_doc = user_lookup.get(str(member_uid))
+                    if user_doc:
+                        _push(user_doc.get("email"))
+
+        if not emails and user_id_value:
+            user_doc = user_lookup.get(str(user_id_value))
+            if user_doc:
+                _push(user_doc.get("email"))
+
+        return emails
+
+    def _collect_member_user_ids(team_id_value: str | None, user_id_value: str | None = None) -> list[str]:
+        user_ids: list[str] = []
+
+        def _push(value: str | None):
+            if not value:
+                return
+            uid = str(value).strip()
+            if uid and uid not in user_ids:
+                user_ids.append(uid)
+
+        if team_id_value:
+            team_doc = team_lookup.get(str(team_id_value))
+            if team_doc:
+                for member in team_doc.get("members", []) or []:
+                    if isinstance(member, dict):
+                        _push(member.get("user_id") or member.get("id") or member.get("_id"))
+                    else:
+                        _push(member)
+
+        if not user_ids and user_id_value:
+            _push(user_id_value)
+
+        return user_ids
+
+    # Build small lookup tables so the bundle can render names instead of IDs.
+    user_ids = set()
+    team_ids = set()
+    for doc in raw_subs:
+        if doc.get("user_id"):
+            user_ids.add(str(doc.get("user_id")))
+        if doc.get("submittedBy"):
+            user_ids.add(str(doc.get("submittedBy")))
+        if doc.get("team_id"):
+            team_ids.add(str(doc.get("team_id")))
+    for doc in raw_sd:
+        if doc.get("user_id"):
+            user_ids.add(str(doc.get("user_id")))
+        if doc.get("submittedBy"):
+            user_ids.add(str(doc.get("submittedBy")))
+        if doc.get("team_id"):
+            team_ids.add(str(doc.get("team_id")))
+
+    user_lookup = {}
+    for uid in user_ids:
+        user_doc = None
+        try:
+            user_doc = await users_col.find_one({"user_id": uid})
+        except Exception:
+            user_doc = None
+        if not user_doc and ObjectId.is_valid(uid):
+            try:
+                user_doc = await users_col.find_one({"_id": ObjectId(uid)})
+            except Exception:
+                user_doc = None
+        if user_doc:
+            user_lookup[uid] = user_doc
+
+    team_lookup = {}
+    for tid in team_ids:
+        team_doc = None
+        try:
+            team_doc = await teams_col.find_one({"_id": ObjectId(tid)})
+        except Exception:
+            team_doc = None
+        if not team_doc:
+            try:
+                team_doc = await teams_col.find_one({"team_id": tid})
+            except Exception:
+                team_doc = None
+        if team_doc:
+            team_lookup[tid] = team_doc
+
+    def _resolve_candidate_name(doc: dict, fallback: str) -> str:
+        candidates = [
+            doc.get("team_name"),
+            doc.get("teamName"),
+            doc.get("user_name"),
+            doc.get("full_name"),
+        ]
+        for value in candidates:
+            if value:
+                return str(value)
+
+        for key in ("user_id", "submittedBy", "submitted_by"):
+            value = doc.get(key)
+            if value:
+                user_doc = user_lookup.get(str(value))
+                if user_doc:
+                    return str(user_doc.get("full_name") or user_doc.get("name") or user_doc.get("email") or fallback)
+
+        for key in ("team_id",):
+            value = doc.get(key)
+            if value:
+                team_doc = team_lookup.get(str(value))
+                if team_doc:
+                    return str(team_doc.get("team_name") or team_doc.get("name") or team_doc.get("title") or fallback)
+
+        return fallback
+
+    def _normalized_submission_id(doc: dict) -> str:
+        for key in ("submission_id", "submissionId", "_id", "team_id", "user_id"):
+            value = doc.get(key)
+            if value is not None and str(value):
+                return str(value)
+        return ""
+
+    def _ensure_item(item_id: str, source: str, display_name: str) -> dict:
+        item = all_items.get(item_id)
+        if not item:
+            item = {
+                "type": "submission",
+                "submission_id": item_id,
+                "team_name": display_name or f"Submission {item_id[-8:]}",
+                "display_name": display_name or f"Submission {item_id[-8:]}",
+                "score": 0,
+                "judges_completed": 0,
+                "total_judges": 0,
+                "is_fully_evaluated": False,
+                "status": "Pending Review",
+                "assigned_judges": [],
+                "source": source,
+                "judge_ids": set(),
+            }
+            all_items[item_id] = item
+        elif display_name and (item.get("team_name", "").startswith("Submission ") or not item.get("team_name")):
+            item["team_name"] = display_name
+            item["display_name"] = display_name
+        return item
+
+    for s in raw_subs:
+        sid = str(s.get("_id"))
+        item = _ensure_item(sid, "submissions_col", _resolve_candidate_name(s, f"Submission {sid[-8:]}") )
+        item["score"] = float(s.get("total_score") or s.get("score") or item.get("score") or 0)
+        item["status"] = s.get("status") or item.get("status") or "Pending Review"
+        item["member_emails"] = _collect_member_emails(s.get("team_id"), s.get("user_id") or s.get("submittedBy"))
+        item["member_user_ids"] = _collect_member_user_ids(s.get("team_id"), s.get("user_id") or s.get("submittedBy"))
+        if s.get("assigned_judges"):
+            item["assigned_judges"] = s.get("assigned_judges") or []
+
+    score_judges_by_submission: dict[str, set[str]] = {}
+    for sc in raw_scores:
+        sc_sid = sc.get("submission_id")
+        if not sc_sid:
+            continue
+        sid = str(sc_sid)
+        item = _ensure_item(sid, "scores_col", f"Submission {sid[-8:]}")
+        item["score"] = _score_sum(sc)
+        judge_key = str(sc.get("judge_email") or sc.get("judge_id") or sc.get("judge") or "").strip().lower()
+        if judge_key:
+            score_judges_by_submission.setdefault(sid, set()).add(judge_key)
+
+    for sd in raw_sd:
+        sid = _normalized_submission_id(sd)
+        if not sid:
+            continue
+        item = _ensure_item(sid, "stage_deliverable", _resolve_candidate_name(sd, f"Submission {sid[-8:]}") )
+        item["member_emails"] = _collect_member_emails(sd.get("team_id"), sd.get("user_id") or sd.get("submittedBy"))
+        item["member_user_ids"] = _collect_member_user_ids(sd.get("team_id"), sd.get("user_id") or sd.get("submittedBy"))
+
+        rec = str(sd.get("evaluation_recommendation") or sd.get("review_status") or sd.get("status") or "").lower()
+        if "shortlist" in rec:
+            item["status"] = "Shortlisted"
+        elif "reject" in rec:
+            item["status"] = "Rejected"
+        elif "approve" in rec or "accept" in rec:
+            item["status"] = "Approved"
+        else:
+            item["status"] = item.get("status") or "Pending Review"
+
+        if sd.get("assigned_judges"):
+            item["assigned_judges"] = sd.get("assigned_judges") or []
+
+    # Determine a sane event-level judge count even when the event payload is incomplete.
+    inferred_total_judges = len({j for judges in score_judges_by_submission.values() for j in judges})
+    if not inferred_total_judges:
+        inferred_total_judges = len(event_judges)
+
+    shortlisted, approved, rejected, pending = [], [], [], []
+    for sid, item in all_items.items():
+        item_judges = score_judges_by_submission.get(sid, set())
+        assigned = item.get("assigned_judges") or []
+        item["judges_completed"] = len(item_judges)
+        item["total_judges"] = max(len(event_judges), inferred_total_judges, len(assigned), item["judges_completed"])
+        item["is_fully_evaluated"] = item["total_judges"] > 0 and item["judges_completed"] >= item["total_judges"]
+        item.pop("judge_ids", None)
+
+        st = str(item.get("status") or "").lower()
+        if "shortlist" in st:
+            shortlisted.append(item)
+        elif "approve" in st or "accept" in st:
+            approved.append(item)
+        elif "reject" in st:
+            rejected.append(item)
+        else:
+            pending.append(item)
+
+    logger.info(
+        f"[QUALIFIED-BUNDLE] Final: items={len(all_items)} shortlisted={len(shortlisted)} approved={len(approved)} rejected={len(rejected)} pending={len(pending)}"
+    )
 
     return {
         "summary": {
@@ -1218,6 +1245,12 @@ async def get_qualified_bundle(event_id: str, threshold: float = 80.0, user: dic
         "approved": approved,
         "rejected": rejected,
         "pending": pending,
+        "_debug": {
+            "raw_submissions_count": len(raw_subs),
+            "raw_scores_count": len(raw_scores),
+            "raw_sd_count": len(raw_sd),
+            "all_items_count": len(all_items),
+        },
     }
 
 @router.post("/participants/add")
@@ -1468,6 +1501,16 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
     return {"status": "success", "sent_to": success_count}
 
 
+def _score_sum(sc: dict) -> float:
+    """Extract the rubric SUM from a scores_col doc (handles both scores and criteria_scores fields)."""
+    rubric = sc.get("scores") or sc.get("criteria_scores") or {}
+    if isinstance(rubric, dict) and rubric:
+        try:
+            return sum(float(v) for v in rubric.values())
+        except (TypeError, ValueError):
+            pass
+    return float(sc.get("total_score") or sc.get("score") or 0)
+
 @router.get("/events/{event_id}/submissions")
 async def list_event_submissions_enriched(event_id: str, user: dict = Depends(get_auth_user)):
     """All submissions for an event with team labels, average judge score, and judge assignment emails."""
@@ -1493,7 +1536,7 @@ async def list_event_submissions_enriched(event_id: str, user: dict = Depends(ge
         sc_cursor = scores_col.find({"$or": or_sub})
         totals = []
         async for sc in sc_cursor:
-            totals.append(float(sc.get("total_score") or 0))
+            totals.append(_score_sum(sc))
         s["total_score"] = round(sum(totals) / len(totals), 1) if totals else float(s.get("score") or 0)
         if "assigned_judge_emails" not in s or s["assigned_judge_emails"] is None:
             s["assigned_judge_emails"] = []
@@ -1527,8 +1570,8 @@ async def list_event_submissions_enriched(event_id: str, user: dict = Depends(ge
                 "_id": sid,
                 "event_id": event_id,
                 "user_id": sub.get("submittedBy") or sub.get("user_id"),
-                "team_name": sub.get("teamName") or sub.get("teamLead") or "Hackathon Team",
-                "status": sub.get("status", "Submitted"),
+                "team_name": sub.get("teamName") or sub.get("teamLead") or "",
+                "status": sub.get("status", ""),
                 "submitted_at": sub.get("createdAt").isoformat() if hasattr(sub.get("createdAt"), "isoformat") else sub.get("createdAt"),
                 "total_score": sub.get("totalScore", 0.0),
                 "source": "hackathon_submission",
@@ -1536,6 +1579,46 @@ async def list_event_submissions_enriched(event_id: str, user: dict = Depends(ge
             })
     except Exception as e:
         logger.error(f"[SUBMISSIONS] Failed to merge hackathon data: {e}")
+
+    # 3. Merge Stage / Phase Deliverables from submission_data_col
+    try:
+        sd_cursor = submission_data_col.find({"event_id": event_id})
+        async for sd in sd_cursor:
+            sid = str(sd["_id"])
+            if any(str(o.get("_id")) == sid for o in out):
+                continue
+            # Look up scores for this submission from scores_col (by submission_id and team_id)
+            sd_or_sub = [{"submission_id": sid}]
+            try:
+                sd_or_sub.append({"submission_id": ObjectId(sid)})
+            except Exception:
+                pass
+            tid_for_score = sd.get("team_id")
+            if tid_for_score:
+                sd_or_sub.append({"team_id": str(tid_for_score)})
+            sc_cursor = scores_col.find({"$or": sd_or_sub})
+            totals = []
+            async for sc in sc_cursor:
+                totals.append(_score_sum(sc))
+            total_score = round(sum(totals) / len(totals), 1) if totals else float(sd.get("total_score") or sd.get("score") or 0)
+            out.append({
+                "_id": sid,
+                "event_id": event_id,
+                "user_id": sd.get("user_id", ""),
+                "team_name": sd.get("user_name") or "",
+                "status": sd.get("status", ""),
+                "submitted_at": sd.get("submitted_at").isoformat() if hasattr(sd.get("submitted_at"), "isoformat") else sd.get("submitted_at"),
+                "data": sd.get("data", {}),
+                "source": "stage_deliverable",
+                "stage_name": sd.get("stage_name", ""),
+                "stage_type": sd.get("stage_type", ""),
+                "total_score": total_score,
+                "assigned_judge_id": sd.get("assigned_judge_id", ""),
+                "assigned_judges": sd.get("assigned_judges", []),
+                "assigned_judge_emails": sd.get("assigned_judge_emails", []),
+            })
+    except Exception as e:
+        logger.error(f"[SUBMISSIONS] Failed to merge stage deliverables: {e}")
 
     return out
 
@@ -2100,6 +2183,47 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
     event_titles = {str(e["_id"]): (e.get("title") or e.get("name") or "Event") for e in events}
     event_judges = {str(e["_id"]): len(e.get("judges") or []) for e in events}
 
+    team_member_emails: dict[str, list[str]] = {}
+
+    async def _collect_team_member_emails(team_doc: dict | None, fallback_user_id: str | None = None) -> list[str]:
+        emails: list[str] = []
+
+        def _push(value: str | None):
+            if not value:
+                return
+            email = str(value).strip().lower()
+            if email and email not in emails:
+                emails.append(email)
+
+        if team_doc:
+            for member in team_doc.get("members", []) or []:
+                if isinstance(member, dict):
+                    _push(member.get("email"))
+                    member_uid = member.get("user_id")
+                    if member_uid:
+                        member_user = await users_col.find_one({"user_id": str(member_uid)})
+                        if not member_user and ObjectId.is_valid(str(member_uid)):
+                            try:
+                                member_user = await users_col.find_one({"_id": ObjectId(str(member_uid))})
+                            except Exception:
+                                member_user = None
+                        if member_user:
+                            _push(member_user.get("email"))
+                else:
+                    _push(member)
+
+        if not emails and fallback_user_id:
+            user_doc = await users_col.find_one({"user_id": str(fallback_user_id)})
+            if not user_doc and ObjectId.is_valid(str(fallback_user_id)):
+                try:
+                    user_doc = await users_col.find_one({"_id": ObjectId(str(fallback_user_id))})
+                except Exception:
+                    user_doc = None
+            if user_doc:
+                _push(user_doc.get("email"))
+
+        return emails
+
     # 2. Aggregate all teams and solo submissions
     all_items = {} # key: team_id or solo:user_id
     
@@ -2108,18 +2232,20 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
     async for t in t_cursor:
         tid = str(t["_id"])
         eid = str(t.get("event_id") or "")
+        team_member_emails[tid] = await _collect_team_member_emails(t)
         all_items[tid] = {
             "type": "team",
             "team_id": tid,
-            "team_name": t.get("name") or t.get("team_name") or "Unnamed Team",
-            "project_title": t.get("project_title") or t.get("name") or "Project",
+            "team_name": t.get("name") or t.get("team_name") or "",
+            "project_title": t.get("project_title") or t.get("name") or "",
             "event_id": eid,
-            "event_title": event_titles.get(eid, "Unknown Event"),
+            "event_title": event_titles.get(eid, ""),
             "score": 0,
             "judges_completed": 0,
             "total_judges": event_judges.get(eid, 0),
-            "status": t.get("institution_selection") or "Pending",
+            "status": t.get("institution_selection") or "",
             "assigned_judges": [],
+            "member_emails": team_member_emails.get(tid, []),
             "source": "team_registry"
         }
 
@@ -2136,43 +2262,70 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
         all_items[f"solo:{uid}"] = {
             "type": "solo",
             "user_id": uid,
-            "team_name": s.get("user_name") or s.get("full_name") or "Solo Participant",
-            "project_title": s.get("project_title") or "Project",
+            "team_name": s.get("user_name") or s.get("full_name") or "",
+            "project_title": s.get("project_title") or "",
             "event_id": eid,
-            "event_title": event_titles.get(eid, "Unknown Event"),
+            "event_title": event_titles.get(eid, ""),
             "score": 0,
             "judges_completed": 0,
             "total_judges": event_judges.get(eid, 0),
-            "status": s.get("status") or "Pending",
+            "status": s.get("status") or "",
             "assigned_judges": [],
             "submission_id": sid,
+            "member_emails": await _collect_team_member_emails(None, uid),
             "source": "solo_registry"
         }
 
     # 3. Sync with Submission Data
     sd_cursor = submission_data_col.find({"event_id": {"$in": event_ids}})
     async for sd in sd_cursor:
+        sid = str(sd.get("_id"))
         tid = sd.get("team_id")
         uid = sd.get("user_id")
-        key = tid if tid else (f"solo:{uid}" if uid else None)
-        if not key or key not in all_items: continue
-        
-        item = all_items[key]
-        item["assigned_judges"] = sd.get("assigned_judges", [])
-        # Update total judges based on actual assignment if available
-        if item["assigned_judges"]:
-            item["total_judges"] = len(item["assigned_judges"])
-            
-        item["submission_id"] = str(sd["_id"])
-        item["project_description"] = sd.get("project_description") or sd.get("description", "")
-        
+        stage_name = sd.get("stage_name") or sd.get("stage_type") or ""
+        stage_key = f"stage:{sid}"
+
+        stage_item = {
+            "type": "stage",
+            "submission_id": sid,
+            "stage_id": sd.get("stage_id"),
+            "stage_name": stage_name,
+            "stage_type": sd.get("stage_type") or "",
+            "team_id": str(tid) if tid else None,
+            "user_id": str(uid) if uid else None,
+            "team_name": sd.get("team_name") or sd.get("user_name") or sd.get("name") or "",
+            "project_title": stage_name,
+            "project_description": sd.get("project_description") or sd.get("description", ""),
+            "event_id": str(sd.get("event_id") or ""),
+            "event_title": event_titles.get(str(sd.get("event_id") or ""), ""),
+            "score": 0,
+            "judges_completed": len(sd.get("assigned_judges", []) or []),
+            "total_judges": len(sd.get("assigned_judges", []) or []) or event_judges.get(str(sd.get("event_id") or ""), 0),
+            "status": sd.get("status") or "",
+            "assigned_judges": sd.get("assigned_judges", []),
+            "member_emails": team_member_emails.get(str(tid), []) if tid else await _collect_team_member_emails(None, str(uid) if uid else None),
+            "source": "stage_deliverable",
+            "submitted_at": sd.get("submitted_at"),
+        }
+
         rec = str(sd.get("evaluation_recommendation") or "").lower()
-        if "shortlist" in rec: item["status"] = "Shortlisted"
-        elif "reject" in rec: item["status"] = "Rejected"
-        elif "approve" in rec or "accept" in rec: item["status"] = "Approved"
+        if "shortlist" in rec:
+            stage_item["status"] = "Shortlisted"
+        elif "reject" in rec:
+            stage_item["status"] = "Rejected"
+        elif "approve" in rec or "accept" in rec:
+            stage_item["status"] = "Approved"
+
+        all_items[stage_key] = stage_item
 
     # 4. Sync Scores
-    sc_cursor = scores_col.find({"event_id": {"$in": event_ids}})
+    event_ids_variants = list(event_ids)
+    for eid in event_ids:
+        try:
+            event_ids_variants.append(ObjectId(eid))
+        except Exception:
+            pass
+    sc_cursor = scores_col.find({"event_id": {"$in": event_ids_variants}})
     async for sc in sc_cursor:
         tid = sc.get("team_id")
         sid = sc.get("submission_id")
@@ -2184,7 +2337,7 @@ async def get_all_submissions(institution_id: str, user: dict = Depends(get_auth
                     break
         if target:
             # Aggregate or take latest score
-            target["score"] = sc.get("total_score") or sc.get("score") or target["score"]
+            target["score"] = _score_sum(sc)
             target["judges_completed"] += 1
 
     # 5. Categorization
@@ -2399,18 +2552,24 @@ async def save_judge_score(score_data: dict, user: dict = Depends(get_auth_user)
     if je and je != ue:
         raise HTTPException(status_code=403, detail="judge_email must match the authenticated account")
 
-    evaluation_entry = {
-        "event_id": event_id,
-        "team_id": team_id,
-        "submission_id": submission_id,
-        "judge_email": ue,
-        "criteria_scores": criteria_scores,
-        "total_score": total_score,
-        "feedback": score_data.get("feedback") or score_data.get("comments") or "",
-        "evaluated_at": datetime.utcnow(),
-    }
-
-    await scores_col.insert_one(evaluation_entry)
+    now = datetime.utcnow()
+    await scores_col.update_one(
+        {"submission_id": submission_id, "judge_email": ue},
+        {"$set": {
+            "event_id": event_id,
+            "team_id": team_id,
+            "submission_id": submission_id,
+            "judge_email": ue,
+            "criteria_scores": criteria_scores,
+            "total_score": total_score,
+            "feedback": score_data.get("feedback") or score_data.get("comments") or "",
+            "evaluated_at": now,
+            "updated_at": now,
+        }, "$setOnInsert": {
+            "created_at": now,
+        }},
+        upsert=True
+    )
 
     await submissions_col.update_one(
         {"_id": ObjectId(str(submission_id))},
@@ -2578,6 +2737,53 @@ async def update_submission_status(submission_id: str, status_update: dict, user
     await log_admin_action("admin@institution.com", "SUBMISSION_PROCESSED", f"Processed submission {submission_id} with status {status_update['status']}")
     return {"status": "success"}
 
+
+@router.patch("/events/{event_id}/submission-data/{submission_id}/status")
+async def update_submission_data_status(event_id: str, submission_id: str, status_update: dict, user: dict = Depends(get_auth_user)):
+    """Updates stage-deliverable review status stored in submission_data_col."""
+    from db import submission_data_col
+
+    await assert_institution_owns_event(event_id, user)
+
+    try:
+        sub_id_variants = [submission_id]
+        if ObjectId.is_valid(submission_id):
+            sub_id_variants.append(ObjectId(submission_id))
+    except Exception:
+        sub_id_variants = [submission_id]
+
+    doc = await submission_data_col.find_one({"_id": {"$in": sub_id_variants}})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Submission data not found")
+
+    valid_statuses = ["Pending", "Under Review", "Evaluated", "Shortlisted", "Accepted", "Rejected", "Assigned"]
+    new_status = str(status_update.get("status", "")).strip()
+    if new_status and new_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status '{new_status}'. Must be one of: {', '.join(valid_statuses)}")
+
+    recommendation_map = {
+        "Shortlisted": "shortlist",
+        "Accepted": "approve",
+        "Rejected": "reject",
+        "Pending": "pending",
+        "Under Review": "under review",
+        "Evaluated": "evaluated",
+        "Assigned": "assigned",
+    }
+
+    update_fields = {
+        "status": new_status,
+        "evaluation_recommendation": recommendation_map.get(new_status, status_update.get("evaluation_recommendation", "")),
+        "review_status": str(status_update.get("review_status") or new_status).strip().lower().replace(" ", "_"),
+        "internal_notes": status_update.get("notes", status_update.get("internal_notes", "")),
+        "pr_links": status_update.get("pr_links", []),
+        "processed_at": datetime.utcnow().isoformat(),
+    }
+
+    await submission_data_col.update_one({"_id": doc["_id"]}, {"$set": update_fields})
+    await log_admin_action("admin@institution.com", "STAGE_SUBMISSION_PROCESSED", f"Processed stage submission data {submission_id} with status {new_status}")
+    return {"status": "success"}
+
 @router.patch("/events/{event_id}/teams/{team_id}/status")
 async def update_team_status(event_id: str, team_id: str, status_update: dict, user: dict = Depends(get_auth_user)):
     """Updates the status of a team in an institution event."""
@@ -2627,7 +2833,7 @@ async def update_team_status(event_id: str, team_id: str, status_update: dict, u
 async def send_status_email(event_id: str, email_data: dict, user: dict = Depends(get_auth_user)):
     """Sends status update email to team members."""
     await assert_institution_owns_event(event_id, user)
-    from db import events_col, participants_col
+    from db import events_col, participants_col, teams_col, users_col
     
     event = await events_col.find_one({"_id": ObjectId(event_id)})
     if not event:
@@ -2639,14 +2845,59 @@ async def send_status_email(event_id: str, email_data: dict, user: dict = Depend
     emails = email_data.get("emails", [])
     
     print(f"[EMAIL DEBUG] Team ID: {team_id}, Status: {status}, Provided emails: {emails}")
+
+    def _add_email(value: str | None, bucket: list[str]):
+        if not value:
+            return
+        email_value = str(value).strip().lower()
+        if email_value and email_value not in bucket:
+            bucket.append(email_value)
     
-    # If no emails provided, try to fetch from participants collection
+    # If no emails provided, try to fetch from the team roster first
+    if not emails and team_id:
+        team_doc = None
+        try:
+            if ObjectId.is_valid(team_id):
+                team_doc = await teams_col.find_one({"_id": ObjectId(team_id)})
+        except Exception:
+            team_doc = None
+        if not team_doc:
+            team_doc = await teams_col.find_one({"team_id": team_id})
+
+        if team_doc:
+            for member in team_doc.get("members", []) or []:
+                if member.get("email"):
+                    _add_email(member.get("email"), emails)
+                    continue
+                member_user_id = member.get("user_id")
+                if not member_user_id:
+                    continue
+                user_doc = await users_col.find_one({"user_id": str(member_user_id)})
+                if not user_doc and ObjectId.is_valid(str(member_user_id)):
+                    try:
+                        user_doc = await users_col.find_one({"_id": ObjectId(str(member_user_id))})
+                    except Exception:
+                        user_doc = None
+                if user_doc and user_doc.get("email"):
+                    _add_email(user_doc.get("email"), emails)
+
+    # Fallback: participants collection may still carry user emails for legacy records
     if not emails and team_id:
         participants = await participants_col.find({
             "event_id": event_id,
             "team_id": team_id
         }).to_list(None)
-        emails = [p.get("email") for p in participants if p.get("email")]
+        for participant in participants:
+            _add_email(participant.get("email"), emails)
+            if participant.get("user_id"):
+                user_doc = await users_col.find_one({"user_id": str(participant.get("user_id"))})
+                if not user_doc and ObjectId.is_valid(str(participant.get("user_id"))):
+                    try:
+                        user_doc = await users_col.find_one({"_id": ObjectId(str(participant.get("user_id")))})
+                    except Exception:
+                        user_doc = None
+                if user_doc and user_doc.get("email"):
+                    _add_email(user_doc.get("email"), emails)
         print(f"[EMAIL DEBUG] Fetched {len(emails)} emails from participants: {emails}")
     
     if not emails:
@@ -2779,6 +3030,14 @@ async def get_complex_event_details(event_id: str, user: dict = Depends(get_auth
 
     return event
 
+def _format_deadline(dl: str) -> str:
+    """Convert ISO deadline string to human-readable format (e.g. 'May 28, 2026 11:59 PM')."""
+    try:
+        dt = datetime.fromisoformat(dl.replace('Z', '+00:00'))
+        return dt.strftime('%B %d, %Y %I:%M %p')
+    except Exception:
+        return dl
+
 async def _notify_deadline_extensions(event_id: str, changed_deadlines: list):
     """Send deadline extension notifications to all participants."""
     from services.email_template_service import get_active_template, render_template
@@ -2807,23 +3066,24 @@ async def _notify_deadline_extensions(event_id: str, changed_deadlines: list):
             except Exception:
                 pass
         for cd in changed_deadlines:
+            human_dl = _format_deadline(cd["new_deadline"])
             context = {
                 "team_name": team_name,
                 "event_name": event_title,
                 "stage_name": cd["stage_name"],
                 "participant_name": p_name,
-                "new_deadline": cd["new_deadline"],
+                "new_deadline": human_dl,
             }
             if tmpl:
                 subject, body = render_template(tmpl, context)
             else:
                 subject = f"Deadline Extended: {event_title} - {cd['stage_name']}"
-                body = f"<p>The deadline for <strong>{cd['stage_name']}</strong> in <strong>{event_title}</strong> has been extended to <strong>{cd['new_deadline']}</strong>.</p>"
+                body = f"<p>The deadline for <strong>{cd['stage_name']}</strong> in <strong>{event_title}</strong> has been extended to <strong>{human_dl}</strong>.</p>"
             await notifications_col.insert_one({
                 "user_id": uid or p_email,
                 "type": "deadline_extension",
                 "title": subject,
-                "message": f"Deadline for '{cd['stage_name']}' extended to {cd['new_deadline']}",
+                "message": f"Deadline for '{cd['stage_name']}' extended to {human_dl}",
                 "is_read": False,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "meta": {"event_id": event_id, "stage_name": cd["stage_name"]}

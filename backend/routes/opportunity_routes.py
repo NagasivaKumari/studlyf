@@ -805,7 +805,6 @@ async def learner_submit_stage_data(
     # If in a team, ONLY team leader can submit
     if p.get("team_id"):
         from db import teams_col
-        from bson import ObjectId
         team = await teams_col.find_one({"_id": ObjectId(p["team_id"])})
         if team:
             leader_id = team.get("team_leader_id") or team.get("leader_id")

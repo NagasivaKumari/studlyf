@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Eye, EyeOff, Save, ChevronLeft } from 'lucide-react';
 import { CERT_TEMPLATES, CertData } from './CertTemplates';
+import { API_BASE_URL, authHeaders } from '../../../apiConfig';
 
 const DEFAULT: CertData = {
   certType: 'Certificate of Participation',
@@ -26,6 +27,76 @@ const Field = ({ label, value, onChange, placeholder }: { label: string; value: 
   </div>
 );
 
+const buildHtmlContent = (data: CertData, templateLabel?: string) => {
+  const signatoryHtml = data.signatories.length > 0
+    ? data.signatories.map((s, index) => `
+        <div class="signatory">
+          <div class="line"></div>
+          <div class="name">${s.name || `Signatory ${index + 1}`}</div>
+          <div class="title">${s.title || ''}</div>
+          <div class="org">${s.org || ''}</div>
+        </div>
+      `).join('')
+    : '';
+
+  const sponsorHtml = data.showSponsorSection && data.sponsorLogos.filter(Boolean).length > 0
+    ? `<div class="sponsors">${data.sponsorLogos.filter(Boolean).map((logo) => `<img src="${logo}" alt="Sponsor" />`).join('')}</div>`
+    : '';
+
+  return `
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 32px; font-family: Georgia, serif; background: #f8fafc; }
+    .certificate { max-width: 1100px; margin: 0 auto; background: #fff; border: 8px solid #6C3BFF; border-radius: 24px; padding: 36px 44px; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .title { text-align: center; flex: 1; }
+    .institution { text-transform: uppercase; letter-spacing: 2px; font-family: Arial, sans-serif; font-size: 14px; color: #6C3BFF; font-weight: 800; }
+    .template { text-transform: uppercase; letter-spacing: 4px; font-family: Arial, sans-serif; font-size: 11px; color: #94A3B8; margin-top: 4px; }
+    .heading { margin-top: 26px; text-align: center; font-size: 44px; font-weight: 900; letter-spacing: 4px; color: #0f172a; }
+    .cert-type { text-align: center; font-size: 18px; font-family: Arial, sans-serif; font-weight: 800; color: #6C3BFF; text-transform: uppercase; letter-spacing: 2px; margin-top: 6px; }
+    .recipient { margin: 24px auto 12px; width: fit-content; padding: 0 36px; border-bottom: 2px solid #0f172a; font-size: 32px; font-weight: 700; font-style: italic; color: #0f172a; text-align: center; }
+    .body { text-align: center; font-family: Arial, sans-serif; font-size: 15px; line-height: 1.8; color: #334155; max-width: 760px; margin: 18px auto 0; }
+    .meta { display: flex; justify-content: center; gap: 28px; margin-top: 16px; font-family: Arial, sans-serif; font-size: 13px; color: #475569; }
+    .signatures { display: flex; justify-content: space-around; gap: 24px; margin-top: 36px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
+    .signatory { text-align: center; font-family: Arial, sans-serif; min-width: 180px; }
+    .line { height: 26px; border-bottom: 1.5px solid #6C3BFF; margin: 0 auto 6px; width: 120px; }
+    .name { font-size: 13px; font-weight: 800; color: #0f172a; }
+    .title, .org { font-size: 11px; color: #64748b; }
+    .sponsors { margin-top: 24px; padding-top: 14px; border-top: 1px solid #e2e8f0; display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+    .sponsors img { height: 28px; object-fit: contain; }
+  </style>
+</head>
+<body>
+  <div class="certificate">
+    <div class="top">
+      <div style="width:96px;height:96px;border:2px dashed #CBD5E1;border-radius:16px;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;font-size:10px;font-weight:800;color:#94A3B8;">INST</div>
+      <div class="title">
+        <div class="institution">${data.institutionName || 'Institution Name'}</div>
+        <div class="template">${templateLabel || data.certType || 'Certificate Template'}</div>
+      </div>
+      <div style="width:96px;height:96px;border:2px dashed #CBD5E1;border-radius:16px;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;font-size:10px;font-weight:800;color:#94A3B8;">EVENT</div>
+    </div>
+    <div class="heading">CERTIFICATE</div>
+    <div class="cert-type">${data.certType || 'Certificate of Participation'}</div>
+    <div class="recipient">{student_name}</div>
+    <div class="body">
+      ${data.bodyText || 'for participating in'} <strong>{course_title}</strong>
+      ${data.duration ? ` during <strong>${data.duration}</strong>` : ''}
+      ${data.venue ? ` at <strong>${data.venue}</strong>` : ''}.
+    </div>
+    ${(data.teamIdLabel || data.themeLabel) ? `<div class="meta">${data.teamIdLabel ? `<span><b>Team ID:</b> ${data.teamIdLabel}</span>` : ''}${data.themeLabel ? `<span><b>Theme:</b> ${data.themeLabel}</span>` : ''}</div>` : ''}
+    <div class="signatures">${signatoryHtml}</div>
+    ${sponsorHtml}
+  </div>
+</body>
+</html>`;
+};
+
 const CertificateTemplateBuilder: React.FC<{ institutionId: string; onSave?: (data: CertData, templateId: string) => void }> = ({ institutionId, onSave }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [data, setData] = useState<CertData>(DEFAULT);
@@ -41,12 +112,18 @@ const CertificateTemplateBuilder: React.FC<{ institutionId: string; onSave?: (da
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch(`/api/institution/${institutionId}/certificate-template`, {
+      const selected = CERT_TEMPLATES.find(t => t.id === selectedId);
+      const response = await fetch(`${API_BASE_URL}/api/admin/cert-templates`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId: selectedId, ...data }),
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          name: selected?.label || data.certType || 'Certificate Template',
+          description: `${selected?.tag || 'Custom institution certificate template'}`,
+          html_content: buildHtmlContent(data, selected?.label),
+        }),
       });
-      onSave?.(data, selectedId!);
+      const saved = await response.json().catch(() => ({}));
+      onSave?.(data, String(saved?.template_id || selectedId || ''));
     } catch (e) { console.error(e); }
     setSaving(false);
   };

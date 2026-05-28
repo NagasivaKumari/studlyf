@@ -20,6 +20,14 @@ from auth_institution import get_auth_user
 
 router = APIRouter(prefix="/api/judging", tags=["Hackathon Judging"])
 
+
+def _normalize_submission_status(doc: dict) -> dict:
+    status = str(doc.get("status") or "").strip().lower()
+    evaluation_status = str(doc.get("evaluation_status") or "").strip().lower()
+    if status == "evaluated" or evaluation_status == "evaluated":
+        doc["status"] = "Pending Review"
+    return doc
+
 # --- Judges Management ---
 
 @router.post("/judges")
@@ -187,6 +195,7 @@ async def list_submissions(opportunity_id: str, user: dict = Depends(get_auth_us
             u = await users_col.find_one({"user_id": doc["user_id"]})
             if u:
                 doc["student_name"] = u.get("name")
+        _normalize_submission_status(doc)
         submissions.append(doc)
     return submissions
 
@@ -199,6 +208,7 @@ async def get_assigned_submissions(judge_id: str):
     submissions = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
+        _normalize_submission_status(doc)
         submissions.append(doc)
     return submissions
 
@@ -233,6 +243,7 @@ async def evaluate_submission(data: dict = Body(...)):
         {"_id": ObjectId(submission_id)},
         {"$set": {
             "evaluation_status": "Evaluated",
+            "status": "Pending Review",
             "total_score": total_score,
             "evaluator_feedback": feedback,
             "evaluated_at": datetime.utcnow()
