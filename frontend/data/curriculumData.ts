@@ -51,7 +51,7 @@ This module builds the **foundation** for the entire course. Before learning too
       },
       {
         type: 'text',
-        title: 'Core Reading — Introduction to AI',
+        title: 'Section 1.1 — What is Artificial Intelligence?',
         content: `## Section 1.1 — What is Artificial Intelligence?
 
 Artificial Intelligence (AI) refers to computer systems designed to perform tasks that **normally require human intelligence**.
@@ -74,13 +74,12 @@ Traditional computer programs follow **fixed instructions** written by humans. A
 AI **learns patterns** rather than following strict rules.
 
 ### Real World Example
-Email spam filters (like Gmail) analyze millions of emails to learn patterns that indicate spam. Over time, the system becomes better at detecting unwanted emails **without humans writing rules** for every possible spam message.
-
----
-
-![Introduction to AI](/images/module1_page1_img1.png)
-
-## Section 1.2 — Types of Artificial Intelligence
+Email spam filters (like Gmail) analyze millions of emails to learn patterns that indicate spam. Over time, the system becomes better at detecting unwanted emails **without humans writing rules** for every possible spam message.`
+      },
+      {
+        type: 'text',
+        title: 'Section 1.2 — Types of Artificial Intelligence',
+        content: `## Section 1.2 — Types of Artificial Intelligence
 
 AI is commonly classified into **three major levels** based on capability:
 
@@ -109,17 +108,16 @@ Netflix uses **Narrow AI** to recommend movies based on:
 - User preferences
 - Viewing behavior
 
-The AI learns patterns from millions of users to predict what you might enjoy next.
-
----
-
-![What is Generative AI](/images/module1_page4_img1.png)
-
-## Section 1.3 — What is Generative AI?
+The AI learns patterns from millions of users to predict what you might enjoy next.`
+      },
+      {
+        type: 'text',
+        title: 'Section 1.3 — What is Generative AI?',
+        content: `## Section 1.3 — What is Generative AI?
 
 Generative AI is a type of AI that **creates new content** instead of only analyzing or predicting data. It learns patterns from large datasets and then uses that knowledge to generate new outputs.
 
-### Generative AI can produce:
+Generative AI can produce:
 - ✍️ Text
 - 🖼️ Images
 - 🎵 Music
@@ -140,21 +138,12 @@ When you ask ChatGPT: *"Write a professional email requesting a meeting"*
 
 The system generates a **completely new email** based on its training data and language understanding.
 
-Another example: Image models like **Midjourney** or **Stable Diffusion** generate images from text prompts.
-
-### Common Generative AI Tools
-| Tool | What It Generates |
-|------|------------------|
-| ChatGPT | Text, code, analysis |
-| Claude | Text, reasoning, documents |
-| Gemini | Text, research, multimodal |
-| Midjourney | Artistic images |
-| Stable Diffusion | Open-source images |
-| Runway ML | Videos |
-
----
-
-## Section 1.4 — How Generative AI is Transforming Industries
+Another example: Image models like **Midjourney** or **Stable Diffusion** generate images from text prompts.`
+      },
+      {
+        type: 'text',
+        title: 'Section 1.4 — How Generative AI is Transforming Industries',
+        content: `## Section 1.4 — How Generative AI is Transforming Industries
 
 Generative AI is rapidly transforming how industries operate by **automating creative and cognitive tasks**.
 
@@ -182,11 +171,7 @@ AI can generate graphics, logos, and visual content.
 - Canva AI
 
 #### 📚 Education
-AI tutors help students learn faster through personalized explanations and automated assistance.
-
-### Learning Resources
-- McKinsey AI Report: [https://www.mckinsey.com/capabilities/quantumblack/our-insights](https://www.mckinsey.com/capabilities/quantumblack/our-insights)
-- HuggingFace: [https://huggingface.co](https://huggingface.co)`,
+AI tutors help students learn faster through personalized explanations and automated assistance.`,
         resources: [
           'https://ai.google/education',
           'https://platform.openai.com/docs',
