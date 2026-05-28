@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import useCourseProgress from '../hooks/useCourseProgress';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -92,6 +92,8 @@ const CoursePlayer: React.FC = () => {
     return (saved as LessonType) || 'overview';
   });
   const [showToast, setShowToast] = useState(false);
+  // ── Right-panel tool tab ──
+  const [activeToolTab, setActiveToolTab] = useState<'notes' | 'transcript' | 'resources'>('notes');
 
   const [moduleDetails, setModuleDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -149,10 +151,10 @@ const CoursePlayer: React.FC = () => {
 
   const contentRef = useRef<HTMLDivElement>(null);
 
-  /* ── Build flat lesson list ── */
-  const buildLessons = (mods: Module[]): FlatLesson[] => {
+  /* ── Build flat lesson list (memoized) ── */
+  const flatLessons = useMemo<FlatLesson[]>(() => {
     const list: FlatLesson[] = [];
-    mods.forEach((mod, i) => {
+    modules.forEach((mod, i) => {
       if (mod.lessons) {
         mod.lessons.forEach((les, lesIdx) => {
           list.push({
@@ -164,17 +166,12 @@ const CoursePlayer: React.FC = () => {
         });
       }
     });
-    
     // Add Mini Project (Capstone)
     list.push({ moduleIndex: -1, lessonIndex: -1, type: 'capstone', title: 'Mini Project Submission' });
-
     // Add Result Page
     list.push({ moduleIndex: -3, lessonIndex: -3, type: 'result', title: 'Course Completion' });
-
     return list;
-  };
-
-  const flatLessons = buildLessons(modules);
+  }, [modules]);
   const currentFlatIndex = flatLessons.findIndex(
     l => l.moduleIndex === activeModuleIndex && l.lessonIndex === activeLessonIndex
   );
@@ -184,12 +181,15 @@ const CoursePlayer: React.FC = () => {
     if (resolvedCourseId) fetchModules();
   }, [resolvedCourseId, user]);
 
-  const fetchModules = async () => {
+  const fetchModules = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/courses/${resolvedCourseId}/modules?user_id=${user?.uid || ''}`);
-      const data = await res.json();
-      
-      const courseRes = await fetch(`${API_BASE_URL}/api/course/${resolvedCourseId}/details?user_id=${user?.uid || ''}`);
+      // ✅ PERF FIX: Parallel API calls instead of sequential
+      const [modulesRes, courseRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/courses/${resolvedCourseId}/modules?user_id=${user?.uid || ''}`),
+        fetch(`${API_BASE_URL}/api/course/${resolvedCourseId}/details?user_id=${user?.uid || ''}`)
+      ]);
+
+      const data = await modulesRes.json();
       let cData: any = null;
       if (courseRes.ok) {
         cData = await courseRes.json();
@@ -197,11 +197,10 @@ const CoursePlayer: React.FC = () => {
       }
 
       let fetched = Array.isArray(data) ? data : [];
-      
+
       // Enforce the dynamic subtopics schema using the imported CURRICULUM_DATA
       const formatted = fetched.map((mod: any, i: number) => {
         const curChapter = CURRICULUM_DATA[i] || CURRICULUM_DATA[i % CURRICULUM_DATA.length];
-        // Build module with data from CURRICULUM_DATA for correct titles and lessons
         return {
           ...mod,
           title: curChapter.title,
@@ -210,7 +209,8 @@ const CoursePlayer: React.FC = () => {
             type: t.type,
             title: t.title,
           })),
-        };      });
+        };
+      });
 
       // Initialize completedSteps from backend progress
       const initialCompleted: Record<string, boolean> = {};
@@ -239,11 +239,11 @@ const CoursePlayer: React.FC = () => {
           }
         }
       });
-      
+
       if (cData?.progress?.project_status === 'submitted') {
         initialCompleted['capstone'] = true;
       }
-      
+
       setCompletedSteps(prev => ({ ...initialCompleted, ...prev }));
       setModules(formatted);
       setLoading(false);
@@ -253,12 +253,20 @@ const CoursePlayer: React.FC = () => {
       setLoading(false);
       return [];
     }
-  };
+  }, [resolvedCourseId, user]);
+
+  // ✅ PERF FIX: Track last fetched module to avoid redundant detail fetches
+  const lastFetchedModuleIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (activeModuleIndex >= 0 && modules.length > 0) {
-      fetchModuleDetails(modules[activeModuleIndex]._id);
-      
+      const moduleId = modules[activeModuleIndex]._id;
+      // Only re-fetch module details when the MODULE changes, not every lesson change
+      if (moduleId !== lastFetchedModuleIdRef.current) {
+        lastFetchedModuleIdRef.current = moduleId;
+        fetchModuleDetails(moduleId);
+      }
+
       const les = modules[activeModuleIndex]?.lessons?.[activeLessonIndex];
       if (les) {
         setActiveStage(les.type as LessonType);
@@ -470,21 +478,19 @@ const CoursePlayer: React.FC = () => {
 
   const isCurrentLessonComplete = isLessonComplete(activeModuleIndex, activeStage, activeLessonIndex);
   
-  // Dynamic Course Completion Progress Bar
-  const overallProgress = (() => {
+  // Dynamic Course Completion Progress Bar (memoized)
+  const overallProgress = useMemo(() => {
     if (!flatLessons.length) return 0;
     const trackableLessons = flatLessons.filter(l => l.type !== 'result');
     if (!trackableLessons.length) return 0;
-    
     let completedCount = 0;
     trackableLessons.forEach(l => {
       if (isLessonComplete(l.moduleIndex, l.type, l.lessonIndex)) {
         completedCount++;
       }
     });
-    
     return Math.round((completedCount / trackableLessons.length) * 100);
-  })();
+  }, [flatLessons, completedSteps]);
 
   const currentModule = modules[activeModuleIndex];
   
