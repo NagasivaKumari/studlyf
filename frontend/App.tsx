@@ -466,15 +466,10 @@ const App: React.FC = () => {
             {/* Evaluation */}
             <Route path="/evaluate/:token" element={<EvaluationPage />} />
 
-            {/* Misc
+            {/* Misc */}
             <Route path="/roadmaps" element={<RoadmapClone />} />
             <Route path="/roadmaps/:roleId" element={<RoadmapClone />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/blog" element={<Blog />} />
-            <Route path="/judge-invitation" element={<JudgeInvitation />} />
             <Route path="/goal-selector" element={<ProtectedRoute><GoalSelector /></ProtectedRoute>} />
-            <Route path="/ai-tools" element={<AITools />} />
-            <Route path="/fix-role" element={<RoleFixer />} />
             <Route path="/learn/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
             <Route path="/learn/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
             <Route path="/learn/career-onboarding" element={<ProtectedRoute><CareerOnboarding /></ProtectedRoute>} />
