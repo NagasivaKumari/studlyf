@@ -5,24 +5,24 @@ import { HelpCircle, Zap, Layers, Clock, CheckCircle } from 'lucide-react';
 
 const faqData = [
   {
-    question: "What defines the Engineering Readiness Standard?",
-    answer: "The Standard is a clinical verification framework that measures an engineer's ability to take ownership of complex systems. Unlike traditional certificates, it focuses on judgment, resilience auditing, and architectural governance rather than simple syntax memorization."
+    question: "What is STUDLYF and how is it different?",
+    answer: "STUDLYF is a student-first ecosystem built to help ambitious students learn, build, network, and grow through real opportunities. Unlike traditional communities focused only on events or certificates, STUDLYF focuses on mentorship, projects, innovation, collaborations, startup exposure, and long-term career growth."
   },
   {
-    question: "How does the 'Clinical Verification' process work?",
-    answer: "Verification involves a multi-stage audit: first, a baseline logic assessment; second, a high-stakes job simulation where you solve real-world system failures; and finally, a logic defense session where you justify your architectural trade-offs."
+    question: "What kind of opportunities does STUDLYF provide?",
+    answer: "Students get access to workshops, hackathons, mentorship, startup exposure, collaborations, networking events, leadership roles, innovation initiatives, and real project opportunities designed to help them grow beyond classrooms."
   },
   {
-    question: "Is this protocol suitable for early-career engineers?",
-    answer: "Yes. In the generative age, early-career engineers need a way to distinguish their actual capability from prompt-engineered claims. Our 'Career Fit' and 'Baseline Tracks' are designed specifically to bridge the gap from learner to high-authority professional."
+    question: "Is STUDLYF only for tech students?",
+    answer: "No. STUDLYF is built for ambitious students from different domains who want to learn, collaborate, innovate, build meaningful networks, and gain practical exposure beyond academics."
   },
   {
-    question: "How do hiring partners use the Studlyf score?",
-    answer: "Institutional partners use the score to bypass initial screening rounds. A verified Studlyf profile provides them with auditable data on your performance in system design and error-handling, reducing their hiring risk and your time-to-offer."
+    question: "How can students grow through STUDLYF?",
+    answer: "Students can participate in communities, collaborate on projects, attend events, connect with mentors, build leadership skills, explore startups, and gain exposure to real-world innovation ecosystems."
   },
   {
-    question: "Can I use AI tools during the assessment?",
-    answer: "AI usage is expected. We assume you have access to state-of-the-art LLMs. The assessment is designed to measure what you do with that output—how you verify it, secure it, and integrate it into a resilient architecture."
+    question: "How can I join the STUDLYF ecosystem?",
+    answer: "You can join by becoming part of the community, attending events, participating in initiatives, collaborating on projects, and staying active within the STUDLYF ecosystem as opportunities open up."
   }
 ];
 
@@ -81,7 +81,7 @@ const FAQ: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-10 sm:mb-14">
           <motion.h2 initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.4em] mb-3">FAQ</motion.h2>
-          <motion.h3 initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="font-display text-3xl sm:text-4xl italic text-[#0F172A]">Answers that matter.</motion.h3>
+          <motion.h3 initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="font-display text-3xl sm:text-4xl italic text-[#0F172A]">Everything you need to know.</motion.h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -118,7 +118,7 @@ const FAQ: React.FC = () => {
         </div>
 
         <motion.div initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mt-8 text-center">
-          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">More queries? <a href="#" className="text-[#7C3AED] hover:underline">Contact the Audit Team</a></p>
+          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Still have questions? <a href="#" className="text-[#7C3AED] hover:underline">Connect with the STUDLYF team.</a></p>
         </motion.div>
       </div>
     </section>

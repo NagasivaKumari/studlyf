@@ -184,7 +184,7 @@ const DashboardHome: React.FC = () => {
 
   const typewriterWords = [
     { text: 'YOUR', className: 'text-black' },
-    { text: 'CAREER', className: 'text-black' },
+    { text: 'GROWTH', className: 'text-black' },
     { text: 'STARTS', className: 'text-black' },
     { text: 'HERE', className: 'text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B]' },
   ];
@@ -322,14 +322,14 @@ const DashboardHome: React.FC = () => {
                   <TypewriterEffectSmooth words={typewriterWords} />
                 </div>
                 <p className="text-[9px] sm:text-[14px] font-bold text-black uppercase tracking-[0.3em] max-w-2xl text-center leading-relaxed px-4">
-                  Studlyf -- Building the student internet <br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B]">FOR NEXT GENERATION</span>
+                  Studlyf -- Building the student ecosystem <br />
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6C4DFF] via-[#EC4899] to-[#FF5B5B]">FOR AMBITIOUS STUDENTS</span>
                 </p>
               </div>
 
               <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 relative z-20 mt-2 px-6 sm:px-16">
                 <div className="flex flex-col items-center gap-6 md:gap-10">
-                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Built by alumni of</span>
+                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Connected with</span>
                   <div className="flex items-center gap-8 sm:gap-16">
                     <div className="flex items-center gap-3 sm:gap-4 group">
                       <img src="/images/google.png" className="h-6 sm:h-8 transition-transform group-hover:scale-110" alt="Google" />
@@ -342,7 +342,7 @@ const DashboardHome: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex flex-col items-center gap-6 md:gap-10">
-                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Backed by</span>
+                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Collaborated with</span>
                   <div className="flex items-center gap-8 sm:gap-16 justify-center">
                     <div className="flex items-center gap-3 sm:gap-4 group">
                       <img src="https://cdn.simpleicons.org/ycombinator" className="h-6 sm:h-8 transition-transform group-hover:scale-110" alt="Y Combinator" />

@@ -5,35 +5,39 @@ import { BookOpen, Briefcase, BrainCircuit, Sparkles, Target, ShieldCheck, Users
 
 const featureCards = [
   {
-    title: 'Guided learning paths',
-    desc: 'Jump straight into curated tracks for skills, systems, and career readiness.',
+    title: 'Career pathways',
+    desc: 'Explore structured pathways built around careers, projects, and real growth.',
     to: '/learn/courses-overview',
     icon: BookOpen,
+    btnText: 'Explore pathway',
   },
   {
-    title: 'Skill checkups',
-    desc: 'Measure your current level and discover where to focus next.',
+    title: 'Opportunity engine',
+    desc: 'Discover internships, hackathons, startup roles, and real opportunities.',
     to: '/learn/assessment-intro',
     icon: Target,
+    btnText: 'Explore now',
   },
   {
-    title: 'AI support tools',
-    desc: 'Use built-in tools to plan, practice, and improve faster.',
+    title: 'Mentor ecosystem',
+    desc: 'Connect with mentors, founders, builders, and ambitious peers.',
     to: '/ai-tools',
     icon: BrainCircuit,
+    btnText: 'Explore now',
   },
   {
-    title: 'Job-ready practice',
-    desc: 'Build portfolios, rehearse interviews, and explore opportunities.',
+    title: 'Build & prove',
+    desc: 'Build real projects, showcase proof of work, and grow your profile.',
     to: '/job-prep/portfolio',
     icon: Briefcase,
+    btnText: 'Explore now',
   },
 ];
 
 const stats = [
-  { value: 'Learn', label: 'Structured paths' },
-  { value: 'Practice', label: 'Hands-on tasks' },
-  { value: 'Grow', label: 'Real outcomes' },
+  { value: 'Build', label: 'Real projects' },
+  { value: 'Connect', label: 'Mentors & community' },
+  { value: 'Grow', label: 'Real opportunities' },
 ];
 
 const HomepageSpotlight: React.FC = () => {
@@ -57,10 +61,10 @@ const HomepageSpotlight: React.FC = () => {
             </span>
           </div>
           <h2 className="text-4xl sm:text-6xl font-black text-[#0F172A] tracking-tight mb-6">
-            Choose your <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#7C3AED] to-[#4F46E5]">fastest path</span> forward.
+            Choose your <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#7C3AED] to-[#4F46E5]">fastest path</span> to growth.
           </h2>
           <p className="text-base sm:text-xl text-[#64748B] leading-relaxed">
-            Accelerate your growth with curated tracks, AI-powered tools, and career-ready practice. No noise, just focus.
+            Learn, build, connect, and grow through opportunities, mentorship, projects, and career-driven experiences.
           </p>
         </motion.div>
 
@@ -97,7 +101,7 @@ const HomepageSpotlight: React.FC = () => {
                       </p>
 
                       <div className="flex items-center gap-2 text-[12px] font-bold text-[#0F172A] group-hover:text-[#7C3AED] transition-colors duration-300 mt-auto">
-                        Explore module
+                        {item.btnText}
                         <ChevronRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
                       </div>
                     </div>
@@ -124,7 +128,7 @@ const HomepageSpotlight: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#64748B] mb-1">Why Studlyf</p>
-                  <h3 className="text-2xl font-black text-[#0F172A] tracking-tight">Clear & focused.</h3>
+                  <h3 className="text-2xl font-black text-[#0F172A] tracking-tight">Built for growth.</h3>
                 </div>
               </div>
 
@@ -139,9 +143,9 @@ const HomepageSpotlight: React.FC = () => {
 
               <div className="space-y-5">
                 {[
-                  'Curated paths designed for learners, builders, and job seekers.',
-                  'Low-noise interface optimized for deep work and focus.',
-                  'Instant access to practical assessments and real opportunities.',
+                  'A student ecosystem designed for builders, creators, and future leaders.',
+                  'Access mentors, communities, collaborations, and startup exposure.',
+                  'Turn learning into projects, portfolios, opportunities, and career growth.',
                 ].map((line, i) => (
                   <div key={i} className="flex items-start gap-4">
                     <div className="mt-1 w-6 h-6 rounded-full bg-white border border-gray-100 shadow-sm text-[#7C3AED] flex items-center justify-center shrink-0">
