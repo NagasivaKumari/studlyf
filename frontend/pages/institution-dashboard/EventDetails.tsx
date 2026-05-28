@@ -1772,23 +1772,57 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         </td>
                                         <td className="px-10 py-8 max-w-md">
                                             <div className="space-y-2">
-                                                <p className="text-sm font-bold text-slate-800 line-clamp-2">{sub.problemStatement || sub.stage_name || sub.project_title || 'Submission'}</p>
-                                                <div className="flex items-center gap-3">
-                                                    {sub.pptLink ? (
-                                                        sub.pptLink.startsWith('data:') ? (
-                                                            <button onClick={() => setPreviewAsset({ url: sub.pptLink, filename: 'PPT' + (sub.pptLink.includes('pdf') ? '.pdf' : '.pptx') })}
-                                                                className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100 cursor-pointer">
-                                                                <FileText size={12} /> PPT
-                                                            </button>
-                                                        ) : (
-                                                            <a href={sub.pptLink.startsWith('http') ? sub.pptLink : `${API_BASE_URL}${sub.pptLink}`} target="_blank" rel="noreferrer"
-                                                                className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100">
-                                                                <FileText size={12} /> PPT
+                                                {(() => {
+                                                    const isUrlContent = sub.problemStatement === 'Submitted link' && sub.pptLink;
+                                                    const isFileContent = sub.problemStatement === 'Submitted file' && sub.pptLink;
+                                                    const hasDesc = sub.problemStatement && !isUrlContent && !isFileContent;
+                                                    if (isUrlContent) {
+                                                        const href = sub.pptLink.startsWith('http') ? sub.pptLink : `${API_BASE_URL}${sub.pptLink}`;
+                                                        return (
+                                                            <a href={href} target="_blank" rel="noreferrer"
+                                                                className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600 hover:text-blue-800 hover:underline truncate max-w-full">
+                                                                <LinkIcon size={14} /> {sub.pptLink}
                                                             </a>
-                                                        )
-                                                    ) : null}
-                                                    {sub.githubLink && <a href={sub.githubLink} target="_blank" className="flex items-center gap-1.5 px-3 py-1 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-wider"><LinkIcon size={12} /> Git</a>}
-                                                </div>
+                                                        );
+                                                    }
+                                                    if (isFileContent) {
+                                                        return (
+                                                            <>
+                                                                <p className="text-sm font-bold text-slate-500 italic flex items-center gap-1.5">
+                                                                    <FileText size={14} /> File submitted
+                                                                </p>
+                                                                <button onClick={() => setPreviewAsset({ url: sub.pptLink, filename: 'PPT' + (sub.pptLink.includes('pdf') ? '.pdf' : '.pptx') })}
+                                                                    className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100 cursor-pointer">
+                                                                    <FileText size={12} /> View File
+                                                                </button>
+                                                            </>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <>
+                                                            <p className="text-sm font-bold text-slate-800 line-clamp-2">{hasDesc ? sub.problemStatement : (sub.stage_name || sub.project_title || 'Submission')}</p>
+                                                            {sub.githubLink && (
+                                                                <a href={sub.githubLink} target="_blank" rel="noreferrer"
+                                                                    className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-500 hover:text-slate-700 truncate max-w-full">
+                                                                    <LinkIcon size={14} /> {sub.githubLink}
+                                                                </a>
+                                                            )}
+                                                            {sub.pptLink && !isUrlContent && (
+                                                                sub.pptLink.startsWith('data:') ? (
+                                                                    <button onClick={() => setPreviewAsset({ url: sub.pptLink, filename: 'PPT' })}
+                                                                        className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100 cursor-pointer">
+                                                                        <FileText size={12} /> View File
+                                                                    </button>
+                                                                ) : (
+                                                                    <a href={sub.pptLink.startsWith('http') ? sub.pptLink : `${API_BASE_URL}${sub.pptLink}`} target="_blank" rel="noreferrer"
+                                                                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100">
+                                                                        <FileText size={12} /> PPT
+                                                                    </a>
+                                                                )
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
                                         </td>
                                         <td className="px-10 py-8">
