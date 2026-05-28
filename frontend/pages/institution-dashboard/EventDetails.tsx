@@ -696,6 +696,30 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
+    const handleSaveRubrics = async () => {
+        if (!eventId) return;
+        setSaving(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/criteria`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify(criteria)
+            });
+            if (res.ok) {
+                setEvent(prev => prev ? { ...prev, judging_criteria: criteria } : prev);
+                setHasUnsavedChanges(false);
+                setShowSaveSuccess(true);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(`Failed to save rubrics: ${err.detail || 'Unknown error'}`);
+            }
+        } catch {
+            alert('Network error while saving rubrics');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleSaveEvent = async () => {
         if (!eventId || !event) return;
         setSaving(true);
@@ -3389,10 +3413,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         {criteria.length > 0 && (
                             <div className="flex justify-end">
                                 <button
-                                    onClick={handleSaveEvent}
-                                    className="px-10 py-5 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-purple-600/20"
+                                    onClick={handleSaveRubrics}
+                                    disabled={saving}
+                                    className="px-10 py-5 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-purple-600/20 disabled:opacity-50"
                                 >
-                                    Save Rubrics
+                                    {saving ? 'Saving...' : 'Save Rubrics'}
                                 </button>
                             </div>
                         )}
