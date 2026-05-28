@@ -1399,24 +1399,35 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 event_title: s.event_title || s.eventName || 'Hackathon Event',
                 status: s.status || 'Pending',
             })),
-            ...(submissions || []).map((s: any) => ({
-                ...s,
-                _sourceType: s.source === 'stage_deliverable' ? 'stage' : 'regular',
-                teamName: s.teamName || s.team_name || s.user_name || s.name || 'Participant',
-                teamLead: s.teamLead || s.team_lead || s.user_name || s.name || 'N/A',
-                problemStatement: s.problemStatement || s.problem_statement || s.stage_name || s.stage_type || '',
-                pptLink: s.pptLink || s.ppt_link || '',
-                githubLink: s.githubLink || s.github_link || '',
-                assignedJudgeId: s.assignedJudgeId || s.assigned_judge_id || '',
-                totalScore: s.totalScore ?? s.total_score ?? 0,
-                project_title: s.source === 'stage_deliverable'
-                    ? (s.stage_name || s.stage_type || 'Stage Submission')
-                    : (s.project_title || s.title || s.team_name || 'Submission'),
-                team_name: s.team_name || s.user_name || s.name || 'Participant',
-                event_title: s.event_title || event?.title || s.stage_name || 'Event Submission',
-                problemStatement: s.problemStatement || s.problem_statement || s.stage_name || s.stage_type || '',
-                status: s.status || 'Pending',
-            })),
+            ...(submissions || []).map((s: any) => {
+                const isStage = s.source === 'stage_deliverable';
+                const data = s.data || {};
+                // For stage deliverables, the actual content is in the data field
+                const stageFileField = isStage ? Object.keys(data).find(k => typeof data[k] === 'string' && data[k].startsWith('data:')) : null;
+                const stageUrlField = isStage ? Object.keys(data).find(k => typeof data[k] === 'string' && (data[k].startsWith('http://') || data[k].startsWith('https://'))) : null;
+                const stageDesc = isStage ? (data.description || data.problem_statement || data.solution || '') : '';
+                return {
+                    ...s,
+                    _sourceType: isStage ? 'stage' : 'regular',
+                    teamName: s.teamName || s.team_name || s.user_name || s.name || 'Participant',
+                    teamLead: s.teamLead || s.team_lead || s.user_name || s.name || 'N/A',
+                    problemStatement: isStage
+                        ? (stageDesc || (stageUrlField ? data[stageUrlField] : '') || s.stage_name || '')
+                        : (s.problemStatement || s.problem_statement || s.stage_name || s.stage_type || ''),
+                    pptLink: isStage
+                        ? (stageFileField ? data[stageFileField] : stageUrlField ? data[stageUrlField] : '')
+                        : (s.pptLink || s.ppt_link || ''),
+                    githubLink: s.githubLink || s.github_link || '',
+                    assignedJudgeId: s.assignedJudgeId || s.assigned_judge_id || '',
+                    totalScore: s.totalScore ?? s.total_score ?? 0,
+                    project_title: isStage
+                        ? (s.stage_name || s.stage_type || 'Stage Submission')
+                        : (s.project_title || s.title || s.team_name || 'Submission'),
+                    team_name: s.team_name || s.user_name || s.name || 'Participant',
+                    event_title: s.event_title || event?.title || s.stage_name || 'Event Submission',
+                    status: s.status || 'Pending',
+                };
+            }),
         ];
         const allDomains = [...new Set(allSubmissions.map(s => s.domain).filter(Boolean))];
         const domains = ['All Domains', ...allDomains];
@@ -4054,8 +4065,42 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         
                         <div className="flex-1 p-8 space-y-8 overflow-y-auto max-h-[70vh]">
                             <div className="space-y-4">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Solution Summary</h4>
-                                <p className="text-sm font-medium text-slate-600 bg-slate-50 p-6 rounded-2xl border border-slate-100">{evaluatingSubmission.solution}</p>
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Submission Details</h4>
+                                <div className="text-sm font-medium text-slate-600 bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                                    {(() => {
+                                        const subData = evaluatingSubmission.data || {};
+                                        const desc = evaluatingSubmission.solution || subData.description || subData.problem_statement || '';
+                                        const fileField = Object.keys(subData).find(k => typeof subData[k] === 'string' && subData[k].startsWith('data:'));
+                                        const urlField = Object.keys(subData).find(k => typeof subData[k] === 'string' && (subData[k].startsWith('http://') || subData[k].startsWith('https://')));
+                                        return (
+                                            <>
+                                                {desc ? <p className="whitespace-pre-wrap mb-4">{desc}</p> : <p className="text-slate-400 italic">No description provided</p>}
+                                                {(fileField || urlField) && (
+                                                    <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-200">
+                                                        {fileField && (
+                                                            <button onClick={() => {
+                                                                const raw = subData[fileField];
+                                                                const mime = raw.startsWith('data:') ? raw.split(';')[0].split(':')[1] : '';
+                                                                const ext = mime.includes('pdf') ? '.pdf' : mime.includes('presentation') ? '.pptx' : mime.includes('image') ? '.png' : '.file';
+                                                                setPreviewAsset({ url: raw, filename: 'Asset' + ext });
+                                                            }}
+                                                                className="px-4 py-2 bg-amber-50 text-amber-700 rounded-xl text-[10px] font-black uppercase tracking-widest border border-amber-200 hover:bg-amber-100 cursor-pointer">
+                                                                <FileText size={12} className="inline mr-1.5" /> View File
+                                                            </button>
+                                                        )}
+                                                        {urlField && (
+                                                            <a href={subData[urlField].startsWith('http') ? subData[urlField] : `${API_BASE_URL}${subData[urlField]}`}
+                                                                target="_blank" rel="noreferrer"
+                                                                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all">
+                                                                <ExternalLink size={12} className="inline mr-1.5" /> Open Link
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
                             </div>
 
                             <div className="space-y-6">
