@@ -516,10 +516,10 @@ const DashboardHome: React.FC = () => {
                           )}
                           {ev.source === 'opportunity' && (
                             <span className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${ev.status === 'accepted' || ev.status === 'shortlisted'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : ev.status === 'rejected'
-                                  ? 'bg-red-50 text-red-700 border-red-200'
-                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : ev.status === 'rejected'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
                               }`}>
                               {ev.status}
                             </span>
@@ -559,13 +559,13 @@ const DashboardHome: React.FC = () => {
             {/* First half */}
             <div className="flex items-center gap-10 md:gap-20 pr-10 md:pr-20 flex-shrink-0">
               {[...Array(10)].map((_, i) => (
-                <img key={`first-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
+                <img key={`first-${i}`} src="/images/studlyf1.jpg" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
               ))}
             </div>
             {/* Second half (Duplicate for seamless loop) */}
             <div className="flex items-center gap-10 md:gap-20 pr-10 md:pr-20 flex-shrink-0">
               {[...Array(10)].map((_, i) => (
-                <img key={`second-${i}`} src="/images/studlyf.png" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
+                <img key={`second-${i}`} src="/images/studlyf1.jpg" alt="Studlyf" className="h-14 sm:h-16 md:h-20 w-auto object-contain hover:scale-105 transition-transform duration-300" />
               ))}
             </div>
           </div>

@@ -109,6 +109,16 @@ const Navigation: React.FC = () => {
   const { user, role, logout } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+
+  const courseRoutePrefixes = [
+    '/learn/course',
+    '/course-detail',
+    '/course-player',
+    '/cart',
+    '/learn/cart'
+  ];
+  const isCoursePage = courseRoutePrefixes.some(prefix => pathname.startsWith(prefix));
+
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeMobileOverlay, setActiveMobileOverlay] = useState<string | null>(null);
@@ -196,13 +206,15 @@ const Navigation: React.FC = () => {
             <div className="flex items-center lg:w-[250px] justify-end shrink-0 gap-6">
               {user ? (
                 <div className="flex items-center gap-5">
-                  <Link
-                    to="/learn/cart"
-                    className="relative p-2 hover:bg-white/10 rounded-lg transition-colors group"
-                    title="View Cart"
-                  >
-                    <ShoppingCart className="w-5 h-5 text-white" />
-                  </Link>
+                  {isCoursePage && (
+                    <Link
+                      to="/learn/cart"
+                      className="relative p-2 hover:bg-white/10 rounded-lg transition-colors group"
+                      title="View Cart"
+                    >
+                      <ShoppingCart className="w-5 h-5 text-white" />
+                    </Link>
+                  )}
 
                   {(role === 'admin' || role === 'super_admin') && (
                     <Link
