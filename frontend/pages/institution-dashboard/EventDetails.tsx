@@ -1763,7 +1763,19 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             <div className="space-y-2">
                                                 <p className="text-sm font-bold text-slate-800 line-clamp-2">{sub.problemStatement || sub.stage_name || sub.project_title || 'Submission'}</p>
                                                 <div className="flex items-center gap-3">
-                                                    <a href={sub.pptLink} target="_blank" className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100"><FileText size={12} /> PPT</a>
+                                                    {sub.pptLink ? (
+                                                        sub.pptLink.startsWith('data:') ? (
+                                                            <button onClick={() => setPreviewAsset({ url: sub.pptLink, filename: 'PPT' + (sub.pptLink.includes('pdf') ? '.pdf' : '.pptx') })}
+                                                                className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100 cursor-pointer">
+                                                                <FileText size={12} /> PPT
+                                                            </button>
+                                                        ) : (
+                                                            <a href={sub.pptLink.startsWith('http') ? sub.pptLink : `${API_BASE_URL}${sub.pptLink}`} target="_blank" rel="noreferrer"
+                                                                className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-amber-100">
+                                                                <FileText size={12} /> PPT
+                                                            </a>
+                                                        )
+                                                    ) : null}
                                                     {sub.githubLink && <a href={sub.githubLink} target="_blank" className="flex items-center gap-1.5 px-3 py-1 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-wider"><LinkIcon size={12} /> Git</a>}
                                                 </div>
                                             </div>

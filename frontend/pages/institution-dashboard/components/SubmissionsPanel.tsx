@@ -385,10 +385,22 @@ const SubmissionsPanel: React.FC<SubmissionsPanelProps> = ({ eventId, opportunit
                                     )}
                                     <div className="flex gap-3 flex-wrap">
                                         {evalSub.ppt_link && (
-                                            <a href={evalSub.ppt_link} target="_blank" rel="noreferrer"
-                                                className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all">
-                                                <ExternalLink size={12} /> View PPT
-                                            </a>
+                                            evalSub.ppt_link.startsWith('data:') ? (
+                                                <button onClick={() => {
+                                                    const mime = evalSub.ppt_link!.split(';')[0].split(':')[1] || '';
+                                                    const ext = mime.includes('pdf') ? '.pdf' : mime.includes('presentation') ? '.pptx' : '.file';
+                                                    setPreviewAsset({ url: evalSub.ppt_link!, filename: 'PPT' + ext });
+                                                }}
+                                                    className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all cursor-pointer">
+                                                    <ExternalLink size={12} /> View PPT
+                                                </button>
+                                            ) : (
+                                                <a href={evalSub.ppt_link.startsWith('http') ? evalSub.ppt_link : `${API_BASE_URL}${evalSub.ppt_link}`}
+                                                    target="_blank" rel="noreferrer"
+                                                    className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all">
+                                                    <ExternalLink size={12} /> View PPT
+                                                </a>
+                                            )
                                         )}
                                         {evalSub.deployed_link && (
                                             <a href={evalSub.deployed_link} target="_blank" rel="noreferrer"
