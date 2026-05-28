@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import useCourseProgress from '../hooks/useCourseProgress';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../AuthContext';
@@ -95,21 +96,22 @@ const CoursePlayer: React.FC = () => {
 
   // Persistent localStorage Progress State
   const resolvedCourseId = extractCourseId(courseId);
-  const progressKey = `studlyf_progress_${user?.uid || 'guest'}_${resolvedCourseId}`;
-  
-  const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem(progressKey);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const {
+    progressKey,
+    completedSteps,
+    setCompletedSteps,
+    isLessonLocked,
+    isModuleComplete,
+    getModuleProgressPercent,
+    markLessonComplete,
+    submitGradedQuiz,
+    updateModules,
+  } = useCourseProgress({ userId: user?.uid, courseId: resolvedCourseId });
 
-  // Whenever completedSteps changes, save to localStorage
+  // Keep modules reference up‑to‑date for lock calculations
   useEffect(() => {
-    localStorage.setItem(progressKey, JSON.stringify(completedSteps));
-  }, [completedSteps, progressKey]);
+    updateModules(modules);
+  }, [modules]);
 
   // Quizzes State
   const [practiceAnswers, setPracticeAnswers] = useState<Record<string, number>>({});
@@ -311,75 +313,34 @@ const CoursePlayer: React.FC = () => {
   /* ── Graded Quiz Submission ── */
   const handleQuizSubmit = async () => {
     const questions = activeTopicData?.graded || [];
-    
     let correct = 0;
     questions.forEach((q: any, i: number) => {
       const sel = quizAnswers[i] || [];
-      if (sel.includes(q.correct)) {
-        correct++;
-      }
+      if (sel.includes(q.correct)) correct++;
     });
-
     const score = Math.round((correct / Math.max(questions.length, 1)) * 100);
-    const passed = score >= 70; // 70% threshold
+    const passed = score >= 70;
 
     setQuizResult({ score, passed });
 
     if (passed) {
-      // Mark as complete in completedSteps
-      const stepKey = `${activeModuleIndex}_${activeLessonIndex}`;
-      const newCompleted = { ...completedSteps, [stepKey]: true };
-      setCompletedSteps(newCompleted);
-
-      // Save to database progress
-      const numLessons = modules[activeModuleIndex]?.lessons?.length || 6;
-      const completedIndices: string[] = [];
-      for (let i = 0; i < numLessons; i++) {
-        if (newCompleted[`${activeModuleIndex}_${i}`]) {
-          completedIndices.push(i.toString());
+      await submitGradedQuiz(activeModuleIndex, activeLessonIndex, score, true, quizAnswers);
+      // Show completion prompt if module fully completed
+      const curMod = modules[activeModuleIndex];
+      if (curMod) {
+        const numLessons = curMod.lessons?.length || 6;
+        const completedCount = Object.keys(completedSteps).filter(k => k.startsWith(`${activeModuleIndex}_`)).length;
+        if (completedCount === numLessons) {
+          setTimeout(() => {
+            setCompletionPrompt({
+              open: true,
+              nextIndex: activeModuleIndex + 1 < modules.length ? activeModuleIndex + 1 : -1,
+              moduleName: curMod.title,
+            });
+          }, 1200);
         }
       }
-
-      await updateProgress({
-        quiz_score: score,
-        quiz_answers: quizAnswers,
-        completed_lessons: completedIndices,
-        status: completedIndices.length === numLessons ? 'completed' : 'unlocked'
-      });
-
-      // Show module completion prompt if all lessons are complete
-      if (completedIndices.length === numLessons) {
-        setTimeout(() => {
-          setCompletionPrompt({
-            open: true,
-            nextIndex: activeModuleIndex + 1 < modules.length ? activeModuleIndex + 1 : -1,
-            moduleName: modules[activeModuleIndex].title
-          });
-        }, 1200);
-      }
     }
-  };
-
-  /* ── Sequential Topic Unlocking check ── */
-  const isLessonLocked = (modIdx: number, lessonIdx: number): boolean => {
-    if (modIdx === -3) {
-      return !completedSteps['capstone'];
-    }
-    if (modIdx === -1) {
-      return !modules.every((_, idx) => isModuleComplete(idx));
-    }
-    
-    // Chapter locking
-    if (modIdx > 0 && !isModuleComplete(modIdx - 1)) {
-      return true;
-    }
-    
-    // Linear topic unlocking
-    if (lessonIdx > 0) {
-      return !completedSteps[`${modIdx}_${lessonIdx - 1}`];
-    }
-    
-    return false;
   };
 
   /* ── Navigation ── */
@@ -418,68 +379,46 @@ const CoursePlayer: React.FC = () => {
   };
 
   const handleMarkComplete = async () => {
-    const stepKey = `${activeModuleIndex}_${activeLessonIndex}`;
-    const newCompleted = { ...completedSteps, [stepKey]: true };
-    setCompletedSteps(newCompleted);
+  // Mark current lesson as completed via hook
+  markLessonComplete(activeModuleIndex, activeLessonIndex);
 
-    const curMod = modules[activeModuleIndex];
-    if (curMod) {
-      const numLessons = curMod.lessons?.length || 6;
-      const completedIndices: string[] = [];
-      for (let i = 0; i < numLessons; i++) {
-        if (newCompleted[`${activeModuleIndex}_${i}`]) {
-          completedIndices.push(i.toString());
-        }
-      }
-      
-      const isFinishingModule = completedIndices.length === numLessons;
-      const updates: any = {
-        completed_lessons: completedIndices,
-        status: isFinishingModule ? 'completed' : 'unlocked'
-      };
-
-      if (activeStage === 'overview') updates.video_completed = true;
-      if (activeStage === 'text' || activeStage === 'theory') updates.theory_completed = true;
-
-      await updateProgress(updates);
-
-      if (isFinishingModule) {
-        setCompletionPrompt({
-          open: true,
-          nextIndex: activeModuleIndex + 1 < modules.length ? activeModuleIndex + 1 : -1,
-          moduleName: curMod.title
-        });
-        return;
+  // Sync with backend using existing updateProgress helper
+  const curMod = modules[activeModuleIndex];
+  if (curMod) {
+    const numLessons = curMod.lessons?.length || 6;
+    // Build list of completed lesson indices, ensuring current lesson is included
+    const completedIndices: string[] = [];
+    for (let i = 0; i < numLessons; i++) {
+      if (i === activeLessonIndex || completedSteps[`${activeModuleIndex}_${i}`]) {
+        completedIndices.push(i.toString());
       }
     }
-
-    if (currentFlatIndex < flatLessons.length - 1) {
-      goToNextLesson();
+    const isFinishingModule = completedIndices.length === numLessons;
+    const updates: any = {
+      completed_lessons: completedIndices,
+      status: isFinishingModule ? 'completed' : 'unlocked',
+    };
+    if (activeStage === 'overview') updates.video_completed = true;
+    if (activeStage === 'text' || activeStage === 'theory') updates.theory_completed = true;
+    await updateProgress(updates);
+    if (isFinishingModule) {
+      setCompletionPrompt({
+        open: true,
+        nextIndex: activeModuleIndex + 1 < modules.length ? activeModuleIndex + 1 : -1,
+        moduleName: curMod.title,
+      });
+      return;
     }
-  };
+  }
+  if (currentFlatIndex < flatLessons.length - 1) {
+    goToNextLesson();
+  }
+};
 
   const isLessonComplete = (modIdx: number, type: LessonType, lessonIdx: number): boolean => {
     if (modIdx === -1) return !!completedSteps['capstone'];
     if (modIdx === -3) return false;
     return !!completedSteps[`${modIdx}_${lessonIdx}`];
-  };
-
-  const isModuleComplete = (modIdx: number): boolean => {
-    if (modIdx < 0 || !modules[modIdx]) return false;
-    const lessons = modules[modIdx].lessons || [];
-    if (!lessons.length) return false;
-    return lessons.every((_, idx) => !!completedSteps[`${modIdx}_${idx}`]);
-  };
-
-  const getModuleProgressPercent = (modIdx: number): number => {
-    if (modIdx < 0 || !modules[modIdx]) return 0;
-    const lessons = modules[modIdx].lessons || [];
-    if (!lessons.length) return 0;
-    let completed = 0;
-    lessons.forEach((_, idx) => {
-      if (completedSteps[`${modIdx}_${idx}`]) completed++;
-    });
-    return Math.round((completed / lessons.length) * 100);
   };
 
   const isCurrentLessonComplete = isLessonComplete(activeModuleIndex, activeStage, activeLessonIndex);
