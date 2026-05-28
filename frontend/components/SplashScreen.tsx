@@ -4,6 +4,7 @@ type Props = {
   duration?: number;
   onFinish?: () => void;
   logoSrc?: string;
+  secondaryLogoSrc?: string;
   founderName?: string;
   founderImageSrc?: string;
 };
@@ -21,6 +22,7 @@ const SplashScreen: React.FC<Props> = ({
   duration = 7500,
   onFinish,
   logoSrc = '/images/studlyf.png',
+  secondaryLogoSrc = '/images/studlyf_secondary.png',
   founderName = 'Eshwar',
   founderImageSrc = '/images/Eshwar.jpg',
 }) => {
@@ -92,6 +94,14 @@ const SplashScreen: React.FC<Props> = ({
 
                         <div className="flex h-[calc(100%-52px)] items-center justify-center px-6 text-center">
                           <div className="max-w-[650px]">
+                            <div className="mx-auto mb-5 flex h-36 w-36 sm:h-40 sm:w-40 items-center justify-center rounded-full border border-white/12 bg-white/8 p-3 shadow-[0_14px_40px_rgba(0,0,0,0.28)] backdrop-blur-md">
+                              <img
+                                src={logoSrc}
+                                alt="Studlyf"
+                                className="h-full w-full rounded-full object-contain bg-white drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
+                              />
+                            </div>
+
                             <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/8 px-4 py-2 text-[11px] tracking-[0.35em] text-white/75 uppercase">
                               <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_20px_rgba(103,232,249,0.8)]" />
                               Explore the world
@@ -127,8 +137,8 @@ const SplashScreen: React.FC<Props> = ({
             <div className="mt-5 flex justify-center lg:justify-end">
               <div className="rounded-[30px] bg-white/12 backdrop-blur-md border border-white/10 px-6 py-5 shadow-[0_16px_50px_rgba(0,0,0,0.25)]">
                 <img
-                  src={logoSrc}
-                  alt="Studlyf logo"
+                  src={secondaryLogoSrc}
+                  alt="Studlyf secondary visual"
                   className="w-[290px] sm:w-[360px] lg:w-[430px] h-auto object-contain drop-shadow-[0_14px_35px_rgba(0,0,0,0.45)]"
                 />
               </div>
@@ -142,9 +152,8 @@ const SplashScreen: React.FC<Props> = ({
                 </div>
                 <div className="text-left lg:text-right">
                   <div className="text-2xl sm:text-3xl font-bold text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)]">{founderName}</div>
-                  <div className="mt-1 text-base sm:text-lg text-white/75">Founder & Visionary</div>
-                  <div className="mt-2 text-base sm:text-lg text-white/60 max-w-[340px]">
-                    Building a brighter space for exploring, learning, and achieving.
+                  <div className="mt-1 text-sm sm:text-base text-white/75 max-w-[520px] leading-relaxed">
+                    Student Innovation &amp; Community Ecosystems | AI, Emerging Tech &amp; Wellness Infrastructure | Strategy, Partnerships &amp; Execution | Mentor • Speaker (IIT Bombay, IIT Madras &amp; more) | Building STUDLYF &amp; Nirvaha Wellness
                   </div>
                 </div>
               </div>

@@ -1,13 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
+import html2canvas from 'html2canvas';
+import QRCode from 'qrcode';
 import { useAuth } from '../AuthContext';
 import { API_BASE_URL } from '../apiConfig';
 import { 
   User, FileText, Book, Award, Briefcase, 
   Terminal, Share2, Settings, ShieldCheck, 
   ChevronLeft, Plus, Save, Sparkles, Scan,
-  Globe, MapPin, Calendar, Heart, GraduationCap
+  Globe, MapPin, Calendar, Heart, GraduationCap, Download, Copy
 } from 'lucide-react';
 
 const MyProfile: React.FC = () => {
@@ -80,8 +82,74 @@ const MyProfile: React.FC = () => {
   const [newSkillInput, setNewSkillInput] = useState('');
   const [profileLoading, setProfileLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
+  const [lastToastSnapshot, setLastToastSnapshot] = useState<string | null>(null);
+  const [isGeneratingTemplate, setIsGeneratingTemplate] = useState(false);
+  const [shareQrDataUrl, setShareQrDataUrl] = useState<string | null>(null);
   const navigate = useNavigate();
+  const shareTemplateRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (saveStatus && saveStatus.message) setLastToastSnapshot(saveStatus.message);
+  }, [saveStatus]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const target = e.target as HTMLInputElement & HTMLSelectElement & HTMLTextAreaElement;
+    const name = target.name as string;
+    if (!name) return;
+    let value: any = target.value;
+    if (e.target instanceof HTMLInputElement && e.target.type === 'checkbox') {
+      value = e.target.checked;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const copyImageToClipboard = async (blob: Blob) => {
+    try {
+      if (!navigator.clipboard || typeof ClipboardItem === 'undefined') return false;
+      const item = new ClipboardItem({ 'image/png': blob });
+      await navigator.clipboard.write([item]);
+      return true;
+    } catch (e) {
+      console.warn('copyImageToClipboard failed', e);
+      return false;
+    }
+  };
+
+  const removeInterest = (tag: string) => {
+    setFormData(prev => ({
+      ...prev,
+      interests: prev.interests.filter(interest => interest !== tag),
+    }));
+  };
+
+  const copyImageImmediate = async () => {
+    if (isGeneratingTemplate) return;
+    setCopiedForPlatform(null);
+    setIsGeneratingTemplate(true);
+    try {
+      const { blob, dataUrl } = await generateProfileCardBlob();
+      const ok = await copyImageToClipboard(blob);
+      if (ok) {
+        setSaveStatus({ type: 'success', message: 'Image copied to clipboard — paste into the composer.' });
+      } else {
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = profileTemplateFileName;
+        link.click();
+        setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the post.' });
+      }
+    } catch (e) {
+      console.warn('copyImageImmediate failed', e);
+      setSaveStatus({ type: 'error', message: 'Unable to copy or download image.' });
+    } finally {
+      setTimeout(() => setSaveStatus(null), 3000);
+      setIsGeneratingTemplate(false);
+    }
+  };
 
   const calculateStrength = () => {
     let score = 0;
@@ -93,7 +161,7 @@ const MyProfile: React.FC = () => {
     if (formData.certifications.length > 0) score += 10;
     if (formData.experience.company || formData.experienceList.length > 0) score += 10;
     if (formData.projects.length > 0) score += 10;
-    if (formData.linkedin || formData.github) score += 10;
+    if (formData.linkedin) score += 10;
     if (formData.resume.fileName && formData.resume.fileName !== 'No resume uploaded') score += 10;
 
     return score;
@@ -190,10 +258,11 @@ const MyProfile: React.FC = () => {
           ...newSkills.filter(ns => !prev.skills.some(es => es.name.toLowerCase() === ns.name.toLowerCase()))
         ]
       }));
-    } catch (err: any) {
+    } catch (err) {
       clearInterval(progressInterval);
       setUploadProgress(0);
-      alert(`Upload failed: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Upload failed: ${errorMessage}`);
     } finally {
       setIsUploading(false);
     }
@@ -204,11 +273,6 @@ const MyProfile: React.FC = () => {
     if (!resumeInputRef.current?.files?.[0] && formData.resume.fileName === 'No resume uploaded') {
       alert('Please upload a resume first.');
       return;
-    }
-    setIsExtracting(true);
-    await new Promise(r => setTimeout(r, 600));
-    setIsExtracting(false);
-    if (resumeParseResult?.skills?.length) {
       alert(`Extraction complete! Found ${resumeParseResult.skills.length} skills already loaded.`);
     } else {
       alert('No new skills found. Please re-upload your resume.');
@@ -229,34 +293,6 @@ const MyProfile: React.FC = () => {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    if (name.includes('.')) {
-      const [parent, child] = name.split('.');
-      setFormData(prev => ({
-        ...prev,
-        [parent]: {
-          ...(prev[parent as keyof typeof prev] as any),
-          [child]: value
-        }
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
-  };
-
-  const removeInterest = (interest: string) => {
-    setFormData(prev => ({
-      ...prev,
-      interests: prev.interests.filter(i => i !== interest)
-    }));
-  };
-
-  const toggleStatus = (field: 'isCurrentStudent' | 'isCurrentEmployee') => {
-    setFormData(prev => ({ ...prev, [field]: !prev[field] }));
-  };
-
-  // ─── REAL: Load full profile from backend on mount ───
   useEffect(() => {
     if (!user?.user_id) {
       setProfileLoading(false);
@@ -264,16 +300,14 @@ const MyProfile: React.FC = () => {
     }
 
     const loadProfile = async () => {
-      setProfileLoading(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/user/${user.user_id}/profile`);
+        const res = await fetch(`${API_BASE_URL}/api/user/${user.user_id}`);
         if (res.ok) {
           const data = await res.json();
           setFormData(prev => ({
             ...prev,
-            firstName: data.firstName || prev.firstName,
-            lastName: data.lastName || prev.lastName,
-            username: data.username || prev.username,
+            firstName: data.full_name ? data.full_name.split(' ')[0] : prev.firstName,
+            lastName: data.full_name ? data.full_name.split(' ').slice(1).join(' ') : prev.lastName,
             phone: data.phone || prev.phone,
             gender: data.gender || prev.gender,
             dob: data.dob || prev.dob,
@@ -306,7 +340,6 @@ const MyProfile: React.FC = () => {
             isCurrentEmployee: data.isCurrentEmployee ?? prev.isCurrentEmployee,
           }));
         } else {
-          // Fallback: seed name from auth context
           const names = user.full_name?.split(' ') || [];
           setFormData(prev => ({
             ...prev,
@@ -359,8 +392,9 @@ const MyProfile: React.FC = () => {
 
       setSaveStatus({ type: 'success', message: `${section} saved successfully!` });
       setTimeout(() => setSaveStatus(null), 3000);
-    } catch (err: any) {
-      setSaveStatus({ type: 'error', message: err.message || 'Failed to save. Please try again.' });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save. Please try again.';
+      setSaveStatus({ type: 'error', message: errorMessage });
       setTimeout(() => setSaveStatus(null), 4000);
     } finally {
       setIsSaving(false);
@@ -381,8 +415,9 @@ const MyProfile: React.FC = () => {
         setSaveStatus({ type: 'success', message: 'Deleted successfully!' });
         setTimeout(() => setSaveStatus(null), 2000);
       }
-    } catch (err: any) {
-      setSaveStatus({ type: 'error', message: 'Delete failed: ' + err.message });
+    } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setSaveStatus({ type: 'error', message: 'Delete failed: ' + errorMessage });
       setTimeout(() => setSaveStatus(null), 3000);
     }
   };
@@ -391,14 +426,974 @@ const MyProfile: React.FC = () => {
   const profileDisplayName = [formData.firstName, formData.lastName].filter(Boolean).join(' ') || user?.full_name || 'Your Profile';
   const profileRole = formData.userType || user?.role || 'Contributor';
   const profileHeadline = formData.bio || formData.careerGoal || 'A polished contributor profile for modern learning and hiring workflows.';
-  const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
-    ? `${window.location.origin}/profile/${user.user_id}`
-    : '';
+  const profileInitials = [formData.firstName, formData.lastName]
+    .filter(Boolean)
+    .map(part => part.trim().charAt(0).toUpperCase())
+    .join('')
+    .slice(0, 2) || 'SL';
+  const toAvatarDataUri = (svg: string) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  const createAvatarDataUri = (theme: {
+    backgroundA: string;
+    backgroundB: string;
+    skin: string;
+    hair: string;
+    shirt: string;
+    accent: string;
+    accessory: 'none' | 'glasses' | 'headphones' | 'cap' | 'hairclip' | 'hood';
+    eyes: 'round' | 'spark' | 'focused' | 'smile';
+    mouth: 'smile' | 'calm' | 'grin';
+  }) => {
+    const accessorySvg = {
+      none: '',
+      glasses: `
+        <g stroke="#111827" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="154" y="198" width="74" height="46" rx="18" />
+          <rect x="284" y="198" width="74" height="46" rx="18" />
+          <path d="M228 219h56" />
+        </g>`,
+      headphones: `
+        <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M160 242c0-60 42-100 96-100s96 40 96 100" stroke="#111827" stroke-width="20" />
+          <rect x="122" y="232" width="42" height="88" rx="18" fill="#111827" />
+          <rect x="348" y="232" width="42" height="88" rx="18" fill="#111827" />
+          <rect x="132" y="250" width="22" height="52" rx="11" fill="${theme.accent}" />
+          <rect x="358" y="250" width="22" height="52" rx="11" fill="${theme.accent}" />
+        </g>`,
+      cap: `
+        <g>
+          <path d="M140 182c10-62 66-102 116-102s106 40 116 102c-38-18-73-26-116-26s-78 8-116 26Z" fill="#111827" />
+          <path d="M138 184c38-18 75-28 118-28s80 10 120 30" fill="none" stroke="${theme.accent}" stroke-width="12" stroke-linecap="round" />
+        </g>`,
+      hairclip: `
+        <circle cx="352" cy="165" r="16" fill="${theme.accent}" />
+        <circle cx="368" cy="182" r="12" fill="#ffffff" />`,
+      hood: `
+        <path d="M124 314c18-78 78-126 132-126s114 48 132 126c-28 30-66 48-132 48s-104-18-132-48Z" fill="${theme.accent}" opacity="0.95" />
+        <path d="M166 312c14-40 50-72 90-72s76 32 90 72" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="10" stroke-linecap="round" />`,
+    }[theme.accessory];
+
+    const eyeSvg = {
+      round: `<circle cx="188" cy="230" r="11" fill="#111827" /><circle cx="324" cy="230" r="11" fill="#111827" />`,
+      spark: `<path d="M188 219l6 10 11 3-11 3-6 10-6-10-11-3 11-3 6-10Zm136 0 6 10 11 3-11 3-6 10-6-10-11-3 11-3 6-10Z" fill="#111827" />`,
+      focused: `<path d="M173 230h30M309 230h30" stroke="#111827" stroke-width="10" stroke-linecap="round" />`,
+      smile: `<path d="M174 225c10 16 28 24 42 24s32-8 42-24M310 225c10 16 28 24 42 24s32-8 42-24" fill="none" stroke="#111827" stroke-width="9" stroke-linecap="round" />`,
+    }[theme.eyes];
+
+    const mouthSvg = {
+      smile: `<path d="M214 306c16 18 40 28 42 28s26-10 42-28" fill="none" stroke="#111827" stroke-width="10" stroke-linecap="round" />`,
+      calm: `<path d="M218 310h76" stroke="#111827" stroke-width="10" stroke-linecap="round" />`,
+      grin: `<path d="M208 302c16 10 30 16 48 16s32-6 48-16" fill="none" stroke="#111827" stroke-width="12" stroke-linecap="round" />`,
+    }[theme.mouth];
+
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+        <defs>
+          <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="${theme.backgroundA}" />
+            <stop offset="100%" stop-color="${theme.backgroundB}" />
+          </linearGradient>
+          <radialGradient id="glow" cx="50%" cy="26%" r="76%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.36" />
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="512" height="512" rx="128" fill="url(#bg)" />
+        <circle cx="170" cy="148" r="132" fill="url(#glow)" />
+        <circle cx="346" cy="352" r="118" fill="#ffffff" opacity="0.12" />
+        <ellipse cx="256" cy="346" rx="126" ry="92" fill="${theme.shirt}" opacity="0.98" />
+        <path d="M182 292c12-58 42-92 74-108 32 16 62 50 74 108 4 20 1 37-8 52-13 22-34 32-66 32s-53-10-66-32c-9-15-12-32-8-52Z" fill="${theme.skin}" />
+        <path d="M176 240c0-54 38-92 80-92s80 38 80 92c0 7-1 14-2 20-9-14-25-27-46-36-20-9-43-13-64-13s-44 4-64 13c-21 9-37 22-46 36-1-6-2-13-2-20Z" fill="${theme.hair}" />
+        <path d="M188 186c18-22 42-32 68-32s50 10 68 32" fill="none" stroke="#111827" stroke-opacity="0.04" stroke-width="10" stroke-linecap="round" />
+        <ellipse cx="220" cy="284" rx="14" ry="18" fill="#ffffff" opacity="0.14" />
+        <ellipse cx="292" cy="284" rx="14" ry="18" fill="#ffffff" opacity="0.14" />
+        <ellipse cx="206" cy="286" rx="7" ry="6" fill="#ffffff" opacity="0.18" />
+        <ellipse cx="306" cy="286" rx="7" ry="6" fill="#ffffff" opacity="0.18" />
+        ${eyeSvg}
+        ${mouthSvg}
+        <path d="M200 262c10 8 24 12 56 12s46-4 56-12" fill="none" stroke="#111827" stroke-width="6" stroke-linecap="round" opacity="0.12" />
+        <circle cx="214" cy="262" r="8" fill="#fda4af" opacity="0.55" />
+        <circle cx="298" cy="262" r="8" fill="#fda4af" opacity="0.55" />
+        ${accessorySvg}
+        <path d="M196 350c18 10 36 14 60 14s42-4 60-14" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="10" stroke-linecap="round" />
+        <rect x="170" y="392" width="172" height="18" rx="9" fill="#ffffff" opacity="0.18" />
+      </svg>`;
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  };
+  const avatarCatalog = useMemo(() => {
+    const palettes = [
+      { backgroundA: '#7C3AED', backgroundB: '#06B6D4', accent: '#F59E0B' },
+      { backgroundA: '#111827', backgroundB: '#4F46E5', accent: '#22C55E' },
+      { backgroundA: '#EA580C', backgroundB: '#F59E0B', accent: '#FFFFFF' },
+      { backgroundA: '#0F766E', backgroundB: '#14B8A6', accent: '#E0F2FE' },
+      { backgroundA: '#BE185D', backgroundB: '#F43F5E', accent: '#FDE68A' },
+      { backgroundA: '#2563EB', backgroundB: '#0F172A', accent: '#A7F3D0' },
+    ];
+    const monogramFrames = [
+      (accent: string) => `<circle cx="256" cy="256" r="178" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="16" /><circle cx="256" cy="256" r="132" fill="#ffffff" opacity="0.12" /><path d="M132 166c32-40 74-64 124-64s92 24 124 64" fill="none" stroke="${accent}" stroke-width="14" stroke-linecap="round" />`,
+      (accent: string) => `<rect x="92" y="92" width="328" height="328" rx="92" fill="#ffffff" opacity="0.10" /><path d="M152 152h208v208H152z" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="12" /><circle cx="356" cy="156" r="18" fill="${accent}" />`,
+      (accent: string) => `<path d="M104 304l164-172 140 172-140 120z" fill="#ffffff" opacity="0.10" /><circle cx="176" cy="156" r="24" fill="${accent}" opacity="0.85" /><circle cx="334" cy="362" r="30" fill="#ffffff" opacity="0.16" />`,
+      (accent: string) => `<path d="M120 136h272v240H120z" fill="#ffffff" opacity="0.08" /><path d="M156 376h200" stroke="${accent}" stroke-width="16" stroke-linecap="round" /><path d="M156 136v240" stroke="#ffffff" stroke-opacity="0.14" stroke-width="10" />`,
+    ];
+    const emojiSet = ['😀', '😎', '🤩', '🥳', '🫶', '🎧', '🌈', '🚀', '💡', '📱', '🧠', '🔥'];
+    const animeAccessories = ['headphones', 'glasses', 'hairclip', 'cap', 'hood', 'none'] as const;
+    const animeEyes = ['spark', 'focused', 'round', 'smile'] as const;
+    const animeMouths = ['smile', 'calm', 'grin'] as const;
+    const animeBases = [
+      { backgroundA: '#7C3AED', backgroundB: '#06B6D4', skin: '#F5D0C5', hair: '#1F2937', shirt: '#FDE68A', accent: '#F59E0B' },
+      { backgroundA: '#111827', backgroundB: '#4F46E5', skin: '#E7C7B7', hair: '#0F172A', shirt: '#CBD5E1', accent: '#22C55E' },
+      { backgroundA: '#EA580C', backgroundB: '#F59E0B', skin: '#F8D5C2', hair: '#8B5CF6', shirt: '#F9A8D4', accent: '#FFFFFF' },
+      { backgroundA: '#0F766E', backgroundB: '#14B8A6', skin: '#E7BEA8', hair: '#14532D', shirt: '#BFDBFE', accent: '#E0F2FE' },
+      { backgroundA: '#BE185D', backgroundB: '#F43F5E', skin: '#F2C9B2', hair: '#7C2D12', shirt: '#FDE68A', accent: '#FFF7ED' },
+      { backgroundA: '#0F172A', backgroundB: '#2563EB', skin: '#EBC4B5', hair: '#111827', shirt: '#93C5FD', accent: '#A7F3D0' },
+    ];
+
+    const buildMonogramAvatar = (index: number, palette: { backgroundA: string; backgroundB: string; accent: string }) => {
+      const frame = monogramFrames[index % monogramFrames.length](palette.accent);
+      return toAvatarDataUri(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+          <defs>
+            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="${palette.backgroundA}" />
+              <stop offset="100%" stop-color="${palette.backgroundB}" />
+            </linearGradient>
+          </defs>
+          <rect width="512" height="512" rx="132" fill="url(#bg)" />
+          <circle cx="162" cy="142" r="96" fill="#ffffff" opacity="0.12" />
+          <circle cx="360" cy="350" r="108" fill="#ffffff" opacity="0.10" />
+          ${frame}
+          <text x="256" y="280" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="136" font-weight="900" fill="#ffffff" letter-spacing="2">${profileInitials}</text>
+        </svg>`);
+    };
+
+    const buildEmojiAvatar = (emoji: string, label: string, palette: { backgroundA: string; backgroundB: string; accent: string }) => {
+      return toAvatarDataUri(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+          <defs>
+            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="${palette.backgroundA}" />
+              <stop offset="100%" stop-color="${palette.backgroundB}" />
+            </linearGradient>
+          </defs>
+          <rect width="512" height="512" rx="132" fill="url(#bg)" />
+          <circle cx="168" cy="160" r="108" fill="#ffffff" opacity="0.14" />
+          <circle cx="344" cy="352" r="118" fill="#ffffff" opacity="0.12" />
+          <circle cx="256" cy="256" r="152" fill="#111827" opacity="0.12" />
+          <text x="256" y="286" text-anchor="middle" font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif" font-size="150">${emoji}</text>
+          <rect x="144" y="368" width="224" height="16" rx="8" fill="${palette.accent}" opacity="0.92" />
+        </svg>`);
+    };
+
+    const monogramOptions = Array.from({ length: 24 }, (_, index) => ({
+      label: `Monogram ${index + 1}`,
+      category: 'monogram' as const,
+      url: buildMonogramAvatar(index, palettes[index % palettes.length]),
+    }));
+
+    const emojiOptions = Array.from({ length: emojiSet.length }, (_, index) => {
+      const emoji = emojiSet[index % emojiSet.length];
+      return {
+        label: `Emoji ${index + 1}`,
+        category: 'emoji' as const,
+        url: buildEmojiAvatar(emoji, `Mood ${index + 1}`, palettes[(index + 1) % palettes.length]),
+      };
+    });
+
+    const animeOptions = Array.from({ length: 36 }, (_, index) => {
+      const base = animeBases[index % animeBases.length];
+      const accessory = animeAccessories[index % animeAccessories.length];
+      const eyes = animeEyes[index % animeEyes.length];
+      const mouth = animeMouths[index % animeMouths.length];
+      return {
+        label: `Anime ${index + 1}`,
+        category: 'anime' as const,
+        url: createAvatarDataUri({ ...base, accessory, eyes, mouth }),
+      };
+    });
+
+    const uniqueOptions = [...monogramOptions, ...emojiOptions, ...animeOptions].filter((option, index, items) => {
+      return index === items.findIndex(candidate => candidate.url === option.url);
+    });
+
+    return uniqueOptions;
+  }, [profileInitials]);
+  const avatarSections = useMemo(() => {
+    const sectionOrder: Array<{ key: 'monogram' | 'emoji' | 'anime'; label: string }> = [
+      { key: 'monogram', label: 'Monogram' },
+      { key: 'emoji', label: 'Emoji' },
+      { key: 'anime', label: 'Anime' },
+    ];
+
+    return sectionOrder
+      .map(section => ({
+        ...section,
+        items: avatarCatalog.filter(option => option.category === section.key),
+      }))
+      .filter(section => section.items.length > 0);
+  }, [avatarCatalog]);
+ const APP_BASE_URL = (import.meta as any).env?.VITE_PUBLIC_URL || window.location.origin;
+const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
+  ? `${APP_BASE_URL}/profile/${user.user_id}`
+  : '';
+
+  const profileShareCaption = `${profileDisplayName} | Studlyf\n${profileRole}\n${profileHeadline}`;
+  const whatsappShareText = [
+    '*STUDLYF Community*',
+    'AI • Tech • Wellness • Execution',
+    '_Student Innovation & Community Ecosystem_',
+    '',
+    `*${profileDisplayName}*`,
+    profileRole,
+    profileHeadline,
+    '',
+    publicProfileUrl,
+  ].join('\n');
+
+  const profileTemplateFileName = `${profileDisplayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'studlyf-profile'}-template.png`;
+
+  const captureProfileTemplate = async () => {
+    if (!shareTemplateRef.current) {
+      throw new Error('Profile template is not ready yet.');
+    }
+    // Safer approach: build a simplified clone of the template, strip all classes
+    // and complex styles, append it visibly offscreen, capture it, then remove.
+    const original = shareTemplateRef.current;
+    const clone = original.cloneNode(true) as HTMLElement;
+
+    // Remove class names and inline styles from clone elements to avoid complex CSS
+    const nodes = [clone, ...Array.from(clone.querySelectorAll('*'))] as HTMLElement[];
+    for (const n of nodes) {
+      try {
+        n.className = '';
+        n.id = '';
+        // preserve text content but reset styles
+        n.style.cssText = 'box-sizing:border-box; color:#111827; background:transparent;';
+      } catch (e) {}
+    }
+
+    // Wrap clone in a container with explicit clean styles
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.left = '50%';
+    container.style.top = '50%';
+    container.style.transform = 'translate(-50%, -50%)';
+    container.style.zIndex = '99999';
+    container.style.background = '#ffffff';
+    container.style.padding = '24px';
+    container.style.borderRadius = '24px';
+    container.style.boxShadow = '0 10px 30px rgba(0,0,0,0.08)';
+    container.style.maxWidth = '1080px';
+    container.style.visibility = 'visible';
+    container.appendChild(clone);
+
+    document.body.appendChild(container);
+    try {
+      const canvas = await html2canvas(container, { backgroundColor: null, scale: 2, useCORS: true });
+      return canvas;
+    } finally {
+      try { document.body.removeChild(container); } catch (e) {}
+    }
+  };
+  const generateProfileCardBlob = async (): Promise<{ blob: Blob; dataUrl: string }> => {
+  const container = document.createElement('div');
+  container.style.width = '900px';
+  container.style.margin = '0';
+  container.style.padding = '0';
+  container.style.boxSizing = 'border-box';
+  container.style.background = '#0f0f13';
+  container.style.fontFamily = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+  container.style.position = 'fixed';
+  container.style.left = '-99999px';
+  container.style.top = '0';
+
+  const card = document.createElement('div');
+  card.style.width = '900px';
+  card.style.minHeight = '1100px';
+  card.style.boxSizing = 'border-box';
+  card.style.background = '#0f0f13';
+  card.style.position = 'relative';
+  card.style.overflow = 'hidden';
+
+  const blob1 = document.createElement('div');
+  blob1.style.cssText = `position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,#7C3AED55,transparent 70%);top:-100px;left:-100px;pointer-events:none;`;
+  const blob2 = document.createElement('div');
+  blob2.style.cssText = `position:absolute;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,#06b6d455,transparent 70%);bottom:-80px;right:-80px;pointer-events:none;`;
+  const blob3 = document.createElement('div');
+  blob3.style.cssText = `position:absolute;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,#f59e0b33,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;`;
+  card.appendChild(blob1);
+  card.appendChild(blob2);
+  card.appendChild(blob3);
+
+  const accentBar = document.createElement('div');
+  accentBar.style.cssText = `height:5px;background:linear-gradient(90deg,#7C3AED,#06b6d4,#f59e0b);width:100%;`;
+  card.appendChild(accentBar);
+
+  const brandStrip = document.createElement('div');
+  brandStrip.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:20px 56px 0;position:relative;z-index:2;`;
+  const brandLeft = document.createElement('div');
+  brandLeft.style.cssText = `display:flex;align-items:center;gap:14px;`;
+  const brandLogoWrap = document.createElement('div');
+  brandLogoWrap.style.cssText = `width:140px;height:48px;padding:8px 12px;border-radius:16px;background:#ffffff;border:1px solid #e5e7eb;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(0,0,0,0.08);`;
+  const brandLogo = document.createElement('img');
+  brandLogo.src = '/images/studlyf_secondary.png';
+  brandLogo.alt = 'Studlyf';
+  brandLogo.style.cssText = `width:100%;height:100%;object-fit:contain;`;
+  brandLogo.crossOrigin = 'anonymous';
+  brandLogoWrap.appendChild(brandLogo);
+  const brandCopy = document.createElement('div');
+  brandCopy.style.cssText = `display:flex;flex-direction:column;gap:3px;`;
+  const brandEyebrow = document.createElement('div');
+  brandEyebrow.style.cssText = `font-size:10px;font-weight:900;color:#06b6d4;text-transform:uppercase;letter-spacing:0.24em;`;
+  brandEyebrow.innerText = 'Profile Template';
+  const brandTitle = document.createElement('div');
+  brandTitle.style.cssText = `font-size:14px;font-weight:800;color:#ffffff;line-height:1.2;`;
+  brandTitle.innerText = 'Share-ready public profile';
+  brandCopy.appendChild(brandEyebrow);
+  brandCopy.appendChild(brandTitle);
+  brandLeft.appendChild(brandLogoWrap);
+  brandLeft.appendChild(brandCopy);
+  brandStrip.appendChild(brandLeft);
+  card.appendChild(brandStrip);
+
+  const header = document.createElement('div');
+  header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:28px 56px 32px;position:relative;z-index:2;`;
+
+  const headerLeft = document.createElement('div');
+  headerLeft.style.cssText = `display:flex;align-items:center;gap:28px;`;
+
+  const photoRing = document.createElement('div');
+  photoRing.style.cssText = `width:110px;height:110px;border-radius:28px;padding:3px;background:linear-gradient(135deg,#7C3AED,#06b6d4);flex-shrink:0;box-shadow:0 0 40px #7C3AED55;`;
+  const photoInner = document.createElement('div');
+  photoInner.style.cssText = `width:100%;height:100%;border-radius:25px;overflow:hidden;background:#1a1a2e;`;
+  if (formData.profilePhoto) {
+    const img = document.createElement('img');
+    img.src = formData.profilePhoto;
+    img.style.cssText = `width:100%;height:100%;object-fit:cover;`;
+    img.crossOrigin = 'anonymous';
+    photoInner.appendChild(img);
+  } else {
+    photoInner.style.cssText += `display:flex;align-items:center;justify-content:center;`;
+    const userIcon = document.createElement('div');
+    userIcon.style.cssText = `width:54px;height:54px;border-radius:50%;border:3px solid #7C3AED;color:#7C3AED;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;`;
+    userIcon.innerText = '◎';
+    photoInner.appendChild(userIcon);
+  }
+  photoRing.appendChild(photoInner);
+
+  headerLeft.appendChild(photoRing);
+
+  const scoreCircle = document.createElement('div');
+  scoreCircle.style.cssText = `width:100px;height:100px;border-radius:50%;background:conic-gradient(#7C3AED ${profileCompletion * 3.6}deg, #ffffff11 0deg);display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px #7C3AED44;flex-shrink:0;`;
+  const scoreInner = document.createElement('div');
+  scoreInner.style.cssText = `width:80px;height:80px;border-radius:50%;background:#0f0f13;display:flex;flex-direction:column;align-items:center;justify-content:center;`;
+  const scoreNum = document.createElement('div');
+  scoreNum.style.cssText = `font-size:22px;font-weight:900;color:#fff;line-height:1;`;
+  scoreNum.innerText = `${profileCompletion}%`;
+  const scoreLabel = document.createElement('div');
+  scoreLabel.style.cssText = `font-size:8px;font-weight:800;color:#7C3AED;text-transform:uppercase;letter-spacing:0.1em;margin-top:2px;`;
+  scoreLabel.innerText = 'Score';
+  scoreInner.appendChild(scoreNum);
+  scoreInner.appendChild(scoreLabel);
+  scoreCircle.appendChild(scoreInner);
+
+  header.appendChild(headerLeft);
+  header.appendChild(scoreCircle);
+  card.appendChild(header);
+
+  if (formData.bio || formData.careerGoal) {
+    const bioWrap = document.createElement('div');
+    bioWrap.style.cssText = `margin:0 56px 32px;padding:20px 24px;background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;position:relative;z-index:2;border-left:3px solid #7C3AED;`;
+    const bioText = document.createElement('div');
+    bioText.style.cssText = `font-size:13px;color:#cbd5e1;line-height:1.7;font-weight:500;`;
+    bioText.innerText = formData.bio || formData.careerGoal;
+    bioWrap.appendChild(bioText);
+    card.appendChild(bioWrap);
+  }
+
+  const statsRow = document.createElement('div');
+  statsRow.style.cssText = `display:flex;gap:16px;padding:0 56px 36px;position:relative;z-index:2;`;
+  const stats = [
+    { label: 'Skills', value: formData.skills.length, color: '#7C3AED' },
+    { label: 'Projects', value: formData.projects.length, color: '#06b6d4' },
+    { label: 'Experience', value: formData.experienceList.length, color: '#f59e0b' },
+    { label: 'Certificates', value: formData.certifications.length, color: '#10b981' },
+  ];
+  stats.forEach(stat => {
+    const s = document.createElement('div');
+    s.style.cssText = `flex:1;background:#ffffff08;border:1px solid #ffffff11;border-radius:18px;padding:18px 16px;text-align:center;border-top:2px solid ${stat.color};`;
+    const sv = document.createElement('div');
+    sv.style.cssText = `font-size:30px;font-weight:900;color:#fff;line-height:1;`;
+    sv.innerText = String(stat.value);
+    const sl = document.createElement('div');
+    sl.style.cssText = `font-size:9px;font-weight:800;color:${stat.color};text-transform:uppercase;letter-spacing:0.15em;margin-top:6px;`;
+    sl.innerText = stat.label;
+    s.appendChild(sv);
+    s.appendChild(sl);
+    statsRow.appendChild(s);
+  });
+  card.appendChild(statsRow);
+
+  const footer = document.createElement('div');
+  footer.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:20px 56px 32px;position:relative;z-index:2;border-top:1px solid #ffffff11;`;
+  const footerBrand = document.createElement('div');
+  footerBrand.style.cssText = `font-size:11px;font-weight:900;color:#7C3AED;letter-spacing:0.1em;text-transform:uppercase;`;
+  footerBrand.innerText = 'Studlyf';
+  footer.appendChild(footerBrand);
+  card.appendChild(footer);
+
+  const bottomBar = document.createElement('div');
+  bottomBar.style.cssText = `height:5px;background:linear-gradient(90deg,#f59e0b,#7C3AED,#06b6d4);width:100%;`;
+  card.appendChild(bottomBar);
+
+  container.appendChild(card);
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      backgroundColor: '#0f0f13',
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+    });
+    const dataUrl = canvas.toDataURL('image/png');
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Blob generation failed')), 'image/png');
+    });
+    return { blob, dataUrl };
+  } finally {
+    try { document.body.removeChild(container); } catch (e) {}
+  }
+};
+  const downloadProfileTemplate = async () => {
+    if (!publicProfileUrl) return;
+    setIsGeneratingTemplate(true);
+
+    try {
+      const { blob } = await generateProfileCardBlob();
+      const link = document.createElement('a');
+      link.download = profileTemplateFileName;
+      link.href = URL.createObjectURL(blob);
+      link.click();
+      setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
+      setTimeout(() => setSaveStatus(null), 4500);
+    } catch (err) {
+      const errorMessage = (err as Error)?.message || 'Unable to download.';
+      setSaveStatus({ type: 'error', message: errorMessage });
+      setTimeout(() => setSaveStatus(null), 3000);
+    } finally {
+      setIsGeneratingTemplate(false);
+    }
+
+    return;
+
+    try {
+      const canvas = await (async () => {
+        const container = document.createElement('div');
+        container.style.width = '900px';
+        container.style.margin = '0';
+        container.style.padding = '0';
+        container.style.boxSizing = 'border-box';
+        container.style.background = '#0f0f13';
+        container.style.fontFamily = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+        container.style.position = 'fixed';
+        container.style.left = '-99999px';
+        container.style.top = '0';
+
+        const card = document.createElement('div');
+        card.style.width = '900px';
+        card.style.minHeight = '1100px';
+        card.style.boxSizing = 'border-box';
+        card.style.background = '#0f0f13';
+        card.style.position = 'relative';
+        card.style.overflow = 'hidden';
+
+        // ── Background blobs ──
+        const blob1 = document.createElement('div');
+        blob1.style.cssText = `position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,#7C3AED55,transparent 70%);top:-100px;left:-100px;pointer-events:none;`;
+        const blob2 = document.createElement('div');
+        blob2.style.cssText = `position:absolute;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,#06b6d455,transparent 70%);bottom:-80px;right:-80px;pointer-events:none;`;
+        const blob3 = document.createElement('div');
+        blob3.style.cssText = `position:absolute;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,#f59e0b33,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;`;
+        card.appendChild(blob1);
+        card.appendChild(blob2);
+        card.appendChild(blob3);
+
+        // ── Top accent bar ──
+        const accentBar = document.createElement('div');
+        accentBar.style.cssText = `height:5px;background:linear-gradient(90deg,#7C3AED,#06b6d4,#f59e0b);width:100%;`;
+        card.appendChild(accentBar);
+
+        // ── Header section ──
+        const header = document.createElement('div');
+        header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:48px 56px 32px;position:relative;z-index:2;`;
+
+        // Left: photo only
+        const headerLeft = document.createElement('div');
+        headerLeft.style.cssText = `display:flex;align-items:center;gap:28px;`;
+
+        // Photo
+        const photoRing = document.createElement('div');
+        photoRing.style.cssText = `width:110px;height:110px;border-radius:28px;padding:3px;background:linear-gradient(135deg,#7C3AED,#06b6d4);flex-shrink:0;box-shadow:0 0 40px #7C3AED55;`;
+        const photoInner = document.createElement('div');
+        photoInner.style.cssText = `width:100%;height:100%;border-radius:25px;overflow:hidden;background:#1a1a2e;`;
+        if (formData.profilePhoto) {
+          const img = document.createElement('img');
+          img.src = formData.profilePhoto;
+          img.style.cssText = `width:100%;height:100%;object-fit:cover;`;
+          img.crossOrigin = 'anonymous';
+          photoInner.appendChild(img);
+        } else {
+          photoInner.style.cssText += `display:flex;align-items:center;justify-content:center;`;
+          const userIcon = document.createElement('div');
+          userIcon.style.cssText = `width:54px;height:54px;border-radius:50%;border:3px solid #7C3AED;color:#7C3AED;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;`;
+          userIcon.innerText = '◎';
+          photoInner.appendChild(userIcon);
+        }
+        photoRing.appendChild(photoInner);
+
+        headerLeft.appendChild(photoRing);
+
+        // Right: score circle
+        const scoreCircle = document.createElement('div');
+        scoreCircle.style.cssText = `width:100px;height:100px;border-radius:50%;background:conic-gradient(#7C3AED ${profileCompletion * 3.6}deg, #ffffff11 0deg);display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px #7C3AED44;flex-shrink:0;`;
+        const scoreInner = document.createElement('div');
+        scoreInner.style.cssText = `width:80px;height:80px;border-radius:50%;background:#0f0f13;display:flex;flex-direction:column;align-items:center;justify-content:center;`;
+        const scoreNum = document.createElement('div');
+        scoreNum.style.cssText = `font-size:22px;font-weight:900;color:#fff;line-height:1;`;
+        scoreNum.innerText = `${profileCompletion}%`;
+        const scoreLabel = document.createElement('div');
+        scoreLabel.style.cssText = `font-size:8px;font-weight:800;color:#7C3AED;text-transform:uppercase;letter-spacing:0.1em;margin-top:2px;`;
+        scoreLabel.innerText = 'Score';
+        scoreInner.appendChild(scoreNum);
+        scoreInner.appendChild(scoreLabel);
+        scoreCircle.appendChild(scoreInner);
+
+        header.appendChild(headerLeft);
+        header.appendChild(scoreCircle);
+        card.appendChild(header);
+
+        // ── Bio ──
+        if (formData.bio || formData.careerGoal) {
+          const bioWrap = document.createElement('div');
+          bioWrap.style.cssText = `margin:0 56px 32px;padding:20px 24px;background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;position:relative;z-index:2;border-left:3px solid #7C3AED;`;
+          const bioText = document.createElement('div');
+          bioText.style.cssText = `font-size:13px;color:#cbd5e1;line-height:1.7;font-weight:500;`;
+          bioText.innerText = formData.bio || formData.careerGoal;
+          bioWrap.appendChild(bioText);
+          card.appendChild(bioWrap);
+        }
+
+        // ── Stats row ──
+        const statsRow = document.createElement('div');
+        statsRow.style.cssText = `display:flex;gap:16px;padding:0 56px 36px;position:relative;z-index:2;`;
+        const stats = [
+          { label: 'Skills', value: formData.skills.length, color: '#7C3AED' },
+          { label: 'Projects', value: formData.projects.length, color: '#06b6d4' },
+          { label: 'Experience', value: formData.experienceList.length, color: '#f59e0b' },
+          { label: 'Certificates', value: formData.certifications.length, color: '#10b981' },
+        ];
+        stats.forEach(stat => {
+          const s = document.createElement('div');
+          s.style.cssText = `flex:1;background:#ffffff08;border:1px solid #ffffff11;border-radius:18px;padding:18px 16px;text-align:center;border-top:2px solid ${stat.color};`;
+          const sv = document.createElement('div');
+          sv.style.cssText = `font-size:30px;font-weight:900;color:#fff;line-height:1;`;
+          sv.innerText = String(stat.value);
+          const sl = document.createElement('div');
+          sl.style.cssText = `font-size:9px;font-weight:800;color:${stat.color};text-transform:uppercase;letter-spacing:0.15em;margin-top:6px;`;
+          sl.innerText = stat.label;
+          s.appendChild(sv);
+          s.appendChild(sl);
+          statsRow.appendChild(s);
+        });
+        card.appendChild(statsRow);
+
+        const qrDataUrl = await QRCode.toDataURL(publicProfileUrl, {
+          margin: 1,
+          width: 180,
+          color: {
+            dark: '#0f0f13',
+            light: '#ffffff',
+          },
+        });
+
+        const qrSection = document.createElement('div');
+        qrSection.style.cssText = `margin:0 56px 28px;padding:18px 20px;background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;display:flex;align-items:center;justify-content:space-between;gap:20px;position:relative;z-index:2;`;
+
+        const qrTextWrap = document.createElement('div');
+        qrTextWrap.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
+        const qrLabel = document.createElement('div');
+        qrLabel.style.cssText = `font-size:10px;font-weight:900;color:#06b6d4;text-transform:uppercase;letter-spacing:0.2em;`;
+        qrLabel.innerText = 'Scan to open profile';
+        const qrTitle = document.createElement('div');
+        qrTitle.style.cssText = `font-size:15px;font-weight:800;color:#ffffff;line-height:1.4;`;
+        qrTitle.innerText = 'Open the public profile instantly from this card.';
+        const qrLink = document.createElement('div');
+        qrLink.style.cssText = `font-size:11px;color:#cbd5e1;word-break:break-all;line-height:1.5;`;
+        qrLink.innerText = publicProfileUrl;
+        qrTextWrap.appendChild(qrLabel);
+        qrTextWrap.appendChild(qrTitle);
+        qrTextWrap.appendChild(qrLink);
+
+        const qrImageWrap = document.createElement('div');
+        qrImageWrap.style.cssText = `width:132px;height:132px;padding:10px;border-radius:18px;background:#ffffff;flex-shrink:0;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 25px rgba(0,0,0,0.2);`;
+        const qrImage = document.createElement('img');
+        qrImage.src = qrDataUrl;
+        qrImage.alt = 'Public profile QR code';
+        qrImage.style.cssText = `width:100%;height:100%;object-fit:contain;`;
+        qrImage.crossOrigin = 'anonymous';
+        qrImageWrap.appendChild(qrImage);
+
+        qrSection.appendChild(qrTextWrap);
+        qrSection.appendChild(qrImageWrap);
+        card.appendChild(qrSection);
+
+        // ── Two column body ──
+        const body = document.createElement('div');
+        body.style.cssText = `display:flex;gap:20px;padding:0 56px 40px;position:relative;z-index:2;`;
+
+        const leftCol = document.createElement('div');
+        leftCol.style.cssText = `flex:1.4;display:flex;flex-direction:column;gap:20px;`;
+
+        const rightCol = document.createElement('div');
+        rightCol.style.cssText = `flex:1;display:flex;flex-direction:column;gap:20px;`;
+
+        const makeSection = (title: string, color: string, items: string[], icon: string) => {
+          if (!items.length) return null;
+          const sec = document.createElement('div');
+          sec.style.cssText = `background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;padding:20px 22px;`;
+          const titleRow = document.createElement('div');
+          titleRow.style.cssText = `display:flex;align-items:center;gap:8px;margin-bottom:14px;`;
+          const iconEl = document.createElement('div');
+          iconEl.style.cssText = `width:24px;height:24px;border-radius:8px;background:${color}22;display:flex;align-items:center;justify-content:center;font-size:12px;`;
+          iconEl.innerText = icon;
+          const titleEl = document.createElement('div');
+          titleEl.style.cssText = `font-size:10px;font-weight:900;color:${color};text-transform:uppercase;letter-spacing:0.2em;`;
+          titleEl.innerText = title;
+          titleRow.appendChild(iconEl);
+          titleRow.appendChild(titleEl);
+          sec.appendChild(titleRow);
+          items.forEach((item, idx) => {
+            const row = document.createElement('div');
+            row.style.cssText = `display:flex;align-items:flex-start;gap:10px;padding:8px 0;${idx < items.length - 1 ? 'border-bottom:1px solid #ffffff08;' : ''}`;
+            const dot = document.createElement('div');
+            dot.style.cssText = `width:5px;height:5px;border-radius:50%;background:${color};margin-top:6px;flex-shrink:0;`;
+            const text = document.createElement('div');
+            text.style.cssText = `font-size:12px;color:#e2e8f0;font-weight:500;line-height:1.5;`;
+            text.innerText = item;
+            row.appendChild(dot);
+            row.appendChild(text);
+            sec.appendChild(row);
+          });
+          return sec;
+        };
+
+        // Skills chips section
+        if (formData.skills.length > 0) {
+          const skillsSec = document.createElement('div');
+          skillsSec.style.cssText = `background:#ffffff08;border:1px solid #ffffff11;border-radius:20px;padding:20px 22px;`;
+          const skillTitle = document.createElement('div');
+          skillTitle.style.cssText = `font-size:10px;font-weight:900;color:#7C3AED;text-transform:uppercase;letter-spacing:0.2em;margin-bottom:14px;display:flex;align-items:center;gap:8px;`;
+          skillTitle.innerText = '⚡ Skills & Expertise';
+          skillsSec.appendChild(skillTitle);
+          const chipsWrap = document.createElement('div');
+          chipsWrap.style.cssText = `display:flex;flex-wrap:wrap;gap:8px;`;
+          formData.skills.slice(0, 14).forEach((sk: any) => {
+            const chip = document.createElement('div');
+            const name = typeof sk === 'string' ? sk : sk.name;
+            chip.style.cssText = `padding:5px 12px;border-radius:20px;background:#7C3AED22;border:1px solid #7C3AED44;font-size:11px;font-weight:700;color:#a78bfa;`;
+            chip.innerText = name;
+            chipsWrap.appendChild(chip);
+          });
+          skillsSec.appendChild(chipsWrap);
+          leftCol.appendChild(skillsSec);
+        }
+
+        // Education
+        const eduItems = formData.educationList.slice(0,3).map((e: any) =>
+          `${e.degree || ''} ${e.specialization ? '· ' + e.specialization : ''}\n${e.institution || ''} ${e.startYear ? '(' + e.startYear + '–' + (e.endYear || 'Present') + ')' : ''}`.trim()
+        );
+        if (!eduItems.length && formData.education?.institution) {
+          eduItems.push(`${formData.education.degree || ''} · ${formData.education.institution}`);
+        }
+        const eduSec = makeSection('Education', '#06b6d4', eduItems, '🎓');
+        if (eduSec) leftCol.appendChild(eduSec);
+
+        // Experience
+        const expItems = formData.experienceList.slice(0,3).map((e: any) =>
+          `${e.role || ''} @ ${e.company || ''} · ${e.type || ''}${e.location ? ' · ' + e.location : ''}`
+        );
+        const expSec = makeSection('Experience', '#f59e0b', expItems, '💼');
+        if (expSec) leftCol.appendChild(expSec);
+
+        // Projects
+        const projItems = formData.projects.slice(0,4).map((p: any) => p.title || '');
+        const projSec = makeSection('Projects', '#10b981', projItems, '🚀');
+        if (projSec) rightCol.appendChild(projSec);
+
+        // Certifications
+        const certItems = formData.certifications.slice(0,4).map((c: any) =>
+          `${c.name || ''}${c.issuer ? ' · ' + c.issuer : ''}`
+        );
+        const certSec = makeSection('Certifications', '#f43f5e', certItems, '🏆');
+        if (certSec) rightCol.appendChild(certSec);
+
+        // Achievements
+        const achItems = formData.achievements.slice(0,4).map((a: any) =>
+          `${a.title || ''}${a.organization ? ' · ' + a.organization : ''}`
+        );
+        const achSec = makeSection('Achievements', '#8b5cf6', achItems, '⭐');
+        if (achSec) rightCol.appendChild(achSec);
+
+        // Contact / links
+        const links: string[] = [];
+        if (formData.linkedin) links.push(`🔗 LinkedIn: ${formData.linkedin}`);
+        if (formData.portfolio) links.push(`🌐 Portfolio: ${formData.portfolio}`);
+        const linkSec = makeSection('Links', '#06b6d4', links, '🔗');
+        if (linkSec) rightCol.appendChild(linkSec);
+
+        if (leftCol.children.length) body.appendChild(leftCol);
+        if (rightCol.children.length) body.appendChild(rightCol);
+        card.appendChild(body);
+
+        // ── Footer ──
+        const footer = document.createElement('div');
+        footer.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:20px 56px 32px;position:relative;z-index:2;border-top:1px solid #ffffff11;`;
+        const footerBrand = document.createElement('div');
+        footerBrand.style.cssText = `font-size:11px;font-weight:900;color:#7C3AED;letter-spacing:0.1em;text-transform:uppercase;`;
+        footerBrand.innerText = 'Studlyf';
+        footer.appendChild(footerBrand);
+        card.appendChild(footer);
+
+        // ── Bottom accent bar ──
+        const bottomBar = document.createElement('div');
+        bottomBar.style.cssText = `height:5px;background:linear-gradient(90deg,#f59e0b,#7C3AED,#06b6d4);width:100%;`;
+        card.appendChild(bottomBar);
+
+        container.appendChild(card);
+        document.body.appendChild(container);
+        try {
+          const c = await html2canvas(container, {
+            backgroundColor: '#0f0f13',
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+          });
+          return c;
+        } finally {
+          try { document.body.removeChild(container); } catch (e) {}
+        }
+      })();
+
+      const link = document.createElement('a');
+      link.download = profileTemplateFileName;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
+      setTimeout(() => setSaveStatus(null), 2500);
+    } catch (err) {
+      const errorMessage = (err as Error)?.message || 'Unable to download.';
+      setSaveStatus({ type: 'error', message: errorMessage });
+      setTimeout(() => setSaveStatus(null), 3000);
+    } finally {
+      setIsGeneratingTemplate(false);
+    }
+  };
+  
+  const shareToSocial = async (platform: 'linkedin' | 'whatsapp') => {
+  if (!publicProfileUrl) return;
+  if (platform !== 'whatsapp') {
+    setCopiedForPlatform(null);
+  }
+  setIsGeneratingTemplate(true);
+  setSaveStatus({ type: 'success', message: 'Generating profile card...' });
+
+  // Build share URLs pieces
+  try {
+    // For LinkedIn we need the public HTML preview URL so the scraper can generate a preview.
+    if (platform === 'linkedin') {
+      try {
+        await navigator.clipboard.writeText(publicProfileUrl);
+        setSaveStatus({ type: 'success', message: 'Profile URL copied — paste it into LinkedIn.' });
+      } catch (e) {
+        console.warn('Failed to copy profile URL for LinkedIn:', e);
+      }
+      const linkedinParams = new URLSearchParams({
+        startTask: 'CERTIFICATION_NAME',
+        organizationName: 'STUDLYF Community',
+        certUrl: publicProfileUrl,
+        name: `${profileDisplayName} | Studlyf`,
+      });
+      const linkedinUrl = `https://www.linkedin.com/profile/add?${linkedinParams.toString()}`;
+      const w = window.open(linkedinUrl, '_blank');
+      try { w?.focus(); } catch {}
+      setSaveStatus({ type: 'success', message: 'Opening LinkedIn add-to-profile page.' });
+      setTimeout(() => setSaveStatus(null), 3000);
+      return;
+    }
+
+    // Non-LinkedIn platforms: open immediately and then prepare/upload/copy image so user can paste/attach.
+    const tBase = encodeURIComponent(whatsappShareText);
+
+    // Special handling for WhatsApp: try native share (mobile), then clipboard copy, then download fallback.
+    if (platform === 'whatsapp') {
+      const { blob, dataUrl } = await generateProfileCardBlob();
+      const imageFile = new File([blob], profileTemplateFileName, { type: 'image/png' });
+      const whatsappUrl = `https://api.whatsapp.com/send?text=${tBase}`;
+
+      // Always make the PNG available locally so the user can attach/share it from the device.
+      try {
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = profileTemplateFileName;
+        link.click();
+      } catch (e) {
+        console.warn('WhatsApp profile image download failed', e);
+      }
+
+      // Use the platform share sheet with the generated image file whenever the browser supports it.
+      try {
+        if ((navigator as any).share && (navigator as any).canShare && (navigator as any).canShare({ files: [imageFile] })) {
+          await (navigator as any).share({ files: [imageFile], text: whatsappShareText });
+          setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
+          setTimeout(() => setSaveStatus(null), 3000);
+          return;
+        }
+      } catch (e) {
+        console.warn('Native share for WhatsApp failed', e);
+      }
+
+      // Try to copy image to clipboard so user can paste into WhatsApp Web
+      const copied = await copyImageToClipboard(blob).catch(() => false);
+      if (copied) {
+        setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
+        setCopiedForPlatform('whatsapp');
+      } else {
+        setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
+      }
+
+      setCopiedForPlatform(null);
+      const openedWindow = window.open(whatsappUrl, '_blank');
+      try { openedWindow?.focus(); } catch {}
+      setTimeout(() => setSaveStatus(null), 5000);
+      return;
+    }
+
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${tBase}`;
+    const platformWindow = window.open(whatsappUrl, '_blank');
+
+    const { blob, dataUrl } = await generateProfileCardBlob();
+    const imageFile = new File([blob], profileTemplateFileName, { type: 'image/png' });
+
+    // Upload generated image (non-blocking for the user since platform tab is already open)
+    let uploadedPreview: string | null = null;
+    try {
+      const publicBase = (window as any).PUBLIC_BASE || null;
+      const form = new FormData();
+      form.append('file', imageFile);
+      if (publicBase) form.append('public_base', publicBase);
+      const upl = await fetch(`${API_BASE_URL}/api/utils/upload-temp-image`, { method: 'POST', body: form });
+      if (upl.ok) {
+        const json = await upl.json();
+        if (json?.url) {
+          uploadedPreview = json.url;
+          // also copy the hosted URL so user can paste easily
+          try { await navigator.clipboard.writeText(json.url); setSaveStatus({ type: 'success', message: 'Image URL copied — paste it in the post.' }); } catch {}
+
+          // auto-download small URL files for convenience
+          try {
+            const preview = json.url;
+            const urlFileContent = `[InternetShortcut]\nURL=${preview}\n`;
+            const urlBlob = new Blob([urlFileContent], { type: 'text/plain' });
+            const urlLink = document.createElement('a');
+            urlLink.href = URL.createObjectURL(urlBlob);
+            urlLink.download = `profile-preview.url`;
+            urlLink.click();
+
+            const htmlContent = `<html><head><meta http-equiv=\"refresh\" content=\"0;url=${preview}\"/></head><body>If not redirected <a href=\"${preview}\">Open preview</a></body></html>`;
+            const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+            const htmlLink = document.createElement('a');
+            htmlLink.href = URL.createObjectURL(htmlBlob);
+            htmlLink.download = `profile-preview.html`;
+            htmlLink.click();
+          } catch (e) {
+            console.warn('Failed to auto-download preview URL file', e);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Image upload for social share failed:', e);
+    }
+
+    // Try to copy the image itself to the clipboard (some desktop browsers support this in secure contexts)
+    try {
+      const clipboardItem = new ClipboardItem({ 'image/png': blob });
+      await navigator.clipboard.write([clipboardItem]);
+      setSaveStatus({ type: 'success', message: 'Image copied — paste (Ctrl+V) into the opened post.' });
+    } catch {
+      // fallback: if we have an uploaded preview, download URL files; else download the image
+      if (uploadedPreview) {
+        try {
+          const urlFileContent = `[InternetShortcut]\nURL=${uploadedPreview}\n`;
+          const urlBlob = new Blob([urlFileContent], { type: 'text/plain' });
+          const urlLink = document.createElement('a');
+          urlLink.href = URL.createObjectURL(urlBlob);
+          urlLink.download = `profile-preview.url`;
+          urlLink.click();
+
+          const htmlContent = `<html><head><meta http-equiv=\"refresh\" content=\"0;url=${uploadedPreview}\"/></head><body>If not redirected <a href=\"${uploadedPreview}\">Open preview</a></body></html>`;
+          const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+          const htmlLink = document.createElement('a');
+          htmlLink.href = URL.createObjectURL(htmlBlob);
+          htmlLink.download = `profile-preview.html`;
+          htmlLink.click();
+
+          setSaveStatus({ type: 'success', message: 'Preview URL file downloaded — open it to visit the public preview.' });
+        } catch (e) {
+          const link = document.createElement('a');
+          link.download = profileTemplateFileName;
+          link.href = dataUrl;
+          link.click();
+          setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
+        }
+      } else {
+        const link = document.createElement('a');
+        link.download = profileTemplateFileName;
+        link.href = dataUrl;
+        link.click();
+        setSaveStatus({ type: 'success', message: '🎉 Profile downloaded successfully! 🥳 Your profile is ready to shine.' });
+      }
+    }
+
+    setTimeout(() => setSaveStatus(null), 5000);
+    try { platformWindow?.focus(); } catch {}
+    return;
+  } catch (err) {
+    console.warn('Share flow error:', err);
+    const errorMessage = err instanceof Error ? err.message : 'Share failed.';
+    setSaveStatus({ type: 'error', message: errorMessage });
+    setTimeout(() => setSaveStatus(null), 3000);
+  } finally {
+    setIsGeneratingTemplate(false);
+  }
+  };
 
   const copyProfileLink = async () => {
     if (!publicProfileUrl) return;
     try {
-      await navigator.clipboard.writeText(publicProfileUrl);
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(publicProfileUrl);
+      } else {
+        // Fallback for HTTP / non-secure contexts
+        const textArea = document.createElement('textarea');
+        textArea.value = publicProfileUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
       setSaveStatus({ type: 'success', message: 'Profile link copied to clipboard.' });
       setTimeout(() => setSaveStatus(null), 2500);
     } catch {
@@ -407,26 +1402,55 @@ const MyProfile: React.FC = () => {
     }
   };
 
-  const shareProfile = async () => {
-    if (!publicProfileUrl) return;
-    const shareData = {
-      title: `${profileDisplayName} | Studlyf Profile`,
-      text: `View ${profileDisplayName}'s public profile on Studlyf.`,
-      url: publicProfileUrl,
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [copiedForPlatform, setCopiedForPlatform] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!showShareModal || !publicProfileUrl) {
+      setShareQrDataUrl(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    const loadShareQr = async () => {
+      try {
+        const qrDataUrl = await QRCode.toDataURL(publicProfileUrl, {
+          margin: 1,
+          width: 180,
+          color: {
+            dark: '#111827',
+            light: '#ffffff',
+          },
+        });
+
+        if (active) {
+          setShareQrDataUrl(qrDataUrl);
+        }
+      } catch (error) {
+        console.warn('Failed to generate share QR', error);
+        if (active) {
+          setShareQrDataUrl(null);
+        }
+      }
     };
 
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
-        await navigator.clipboard.writeText(publicProfileUrl);
-        setSaveStatus({ type: 'success', message: 'Share link copied to clipboard.' });
-        setTimeout(() => setSaveStatus(null), 2500);
-      }
-    } catch {
-      setSaveStatus({ type: 'error', message: 'Sharing was cancelled or unavailable.' });
-      setTimeout(() => setSaveStatus(null), 2500);
-    }
+    void loadShareQr();
+
+    return () => {
+      active = false;
+    };
+  }, [publicProfileUrl, showShareModal]);
+ 
+
+  const shareProfile = async () => {
+    if (!publicProfileUrl) return;
+    setCopiedForPlatform(null);
+    setShowShareModal(true);
+    setSaveStatus({ type: 'success', message: 'Choose a social template to share.' });
+    setTimeout(() => setSaveStatus(null), 2000);
   };
 
   const activityTimeline = [
@@ -482,28 +1506,73 @@ const MyProfile: React.FC = () => {
             {/* Form Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                {/* Profile Photo */}
-               <div className="md:col-span-2 flex items-center gap-8 bg-gray-50/50 p-8 rounded-3xl border border-gray-100 border-dashed">
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10"
-                  >
-                    <div className="w-full h-full flex items-center justify-center bg-white">
-                      <User className="w-12 h-12 text-gray-200" />
+               <div className="md:col-span-2 space-y-6 bg-gray-50/50 p-8 rounded-3xl border border-gray-100 border-dashed">
+                  <div className="flex flex-col lg:flex-row lg:items-center gap-8">
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10 shrink-0"
+                    >
+                      {formData.profilePhoto ? (
+                        <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-white">
+                          <User className="w-12 h-12 text-gray-200" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-black uppercase tracking-widest text-center px-4">
+                        Update Photo
+                      </div>
                     </div>
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-black uppercase tracking-widest text-center px-4">
-                      Update Photo
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="image/*" 
+                      onChange={handlePhotoUpload} 
+                    />
+                    <div className="space-y-3 min-w-0">
+                      <h4 className="font-bold text-gray-900 uppercase text-xs tracking-widest">Profile Photo / Avatar</h4>
+                      <p className="text-[10px] font-medium text-gray-400 max-w-xl">Upload a custom photo or choose one of the preset avatars below for a cleaner profile identity.</p>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="rounded-full bg-[#7C3AED] px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-sm hover:bg-[#6D28D9] transition-all"
+                      >
+                        Upload Photo
+                      </button>
                     </div>
                   </div>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    accept="image/*" 
-                    onChange={handlePhotoUpload} 
-                  />
-                  <div className="space-y-1">
-                    <h4 className="font-bold text-gray-900 uppercase text-xs tracking-widest">Profile Photo</h4>
-                    <p className="text-[10px] font-medium text-gray-400 max-w-[200px]">PNG or JPG up to 5MB. Face should be clearly visible.</p>
+                  <div>
+                    <div className="flex items-center justify-between gap-4 mb-4">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Choose Avatar</div>
+                        <div className="text-sm font-bold text-gray-900">{avatarCatalog.length} unique preset avatars</div>
+                      </div>
+                    </div>
+                    <div className="max-h-[22rem] overflow-y-auto pr-2 space-y-6">
+                      {avatarSections.map(section => (
+                        <div key={section.key} className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <h5 className="text-[10px] font-black uppercase tracking-[0.24em] text-gray-500">{section.label}</h5>
+                          </div>
+                          <div className="grid grid-flow-col grid-rows-2 auto-cols-[6rem] gap-2.5 overflow-x-auto pb-2">
+                            {section.items.map(option => {
+                              const isSelected = formData.profilePhoto === option.url;
+                              return (
+                                <button
+                                  key={`${section.key}-${option.label}`}
+                                  type="button"
+                                  onClick={() => setFormData(prev => ({ ...prev, profilePhoto: option.url }))}
+                                  className={`group rounded-2xl border p-0 overflow-hidden transition-all w-[6rem] aspect-square ${isSelected ? 'border-[#7C3AED] bg-white shadow-md' : 'border-gray-200 bg-white/60 hover:border-[#7C3AED]/30'}`}
+                                >
+                                  <img src={option.url} alt={option.label} className="w-full h-full object-cover scale-125" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                </div>
 
@@ -1558,10 +2627,7 @@ const MyProfile: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                {[
                  { id: 'linkedin', label: 'LinkedIn', icon: Share2, color: '#0077B5', placeholder: 'linkedin.com/in/...' },
-                 { id: 'github', label: 'GitHub', icon: Terminal, color: '#181717', placeholder: 'github.com/...' },
-                 { id: 'twitter', label: 'Twitter / X', icon: Globe, color: '#000000', placeholder: 'twitter.com/...' },
                  { id: 'portfolio', label: 'Portfolio', icon: Globe, color: '#7C3AED', placeholder: 'yourwebsite.com' },
-                 { id: 'leetcode', label: 'LeetCode', icon: Book, color: '#FFA116', placeholder: 'leetcode.com/u/...' },
                  { id: 'hackerrank', label: 'HackerRank', icon: Book, color: '#2EC866', placeholder: 'hackerrank.com/profile/...' },
                ].map(social => (
                  <div key={social.label} className="space-y-3 group">
@@ -1694,8 +2760,9 @@ const MyProfile: React.FC = () => {
                   </div>
                   <div className="rounded-2xl border border-white/70 bg-white px-4 py-3 text-sm font-medium text-gray-700 break-all shadow-sm">{publicProfileUrl || 'Save your profile to generate a public link.'}</div>
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <button onClick={copyProfileLink} disabled={!publicProfileUrl} className="flex-1 px-5 py-3 rounded-2xl bg-white border border-gray-200 text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy Profile Link</button>
-                    <button onClick={shareProfile} disabled={!publicProfileUrl} className="flex-1 px-5 py-3 rounded-2xl bg-[#7C3AED] text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share Profile</button>
+                    <button type="button" onClick={copyProfileLink} disabled={!publicProfileUrl} className="flex-1 px-5 py-3 rounded-2xl bg-white border border-gray-200 text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50 cursor-pointer touch-manipulation">Copy Profile Link</button>
+                    <button type="button" onClick={downloadProfileTemplate} disabled={!publicProfileUrl || isGeneratingTemplate} className="flex-1 px-5 py-3 rounded-2xl bg-white border border-gray-200 text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50 cursor-pointer touch-manipulation">Download Template</button>
+                    <button type="button" onClick={shareProfile} disabled={!publicProfileUrl || isGeneratingTemplate} className="flex-1 px-5 py-3 rounded-2xl bg-[#7C3AED] text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#6D28D9] transition-all disabled:opacity-50 cursor-pointer touch-manipulation">Share Template</button>
                   </div>
                </div>
 
@@ -1780,10 +2847,11 @@ const MyProfile: React.FC = () => {
       <AnimatePresence>
         {saveStatus && (
           <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-8 py-4 rounded-2xl text-white text-sm font-bold shadow-2xl flex items-center gap-3 backdrop-blur-md
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className={`fixed top-6 left-1/2 -translate-x-1/2 z-[70] px-8 py-4 rounded-2xl text-white text-sm font-bold shadow-2xl flex items-center gap-3 backdrop-blur-md pointer-events-none
               ${saveStatus.type === 'success' ? 'bg-emerald-500/90' : 'bg-red-500/90'}`}
           >
             <span>{saveStatus.type === 'success' ? '✓' : '✗'}</span>
@@ -1791,6 +2859,13 @@ const MyProfile: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Persistent debug banner for automated verification */}
+      {lastToastSnapshot && (
+        <div id="debug-last-toast" className="fixed top-6 right-6 z-60 px-4 py-3 rounded-lg bg-black text-white text-sm font-bold shadow-lg">
+          {lastToastSnapshot}
+        </div>
+      )}
 
       {/* ── Loading Overlay ── */}
       {profileLoading && (
@@ -1821,7 +2896,7 @@ const MyProfile: React.FC = () => {
           className="relative overflow-hidden rounded-[3rem] border border-gray-100 bg-white p-8 sm:p-10 shadow-[0_20px_60px_rgba(15,23,42,0.06)]"
         >
           <div className="absolute inset-0 bg-gradient-to-br from-[#7C3AED]/6 via-transparent to-[#06B6D4]/8 pointer-events-none" />
-          <div className="relative flex flex-col lg:flex-row gap-8 lg:items-center">
+          <div className="relative flex flex-col gap-8">
             <div className="flex items-start gap-5 flex-1">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-[2rem] overflow-hidden border border-white shadow-xl bg-gray-50 ring-4 ring-[#7C3AED]/10 flex items-center justify-center shrink-0">
                 {formData.profilePhoto ? <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" /> : <User className="w-10 h-10 text-gray-300" />}
@@ -1842,7 +2917,7 @@ const MyProfile: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 w-full lg:w-[280px]">
+            <div className="grid grid-cols-2 gap-3 w-full">
               <div className="rounded-3xl border border-gray-100 bg-gray-50/80 p-4">
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Profile Completion</div>
                 <div className="mt-3 text-3xl font-black text-gray-900">{profileCompletion}%</div>
@@ -1855,12 +2930,62 @@ const MyProfile: React.FC = () => {
                 <div className="mt-3 text-sm font-bold text-gray-900 break-all">{publicProfileUrl || 'Ready after save'}</div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button onClick={copyProfileLink} disabled={!publicProfileUrl} className="rounded-full border border-gray-200 bg-white px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Copy</button>
-                  <button onClick={shareProfile} disabled={!publicProfileUrl} className="rounded-full bg-[#7C3AED] px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-white hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share</button>
+                  <button onClick={downloadProfileTemplate} disabled={!publicProfileUrl || isGeneratingTemplate} className="rounded-full border border-gray-200 bg-white px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-gray-900 hover:border-[#7C3AED]/30 transition-all disabled:opacity-50">Download</button>
+                  <button onClick={shareProfile} disabled={!publicProfileUrl || isGeneratingTemplate} className="rounded-full bg-[#7C3AED] px-3 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-white hover:bg-[#6D28D9] transition-all disabled:opacity-50">Share</button>
                 </div>
               </div>
             </div>
           </div>
         </motion.div>
+
+        {showShareModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black">Share Profile</h3>
+                <button onClick={() => setShowShareModal(false)} className="text-gray-400">Close</button>
+              </div>
+              {/* Share description removed as requested */}
+              {/* Share Flow panel removed as requested */}
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button onClick={() => shareToSocial('linkedin')} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase disabled:opacity-50">LinkedIn</button>
+                <button onClick={() => shareToSocial('whatsapp')} disabled={isGeneratingTemplate} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase disabled:opacity-50">WhatsApp</button>
+              </div>
+              {shareQrDataUrl && (
+                <div className="mt-4 rounded-3xl border border-gray-100 bg-gray-50 p-4 text-center">
+                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-gray-400">Scan QR for profile</div>
+                  <div className="mt-3 inline-flex rounded-2xl bg-white p-3 shadow-sm ring-1 ring-gray-100">
+                    <img src={shareQrDataUrl} alt="Profile QR code" className="h-40 w-40 object-contain" />
+                  </div>
+                  <p className="mt-3 text-xs font-medium text-gray-500">Scan to open the public profile instantly.</p>
+                </div>
+              )}
+              <div className="mt-2 text-xs text-gray-500">Tip: Use the download button to save the profile image, then attach it where needed.</div>
+              <div className="mt-4 flex gap-3">
+                <button onClick={() => { downloadProfileTemplate(); }} className="flex-1 rounded-2xl bg-[#7C3AED] px-4 py-3 text-xs font-black text-white">Download Profile</button>
+              </div>
+
+              {copiedForPlatform === 'whatsapp' && (
+                <div className="mt-3 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center justify-between gap-3">
+                  <div className="text-sm text-amber-900">Image copied to clipboard. Open WhatsApp and paste (Ctrl+V) into your chat.</div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const openUrl = `https://web.whatsapp.com/send?text=${encodeURIComponent(whatsappShareText)}`;
+                        const w = window.open(openUrl, '_blank');
+                        try { w?.focus(); } catch {}
+                      }}
+                      className="px-3 py-2 rounded-lg bg-[#25D366] text-white text-sm font-bold"
+                    >
+                      Open WhatsApp Web
+                    </button>
+                    <button onClick={() => setCopiedForPlatform(null)} className="px-3 py-2 rounded-lg bg-white border text-sm">Done</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
           {[
@@ -1993,6 +3118,63 @@ const MyProfile: React.FC = () => {
           <AnimatePresence mode="wait">
              {renderContent()}
           </AnimatePresence>
+        </div>
+      </div>
+
+      <div ref={shareTemplateRef} aria-hidden="true" className="fixed -left-[99999px] top-0 w-[1080px] overflow-hidden rounded-[48px] bg-[#F5F3FF] p-8 pointer-events-none">
+        <div className="relative overflow-hidden rounded-[36px] bg-gradient-to-br from-[#111827] via-[#5B21B6] to-[#8B5CF6] p-10 text-white shadow-2xl">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.16),transparent_30%)]" />
+          <div className="relative flex items-start justify-between gap-8">
+            <div className="max-w-[640px]">
+              <div className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-white/90">
+                Studlyf Social Profile
+              </div>
+              <h1 className="mt-8 text-6xl font-black leading-none tracking-tight">{profileDisplayName}</h1>
+              <p className="mt-4 text-2xl font-semibold text-white/85">{profileRole}</p>
+              <p className="mt-6 text-xl leading-8 text-white/80 max-w-[56rem]">{profileHeadline}</p>
+            </div>
+
+            <div className="flex w-[260px] flex-col items-center rounded-[32px] border border-white/15 bg-white/10 p-6 text-center backdrop-blur-md">
+              <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-[28px] bg-white/90 text-3xl font-black text-[#5B21B6] shadow-xl">
+                {formData.profilePhoto ? (
+                  <img src={formData.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
+                ) : (
+                  <span>{profileDisplayName.split(' ').map(part => part[0]).join('').slice(0, 2)}</span>
+                )}
+              </div>
+              <div className="mt-5 text-[10px] font-black uppercase tracking-[0.25em] text-white/60">Profile score</div>
+              <div className="mt-2 text-5xl font-black">{profileCompletion}</div>
+              <div className="mt-2 text-[11px] font-medium uppercase tracking-[0.2em] text-white/60">Ready to share</div>
+            </div>
+          </div>
+
+          <div className="relative mt-10 grid gap-4 sm:grid-cols-3">
+            {[
+              { label: 'Skills', value: `${formData.skills.length}` },
+              { label: 'Projects', value: `${formData.projects.length}` },
+              { label: 'Experience', value: `${formData.experienceList.length}` },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[28px] border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
+                <div className="text-[10px] font-black uppercase tracking-[0.25em] text-white/55">{item.label}</div>
+                <div className="mt-3 text-4xl font-black">{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="relative mt-10 grid gap-4 md:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-[32px] border border-white/15 bg-white p-6 text-gray-900 shadow-2xl">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-[#7C3AED]">About this profile</div>
+              <p className="mt-4 text-lg leading-8 text-gray-700">{profileShareCaption}</p>
+            </div>
+            <div className="rounded-[32px] border border-white/15 bg-black/10 p-6 text-white backdrop-blur-sm">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/60">Share links</div>
+              <div className="mt-4 space-y-3 text-sm font-semibold break-all text-white/90">
+                <div>{publicProfileUrl}</div>
+                {formData.linkedin && <div>LinkedIn: {formData.linkedin}</div>}
+                {formData.portfolio && <div>Portfolio: {formData.portfolio}</div>}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

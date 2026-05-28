@@ -18,6 +18,16 @@ export default defineConfig(({ mode }) => {
       }
     },
     plugins: [react()],
+    build: {
+      chunkSizeWarningLimit: 6000,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'framer-motion', 'lucide-react']
+          }
+        }
+      }
+    },
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || ''),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || ''),

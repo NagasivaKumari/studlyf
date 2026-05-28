@@ -25,7 +25,11 @@ from datetime import datetime, timezone
 import secrets
  
 
+from fastapi.staticfiles import StaticFiles
+
 app = FastAPI()
+os.makedirs("static", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 load_dotenv()
 
@@ -194,6 +198,14 @@ async def startup_event():
         logger.info(f"Mounted certificates directory at {certs_dir}")
     except Exception as e:
         logger.warning(f"Could not mount certificates directory: {e}")
+    # Mount uploads directory for temporary images
+    try:
+        uploads_dir = os.path.join(os.path.dirname(__file__), "uploads")
+        os.makedirs(uploads_dir, exist_ok=True)
+        app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+        logger.info(f"Mounted uploads directory at {uploads_dir}")
+    except Exception as e:
+        logger.warning(f"Could not mount uploads directory: {e}")
 
 @app.get("/")
 async def root():
@@ -456,6 +468,65 @@ async def promote_to_institution(data: dict):
         {"$set": {"role": "institution"}}
     )
     return {"status": "success"}
+
+
+@app.post('/api/utils/upload-temp-image')
+async def upload_temp_image(request: Request, file: UploadFile = File(...), public_base: Optional[str] = Form(None)):
+    """Accept a single image upload and store it under /uploads, returning a public URL.
+    This is intended for short-lived hosting of generated profile cards for social posting.
+    """
+    try:
+        uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
+        os.makedirs(uploads_dir, exist_ok=True)
+        ext = os.path.splitext(file.filename)[1] or '.png'
+        fname = f"{uuid.uuid4().hex}{ext}"
+        dest = os.path.join(uploads_dir, fname)
+        contents = await file.read()
+        with open(dest, 'wb') as f:
+            f.write(contents)
+
+        # Allow caller to override the public base URL at upload-time (avoids editing .env)
+        base = (public_base and public_base.strip()) or os.getenv('RENDER_EXTERNAL_URL') or str(request.base_url).rstrip('/')
+        public_image_url = f"{base}/uploads/{fname}"
+
+        # Also generate a simple HTML page with Open Graph tags so social scrapers
+        # (LinkedIn/Twitter/etc.) can fetch a preview when given a link.
+        try:
+            base_name = os.path.splitext(fname)[0]
+            html_fname = f"{base_name}.html"
+            html_dest = os.path.join(uploads_dir, html_fname)
+            title = "My Studlyf Profile"
+            description = "A quick profile card generated from Studlyf."
+            html_content = f"""<!doctype html>
+<html lang=\"en\"> 
+<head>
+  <meta charset=\"utf-8\"> 
+  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"> 
+  <meta property=\"og:type\" content=\"article\" />
+  <meta property=\"og:title\" content=\"{title}\" />
+  <meta property=\"og:description\" content=\"{description}\" />
+  <meta property=\"og:image\" content=\"{public_image_url}\" />
+  <meta property=\"twitter:card\" content=\"summary_large_image\" />
+  <title>{title}</title>
+</head>
+<body>
+  <div style=\"display:flex;align-items:center;justify-content:center;min-height:100vh;\">
+    <img src=\"{public_image_url}\" alt=\"profile card\" style=\"max-width:100%;height:auto;\"/>
+  </div>
+</body>
+</html>"""
+            with open(html_dest, 'w', encoding='utf-8') as h:
+                h.write(html_content)
+
+            public_url = f"{base}/uploads/{html_fname}"
+        except Exception:
+            # If HTML generation fails, fall back to direct image URL
+            public_url = public_image_url
+
+        return {"url": public_url, "image_url": public_image_url}
+    except Exception as e:
+        logger.exception('Temporary upload failed')
+        raise HTTPException(status_code=500, detail='Upload failed')
 
 from models import Institution, Event, Participant, Team, Submission, Judge, Score, Notification, LeaderboardEntry, Certificate
 from services.email_service import send_notification_email, get_registration_template, get_email_verification_template
@@ -1764,54 +1835,42 @@ async def generate_portfolio(
         else:
             data["skills"] = ["Skill 1", "Skill 2"]
     
-    # 4. Load Template
-    # Map template_id to filename
-    template_map = {
-        "neon_glass": "neon_glass.html",
-        "swiss_minimal": "swiss_minimal.html",
-        "creative_clean": "creative_clean.html",
-        "tech_noir": "tech_noir.html",
-        "minimal_bold": "minimal_bold.html"
-    }
-    
-    filename = template_map.get(template_id, "neon_glass.html")
-    template_path = os.path.join("templates", filename)
-    
-    try:
-        with open(template_path, "r", encoding="utf-8") as f:
-            template_content = f.read()
-    except FileNotFoundError:
-        return {"error": "Template not found"}
-
-    # 5. Render Template
-    # Using Jinja2 to render the HTML with the data
-    tm = Template(template_content)
-    rendered_html = tm.render(**data)
-    
-    # 6. Save to File
+    # 4. Save JSON only (source of truth)
     import uuid
     import re
+    
+    data["template_id"] = template_id
     
     # Sanitize name for filename
     sanitized_name = re.sub(r'[^a-zA-Z0-9]', '', data.get("name", "portfolio")).lower()
     short_id = str(uuid.uuid4())[:8]
-    filename = f"{sanitized_name}-{short_id}.html"
+    filename = f"{sanitized_name}-{short_id}.json"
     
     os.makedirs("generated_portfolios", exist_ok=True)
     output_path = os.path.join("generated_portfolios", filename)
     
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write(rendered_html)
+        json.dump(data, f, indent=2, ensure_ascii=False)
     
-    # Return the URL
+    # Return the URL pointing to the JSON portfolio
     return {"portfolio_url": f"{BASE_URL}/view/{filename}"}
 
 
+TEMPLATE_MAP = {
+    "neon_glass": "neon_glass.html",
+    "swiss_minimal": "swiss_minimal.html",
+    "creative_clean": "creative_clean.html",
+    "editorial_dark": "editorial_dark.html",
+    "ocean_minimal": "ocean_minimal.html",
+    "bold_grid": "bold_grid.html",
+    "tech_noir": "tech_noir.html",
+    "minimal_bold": "minimal_bold.html"
+}
 
 
 class UpdatePortfolioRequest(BaseModel):
     filename: str
-    html: str
+    data: dict
 
 @app.post("/update-portfolio")
 async def update_portfolio(request: UpdatePortfolioRequest):
@@ -1819,12 +1878,18 @@ async def update_portfolio(request: UpdatePortfolioRequest):
     if ".." in request.filename or "/" in request.filename:
          return {"error": "Invalid filename"}
          
-    file_path = os.path.join("generated_portfolios", request.filename)
+    base_name = request.filename
+    if base_name.endswith(".html"):
+        base_name = base_name[:-5] + ".json"
+    elif not base_name.endswith(".json"):
+        base_name = base_name + ".json"
+         
+    file_path = os.path.join("generated_portfolios", base_name)
     if not os.path.exists(file_path):
         return {"error": "Portfolio not found"}
         
     with open(file_path, "w", encoding="utf-8") as f:
-        f.write(request.html)
+        json.dump(request.data, f, indent=2, ensure_ascii=False)
         
     return {"status": "success"}
 
@@ -1834,13 +1899,66 @@ async def view_portfolio(filename: str):
     if ".." in filename or "/" in filename:
          return {"error": "Invalid filename"}
          
-    file_path = os.path.join("generated_portfolios", filename)
-    if os.path.exists(file_path):
-        from fastapi.responses import HTMLResponse
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        return HTMLResponse(content=content)
-    return {"error": "Portfolio not found"}
+    # Backward compatibility: Check if legacy html file exists and return it
+    if filename.endswith(".html"):
+        legacy_path = os.path.join("generated_portfolios", filename)
+        json_filename = filename[:-5] + ".json"
+        json_path = os.path.join("generated_portfolios", json_filename)
+        if not os.path.exists(json_path) and os.path.exists(legacy_path):
+            from fastapi.responses import HTMLResponse
+            with open(legacy_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return HTMLResponse(content=content)
+    else:
+        if filename.endswith(".json"):
+            json_filename = filename
+        else:
+            json_filename = filename + ".json"
+        json_path = os.path.join("generated_portfolios", json_filename)
+        
+    if not os.path.exists(json_path):
+        # Fallback to check if legacy .html exists
+        html_filename = filename if filename.endswith(".html") else filename + ".html"
+        html_path = os.path.join("generated_portfolios", html_filename)
+        if os.path.exists(html_path):
+            from fastapi.responses import HTMLResponse
+            with open(html_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return HTMLResponse(content=content)
+        return {"error": "Portfolio not found"}
+        
+    # Load portfolio JSON
+    with open(json_path, "r", encoding="utf-8") as f:
+        portfolio_data = json.load(f)
+        
+    template_id = portfolio_data.get("template_id", "neon_glass")
+    template_filename = TEMPLATE_MAP.get(template_id, "neon_glass.html")
+    template_path = os.path.join("templates", template_filename)
+    
+    if not os.path.exists(template_path):
+        return {"error": "Template file not found"}
+        
+    with open(template_path, "r", encoding="utf-8") as f:
+        template_content = f.read()
+        
+    tm = Template(template_content)
+    rendered_html = tm.render(**portfolio_data)
+    
+    # Inject editor scripts and initial JSON data right before </body>
+    json_str = json.dumps(portfolio_data, ensure_ascii=False)
+    editor_injection = f"""
+    <link rel="stylesheet" href="/static/portfolio_editor.css">
+    <script id="portfolio-data" type="application/json">{json_str}</script>
+    <script src="/static/portfolio_editor.js"></script>
+    """
+    
+    if "</body>" in rendered_html:
+        rendered_html = rendered_html.replace("</body>", f"{editor_injection}</body>")
+    else:
+        rendered_html += editor_injection
+        
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=rendered_html)
 
 def parse_resume_text(text):
     """

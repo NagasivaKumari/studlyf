@@ -4,6 +4,7 @@ import {
     X, Upload, Briefcase, MapPin, DollarSign, Clock, CheckCircle, 
     Plus, Trash2, HelpCircle, Building, Link as LinkIcon, Edit, Eye, Save
 } from 'lucide-react';
+import { API_BASE_URL, authHeaders } from '../../apiConfig';
 
 interface PostJobModalProps {
     isOpen: boolean;
@@ -142,8 +143,6 @@ const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose, institutio
         }
         setLoading(true);
         try {
-            const { API_BASE_URL, authHeaders } = await import('../../apiConfig');
-            
             // Map the modal's fields to the opportunity schema expected by MongoDB
             const payload = {
                 title: formData.jobTitle,
