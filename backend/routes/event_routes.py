@@ -23,6 +23,8 @@ async def post_event(data: dict = Body(...), user: dict = Depends(get_auth_user)
         role = str(user.get("role") or "").lower()
         if role not in ("institution", "admin", "super_admin"):
             raise HTTPException(status_code=403, detail="Institution access required")
+        if not data.get("title"):
+            raise HTTPException(status_code=400, detail="Event title is required")
         if role == "institution":
             institution_id = user.get("institution_id")
             if not institution_id:

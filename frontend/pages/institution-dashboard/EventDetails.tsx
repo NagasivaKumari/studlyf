@@ -862,11 +862,14 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
 
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ ...finalEvent, stages, judging_criteria: criteria })
-            });
+        // Strip large binary fields and read-only fields before sending to reduce payload
+        const { logo_url, banner_url, _id, created_at, updated_at, institution_id, participant_count, ...cleanEvent } = finalEvent;
+
+        const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({ ...cleanEvent, stages, judging_criteria: criteria })
+        });
             if (res.ok) {
                 const updatedEvent = { ...finalEvent, stages, judging_criteria: criteria };
                 setEvent(updatedEvent);

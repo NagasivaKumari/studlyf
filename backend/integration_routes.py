@@ -3511,10 +3511,16 @@ async def update_event_stage(event_id: str, stage_id: str, stage_update: dict, u
             )
 
     from db import events_col
-    # MongoDB positional update for array
+    # Merge update with existing stage to preserve fields not sent (communication, config, etc.)
+    event = await events_col.find_one(
+        {"_id": ObjectId(event_id), "stages.id": stage_id},
+        {"stages.$": 1}
+    )
+    existing_stage = event["stages"][0] if event and event.get("stages") else {}
+    merged_stage = {**existing_stage, **stage_update}
     await events_col.update_one(
         {"_id": ObjectId(event_id), "stages.id": stage_id},
-        {"$set": {"stages.$": stage_update}}
+        {"$set": {"stages.$": merged_stage}}
     )
     
     # Audit log recording
@@ -4632,21 +4638,43 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
         if ext not in ['.jpg', '.jpeg', '.png', '.webp', '.gif']:
             return None
             
-        # Read the file content
         content = await upload_file.read()
-        if len(content) > 10 * 1024 * 1024: # 10MB limit
+        if len(content) > 10 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
             
         import base64
+        from io import BytesIO
+        from PIL import Image
+        
         mime = "image/png"
-        if ext in [".jpg", ".jpeg"]:
-            mime = "image/jpeg"
-        elif ext == ".webp":
-            mime = "image/webp"
-        elif ext == ".gif":
-            mime = "image/gif"
-            
-        b64 = base64.b64encode(content).decode("utf-8")
+        if ext in [".jpg", ".jpeg"]: mime = "image/jpeg"
+        elif ext == ".webp": mime = "image/webp"
+        elif ext == ".gif": mime = "image/gif"
+        
+        try:
+            img = Image.open(BytesIO(content))
+            max_dim = 1920
+            if max(img.size) > max_dim:
+                ratio = max_dim / max(img.size)
+                new_size = (int(img.width * ratio), int(img.height * ratio))
+                img = img.resize(new_size, Image.LANCZOS)
+            out = BytesIO()
+            save_ext = ext.replace(".", "")
+            if save_ext in ("jpg", "jpeg"):
+                img.save(out, format="JPEG", quality=75, optimize=True)
+            elif save_ext == "png":
+                img.save(out, format="PNG", optimize=True)
+            elif save_ext == "webp":
+                img.save(out, format="WEBP", quality=75)
+            elif save_ext == "gif":
+                out = BytesIO(content)
+            else:
+                out = BytesIO(content)
+            compressed = out.getvalue()
+        except Exception:
+            compressed = content
+        
+        b64 = base64.b64encode(compressed).decode("utf-8")
         return f"data:{mime};base64,{b64}"
 
     # Process files
@@ -4701,6 +4729,15 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
     # If not provided, keep it empty (avoid auto/hardcoded stages).
     if "stages" not in event_data or event_data.get("stages") is None:
         event_data["stages"] = []
+
+    if not event_data.get("title"):
+        raise HTTPException(status_code=400, detail="Event title is required")
+
+    if not event_data.get("opportunityType"):
+        raise HTTPException(status_code=400, detail="Event type (opportunityType) is required")
+
+    if not event_data.get("start_date") and not event_data.get("startDate"):
+        raise HTTPException(status_code=400, detail="Event start date is required")
 
     iid = event_data.get("institution_id")
     if not iid:
@@ -4872,21 +4909,43 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
         if ext not in ['.jpg', '.jpeg', '.png', '.webp', '.gif']:
             return None
             
-        # Read the file content
         content = await upload_file.read()
-        if len(content) > 10 * 1024 * 1024: # 10MB limit
+        if len(content) > 10 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
             
         import base64
+        from io import BytesIO
+        from PIL import Image
+        
         mime = "image/png"
-        if ext in [".jpg", ".jpeg"]:
-            mime = "image/jpeg"
-        elif ext == ".webp":
-            mime = "image/webp"
-        elif ext == ".gif":
-            mime = "image/gif"
-            
-        b64 = base64.b64encode(content).decode("utf-8")
+        if ext in [".jpg", ".jpeg"]: mime = "image/jpeg"
+        elif ext == ".webp": mime = "image/webp"
+        elif ext == ".gif": mime = "image/gif"
+        
+        try:
+            img = Image.open(BytesIO(content))
+            max_dim = 1920
+            if max(img.size) > max_dim:
+                ratio = max_dim / max(img.size)
+                new_size = (int(img.width * ratio), int(img.height * ratio))
+                img = img.resize(new_size, Image.LANCZOS)
+            out = BytesIO()
+            save_ext = ext.replace(".", "")
+            if save_ext in ("jpg", "jpeg"):
+                img.save(out, format="JPEG", quality=75, optimize=True)
+            elif save_ext == "png":
+                img.save(out, format="PNG", optimize=True)
+            elif save_ext == "webp":
+                img.save(out, format="WEBP", quality=75)
+            elif save_ext == "gif":
+                out = BytesIO(content)
+            else:
+                out = BytesIO(content)
+            compressed = out.getvalue()
+        except Exception:
+            compressed = content
+        
+        b64 = base64.b64encode(compressed).decode("utf-8")
         return f"data:{mime};base64,{b64}"
 
     # Process files
