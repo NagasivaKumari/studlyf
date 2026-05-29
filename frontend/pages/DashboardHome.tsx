@@ -439,25 +439,31 @@ const DashboardHome: React.FC = () => {
             </div>
 
             {/* Trust & Certification Footer */}
-            <div className="mt-12 sm:mt-20 max-w-[1700px] mx-auto pt-12 border-t border-black/5 grid grid-cols-1 sm:grid-cols-2 gap-12 sm:gap-16 items-start px-6 sm:px-16">
-              <div className="flex flex-col items-center text-center gap-6 sm:gap-8">
-                <span className="text-lg sm:text-xl font-black text-black uppercase tracking-[0.3em]">Curriculum built by people from</span>
-                <div className="flex items-center justify-center gap-6 sm:gap-12 transition-all flex-wrap">
-                  <img src="/images/meta.png" className="h-6 sm:h-8" alt="Meta" />
-                  <img src="/images/netflix.png" className="h-6 sm:h-8" alt="Netflix" />
-                  <img src="/images/apple.png" className="h-6 sm:h-8" alt="Apple" />
-                  <img src="/images/nvidia.png" className="h-6 sm:h-8" alt="Nvidia" />
-                </div>
-              </div>
-              <div className="flex flex-col items-center text-center gap-6 sm:gap-8">
-                <span className="text-lg sm:text-xl font-black text-black uppercase tracking-[0.3em]">Certified by</span>
-                <div className="flex items-center justify-center gap-6 sm:gap-12 transition-all flex-wrap">
-                  <img src="/images/amazon.png" className="h-7 sm:h-9" alt="AWS" />
-                  <img src="/images/microsoft.png" className="h-6 sm:h-8" alt="Microsoft" />
-                  <img src="/images/ibm.png" className="h-6 sm:h-8" alt="IBM" />
-                </div>
-              </div>
-            </div>
+<div className="mt-20 max-w-[1800px] mx-auto pt-16 border-t border-black/5 flex flex-col items-center px-6">
+  <div className="flex flex-col items-center text-center gap-10">
+    <span className="text-2xl md:text-3xl font-black text-black uppercase tracking-[0.3em]">
+      Curriculum built by people from
+    </span>
+
+    <div className="flex items-center justify-center gap-10 md:gap-16 flex-wrap max-w-6xl">
+      <img src="/images/meta.png" className="h-12 md:h-16 object-contain" alt="Meta" />
+      <img src="/images/netflix.png" className="h-12 md:h-16 object-contain" alt="Netflix" />
+      <img src="/images/apple.png" className="h-12 md:h-16 object-contain" alt="Apple" />
+      <img src="/images/nvidia.png" className="h-12 md:h-16 object-contain" alt="Nvidia" />
+      <img src="/images/virtusa.png" className="h-12 md:h-16 object-contain" alt="virtusa" />
+      <img
+        src="https://tse1.mm.bing.net/th/id/OIP.eBtPsy_IK1WHX15SO7OgUgHaEK?pid=Api&P=0&h=180"
+        className="h-12 md:h-16 object-contain"
+        alt="Deloitte"
+      />
+      <img
+        src="https://indiancompanies.in/wp-content/uploads/2020/05/TCS-Logo-Tata-consultancy-service.png"
+        className="h-12 md:h-16 object-contain"
+        alt="TCS"
+      />
+    </div>
+  </div>
+</div>
           </section>
         </div>
 
