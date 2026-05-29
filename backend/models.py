@@ -298,6 +298,18 @@ class Event(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+class EventFAQ(BaseModel):
+    id: Optional[str] = Field(None, alias="_id")
+    event_id: str
+    question: str
+    answer: str
+    category: str = "General"
+    order: int = 0
+    is_published: bool = True
+    created_by: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
 class Participant(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     user_id: str

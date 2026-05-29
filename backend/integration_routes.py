@@ -7,7 +7,7 @@ import shutil
 import json
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile, Body, Depends, Query
-from auth_institution import get_auth_user, assert_institution_scope, assert_institution_owns_event
+from auth_institution import get_auth_user, get_auth_user_optional, assert_institution_scope, assert_institution_owns_event
 from services.email_service import (
     send_notification_email,
     get_certificate_template,
@@ -4534,6 +4534,89 @@ async def extend_participant_deadline(
         "new_deadline": new_deadline.isoformat(),
         "stage_name": stage_name,
     }
+
+
+@router.get("/events/{event_id}/faqs")
+async def get_event_faqs(event_id: str, user: dict = Depends(get_auth_user_optional)):
+    """Get all published FAQs for an event. Auth optional — public can see published ones."""
+    from db import faqs_col
+    query = {"event_id": event_id}
+    if not user or not user.get("role") in ("admin", "super_admin", "institution"):
+        query["is_published"] = True
+    cursor = faqs_col.find(query).sort("order", 1)
+    faqs = await cursor.to_list(length=200)
+    for f in faqs:
+        f["id"] = str(f.pop("_id"))
+    return {"faqs": faqs}
+
+@router.post("/events/{event_id}/faqs")
+async def create_event_faq(event_id: str, faq_data: dict, user: dict = Depends(get_auth_user)):
+    """Create a new FAQ for an event. Institution/admin only."""
+    from db import faqs_col
+    await assert_institution_owns_event(event_id, user)
+    doc = {
+        "event_id": event_id,
+        "question": faq_data.get("question", ""),
+        "answer": faq_data.get("answer", ""),
+        "category": faq_data.get("category", "General"),
+        "order": faq_data.get("order", 0),
+        "is_published": faq_data.get("is_published", True),
+        "created_by": user.get("user_id", ""),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+    result = await faqs_col.insert_one(doc)
+    doc["id"] = str(result.inserted_id)
+    return {"faq": doc}
+
+@router.put("/events/{event_id}/faqs/{faq_id}")
+async def update_event_faq(event_id: str, faq_id: str, faq_data: dict, user: dict = Depends(get_auth_user)):
+    """Update an FAQ. Institution/admin only."""
+    from db import faqs_col
+    from bson import ObjectId
+    await assert_institution_owns_event(event_id, user)
+    update = {"$set": {
+        "question": faq_data.get("question"),
+        "answer": faq_data.get("answer"),
+        "category": faq_data.get("category"),
+        "order": faq_data.get("order"),
+        "is_published": faq_data.get("is_published"),
+        "updated_at": datetime.utcnow(),
+    }}
+    await faqs_col.update_one({"_id": ObjectId(faq_id), "event_id": event_id}, update)
+    return {"success": True}
+
+@router.delete("/events/{event_id}/faqs/{faq_id}")
+async def delete_event_faq(event_id: str, faq_id: str, user: dict = Depends(get_auth_user)):
+    """Delete an FAQ. Institution/admin only."""
+    from db import faqs_col
+    from bson import ObjectId
+    await assert_institution_owns_event(event_id, user)
+    await faqs_col.delete_one({"_id": ObjectId(faq_id), "event_id": event_id})
+    return {"success": True}
+
+@router.post("/events/{event_id}/faqs/bulk")
+async def bulk_update_faqs(event_id: str, faqs_data: list, user: dict = Depends(get_auth_user)):
+    """Replace all FAQs for an event in bulk. Institution/admin only."""
+    from db import faqs_col
+    await assert_institution_owns_event(event_id, user)
+    await faqs_col.delete_many({"event_id": event_id})
+    if faqs_data:
+        docs = []
+        for i, f in enumerate(faqs_data):
+            docs.append({
+                "event_id": event_id,
+                "question": f.get("question", ""),
+                "answer": f.get("answer", ""),
+                "category": f.get("category", "General"),
+                "order": f.get("order", i),
+                "is_published": f.get("is_published", True),
+                "created_by": user.get("user_id", ""),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            })
+        await faqs_col.insert_many(docs)
+    return {"success": True, "count": len(faqs_data) if faqs_data else 0}
 
 
 @router.get("/events/{event_id}/quizzes/{quiz_id}/coding-attempts")

@@ -182,6 +182,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([]);
     const [isBulkMode, setIsBulkMode] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
+    const [faqSearch, setFaqSearch] = useState('');
 
     const [hackathonPackageEnabled, setHackathonPackageEnabled] = useState(false);
     const [hackathonSubmissions, setHackathonSubmissions] = useState<any[]>([]);
@@ -1551,6 +1552,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         { id: 'evaluation-matrix', label: 'Evaluation Matrix', icon: TrendingUp },
         { id: 'leaderboard', label: 'Leaderboard', icon: BarChart3 },
         { id: 'prizes', label: 'Prizes', icon: Award },
+        { id: 'badges', label: 'Badges', icon: Star },
+        { id: 'faqs', label: 'FAQ', icon: HelpCircle },
         { id: 'pipeline', label: 'Pipeline', icon: Zap },
         ...(hackathonPackageEnabled ? [{ id: 'package', label: 'Event Package', icon: Lightbulb }] : []),
         { id: 'judges', label: 'Judges', icon: Gavel },
@@ -3625,6 +3628,346 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         )}
                     </div>
                 );
+            case 'badges':
+                return (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Badges</h2>
+                                <p className="text-sm font-medium text-slate-500 mt-1">Configure dynamic badges displayed on the event listing card.</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const updated = [...(event?.badges || []), { label: '', type: '', color: 'slate', icon: 'star' }];
+                                        setEvent({ ...event, badges: updated });
+                                    }}
+                                    className="flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all"
+                                >
+                                    <Plus size={14} />
+                                    Add Badge
+                                </button>
+                                {(event?.badges || []).length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            try {
+                                                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/professional`, {
+                                                    method: 'PATCH',
+                                                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ badges: event.badges }),
+                                                });
+                                                if (!res.ok) throw new Error('Failed to save');
+                                                alert('Badges saved successfully!');
+                                                setRefreshCounter(prev => prev + 1);
+                                            } catch (e: any) {
+                                                alert(e?.message || 'Failed to save badges');
+                                            }
+                                        }}
+                                        className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all"
+                                    >
+                                        <Save size={14} />
+                                        Save Badges
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {(event?.badges || []).length === 0 ? (
+                            <div className="p-16 bg-white border border-slate-100 rounded-[2rem] flex flex-col items-center justify-center text-center shadow-sm">
+                                <div className="w-16 h-16 bg-purple-50 text-purple-400 rounded-[1.25rem] flex items-center justify-center mb-6">
+                                    <Star size={32} strokeWidth={1.5} />
+                                </div>
+                                <h3 className="text-lg font-black text-slate-900">No badges configured yet</h3>
+                                <p className="text-sm text-slate-500 mt-2 max-w-md font-medium">Add badges with icons and colors to highlight event attributes (e.g., "New", "Trending", "Team Event").</p>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const updated = [...(event?.badges || []), { label: '', type: '', color: 'slate', icon: 'star' }];
+                                        setEvent({ ...event, badges: updated });
+                                    }}
+                                    className="mt-6 flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all"
+                                >
+                                    <Plus size={14} />
+                                    Add First Badge
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {(event?.badges || []).map((badge: any, i: number) => (
+                                    <div key={i} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-500 text-[11px] font-black">
+                                                    {i + 1}
+                                                </div>
+                                                <span className="text-sm font-bold text-slate-800">{badge.label || `Badge ${i + 1}`}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const updated = (event?.badges || []).filter((_: any, j: number) => j !== i);
+                                                    setEvent({ ...event, badges: updated });
+                                                }}
+                                                className="p-2 rounded-xl border border-red-200 text-red-400 hover:bg-red-50 transition-colors"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Label</label>
+                                                <input
+                                                    type="text"
+                                                    value={badge.label || ''}
+                                                    onChange={e => {
+                                                        const updated = [...(event?.badges || [])];
+                                                        updated[i] = { ...updated[i], label: e.target.value };
+                                                        setEvent({ ...event, badges: updated });
+                                                    }}
+                                                    placeholder="e.g. Trending"
+                                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Icon</label>
+                                                <select
+                                                    value={badge.icon || 'star'}
+                                                    onChange={e => {
+                                                        const updated = [...(event?.badges || [])];
+                                                        updated[i] = { ...updated[i], icon: e.target.value };
+                                                        setEvent({ ...event, badges: updated });
+                                                    }}
+                                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400 bg-white"
+                                                >
+                                                    <option value="star">Star</option>
+                                                    <option value="trophy">Trophy</option>
+                                                    <option value="users">Users</option>
+                                                    <option value="globe">Globe</option>
+                                                    <option value="code">Code</option>
+                                                    <option value="brain">Brain</option>
+                                                    <option value="award">Award</option>
+                                                    <option value="calendar">Calendar</option>
+                                                    <option value="clock">Clock</option>
+                                                    <option value="shield">Shield</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Color</label>
+                                                <select
+                                                    value={badge.color || 'slate'}
+                                                    onChange={e => {
+                                                        const updated = [...(event?.badges || [])];
+                                                        updated[i] = { ...updated[i], color: e.target.value };
+                                                        setEvent({ ...event, badges: updated });
+                                                    }}
+                                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400 bg-white"
+                                                >
+                                                    <option value="slate">Slate</option>
+                                                    <option value="blue">Blue</option>
+                                                    <option value="purple">Purple</option>
+                                                    <option value="green">Green</option>
+                                                    <option value="amber">Amber</option>
+                                                    <option value="rose">Rose</option>
+                                                    <option value="indigo">Indigo</option>
+                                                    <option value="teal">Teal</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Type (optional)</label>
+                                                <input
+                                                    type="text"
+                                                    value={badge.type || ''}
+                                                    onChange={e => {
+                                                        const updated = [...(event?.badges || [])];
+                                                        updated[i] = { ...updated[i], type: e.target.value };
+                                                        setEvent({ ...event, badges: updated });
+                                                    }}
+                                                    placeholder="e.g. info, warning"
+                                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+
+            case 'faqs':
+                return (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Frequently Asked Questions</h2>
+                                <p className="text-sm font-medium text-slate-500 mt-1">Manage FAQs displayed on the event page.</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const updated = [...(event?.faqs || []), { question: '', answer: '', category: 'General', order: (event?.faqs || []).length }];
+                                        setEvent({ ...event, faqs: updated });
+                                    }}
+                                    className="flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all"
+                                >
+                                    <Plus size={14} />
+                                    Add FAQ
+                                </button>
+                                {(event?.faqs || []).length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            try {
+                                                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/professional`, {
+                                                    method: 'PATCH',
+                                                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ faqs: event.faqs }),
+                                                });
+                                                if (!res.ok) throw new Error('Failed to save');
+                                                alert('FAQs saved successfully!');
+                                                setRefreshCounter(prev => prev + 1);
+                                            } catch (e: any) {
+                                                alert(e?.message || 'Failed to save FAQs');
+                                            }
+                                        }}
+                                        className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all"
+                                    >
+                                        <Save size={14} />
+                                        Save FAQs
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* FAQ Search */}
+                        <div className="relative">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                value={faqSearch}
+                                onChange={e => setFaqSearch(e.target.value)}
+                                placeholder="Search FAQs..."
+                                className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-400 transition-colors"
+                            />
+                        </div>
+
+                        {(event?.faqs || []).length === 0 ? (
+                            <div className="p-16 bg-white border border-slate-100 rounded-[2rem] flex flex-col items-center justify-center text-center shadow-sm">
+                                <div className="w-16 h-16 bg-purple-50 text-purple-400 rounded-[1.25rem] flex items-center justify-center mb-6">
+                                    <HelpCircle size={32} strokeWidth={1.5} />
+                                </div>
+                                <h3 className="text-lg font-black text-slate-900">No FAQs configured yet</h3>
+                                <p className="text-sm text-slate-500 mt-2 max-w-md font-medium">Add frequently asked questions with answers that will be displayed on the public event page.</p>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const updated = [...(event?.faqs || []), { question: '', answer: '', category: 'General', order: (event?.faqs || []).length }];
+                                        setEvent({ ...event, faqs: updated });
+                                    }}
+                                    className="mt-6 flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all"
+                                >
+                                    <Plus size={14} />
+                                    Add First FAQ
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {(event?.faqs || [])
+                                    .filter((faq: any) => !faqSearch || faq.question?.toLowerCase().includes(faqSearch.toLowerCase()) || faq.answer?.toLowerCase().includes(faqSearch.toLowerCase()))
+                                    .map((faq: any, i: number) => (
+                                    <div key={i} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-500 text-[11px] font-black">
+                                                    Q
+                                                </div>
+                                                <span className="text-sm font-bold text-slate-800 truncate max-w-md">{faq.question || `FAQ ${i + 1}`}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const updated = (event?.faqs || []).filter((_: any, j: number) => j !== i);
+                                                    setEvent({ ...event, faqs: updated });
+                                                }}
+                                                className="p-2 rounded-xl border border-red-200 text-red-400 hover:bg-red-50 transition-colors"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-4">
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Question</label>
+                                                <input
+                                                    type="text"
+                                                    value={faq.question || ''}
+                                                    onChange={e => {
+                                                        const updated = [...(event?.faqs || [])];
+                                                        updated[i] = { ...updated[i], question: e.target.value };
+                                                        setEvent({ ...event, faqs: updated });
+                                                    }}
+                                                    placeholder="What is the question?"
+                                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Answer</label>
+                                                <textarea
+                                                    value={faq.answer || ''}
+                                                    onChange={e => {
+                                                        const updated = [...(event?.faqs || [])];
+                                                        updated[i] = { ...updated[i], answer: e.target.value };
+                                                        setEvent({ ...event, faqs: updated });
+                                                    }}
+                                                    placeholder="Provide a detailed answer..."
+                                                    rows={3}
+                                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400 resize-y"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
+                                                    <select
+                                                        value={faq.category || 'General'}
+                                                        onChange={e => {
+                                                            const updated = [...(event?.faqs || [])];
+                                                            updated[i] = { ...updated[i], category: e.target.value };
+                                                            setEvent({ ...event, faqs: updated });
+                                                        }}
+                                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400 bg-white"
+                                                    >
+                                                        <option value="General">General</option>
+                                                        <option value="Registration">Registration</option>
+                                                        <option value="Eligibility">Eligibility</option>
+                                                        <option value="Submission">Submission</option>
+                                                        <option value="Prizes">Prizes</option>
+                                                        <option value="Technical">Technical</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Order</label>
+                                                    <input
+                                                        type="number"
+                                                        value={faq.order ?? i}
+                                                        onChange={e => {
+                                                            const updated = [...(event?.faqs || [])];
+                                                            updated[i] = { ...updated[i], order: parseInt(e.target.value) || 0 };
+                                                            setEvent({ ...event, faqs: updated });
+                                                        }}
+                                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+
             case 'leaderboard':
                 return <LeaderboardPage eventId={eventId} refreshCounter={refreshCounter} />;
             case 'pipeline':

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Upload, Info, ChevronRight, Save, Plus, Trash2, Calendar, Trophy, Users, FileText, ArrowLeft, HeadphonesIcon, ChevronDown, ChevronUp, Lock, RefreshCw, UploadCloud } from 'lucide-react';
+import { X, Upload, Info, ChevronRight, Save, Plus, Trash2, Calendar, Trophy, Users, FileText, ArrowLeft, HeadphonesIcon, ChevronDown, ChevronUp, Lock, RefreshCw, UploadCloud, Star, Globe, Code, Brain, Award, Shield } from 'lucide-react';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 
 interface PostOpportunityModalProps {
@@ -40,6 +40,8 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         perks: [],
         prizePool: '',
         prizes: [],
+        badges: [],
+        faqs: [],
         benefits: '',
         compensation: '',
         candidateTypes: ['Everyone can apply'], 
@@ -180,6 +182,8 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                     perks: [],
                     prizePool: '',
                     prizes: [],
+                    badges: [],
+                    faqs: [],
                     benefits: '',
                     compensation: '',
                     candidateTypes: ['Everyone can apply'], 
@@ -316,6 +320,8 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                         perks: data.perks || [],
                         prizePool: data.prizePool || data.prize_pool || '',
                         prizes: data.prizes || [],
+                        badges: data.badges || [],
+                        faqs: data.faqs || [],
                         benefits: data.benefits || '',
                         compensation: data.compensation || '',
                         candidateTypes: data.candidateTypes || ['Everyone can apply'],
@@ -360,6 +366,8 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
     const steps = [
         { id: 1, label: 'Opportunity details' },
         { id: 2, label: 'Registration Form' },
+        { id: 3, label: 'Badges' },
+        { id: 4, label: 'FAQs' },
     ];
 
     if (!isOpen) return null;
@@ -1535,7 +1543,7 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                         </div>
                                     </div>
                                 </div>
-                            ) : (
+                            ) : step === 2 ? (
                                 <div className="space-y-12 animate-in slide-in-from-right-4 duration-500">
                                     <div>
                                         <h3 className="text-2xl font-black text-slate-900 mb-2">Registration Form</h3>
@@ -1777,6 +1785,227 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                         </div>
                                     </div>
                                 </div>
+                            ) : step === 3 ? (
+                                <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
+                                    <div>
+                                        <h3 className="text-2xl font-black text-slate-900 mb-2">Badges</h3>
+                                        <p className="text-sm text-slate-500 font-medium">Add visual badges that highlight key event attributes</p>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {(formData.badges || []).map((badge: any, i: number) => (
+                                            <div key={i} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Badge {i + 1}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = [...formData.badges];
+                                                            updated.splice(i, 1);
+                                                            setFormData({...formData, badges: updated});
+                                                        }}
+                                                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-all"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Label</label>
+                                                        <input
+                                                            type="text"
+                                                            value={badge.label || ''}
+                                                            onChange={(e) => {
+                                                                const updated = [...formData.badges];
+                                                                updated[i] = {...updated[i], label: e.target.value};
+                                                                setFormData({...formData, badges: updated});
+                                                            }}
+                                                            placeholder="e.g. Beginner Friendly"
+                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Icon</label>
+                                                        <select
+                                                            value={badge.icon || ''}
+                                                            onChange={(e) => {
+                                                                const updated = [...formData.badges];
+                                                                updated[i] = {...updated[i], icon: e.target.value};
+                                                                setFormData({...formData, badges: updated});
+                                                            }}
+                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
+                                                        >
+                                                            <option value="">Select icon</option>
+                                                            <option value="Star">Star</option>
+                                                            <option value="Trophy">Trophy</option>
+                                                            <option value="Users">Users</option>
+                                                            <option value="Globe">Globe</option>
+                                                            <option value="Code">Code</option>
+                                                            <option value="Brain">Brain</option>
+                                                            <option value="Award">Award</option>
+                                                            <option value="Calendar">Calendar</option>
+                                                            <option value="Clock">Clock</option>
+                                                            <option value="Shield">Shield</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Color</label>
+                                                        <select
+                                                            value={badge.color || ''}
+                                                            onChange={(e) => {
+                                                                const updated = [...formData.badges];
+                                                                updated[i] = {...updated[i], color: e.target.value};
+                                                                setFormData({...formData, badges: updated});
+                                                            }}
+                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
+                                                        >
+                                                            <option value="">Select color</option>
+                                                            <option value="Slate">Slate</option>
+                                                            <option value="Blue">Blue</option>
+                                                            <option value="Purple">Purple</option>
+                                                            <option value="Green">Green</option>
+                                                            <option value="Amber">Amber</option>
+                                                            <option value="Rose">Rose</option>
+                                                            <option value="Indigo">Indigo</option>
+                                                            <option value="Teal">Teal</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Type (optional)</label>
+                                                        <input
+                                                            type="text"
+                                                            value={badge.type || ''}
+                                                            onChange={(e) => {
+                                                                const updated = [...formData.badges];
+                                                                updated[i] = {...updated[i], type: e.target.value};
+                                                                setFormData({...formData, badges: updated});
+                                                            }}
+                                                            placeholder="e.g. difficulty"
+                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const updated = [...(formData.badges || []), {}];
+                                                setFormData({...formData, badges: updated});
+                                            }}
+                                            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-dashed border-slate-300 rounded-xl text-[11px] font-bold text-slate-500 hover:border-[#6C3BFF] hover:text-[#6C3BFF] transition-all"
+                                        >
+                                            <Plus size={14} />
+                                            Add Badge
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
+                                    <div>
+                                        <h3 className="text-2xl font-black text-slate-900 mb-2">FAQs</h3>
+                                        <p className="text-sm text-slate-500 font-medium">Add frequently asked questions</p>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {(formData.faqs || []).map((faq: any, i: number) => (
+                                            <div key={i} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">FAQ {i + 1}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = [...formData.faqs];
+                                                            updated.splice(i, 1);
+                                                            setFormData({...formData, faqs: updated});
+                                                        }}
+                                                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-all"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Question</label>
+                                                    <input
+                                                        type="text"
+                                                        value={faq.question || ''}
+                                                        onChange={(e) => {
+                                                            const updated = [...formData.faqs];
+                                                            updated[i] = {...updated[i], question: e.target.value};
+                                                            setFormData({...formData, faqs: updated});
+                                                        }}
+                                                        placeholder="e.g. What is the eligibility criteria?"
+                                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Answer</label>
+                                                    <textarea
+                                                        rows={3}
+                                                        value={faq.answer || ''}
+                                                        onChange={(e) => {
+                                                            const updated = [...formData.faqs];
+                                                            updated[i] = {...updated[i], answer: e.target.value};
+                                                            setFormData({...formData, faqs: updated});
+                                                        }}
+                                                        placeholder="Enter the answer..."
+                                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium resize-none"
+                                                    />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
+                                                        <select
+                                                            value={faq.category || ''}
+                                                            onChange={(e) => {
+                                                                const updated = [...formData.faqs];
+                                                                updated[i] = {...updated[i], category: e.target.value};
+                                                                setFormData({...formData, faqs: updated});
+                                                            }}
+                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
+                                                        >
+                                                            <option value="">Select category</option>
+                                                            <option value="General">General</option>
+                                                            <option value="Registration">Registration</option>
+                                                            <option value="Eligibility">Eligibility</option>
+                                                            <option value="Submission">Submission</option>
+                                                            <option value="Prizes">Prizes</option>
+                                                            <option value="Technical">Technical</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Order</label>
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            value={faq.order ?? ''}
+                                                            onChange={(e) => {
+                                                                const updated = [...formData.faqs];
+                                                                updated[i] = {...updated[i], order: parseInt(e.target.value) || 0};
+                                                                setFormData({...formData, faqs: updated});
+                                                            }}
+                                                            placeholder="Display order"
+                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const updated = [...(formData.faqs || []), {}];
+                                                setFormData({...formData, faqs: updated});
+                                            }}
+                                            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-dashed border-slate-300 rounded-xl text-[11px] font-bold text-slate-500 hover:border-[#6C3BFF] hover:text-[#6C3BFF] transition-all"
+                                        >
+                                            <Plus size={14} />
+                                            Add FAQ
+                                        </button>
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -1800,8 +2029,8 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                 onClick={handleNext} 
                                 className={`px-10 py-4 bg-[#6C3BFF] text-white rounded-full font-bold text-sm transition-all flex items-center gap-3 shadow-lg ${loading ? "opacity-50 cursor-not-allowed" : "hover:shadow-xl hover:shadow-purple-200 hover:scale-[1.02]"}`}
                             >
-                                <span>{loading ? "Processing..." : (step === 2 ? "🚀 Post Opportunity" : "Save and next")}</span>
-                                {step === 2 ? <Upload size={18} /> : <ChevronRight size={18} />}
+                                <span>{loading ? "Processing..." : (step === steps.length ? "🚀 Post Opportunity" : "Save and next")}</span>
+                                {step === steps.length ? <Upload size={18} /> : <ChevronRight size={18} />}
                             </button>
                         </div>
                     </div>
