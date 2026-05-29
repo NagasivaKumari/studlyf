@@ -364,9 +364,6 @@ const OpportunityDetails: React.FC = () => {
                         }
                     }
                     setOpportunity(opp);
-                    // DEBUG: Inspect prize/stage data on load
-                    console.log('[PrizeData] prize_pool:', opp.prize_pool, 'prizePool:', opp.prizePool, 'prize_distribution:', opp.prize_distribution, 'prizes:', opp.prizes, 'prizeDistribution:', opp.prizeDistribution);
-                    console.log('[StageData] stages:', opp.stages);
                 }
                 const list = Array.isArray(apps) ? apps : [];
                 const mine =
