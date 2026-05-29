@@ -31,6 +31,11 @@ import {
     Gift,
     Award,
     Briefcase,
+    UserPlus,
+    FileText,
+    Gavel,
+    Settings2,
+    ShieldCheck,
 } from 'lucide-react';
 import { getStatusById, getStatusColor, getStatusLabel } from '../../utils/calendarStatuses';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1209,9 +1214,18 @@ const OpportunityDetails: React.FC = () => {
 
                         <div className="mt-6 flex flex-col md:flex-row md:items-start gap-6">
                             <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">
-                                    {opportunity.type || 'Opportunity'} {opportunity.category ? ` / ${opportunity.category}` : ''}
-                                </p>
+                                {/* Breadcrumb */}
+                                <nav className="text-[11px] font-bold text-slate-400 mb-2 flex items-center gap-1.5">
+                                    <Link to="/opportunities" className="hover:text-purple-600 transition-colors">Opportunities</Link>
+                                    <span className="text-slate-300">/</span>
+                                    <span className="text-slate-600">{opportunity.type || 'Listing'}</span>
+                                    {opportunity.category ? (
+                                        <>
+                                            <span className="text-slate-300">/</span>
+                                            <span className="text-slate-800">{opportunity.category}</span>
+                                        </>
+                                    ) : null}
+                                </nav>
                                 <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight">
                                     {opportunity.title}
                                 </h1>
@@ -1219,6 +1233,27 @@ const OpportunityDetails: React.FC = () => {
                                     <Building2 size={20} className="text-purple-600 shrink-0" />
                                     {orgDisplay}
                                 </p>
+
+                                {/* Hashtag tags — dynamically derived from event data */}
+                                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                                    {opportunity.type ? (
+                                        <span className="text-[12px] font-bold text-[#6C3BFF] bg-purple-50 px-2.5 py-1 rounded-full">#{opportunity.type.replace(/\s+/g, '')}</span>
+                                    ) : null}
+                                    {opportunity.category ? (
+                                        <span className="text-[12px] font-bold text-[#6C3BFF] bg-purple-50 px-2.5 py-1 rounded-full">#{opportunity.category.replace(/\s+/g, '')}</span>
+                                    ) : null}
+                                    {opportunity.sub_type ? (
+                                        <span className="text-[12px] font-bold text-[#6C3BFF] bg-purple-50 px-2.5 py-1 rounded-full">#{opportunity.sub_type.replace(/\s+/g, '')}</span>
+                                    ) : null}
+                                    {opportunity.skills && String(opportunity.skills).trim() ? (
+                                        (() => {
+                                            const skills = plainTextFromRichContent(opportunity.skills);
+                                            return skills.split(/[,;]/).slice(0, 3).map((s: string, i: number) => (
+                                                <span key={i} className="text-[12px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">#{s.trim().replace(/\s+/g, '')}</span>
+                                            ));
+                                        })()
+                                    ) : null}
+                                </div>
 
                                 {/* Compact eligibility summary under title */}
                                 {elig.length > 0 && (
@@ -1457,16 +1492,13 @@ const OpportunityDetails: React.FC = () => {
                                 <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm space-y-6">
                                     <h2 className="text-lg font-black text-slate-900 flex items-center gap-3">
                                         <span className="w-1 h-7 bg-purple-600 rounded-full" />
-                                        Competition structure &amp; stages
+                                        Stages &amp; Timelines
                                     </h2>
-                                    <p className="text-sm text-slate-500 font-medium -mt-2">
-                                        Defined by the host — each hackathon can have different stages.
-                                    </p>
-                                    <div className="relative border-l-2 border-slate-200 ml-4 pl-8 space-y-6">
+                                    <div className="space-y-6">
                                         {opportunity.stages.map((s: any, i: number) => {
                                             const stype = s.type?.toUpperCase();
                                             const sname = s.name?.toUpperCase() || '';
-                                            
+
                                             let actionLabel = 'Unlock';
                                             if (stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION')) {
                                                 actionLabel = isApplied || effectiveRegStatus === 'APPROVED' ? 'Registered' : 'Apply Now';
@@ -1485,50 +1517,94 @@ const OpportunityDetails: React.FC = () => {
                                             const isSubmissionStage = (String(s.type || '').toUpperCase() === 'SUBMISSION') || (String(s.name || '').toUpperCase().includes('SUBMISSION'));
                                             const canAct = (stageStatus === 'active') && (isApplied || isReg || isSubmissionStage || effectiveRegStatus === 'APPROVED');
 
-                                            return (
-                                                <div
-                                                    key={s.id || i}
-                                                    onClick={canAct ? () => handleStageClick(s) : undefined}
-                                                    className={`relative bg-white border border-slate-200 p-5 rounded-2xl transition-all shadow-sm group ${canAct ? 'hover:border-[#6C3BFF]/40 hover:shadow-md cursor-pointer' : 'opacity-80 cursor-not-allowed'}`}
-                                                    aria-disabled={!canAct}
-                                                >
-                                                    {/* Timeline Dot */}
-                                                    <div className={`absolute -left-[41px] top-6 w-5 h-5 rounded-full border-4 border-white ${stageStatus === 'active' ? 'bg-[#6C3BFF] shadow-[0_0_0_2px_#6C3BFF]' : stageStatus === 'completed' ? 'bg-emerald-500 shadow-[0_0_0_2px_#10B981]' : 'bg-slate-300'}`}></div>
+                                            const start = s.startDate || s.start_date;
+                                            const end = s.endDate || s.end_date;
+                                            const startDate = start ? new Date(start) : null;
+                                            const endDate = end ? new Date(end) : null;
+                                            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                                            const pillMonth = startDate ? months[startDate.getMonth()] : '';
+                                            const pillDay = startDate ? startDate.getDate() : '';
 
-                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                                        <div>
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                <h3 className="font-black text-slate-900 text-lg">{s.name || `Stage ${i + 1}`}</h3>
-                                                                {stageStatus === 'active' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-purple-100 text-purple-700">Live</span>}
-                                                                {stageStatus === 'completed' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">Completed</span>}
+                                            const stageIcon = s.icon_url ? null :
+                                                stype === 'REGISTRATION' ? <UserPlus size={20} /> :
+                                                stype === 'TEAM_FORMATION' ? <Users size={20} /> :
+                                                stype === 'QUIZ' || stype === 'ASSESSMENT' ? <FileText size={20} /> :
+                                                stype === 'SUBMISSION' ? <Upload size={20} /> :
+                                                stype === 'REVIEW' ? <Gavel size={20} /> :
+                                                stype === 'FINAL' ? <Trophy size={20} /> :
+                                                <Settings2 size={20} />;
+
+                                            return (
+                                                <div key={s.id || i} className="flex gap-5">
+                                                    {/* Left date pill */}
+                                                    <div className="flex flex-col items-center shrink-0 w-16">
+                                                        {startDate ? (
+                                                            <div className={`w-14 h-14 rounded-xl border flex flex-col items-center justify-center shadow-sm ${
+                                                                stageStatus === 'active' ? 'bg-purple-50 border-purple-200 text-purple-700' :
+                                                                stageStatus === 'completed' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                                                                'bg-slate-50 border-slate-200 text-slate-500'
+                                                            }`}>
+                                                                <span className="text-[9px] font-black uppercase leading-tight">{pillMonth}</span>
+                                                                <span className="text-lg font-black leading-tight">{pillDay}</span>
                                                             </div>
-                                                            {s.type ? (
-                                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                                                                    {s.type} {s.roundMode || s.mode ? `• ${String(s.roundMode || s.mode)}` : ''}
-                                                                </p>
-                                                            ) : null}
-                                                            
-                                                            {(s.startDate || s.endDate || s.start_date || s.end_date) && (() => {
-                                                                const start = s.startDate || s.start_date;
-                                                                const end = s.endDate || s.end_date;
-                                                                return (
-                                                                    <div className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-600 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-lg inline-flex">
-                                                                        <Calendar className="w-4 h-4 text-slate-400" />
+                                                        ) : s.icon_url ? (
+                                                            <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden">
+                                                                <img src={s.icon_url} alt="" className="w-8 h-8 object-contain" />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-14 h-14 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-500">
+                                                                {stageIcon}
+                                                            </div>
+                                                        )}
+                                                        {i < opportunity.stages.length - 1 && (
+                                                            <div className="w-0.5 flex-1 bg-slate-200 mt-2" />
+                                                        )}
+                                                    </div>
+
+                                                    {/* Right content */}
+                                                    <div className={`flex-1 bg-white border rounded-2xl p-5 shadow-sm transition-all ${
+                                                        canAct ? 'hover:border-[#6C3BFF]/40 hover:shadow-md cursor-pointer' : 'opacity-80'
+                                                    }`}
+                                                        onClick={canAct ? () => handleStageClick(s) : undefined}
+                                                        aria-disabled={!canAct}
+                                                    >
+                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-2 mb-1">
+                                                                    <h3 className="font-black text-slate-900 text-lg">{s.name || `Stage ${i + 1}`}</h3>
+                                                                    {stageStatus === 'active' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-purple-100 text-purple-700">Live</span>}
+                                                                    {stageStatus === 'completed' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">Completed</span>}
+                                                                </div>
+                                                                {s.type ? (
+                                                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                                                        {s.type.replace(/_/g, ' ')} {s.roundMode || s.mode ? `• ${String(s.roundMode || s.mode)}` : ''}
+                                                                    </p>
+                                                                ) : null}
+
+                                                                {s.description ? (
+                                                                    <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-wrap">{s.description}</p>
+                                                                ) : null}
+
+                                                                {(start || end) && (
+                                                                    <div className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-500">
+                                                                        <Calendar size={14} className="text-slate-400" />
                                                                         <span>
-                                                                            {start ? new Date(start).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'}) : 'TBD'}
+                                                                            {startDate ? startDate.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : 'TBD'}
                                                                             {' → '}
-                                                                            {end ? new Date(end).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'}) : 'TBD'}
+                                                                            {endDate ? endDate.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : 'TBD'}
                                                                         </span>
                                                                     </div>
-                                                                );
-                                                            })()}
-                                                        </div>
+                                                                )}
+                                                            </div>
 
-                                                        {canAct && (
-                                                            <button type="button" className="shrink-0 px-5 py-2.5 bg-[#6C3BFF] text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-purple-700 transition-colors">
-                                                                {actionLabel}
-                                                            </button>
-                                                        )}
+                                                            <div className="flex items-center gap-2 shrink-0">
+                                                                {canAct && (
+                                                                    <button type="button" className="px-5 py-2.5 bg-[#6C3BFF] text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-purple-700 transition-colors">
+                                                                        {actionLabel}
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );
@@ -1679,6 +1755,24 @@ const OpportunityDetails: React.FC = () => {
                                                 </div>
                                             </div>
                                         ) : null}
+                                        {(() => {
+                                            const hasPlacementPrize = Array.isArray(prizesList) && prizesList.some((p: any) => {
+                                                const pt = String(p.type || '').toLowerCase();
+                                                const pb = String(p.badge_text || p.badge || '').toLowerCase();
+                                                return pt.includes('placement') || pb.includes('placement') || pb.includes('ppo') || pb.includes('internship');
+                                            });
+                                            return hasPlacementPrize ? (
+                                                <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 flex items-center gap-4 shadow-sm">
+                                                    <div className="w-12 h-12 shrink-0 bg-white rounded-xl border border-blue-200 flex items-center justify-center text-blue-600 shadow-sm">
+                                                        <Briefcase size={24} strokeWidth={1.5} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-black text-blue-900">Grab Pre-Placement Interviews/Offers</p>
+                                                        <p className="text-xs font-medium text-blue-700 mt-0.5">Top performers get direct interview opportunities</p>
+                                                    </div>
+                                                </div>
+                                            ) : null;
+                                        })()}
                                         {Array.isArray(prizesList) && prizesList.length > 0 ? (
                                             <div className="space-y-4">
                                                     {prizesList.map((p: any, idx: number) => {
@@ -1769,6 +1863,12 @@ const OpportunityDetails: React.FC = () => {
                                                                             <img src={badgeIconUrl} alt="" className="w-5 h-5 object-contain" />
                                                                         ) : p.badge_emoji ? (
                                                                             <span role="img" aria-label="badge icon" className="text-sm">{p.badge_emoji}</span>
+                                                                        ) : badgeText.toLowerCase().includes('certificate') ? (
+                                                                            <Award size={14} className="text-purple-500" />
+                                                                        ) : badgeText.toLowerCase().includes('placement') || badgeText.toLowerCase().includes('ppo') || badgeText.toLowerCase().includes('internship') || badgeText.toLowerCase().includes('interview') ? (
+                                                                            <Briefcase size={14} className="text-blue-500" />
+                                                                        ) : badgeText.toLowerCase().includes('trophy') || badgeText.toLowerCase().includes('winner') ? (
+                                                                            <Trophy size={14} className="text-amber-500" />
                                                                         ) : null}
                                                                         <span className="text-xs font-bold text-slate-700">{badgeText}</span>
                                                                     </div>
