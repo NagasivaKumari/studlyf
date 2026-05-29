@@ -7,10 +7,10 @@ import {
 } from 'lucide-react';
 
 const stats = [
-    { value: "20+", label: "Sessions", icon: <Server className="w-5 h-5 text-[#7C3AED]" /> },
-    { value: "15+", label: "Colleges", icon: <GraduationCap className="w-5 h-5 text-[#7C3AED]" /> },
-    { value: "10+", label: "Partnerships", icon: <Building2 className="w-5 h-5 text-[#7C3AED]" /> },
-    { value: "3+", label: "Startups", icon: <Users className="w-5 h-5 text-[#7C3AED]" /> },
+    { value: "1 Lakh+", label: "Media Reach", icon: <Server className="w-5 h-5 text-[#7C3AED]" /> },
+    { value: "40+", label: "Sessions", icon: <GraduationCap className="w-5 h-5 text-[#7C3AED]" /> },
+    { value: "3+", label: "Startups Supported", icon: <Building2 className="w-5 h-5 text-[#7C3AED]" /> },
+    { value: "15+", label: "Hiring Partners", icon: <Users className="w-5 h-5 text-[#7C3AED]" /> },
 ];
 
 const features = [
@@ -283,10 +283,10 @@ const WhyUsSection: React.FC = () => {
                                 ].map((visit, idx) => (
                                     <div key={idx} className="flex flex-col gap-3 group/card cursor-pointer shrink-0 w-[260px] sm:w-[300px]">
                                         <div className="relative overflow-hidden rounded-xl bg-white shadow-sm border border-gray-100">
-                                            <img 
-                                                src={visit.img} 
-                                                alt={visit.college} 
-                                                className="w-full h-40 sm:h-48 object-cover transform transition-transform duration-700 group-hover/card:scale-105" 
+                                            <img
+                                                src={visit.img}
+                                                alt={visit.college}
+                                                className="w-full h-40 sm:h-48 object-cover transform transition-transform duration-700 group-hover/card:scale-105"
                                             />
                                             <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/60 via-transparent to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-300" />
                                         </div>
