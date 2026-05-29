@@ -217,6 +217,18 @@ def _apply_event_snapshot_to_opportunity(doc: dict, ev: dict) -> None:
         if ev.get(k) is not None:
             doc[k] = ev.get(k)
 
+    # Pass through FAQ data from event to opportunity
+    if ev.get("faqs") is not None:
+        doc["faqs"] = ev.get("faqs")
+    # Dynamic badges for event
+    if ev.get("badges") is not None:
+        doc["badges"] = ev.get("badges")
+    # Section-based page builder data
+    if ev.get("sections") is not None:
+        doc["sections"] = ev.get("sections")
+    if ev.get("seo") is not None:
+        doc["seo"] = ev.get("seo")
+
 
 async def _hydrate_institution_branding(doc: dict) -> None:
     """Attach institution profile logo/name for public opportunity pages."""

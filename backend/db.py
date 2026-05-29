@@ -262,6 +262,7 @@ sdl_join_requests_col = db["sdl_join_requests"]
 # Institution Dashboard Ecosystem (High-End Modular Architecture)
 institutions_col = db["institutions"]
 events_col = db["events"]
+faqs_col = db["event_faqs"]
 rounds_col = db["rounds"]                # Dynamic Phases (Assessment, Submission, etc.)
 form_fields_col = db["form_fields"]      # Form Builder Layer
 participants_col = db["participants"]

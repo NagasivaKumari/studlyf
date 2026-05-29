@@ -36,9 +36,15 @@ import {
     Gavel,
     Settings2,
     ShieldCheck,
+    HelpCircle,
+    AlertCircle,
 } from 'lucide-react';
 import { getStatusById, getStatusColor, getStatusLabel } from '../../utils/calendarStatuses';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Helmet } from 'react-helmet-async';
+import EventFAQ from '../../components/EventFAQ';
+import SectionRenderer from '../../components/SectionRenderer';
+import { useRegistrationState } from '../../utils/useRegistrationState';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
 import SubmissionForm from '../../components/opportunities/SubmissionForm';
@@ -198,6 +204,15 @@ const OpportunityDetails: React.FC = () => {
         if (myApplication && ['shortlisted', 'accepted', 'approved'].includes(String(myApplication.status).toLowerCase())) return 'APPROVED';
         return registrationStatus;
     }, [registrationStatus, myApplication]);
+
+    const regCTA = useRegistrationState({
+        isAuthenticated: !!user?.user_id,
+        isRegistered: isApplied || effectiveRegStatus !== 'NOT_REGISTERED',
+        deadline: opportunity?.deadline,
+        externalLink: opportunity?.external_registration_link || opportunity?.externalRegistrationLink,
+        isLoading: !opportunity,
+    });
+
     const [formConfig, setFormConfig] = useState<any>(null);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [uploadingField, setUploadingField] = useState<string | null>(null);
@@ -1226,6 +1241,18 @@ const OpportunityDetails: React.FC = () => {
                                         </>
                                     ) : null}
                                 </nav>
+                                <Helmet>
+                                    <title>{opportunity.title} | Studlyf</title>
+                                    <meta name="description" content={opportunity.seo?.description || opportunity.description?.slice(0, 160) || ''} />
+                                    <meta property="og:title" content={opportunity.title} />
+                                    <meta property="og:description" content={opportunity.seo?.description || opportunity.description?.slice(0, 160) || ''} />
+                                    {opportunity.banner_url && <meta property="og:image" content={getImageUrl(opportunity.banner_url)} />}
+                                    <meta property="og:type" content="website" />
+                                    <meta name="twitter:card" content="summary_large_image" />
+                                    <meta name="twitter:title" content={opportunity.title} />
+                                    <meta name="twitter:description" content={opportunity.seo?.description || opportunity.description?.slice(0, 160) || ''} />
+                                    {opportunity.banner_url && <meta name="twitter:image" content={getImageUrl(opportunity.banner_url)} />}
+                                </Helmet>
                                 <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight">
                                     {opportunity.title}
                                 </h1>
@@ -1604,6 +1631,19 @@ const OpportunityDetails: React.FC = () => {
                                                                     </button>
                                                                 )}
                                                             </div>
+                                                        </div>
+
+                                                        {/* Per-stage FAQ link (scrolls to FAQ section) */}
+                                                        <div className="mt-3 pt-3 border-t border-slate-100">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    faqRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                                }}
+                                                                className="text-[11px] font-bold text-purple-600 hover:text-purple-800 transition-colors flex items-center gap-1.5"
+                                                            >
+                                                                <HelpCircle size={12} /> FAQs
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2178,48 +2218,51 @@ const OpportunityDetails: React.FC = () => {
                             </section>
                         </div>
 
+                        {/* Dynamic sections from backend schema */}
+                        {opportunity.sections && opportunity.sections.length > 0 && (
+                            <SectionRenderer sections={opportunity.sections} />
+                        )}
+
                         {!hideExtras ? (
                             <div ref={faqRef}>
-                                <section className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
-                                    {/* Tabs */}
-                                    <div className="flex border-b border-slate-200">
-                                        <button className="flex-1 py-4 text-center font-black text-[#d97706] border-b-2 border-[#d97706] bg-orange-50/30">
-                                            FAQs
-                                        </button>
-                                        <button className="flex-1 py-4 text-center font-bold text-slate-500 hover:text-slate-800 transition-colors">
-                                            Discussions
-                                        </button>
-                                    </div>
-
-                                    <div className="p-6 md:p-8">
-                                        {/* Filters */}
-                                        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-                                            <span className="shrink-0 px-4 py-2 bg-slate-800 text-white text-xs font-black rounded-full cursor-pointer hover:bg-slate-700">All</span>
-                                            <span className="shrink-0 px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-full cursor-pointer hover:bg-slate-200">Registration</span>
-                                            <span className="shrink-0 px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-full cursor-pointer hover:bg-slate-200">Coding Challenge</span>
+                                {opportunity.faqs && opportunity.faqs.length > 0 ? (
+                                    <EventFAQ faqs={opportunity.faqs} title="Frequently Asked Questions" />
+                                ) : (
+                                    <section className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+                                        <div className="flex border-b border-slate-200">
+                                            <button className="flex-1 py-4 text-center font-black text-[#d97706] border-b-2 border-[#d97706] bg-orange-50/30">
+                                                FAQs
+                                            </button>
+                                            <button className="flex-1 py-4 text-center font-bold text-slate-500 hover:text-slate-800 transition-colors">
+                                                Discussions
+                                            </button>
                                         </div>
-
-                                        {/* Accordion List */}
-                                        <div className="space-y-4">
-                                            {['Can I change my team members after registering for this competition?', 'Why is my college name not mentioned in the eligible institutes?', 'How can I delete my registration from this opportunity?', 'I am unable to verify my phone number. What should I do?'].map((q, idx) => (
-                                                <div key={idx} className="border-b border-slate-100 pb-4">
-                                                    <button className="w-full flex items-center justify-between text-left group">
-                                                        <span className="text-sm font-bold text-slate-700 group-hover:text-purple-600 transition-colors pr-4">{q}</span>
-                                                        <span className="shrink-0 w-8 h-8 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-purple-50 group-hover:text-purple-600 transition-colors">
-                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                                        </span>
-                                                    </button>
-                                                </div>
-                                            ))}
+                                        <div className="p-6 md:p-8">
+                                            <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+                                                <span className="shrink-0 px-4 py-2 bg-slate-800 text-white text-xs font-black rounded-full cursor-pointer hover:bg-slate-700">All</span>
+                                                <span className="shrink-0 px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-full cursor-pointer hover:bg-slate-200">Registration</span>
+                                                <span className="shrink-0 px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-full cursor-pointer hover:bg-slate-200">Coding Challenge</span>
+                                            </div>
+                                            <div className="space-y-4">
+                                                {['Can I change my team members after registering for this competition?', 'Why is my college name not mentioned in the eligible institutes?', 'How can I delete my registration from this opportunity?', 'I am unable to verify my phone number. What should I do?'].map((q, idx) => (
+                                                    <div key={idx} className="border-b border-slate-100 pb-4">
+                                                        <button className="w-full flex items-center justify-between text-left group">
+                                                            <span className="text-sm font-bold text-slate-700 group-hover:text-purple-600 transition-colors pr-4">{q}</span>
+                                                            <span className="shrink-0 w-8 h-8 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-purple-50 group-hover:text-purple-600 transition-colors">
+                                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                                            </span>
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="mt-8 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                                                <p className="text-sm font-bold text-slate-600">
+                                                    Can't find the answer you are looking for? <span className="text-[#d97706] cursor-pointer hover:underline">Ask a question (Be specific)</span>
+                                                </p>
+                                            </div>
                                         </div>
-
-                                        <div className="mt-8 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-                                            <p className="text-sm font-bold text-slate-600">
-                                                Can't find the answer you are looking for? <span className="text-[#d97706] cursor-pointer hover:underline">Ask a question (Be specific)</span>
-                                            </p>
-                                        </div>
-                                    </div>
-                                </section>
+                                    </section>
+                                )}
                             </div>
                         ) : (
                             <div ref={faqRef} />
@@ -2276,12 +2319,18 @@ const OpportunityDetails: React.FC = () => {
                                       })
                                     : '—'}
                             </p>
-                            <p className="text-slate-400">Listing details may be refreshed periodically.</p>
+                            <p className="text-slate-400">The data on this page gets updated every 15 minutes.</p>
                             <p>
                                 This opportunity has been listed by {orgDisplay}. Studlyf is not liable for any content
-                                mentioned in this opportunity or the process followed by the organizers. Contact support
-                                if you need help or want to report an issue.
+                                mentioned in this opportunity or the process followed by the organizers.
                             </p>
+                            <button
+                                type="button"
+                                onClick={() => window.open('mailto:support@studlyf.com?subject=Report Issue&body=' + encodeURIComponent(`Issue with: ${opportunity.title}\n${window.location.href}`))}
+                                className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors flex items-center gap-1.5"
+                            >
+                                <AlertCircle size={12} /> Report an Issue
+                            </button>
                         </footer>
                     </>
                 )}
@@ -2321,34 +2370,47 @@ const OpportunityDetails: React.FC = () => {
                                 ) : null}
 
                                 {/* Main CTA Button */}
-                                {effectiveRegStatus === 'NOT_REGISTERED' ? (
-                                    opportunity?.external_registration_link ? (
-                                        <a
-                                            href={opportunity.external_registration_link}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="w-full py-3.5 bg-[#0070F3] hover:bg-blue-600 text-white rounded-full text-base font-bold tracking-wide transition-all shadow-md flex justify-center items-center"
-                                        >
-                                            Register
-                                        </a>
-                                    ) : (
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowRegistrationModal(true)}
-                                            className="w-full py-3.5 bg-[#0070F3] hover:bg-blue-600 text-white rounded-full text-base font-bold tracking-wide transition-all shadow-md flex justify-center items-center"
-                                        >
-                                            Register
-                                        </button>
-                                    )
-                                ) : (
-                                    <button
-                                        type="button"
-                                        disabled
-                                        className="w-full py-3.5 bg-emerald-500 text-white rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2"
-                                    >
-                                        <CheckCircle2 size={20} /> Registered
-                                    </button>
-                                )}
+                                {(() => {
+                                    switch (regCTA.variant) {
+                                        case 'loading':
+                                            return (
+                                                <button type="button" disabled className="w-full py-3.5 bg-slate-300 text-white rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2">
+                                                    <Loader2 size={18} className="animate-spin" /> Checking...
+                                                </button>
+                                            );
+                                        case 'external':
+                                            return (
+                                                <a href={regCTA.url} target="_blank" rel="noopener noreferrer" className="w-full py-3.5 bg-[#0070F3] hover:bg-blue-600 text-white rounded-full text-base font-bold tracking-wide transition-all shadow-md flex justify-center items-center">
+                                                    {regCTA.label}
+                                                </a>
+                                            );
+                                        case 'closed':
+                                            return (
+                                                <button type="button" disabled className="w-full py-3.5 bg-slate-400 text-white/80 rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2 cursor-not-allowed">
+                                                    <XCircle size={18} /> {regCTA.label}
+                                                </button>
+                                            );
+                                        case 'team_full':
+                                            return (
+                                                <button type="button" disabled className="w-full py-3.5 bg-amber-400 text-white rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2 cursor-not-allowed">
+                                                    <Users size={18} /> {regCTA.label}
+                                                </button>
+                                            );
+                                        case 'registered':
+                                            return (
+                                                <button type="button" disabled className="w-full py-3.5 bg-emerald-500 text-white rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2">
+                                                    <CheckCircle2 size={20} /> {regCTA.label}
+                                                </button>
+                                            );
+                                        case 'register':
+                                        default:
+                                            return (
+                                                <button type="button" onClick={() => setShowRegistrationModal(true)} className="w-full py-3.5 bg-[#0070F3] hover:bg-blue-600 text-white rounded-full text-base font-bold tracking-wide transition-all shadow-md flex justify-center items-center">
+                                                    {regCTA.label}
+                                                </button>
+                                            );
+                                    }
+                                })()}
 
                                 <div className="mt-5 flex items-center justify-center gap-2 text-slate-600 font-semibold text-sm">
                                     <span className="cursor-pointer hover:text-slate-900 transition-colors">
@@ -2385,6 +2447,20 @@ const OpportunityDetails: React.FC = () => {
                                     </button>
                                 </div>
                             )}
+                        </div>
+
+                        {/* Powered by Studlyf */}
+                        <div className="pt-4 pb-2 text-center">
+                            <a href="/" className="inline-flex items-center gap-2 text-[11px] font-bold text-slate-400 hover:text-purple-600 transition-colors">
+                                <img src="/images/studlyf_secondary.png" alt="Studlyf" className="h-5 w-auto" />
+                                <span>Powered by Studlyf</span>
+                            </a>
+                            <p className="text-[10px] text-slate-300 font-medium mt-1.5">
+                                Best Viewed in Chrome, Opera, Mozilla, EDGE & Safari
+                            </p>
+                            <p className="text-[10px] text-slate-300 font-medium mt-0.5">
+                                Copyright &copy; {new Date().getFullYear()} FLIVE Consulting Pvt Ltd
+                            </p>
                         </div>
                     </div>
                 )}
