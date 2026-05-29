@@ -781,6 +781,28 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                             );
                                                         })()}
 
+                                                        {/* External Registration Link */}
+                                                        {onUpdateEvent && event && (
+                                                            <div className="space-y-3">
+                                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">External Registration Link (Optional)</label>
+                                                                <div className="flex flex-col gap-2">
+                                                                    <input 
+                                                                        type="url"
+                                                                        value={event.external_registration_link || event.externalRegistrationLink || ''}
+                                                                        onChange={(e) => onUpdateEvent({
+                                                                            ...event,
+                                                                            external_registration_link: e.target.value
+                                                                        })}
+                                                                        placeholder="e.g., https://hackprix-2026.devfolio.co/overview"
+                                                                        className="w-full px-5 py-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-100 outline-none font-medium text-slate-900 shadow-sm"
+                                                                    />
+                                                                    <p className="text-[10px] text-slate-500 font-medium ml-1">
+                                                                        If provided, clicking "Register" will redirect users to this external URL instead of opening the built-in Studlyf registration form.
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
                                                         {/* Default Profile Fields Config Table */}
                                                         {(() => {
                                                             const config = event?.registration_settings?.profile_fields_config || {};

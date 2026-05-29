@@ -206,24 +206,32 @@ DEFAULT_TEMPLATES = {
     "certificate_issued": {
         "name": "Certificate Issued",
         "type": "certificate_issued",
-        "subject": "Your Certificate for {{event_title}} is Ready!",
+        "subject": "Wow, look at your certificate | {{event_title}} 🚀",
         "placeholders": ["participant_name", "event_title", "organization_name", "certificate_id", "issued_date", "certificate_download_link", "verification_url"],
         "is_default": True,
         "emoji": "🎓",
-        "body_html": """<p style="margin: 0 0 16px 0; font-size: 16px; color: #1e293b;">Hi <strong>{{participant_name}}</strong>,</p>
-<p style="margin: 0 0 24px 0; font-size: 15px; color: #475569; line-height: 1.6;">Congratulations on completing <strong>{{event_title}}</strong> hosted by <strong>{{organization_name}}</strong>! Your digital participation certificate has been generated.</p>
-<div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 16px; padding: 24px; margin-bottom: 24px;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; color: #374151;">
-        <tr><td style="padding: 4px 0; color: #6b7280; width: 120px;">Certificate ID:</td><td style="padding: 4px 0; font-weight: 600; font-family: monospace;">{{certificate_id}}</td></tr>
-        <tr><td style="padding: 4px 0; color: #6b7280;">Issued Date:</td><td style="padding: 4px 0; font-weight: 600;">{{issued_date}}</td></tr>
-    </table>
+        "body_html": """<div style=\"background:#1f4f8f;border-radius:18px;padding:28px 24px;color:#fff;overflow:hidden;position:relative;margin-bottom:24px;\">
+    <div style=\"font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;opacity:.85;margin-bottom:14px;\">{{organization_name}}</div>
+    <div style=\"font-size:34px;line-height:1.05;font-weight:900;margin:0 0 14px 0;max-width:300px;\">Woohoo!<br/>Time to become a celebrity on social media!</div>
+    <div style=\"font-size:15px;line-height:1.6;max-width:360px;opacity:.95;\">Congratulations, here is your certificate for <strong>{{event_title}}</strong> 🚀</div>
 </div>
-<div style="text-align: center; margin-bottom: 20px;">
-    <a href="{{certificate_download_link}}" style="background-color: #10b981; color: #ffffff; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block;">Download Certificate</a>
+<div style=\"text-align:center;margin:0 0 14px 0;font-size:15px;color:#334155;\">Congratulations, here is your certificate for <strong>{{event_title}}</strong> 🚀</div>
+<div style=\"background:#eff6ff;border-radius:18px;padding:22px 18px;margin:0 auto 24px auto;max-width:280px;text-align:center;box-shadow:0 8px 24px rgba(37,99,235,.10);\">
+    <div style=\"font-size:18px;font-weight:900;color:#1d4ed8;line-height:1.2;margin-bottom:18px;\">Certificate of <br/>Participation</div>
+    <a href=\"{{certificate_download_link}}\" style=\"display:inline-block;padding:12px 22px;background:#215b9f;color:#fff;border-radius:999px;text-decoration:none;font-weight:800;font-size:14px;box-shadow:0 6px 14px rgba(33,91,159,.3);\">Download</a>
 </div>
-<div style="text-align: center; font-size: 12px; color: #64748b;">
-    Verify at: <a href="{{verification_url}}" style="color: #7C3AED; text-decoration: underline;">{{verification_url}}</a>
-</div>"""
+<p style=\"margin:0 0 18px 0;color:#475569;line-height:1.7;text-align:center;\">Share them on social media &amp; show the world your spirit of competitiveness that is going to reap you amazing rewards.</p>
+<div style=\"display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:12px 0 22px 0;\">
+    <span style=\"width:38px;height:38px;border-radius:999px;background:#1d4ed8;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;\">WA</span>
+    <span style=\"width:38px;height:38px;border-radius:999px;background:#1d4ed8;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;\">IN</span>
+    <span style=\"width:38px;height:38px;border-radius:999px;background:#1d4ed8;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;\">FB</span>
+    <span style=\"width:38px;height:38px;border-radius:999px;background:#1d4ed8;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;\">X</span>
+</div>
+<div style=\"background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:22px 16px;text-align:center;margin:0 -40px 0 -40px;\">
+    <div style=\"font-size:28px;font-weight:900;color:#1d4ed8;line-height:1;margin-bottom:10px;\">{{organization_name}}</div>
+    <div style=\"font-size:14px;color:#475569;margin-bottom:12px;\">Join our evergrowing unstoppable community</div>
+</div>
+<p style=\"margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;\">Queries? We’re just one email away: <a href=\"mailto:{{support_email}}\" style=\"color:#1d4ed8;text-decoration:none;font-weight:700;\">{{support_email}}</a> &middot; &copy; 2026 {{organization_name}}. All rights reserved.</p>"""
     },
     "certificate_content": {
         "name": "Certificate Details",

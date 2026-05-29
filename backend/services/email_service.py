@@ -220,27 +220,43 @@ def get_certificate_issued_template(
     verification_url: str,
 ) -> str:
     return _email_shell(
-        f"Certificate Issued: {_safe_text(event_title)}",
+        f"Wow, look at your certificate | {_safe_text(event_title)} 🚀",
         f"""
-        <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi <strong>{_safe_text(participant_name)}</strong>,</p>
-        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;">Thank you for participating in <strong>{_safe_text(event_title)}</strong> hosted by <strong>{_safe_text(organization_name)}</strong> on Studlyf.</p>
-
-        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:18px;">
-            <p style="margin:0 0 4px 0;color:#64748b;font-size:12px;font-weight:800;text-transform:uppercase;">Certificate Details</p>
-            <table width="100%" style="border-collapse:collapse;">
-                <tr><td style="padding:6px 0;color:#64748b;">Event</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(event_title)}</td></tr>
-                <tr><td style="padding:6px 0;color:#64748b;">Certificate ID</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(certificate_id)}</td></tr>
-                <tr><td style="padding:6px 0;color:#64748b;">Issued On</td><td align="right" style="padding:6px 0;color:#111827;font-weight:800;">{_safe_text(issued_date)}</td></tr>
-            </table>
+        <div style="background:#1f4f8f;border-radius:18px;padding:28px 24px;color:#fff;overflow:hidden;position:relative;margin-bottom:24px;">
+            <div style="font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;opacity:.85;margin-bottom:14px;">{_safe_text(organization_name)}</div>
+            <div style="font-size:34px;line-height:1.05;font-weight:900;margin:0 0 14px 0;max-width:300px;">Woohoo!<br/>Time to become a celebrity on social media!</div>
+            <div style="font-size:15px;line-height:1.6;max-width:360px;opacity:.95;">Congratulations, here is your certificate for <strong>{_safe_text(event_title)}</strong> 🚀</div>
+            <div style="position:absolute;right:20px;bottom:12px;width:130px;height:130px;border-radius:999px;background:rgba(255,255,255,.08);"></div>
         </div>
 
-        <div style="text-align:center;margin:24px 0;">
-            <a href="{_safe_text(certificate_download_link)}" style="display:inline-block;padding:14px 28px;background:#6C3BFF;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;margin-right:8px;margin-bottom:8px;">Download Certificate</a>
-            <a href="{_safe_text(verification_url)}" style="display:inline-block;padding:14px 28px;background:#0f172a;color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;margin-bottom:8px;">Verify Certificate</a>
+        <div style="text-align:center;margin:0 0 14px 0;font-size:15px;color:#334155;">Congratulations, here is your certificate for <strong>{_safe_text(event_title)}</strong> 🚀</div>
+
+        <div style="background:#eff6ff;border-radius:18px;padding:22px 18px;margin:0 auto 24px auto;max-width:280px;text-align:center;box-shadow:0 8px 24px rgba(37,99,235,.10);">
+            <div style="font-size:18px;font-weight:900;color:#1d4ed8;line-height:1.2;margin-bottom:18px;">Certificate of <br/>Participation</div>
+            <a href="{_safe_text(certificate_download_link)}" style="display:inline-block;padding:12px 22px;background:#215b9f;color:#fff;border-radius:999px;text-decoration:none;font-weight:800;font-size:14px;box-shadow:0 6px 14px rgba(33,91,159,.3);">Download</a>
         </div>
 
-        <p style="margin:0;color:#475569;line-height:1.7;">We appreciate your participation and hope to see you in more opportunities on Studlyf.</p>
-        <p style="margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">Team Studlyf &middot; On behalf of {_safe_text(organization_name)}</p>
+        <p style="margin:0 0 18px 0;color:#475569;line-height:1.7;text-align:center;">Share them on social media &amp; show the world your spirit of competitiveness that is going to reap you amazing rewards.</p>
+
+        <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:12px 0 22px 0;">
+            <span style="width:38px;height:38px;border-radius:999px;background:#1d4ed8;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;">WA</span>
+            <span style="width:38px;height:38px;border-radius:999px;background:#1d4ed8;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;">IN</span>
+            <span style="width:38px;height:38px;border-radius:999px;background:#1d4ed8;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;">FB</span>
+            <span style="width:38px;height:38px;border-radius:999px;background:#1d4ed8;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;">X</span>
+        </div>
+
+        <div style="background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:22px 16px;text-align:center;margin:0 -40px 0 -40px;">
+            <div style="font-size:28px;font-weight:900;color:#1d4ed8;line-height:1;margin-bottom:10px;">{_safe_text(organization_name)}</div>
+            <div style="font-size:14px;color:#475569;margin-bottom:12px;">Join our evergrowing unstoppable community</div>
+            <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;">
+                <span style="width:34px;height:34px;border-radius:999px;background:#e5e7eb;color:#64748b;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;">IG</span>
+                <span style="width:34px;height:34px;border-radius:999px;background:#e5e7eb;color:#64748b;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;">IN</span>
+                <span style="width:34px;height:34px;border-radius:999px;background:#e5e7eb;color:#64748b;display:inline-flex;alignments:center;justify-content:center;font-size:10px;font-weight:800;">TG</span>
+                <span style="width:34px;height:34px;border-radius:999px;background:#e5e7eb;color:#64748b;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;">YT</span>
+            </div>
+        </div>
+
+        <p style="margin:18px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">Queries? We’re just one email away: <a href="mailto:{_safe_text(os.getenv('VITE_SUPPORT_EMAIL', os.getenv('SUPPORT_EMAIL', 'support@studlyf.com')))}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">{_safe_text(os.getenv('VITE_SUPPORT_EMAIL', os.getenv('SUPPORT_EMAIL', 'support@studlyf.com')))}</a> &middot; &copy; 2026 { _safe_text(organization_name) }. All rights reserved.</p>
         """,
         subtitle="Your certificate is ready",
         accent="#6C3BFF",

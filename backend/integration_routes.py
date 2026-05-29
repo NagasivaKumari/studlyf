@@ -1885,6 +1885,7 @@ async def issue_ranked_certificates(
             band_min = band.get("min_score")
             band_max = band.get("max_score")
             band_limit = band.get("limit")
+            band_template_id = band.get("template_id") or template_id
 
             band_rows = final_rankings
             if isinstance(band_min, (int, float)):
@@ -1913,7 +1914,7 @@ async def issue_ranked_certificates(
                     event_id,
                     [row_copy],
                     send_email=send_email,
-                    template_id=template_id,
+                    template_id=band_template_id,
                 )
                 issued_certificates.extend(result)
     else:
@@ -2026,16 +2027,21 @@ async def verify_certificate(certificate_id: str):
     """
     cert = await certificates_col.find_one({"certificate_id": certificate_id})
     if not cert:
+        cert = await event_certificates_col.find_one({"certificate_id": certificate_id})
+    if not cert:
         raise HTTPException(status_code=404, detail="Certificate not found or invalid.")
     
-    # Return professional snapshot
     return {
-        "recipient": cert.get("recipient_name"),
-        "event": "Competition Achievement", # Ideally fetch from event_id
-        "rank": cert.get("rank"),
-        "issued_date": cert.get("issued_at"),
+        "recipient": cert.get("recipient_name") or cert.get("participant_name") or "",
+        "recipient_name": cert.get("recipient_name") or cert.get("participant_name") or "",
+        "event": cert.get("event_title") or cert.get("event_name") or "Studlyf Event",
+        "event_title": cert.get("event_title") or cert.get("event_name") or "Studlyf Event",
+        "rank": cert.get("rank") or cert.get("achievement_label") or "",
+        "issued_date": str(cert.get("issued_at") or cert.get("issued_date") or ""),
+        "date": str(cert.get("issued_at") or cert.get("issued_date") or ""),
         "status": "VALIDATED",
-        "institution": "Certified Institution Network"
+        "institution": cert.get("organization_name") or cert.get("organization") or "Studlyf",
+        "organization_name": cert.get("organization_name") or cert.get("organization") or "Studlyf",
     }
 
 
@@ -2043,6 +2049,8 @@ async def verify_certificate(certificate_id: str):
 async def download_certificate(certificate_id: str):
     """Generate and download a certificate PDF for a verified certificate."""
     cert = await certificates_col.find_one({"certificate_id": certificate_id})
+    if not cert:
+        cert = await event_certificates_col.find_one({"certificate_id": certificate_id})
     if not cert:
         raise HTTPException(status_code=404, detail="Certificate not found or invalid.")
 
@@ -3829,25 +3837,35 @@ async def add_event_judge(event_id: str, judge_data: dict, user: dict = Depends(
     if any(j.get("email") == judge_data.get("email") for j in current_judges):
         return {"status": "exists", "message": "Judge already assigned"}
     
-    from judge_portal_service import judge_portal_service
-    
-    # Delegate to the new Judge Portal Service which creates the token, inserts into judges_col, and sends the rich HTML email
-    result = await judge_portal_service.create_judge_invitation(
-        event_id, judge_data, user.get("institution_id")
-    )
-    
-    # Fetch the created judge document to get the token (or generate a fallback if not returned)
+    from services.judge_service import create_judge
+    from services.email_service import send_notification_email
+
+    judge_record = {
+        "event_id": event_id,
+        "institution_id": user.get("institution_id"),
+        "name": judge_data.get("name"),
+        "email": judge_data.get("email"),
+        "expertise": judge_data.get("expertise"),
+        "status": "INVITED",
+        "invitation_token": uuid.uuid4().hex,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    evaluation_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/evaluate/{judge_record['invitation_token']}"
+
+    result = await create_judge(judge_record)
+
     from db import judges_col
-    judge_doc = await judges_col.find_one({"_id": ObjectId(result["judge_id"])})
-    
+    judge_doc = await judges_col.find_one({"_id": ObjectId(result["_id"])})
+
     # Also push to the event['judges'] array for backwards compatibility with the frontend EventDetails page
     judge_entry = {
-        "id": str(result["judge_id"]),
+        "id": str(result["_id"]),
         "name": judge_data.get("name"),
         "email": judge_data.get("email"),
         "expertise": judge_data.get("expertise"),
         "status": "INVITED",
         "invitation_token": judge_doc.get("invitation_token") if judge_doc else None,
+        "evaluation_url": evaluation_url,
         "assigned_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -3855,6 +3873,29 @@ async def add_event_judge(event_id: str, judge_data: dict, user: dict = Depends(
         {"_id": ObjectId(event_id)},
         {"$push": {"judges": judge_entry}}
     )
+
+    judge_name = judge_data.get("name") or judge_data.get("email") or "Judge"
+    event_title = event.get("title") or "Event"
+    email_html = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; background:#f8fafc; color:#0f172a; padding:24px;">
+        <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;padding:32px;">
+            <p style="margin:0 0 12px 0;font-size:18px;font-weight:800;">Hello {judge_name},</p>
+            <p style="margin:0 0 18px 0;line-height:1.7;color:#475569;">You have been invited to evaluate submissions for <strong>{event_title}</strong>.</p>
+            <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:16px;padding:16px;margin:20px 0;">
+                <p style="margin:0;color:#6C3BFF;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;">Evaluation Link</p>
+                <p style="margin:8px 0 0 0;font-size:14px;color:#0f172a;word-break:break-all;">{evaluation_url}</p>
+            </div>
+            <p style="margin:0 0 20px 0;line-height:1.7;color:#475569;">Open the link to review your assigned submission and submit your evaluation. If you need access later, you can return to the same link from this email.</p>
+            <a href="{evaluation_url}" style="display:inline-block;background:#6C3BFF;color:#fff;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:800;">Start Evaluation</a>
+        </div>
+    </body>
+    </html>
+    """
+
+    email_ok = await send_notification_email(judge_data.get("email"), f"Judge Invitation: {event_title}", email_html)
+    if not email_ok:
+        raise HTTPException(status_code=500, detail="Judge invitation saved but email could not be sent")
     
     return {"status": "success", "judge": judge_entry}
 
@@ -4814,6 +4855,7 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
             "registrationFields": reg_fields,
             "logo_url": event_data.get("logo_url", ""),
             "banner_url": event_data.get("banner_url", ""),
+            "external_registration_link": event_data.get("external_registration_link", "") or event_data.get("externalRegistrationLink", ""),
         }
         # Normalize eligibility fields from event_data into opp_data
         def _norm_list(v):
@@ -5061,6 +5103,7 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
                 "registrationFields": reg_fields,
                 "logo_url": updated_event.get("logo_url", ""),
                 "banner_url": updated_event.get("banner_url", ""),
+                "external_registration_link": updated_event.get("external_registration_link", "") or updated_event.get("externalRegistrationLink", ""),
             }
 
             # Normalize eligibility fields from updated_event into opp_data

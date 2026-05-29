@@ -12,7 +12,7 @@ except Exception:
     HAS_WEASYPRINT = False
 from datetime import datetime, timezone
 from bson import ObjectId
-from db import event_certificates_col, cert_templates_col
+from db import event_certificates_col, cert_templates_col, certificate_jobs_col
 from services.email_template_service import get_active_template, render_template
 
 
@@ -372,6 +372,8 @@ class InstitutionalCertificateService:
                 if existing:
                     continue
 
+                band_template_id = rank_data.get("template_id") or template_id
+
                 record = await self.issue_event_certificate(
                     event_id=event_id,
                     user_id=recipient["user_id"],
@@ -382,7 +384,7 @@ class InstitutionalCertificateService:
                     achievement_type=achievement_type,
                     event_code=event_code,
                     institution_id=institution_id,
-                    template_id=template_id,
+                    template_id=band_template_id,
                     rank=rank,
                     team_id=str(team_id) if team_id else None,
                 )

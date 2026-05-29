@@ -211,6 +211,8 @@ def _apply_event_snapshot_to_opportunity(doc: dict, ev: dict) -> None:
         "collegeRestriction",
         "genderRestriction",
         "judging_criteria",
+        "external_registration_link",
+        "externalRegistrationLink",
     ):
         if ev.get(k) is not None:
             doc[k] = ev.get(k)

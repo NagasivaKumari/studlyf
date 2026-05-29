@@ -147,7 +147,11 @@ const EventsManagement: React.FC<EventsManagementProps> = ({ institutionId, onVi
                 if (!response.ok) throw new Error("Fetch failed");
                 const data = await response.json();
 
-                setEvents(data.map((e: any) => ({
+                const filteredData = data.filter((e: any) => 
+                    e.category === 'Job' || e.category === 'Internship'
+                );
+
+                setEvents(filteredData.map((e: any) => ({
                     id: e._id,
                     name: e.title,
                     status: e.status || 'Unknown',

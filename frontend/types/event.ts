@@ -51,6 +51,7 @@ export interface IEvent {
     opportunity_id?: string;
     min_team_size?: number;
     max_team_size?: number;
+    external_registration_link?: string;
 }
 
 export interface ITeamMember {

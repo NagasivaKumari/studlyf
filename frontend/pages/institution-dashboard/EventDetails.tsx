@@ -141,6 +141,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [saving, setSaving] = useState(false);
     const [criteria, setCriteria] = useState<any[]>([]);
     const [bundleData, setBundleData] = useState<any>(null);
+    const [prizeDistribution, setPrizeDistribution] = useState<any[]>([]);
     const [threshold, setThreshold] = useState(0);
     const [debouncedThreshold, setDebouncedThreshold] = useState(0);
     const [bundleTab, setBundleTab] = useState<string>('shortlisted');
@@ -528,6 +529,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 }
                 
                 setEvent(eventData);
+                setPrizeDistribution(
+                    Array.isArray(eventData.prize_distribution) ? eventData.prize_distribution :
+                    Array.isArray(eventData.prizeDistribution) ? eventData.prizeDistribution :
+                    Array.isArray(eventData.prizes) ? eventData.prizes : []
+                );
                 setStages(
                     (Array.isArray(eventData.stages) ? eventData.stages : []).map((s: any, idx: number) => ({
                         ...s,
@@ -1544,6 +1550,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         { id: 'criteria', label: 'Scoring Rubrics', icon: ShieldCheck },
         { id: 'evaluation-matrix', label: 'Evaluation Matrix', icon: TrendingUp },
         { id: 'leaderboard', label: 'Leaderboard', icon: BarChart3 },
+        { id: 'prizes', label: 'Prizes', icon: Award },
         { id: 'pipeline', label: 'Pipeline', icon: Zap },
         ...(hackathonPackageEnabled ? [{ id: 'package', label: 'Event Package', icon: Lightbulb }] : []),
         { id: 'judges', label: 'Judges', icon: Gavel },
@@ -3423,6 +3430,201 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 );
             case 'evaluation-matrix':
                 return eventId ? <EvaluationMatrixView eventId={eventId} criteria={criteria} refreshCounter={refreshCounter} /> : null;
+            case 'prizes':
+                return (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Prize Distribution</h2>
+                                <p className="text-sm font-medium text-slate-500 mt-1">Manage individual prizes, icons, and badge labels</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const updated = [...(prizeDistribution || []), {}];
+                                        setPrizeDistribution(updated);
+                                    }}
+                                    className="flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all"
+                                >
+                                    <Plus size={14} />
+                                    Add Prize
+                                </button>
+                                {(prizeDistribution || []).length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            try {
+                                                const formDataToSend = new FormData();
+                                                formDataToSend.append('prizes', JSON.stringify(prizeDistribution));
+                                                formDataToSend.append('prize_pool', event.prize_pool || '');
+                                                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/professional`, {
+                                                    method: 'PATCH',
+                                                    headers: { ...authHeaders() },
+                                                    body: formDataToSend,
+                                                });
+                                                if (!res.ok) throw new Error('Failed to save');
+                                                alert('Prizes saved successfully!');
+                                                setRefreshCounter(prev => prev + 1);
+                                            } catch (e: any) {
+                                                alert(e?.message || 'Failed to save prizes');
+                                            }
+                                        }}
+                                        className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all"
+                                    >
+                                        <Save size={14} />
+                                        Save Prizes
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {(prizeDistribution || []).length === 0 ? (
+                            <div className="p-16 bg-white border border-slate-100 rounded-[2rem] flex flex-col items-center justify-center text-center shadow-sm">
+                                <div className="w-16 h-16 bg-purple-50 text-purple-400 rounded-[1.25rem] flex items-center justify-center mb-6">
+                                    <Trophy size={32} strokeWidth={1.5} />
+                                </div>
+                                <h3 className="text-lg font-black text-slate-900">No prizes configured yet</h3>
+                                <p className="text-sm text-slate-500 mt-2 max-w-md font-medium">Add individual prizes with custom icons, badge labels, and descriptions to display on the event portal.</p>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const updated = [...(prizeDistribution || []), {}];
+                                        setPrizeDistribution(updated);
+                                    }}
+                                    className="mt-6 flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] transition-all"
+                                >
+                                    <Plus size={14} />
+                                    Add First Prize
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {prizeDistribution.map((prize: any, i: number) => (
+                                    <div key={i} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-500 text-[11px] font-black">
+                                                    {i + 1}
+                                                </div>
+                                                <span className="text-sm font-bold text-slate-800">{prize.title || prize.rank || `Prize ${i + 1}`}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const updated = prizeDistribution.filter((_: any, j: number) => j !== i);
+                                                    setPrizeDistribution(updated);
+                                                }}
+                                                className="p-2 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-all"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-4">
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Title / Rank</label>
+                                                <input
+                                                    type="text"
+                                                    value={prize.title || prize.rank || ''}
+                                                    onChange={(e) => {
+                                                        const updated = [...prizeDistribution];
+                                                        updated[i] = {...updated[i], title: e.target.value, rank: e.target.value};
+                                                        setPrizeDistribution(updated);
+                                                    }}
+                                                    placeholder="e.g. Winner"
+                                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Amount</label>
+                                                <input
+                                                    type="text"
+                                                    value={prize.amount || ''}
+                                                    onChange={(e) => {
+                                                        const updated = [...prizeDistribution];
+                                                        updated[i] = {...updated[i], amount: e.target.value};
+                                                        setPrizeDistribution(updated);
+                                                    }}
+                                                    placeholder="e.g. ₹10,000"
+                                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Type</label>
+                                                <select
+                                                    value={prize.type || ''}
+                                                    onChange={(e) => {
+                                                        const updated = [...prizeDistribution];
+                                                        updated[i] = {...updated[i], type: e.target.value};
+                                                        setPrizeDistribution(updated);
+                                                    }}
+                                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
+                                                >
+                                                    <option value="">Auto-detect</option>
+                                                    <option value="trophy">Trophy</option>
+                                                    <option value="cash">Cash</option>
+                                                    <option value="placement">Placement / PPO</option>
+                                                    <option value="certificate">Certificate</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Badge Text</label>
+                                                <input
+                                                    type="text"
+                                                    value={prize.badge_text || prize.badge || ''}
+                                                    onChange={(e) => {
+                                                        const updated = [...prizeDistribution];
+                                                        updated[i] = {...updated[i], badge_text: e.target.value};
+                                                        setPrizeDistribution(updated);
+                                                    }}
+                                                    placeholder="e.g. Certificate"
+                                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Icon URL (optional)</label>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={prize.icon_url || ''}
+                                                        onChange={(e) => {
+                                                            const updated = [...prizeDistribution];
+                                                            updated[i] = {...updated[i], icon_url: e.target.value};
+                                                            setPrizeDistribution(updated);
+                                                        }}
+                                                        placeholder="https://example.com/icon.png"
+                                                        className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                    />
+                                                    {prize.icon_url && (
+                                                        <div className="w-9 h-9 shrink-0 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center overflow-hidden">
+                                                            <img src={prize.icon_url} alt="" className="w-6 h-6 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Description (optional)</label>
+                                                <input
+                                                    type="text"
+                                                    value={prize.description || ''}
+                                                    onChange={(e) => {
+                                                        const updated = [...prizeDistribution];
+                                                        updated[i] = {...updated[i], description: e.target.value};
+                                                        setPrizeDistribution(updated);
+                                                    }}
+                                                    placeholder="Brief description"
+                                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
             case 'leaderboard':
                 return <LeaderboardPage eventId={eventId} refreshCounter={refreshCounter} />;
             case 'pipeline':
@@ -3465,7 +3667,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-[8px] border-2 border-white animate-bounce shadow-lg">!</div>
                             )}
                             {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : showSaveSuccess ? <CheckCircle2 size={18} /> : <Save size={18} />}
-                            {saving ? 'Syncing...' : showSaveSuccess ? 'Vaulted' : hasUnsavedChanges ? 'Sync Changes' : 'All Changes Saved'}
+                            {saving ? 'Syncing...' : showSaveSuccess ? 'Saved' : hasUnsavedChanges ? 'Sync Changes' : 'All Changes Saved'}
                         </button>
                     )}
                 </div>

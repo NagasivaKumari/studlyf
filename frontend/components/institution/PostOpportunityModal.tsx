@@ -25,6 +25,7 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         opportunitySubType: 'Online Coding Challenge',
         festivalName: '',
         websiteUrl: '',
+        externalRegistrationLink: '',
         description: '',
         skills: '',
         participationType: 'both', 
@@ -165,6 +166,7 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                     opportunitySubType: 'Online Coding Challenge',
                     festivalName: '',
                     websiteUrl: '',
+                    externalRegistrationLink: '',
                     description: '',
                     skills: '',
                     participationType: 'both', 
@@ -300,6 +302,7 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                         opportunitySubType: data.opportunitySubType || prev.opportunitySubType,
                         festivalName: data.festivalName || '',
                         websiteUrl: data.websiteUrl || '',
+                        externalRegistrationLink: data.external_registration_link || data.externalRegistrationLink || '',
                         description: data.description || '',
                         skills: data.skills || '',
                         participationType: data.participationType || 'both',
@@ -771,8 +774,6 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                 />
                                             </div>
                                         </div>
-
-                                        {/* Eligibility Section */}
                                         <div className="mt-6 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
                                             <div className="flex items-center justify-between mb-3">
                                                 <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest">Eligibility</label>
@@ -1048,6 +1049,136 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                         className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-xl outline-none transition-all text-slate-900 font-medium"
                                                     />
                                                     <p className="text-[10px] text-slate-400 mt-2">Total value of all prizes and rewards</p>
+                                                </div>
+
+                                                {/* Prize Distribution Entries */}
+                                                <div>
+                                                    <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                                                        Individual Prizes <span className="text-slate-300 font-normal normal-case">(Optional)</span>
+                                                    </label>
+                                                    <div className="space-y-4">
+                                                        {(formData.prizes || []).map((prize: any, i: number) => (
+                                                            <div key={i} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Prize {i + 1}</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const updated = [...formData.prizes];
+                                                                            updated.splice(i, 1);
+                                                                            setFormData({...formData, prizes: updated});
+                                                                        }}
+                                                                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-all"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                </div>
+                                                                <div className="grid grid-cols-3 gap-3">
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Title / Rank</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={prize.title || prize.rank || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.prizes];
+                                                                                updated[i] = {...updated[i], title: e.target.value, rank: e.target.value};
+                                                                                setFormData({...formData, prizes: updated});
+                                                                            }}
+                                                                            placeholder="e.g. Winner"
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Amount</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={prize.amount || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.prizes];
+                                                                                updated[i] = {...updated[i], amount: e.target.value};
+                                                                                setFormData({...formData, prizes: updated});
+                                                                            }}
+                                                                            placeholder="e.g. ₹10,000"
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Type</label>
+                                                                        <select
+                                                                            value={prize.type || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.prizes];
+                                                                                updated[i] = {...updated[i], type: e.target.value};
+                                                                                setFormData({...formData, prizes: updated});
+                                                                            }}
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
+                                                                        >
+                                                                            <option value="">Select type</option>
+                                                                            <option value="trophy">Trophy</option>
+                                                                            <option value="cash">Cash</option>
+                                                                            <option value="placement">Placement / PPO</option>
+                                                                            <option value="certificate">Certificate</option>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-3">
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Icon URL (optional)</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={prize.icon_url || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.prizes];
+                                                                                updated[i] = {...updated[i], icon_url: e.target.value};
+                                                                                setFormData({...formData, prizes: updated});
+                                                                            }}
+                                                                            placeholder="https://example.com/icon.png"
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Badge Text (optional)</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={prize.badge_text || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.prizes];
+                                                                                updated[i] = {...updated[i], badge_text: e.target.value};
+                                                                                setFormData({...formData, prizes: updated});
+                                                                            }}
+                                                                            placeholder="e.g. Certificate"
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Description (optional)</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={prize.description || ''}
+                                                                        onChange={(e) => {
+                                                                            const updated = [...formData.prizes];
+                                                                            updated[i] = {...updated[i], description: e.target.value};
+                                                                            setFormData({...formData, prizes: updated});
+                                                                        }}
+                                                                        placeholder="Brief description of this prize"
+                                                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = [...(formData.prizes || []), {}];
+                                                            setFormData({...formData, prizes: updated});
+                                                        }}
+                                                        className="mt-3 flex items-center gap-2 px-4 py-2.5 bg-white border border-dashed border-slate-300 rounded-xl text-[11px] font-bold text-slate-500 hover:border-[#6C3BFF] hover:text-[#6C3BFF] transition-all"
+                                                    >
+                                                        <Plus size={14} />
+                                                        Add Prize
+                                                    </button>
                                                 </div>
 
                                                 {/* Stipend/Compensation */}

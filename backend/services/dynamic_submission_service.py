@@ -167,9 +167,12 @@ async def submit_stage_data(
             try:
                 if isinstance(end_date, str):
                     end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                # If parsed datetime is naive, assume UTC to enforce deadline checks consistently
+                if getattr(end_date, 'tzinfo', None) is None:
+                    end_date = end_date.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) > end_date:
                     return {"error": "This stage deadline has passed", "status": "deadline_passed"}
-            except:
+            except Exception:
                 pass
         
         # Validate required fields
@@ -373,6 +376,9 @@ async def get_submission_data(
                 try:
                     if isinstance(end_date, str):
                         end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                    # Normalize naive datetimes to UTC for consistent comparison
+                    if getattr(end_date, 'tzinfo', None) is None:
+                        end_date = end_date.replace(tzinfo=timezone.utc)
                     if datetime.now(timezone.utc) > end_date:
                         can_edit = False
                 except Exception:

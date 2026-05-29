@@ -32,6 +32,7 @@ interface AwardBand {
     min_score: string;
     max_score: string;
     limit: string;
+    template_id?: string;
 }
 interface CertificatesPageProps { institutionId: string; }
 
@@ -118,6 +119,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                             min_score: band.min_score === undefined || band.min_score === null ? '' : String(band.min_score),
                             max_score: band.max_score === undefined || band.max_score === null ? '' : String(band.max_score),
                             limit: band.limit === undefined || band.limit === null ? '' : String(band.limit),
+                            template_id: band.template_id || undefined,
                         })));
                     }
                 }
@@ -129,16 +131,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
         (async () => {
             try {
                 setLoadingPreview(true);
-                let res = await fetch(`${API_BASE_URL}/api/hackathons/events/${selectedEventId}/leaderboard?include_all=true`, {
-                    headers: { ...authHeaders() },
-                });
-
-                if (!res.ok) {
-                    res = await fetch(`${API_BASE_URL}/api/judging/leaderboard/${selectedEventId}`, {
-                        headers: { ...authHeaders() },
-                    });
-                }
-
+                const res = await fetch(`${API_BASE_URL}/api/judging/leaderboard/${selectedEventId}`);
                 if (!res.ok) {
                     setLeaderboard([]);
                     return;
@@ -296,6 +289,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                         min_score: band.min_score === '' ? undefined : Number(band.min_score),
                         max_score: band.max_score === '' ? undefined : Number(band.max_score),
                         limit: band.limit === '' ? undefined : Number(band.limit),
+                        template_id: band.template_id || undefined,
                     })) : undefined,
                     send_email: true,
                 });
@@ -476,7 +470,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                 </div>
                                 <div className="space-y-3">
                                     {awardBands.map((band, index) => (
-                                        <div key={band.id} className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr_1fr_0.8fr_0.6fr_auto] gap-3 items-center bg-white/5 rounded-2xl p-3">
+                                        <div key={band.id} className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr_1fr_0.8fr_0.6fr_1.2fr_auto] gap-3 items-center bg-white/5 rounded-2xl p-3">
                                             <input
                                                 value={band.label}
                                                 onChange={e => setAwardBands(prev => prev.map(item => item.id === band.id ? { ...item, label: e.target.value } : item))}
@@ -513,6 +507,14 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                                 className="px-3 py-2 rounded-xl bg-white text-slate-900 text-sm font-medium outline-none"
                                                 placeholder="Limit"
                                             />
+                                            <select
+                                                value={band.template_id || ''}
+                                                onChange={e => setAwardBands(prev => prev.map(item => item.id === band.id ? { ...item, template_id: e.target.value } : item))}
+                                                className="px-3 py-2 rounded-xl bg-white text-slate-900 text-sm font-medium outline-none"
+                                            >
+                                                <option value="">Default</option>
+                                                {templates.map(t => <option key={t.template_id} value={t.template_id}>{t.name}</option>)}
+                                            </select>
                                             <button
                                                 onClick={() => setAwardBands(prev => prev.filter(item => item.id !== band.id))}
                                                 className="px-3 py-2 rounded-xl bg-rose-500/20 text-rose-200 text-[10px] font-black uppercase tracking-[0.2em]"
@@ -520,7 +522,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                             >
                                                 Remove
                                             </button>
-                                            <div className="lg:col-span-6 text-[10px] uppercase tracking-[0.2em] text-white/40 pl-1">Band {index + 1}</div>
+                                            <div className="lg:col-span-7 text-[10px] uppercase tracking-[0.2em] text-white/40 pl-1">Band {index + 1}</div>
                                         </div>
                                     ))}
                                 </div>
@@ -634,8 +636,10 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ institutionId }) =>
                                             <td className="px-8 py-6"><code className="px-2 py-1 bg-slate-100 rounded-lg text-xs font-black text-slate-600">{cert.certificate_id}</code></td>
                                             <td className="px-8 py-6">
                                                 <div className="flex items-center gap-2">
-                                                    <button className="p-2.5 bg-slate-50 border border-slate-100 text-slate-400 rounded-xl hover:text-[#6C3BFF] hover:border-purple-100 transition-all"><Download size={16} /></button>
-                                                    <button className="p-2.5 bg-slate-50 border border-slate-100 text-slate-400 rounded-xl hover:text-[#6C3BFF] hover:border-purple-100 transition-all"><ExternalLink size={16} /></button>
+<button className="p-2.5 bg-slate-50 border border-slate-100 text-slate-400 rounded-xl hover:text-[#6C3BFF] hover:border-purple-100 transition-all"
+    onClick={() => window.open(`${API_BASE_URL}/api/v1/institution/download-certificate/${cert.certificate_id}`, '_blank')}><Download size={16} /></button>
+<button className="p-2.5 bg-slate-50 border border-slate-100 text-slate-400 rounded-xl hover:text-[#6C3BFF] hover:border-purple-100 transition-all"
+    onClick={() => window.open(`/verify/${cert.certificate_id}`, '_blank')}><ExternalLink size={16} /></button>
                                                 </div>
                                             </td>
                                         </tr>
