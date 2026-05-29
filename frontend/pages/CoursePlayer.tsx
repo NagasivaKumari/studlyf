@@ -495,7 +495,7 @@ const CoursePlayer: React.FC = () => {
   const currentModule = modules[activeModuleIndex];
   
   const currentLessonTitle = currentModule
-    ? currentModule.lessons?.[activeLessonIndex]?.title || `${currentModule.title} — ${getLessonLabel(activeStage)}`
+    ? currentModule.lessons?.[activeLessonIndex]?.title || `${currentModule?.title || 'Module'} - ${getLessonLabel(activeStage)}`
     : activeStage === 'capstone'
       ? 'Mini Project Submission'
       : activeStage === 'result'
@@ -516,6 +516,14 @@ const CoursePlayer: React.FC = () => {
     <div className="cp-loading">
       <div className="cp-spinner" />
       <span className="cp-loading-text">Loading course modules...</span>
+    </div>
+  );
+
+  if (!courseData && !loading) return (
+    <div className="cp-empty">
+      <h2>Course Not Found</h2>
+      <p>The course data could not be loaded. Please check back later.</p>
+      <button onClick={() => navigate('/dashboard')}>Return to Dashboard</button>
     </div>
   );
 
@@ -594,7 +602,7 @@ const CoursePlayer: React.FC = () => {
                       {isCompleted ? <CheckCircle2 size={14} /> : mod.order_index}
                     </div>
                     <div className="cp-module-info">
-                      <div className="cp-module-name">{mod.title}</div>
+                      <div className="cp-module-name">{mod?.title}</div>
                       <div className="cp-module-meta">
                         {`${mod.estimated_time || '1 hour'} · ${mod.lessons?.length || 6} steps`}
                       </div>
@@ -635,7 +643,7 @@ const CoursePlayer: React.FC = () => {
                           }}
                         >
                           <Icon size={16} className="cp-lesson-icon" />
-                          <span className="cp-lesson-name">{les.title}</span>
+                          <span className="cp-lesson-name">{les?.title}</span>
                           {done ? (
                             <div className="cp-lesson-check done"><CheckCircle2 size={10} /></div>
                           ) : (
