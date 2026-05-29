@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import useCourseProgress from '../hooks/useCourseProgress';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,8 +12,9 @@ import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   ChevronDown, ChevronLeft, ChevronRight, FileText, HelpCircle,
   CheckCircle2, Menu, X, BookOpen, MessageCircle, StickyNote,
-  AlignLeft, Code, Award, Trophy, ShieldAlert, Link, AlertTriangle
+  AlignLeft, Code, Award, Trophy, ShieldAlert, Link, AlertTriangle, Link as LinkIcon, FileText as FileTextIcon, PlayCircle as PlayCircleIcon, Code2 as Code2Icon, Download as DownloadIcon
 } from 'lucide-react';
+import { ResourcesTab } from '../components/ResourcesTab';
 import { CURRICULUM_DATA } from '../data/curriculumData';
 
 /* ═══════ Types ═══════ */
@@ -69,7 +70,13 @@ const DUMMY_TRANSCRIPT: { time: string; text: string }[] = [
   { time: "1:00", text: "Please review the notes and complete the quizzes to unlock the next steps." }
 ];
 
-/* ═══════ Component ═══════ */
+const estimateReadingTime = (content: string) => {
+  if (!content) return 1;
+  const words = content.split(/\s+/).filter(Boolean).length;
+  const minutes = Math.ceil(words / 200);
+  return minutes || 1;
+};
+
 /* ═══════ Component ═══════ */
 const CoursePlayer: React.FC = () => {
   const { courseId } = useParams<{ courseId: string }>();
@@ -92,6 +99,8 @@ const CoursePlayer: React.FC = () => {
     return (saved as LessonType) || 'overview';
   });
   const [showToast, setShowToast] = useState(false);
+  // ── Right-panel tool tab ──
+  const [activeToolTab, setActiveToolTab] = useState<'notes' | 'transcript' | 'resources'>('notes');
 
   const [moduleDetails, setModuleDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -149,10 +158,10 @@ const CoursePlayer: React.FC = () => {
 
   const contentRef = useRef<HTMLDivElement>(null);
 
-  /* ── Build flat lesson list ── */
-  const buildLessons = (mods: Module[]): FlatLesson[] => {
+  /* ── Build flat lesson list (memoized) ── */
+  const flatLessons = useMemo<FlatLesson[]>(() => {
     const list: FlatLesson[] = [];
-    mods.forEach((mod, i) => {
+    modules.forEach((mod, i) => {
       if (mod.lessons) {
         mod.lessons.forEach((les, lesIdx) => {
           list.push({
@@ -164,17 +173,12 @@ const CoursePlayer: React.FC = () => {
         });
       }
     });
-    
     // Add Mini Project (Capstone)
     list.push({ moduleIndex: -1, lessonIndex: -1, type: 'capstone', title: 'Mini Project Submission' });
-
     // Add Result Page
     list.push({ moduleIndex: -3, lessonIndex: -3, type: 'result', title: 'Course Completion' });
-
     return list;
-  };
-
-  const flatLessons = buildLessons(modules);
+  }, [modules]);
   const currentFlatIndex = flatLessons.findIndex(
     l => l.moduleIndex === activeModuleIndex && l.lessonIndex === activeLessonIndex
   );
@@ -184,12 +188,15 @@ const CoursePlayer: React.FC = () => {
     if (resolvedCourseId) fetchModules();
   }, [resolvedCourseId, user]);
 
-  const fetchModules = async () => {
+  const fetchModules = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/courses/${resolvedCourseId}/modules?user_id=${user?.uid || ''}`);
-      const data = await res.json();
-      
-      const courseRes = await fetch(`${API_BASE_URL}/api/course/${resolvedCourseId}/details?user_id=${user?.uid || ''}`);
+      // ✅ PERF FIX: Parallel API calls instead of sequential
+      const [modulesRes, courseRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/courses/${resolvedCourseId}/modules?user_id=${user?.uid || ''}`),
+        fetch(`${API_BASE_URL}/api/course/${resolvedCourseId}/details?user_id=${user?.uid || ''}`)
+      ]);
+
+      const data = await modulesRes.json();
       let cData: any = null;
       if (courseRes.ok) {
         cData = await courseRes.json();
@@ -197,11 +204,10 @@ const CoursePlayer: React.FC = () => {
       }
 
       let fetched = Array.isArray(data) ? data : [];
-      
+
       // Enforce the dynamic subtopics schema using the imported CURRICULUM_DATA
       const formatted = fetched.map((mod: any, i: number) => {
         const curChapter = CURRICULUM_DATA[i] || CURRICULUM_DATA[i % CURRICULUM_DATA.length];
-        // Build module with data from CURRICULUM_DATA for correct titles and lessons
         return {
           ...mod,
           title: curChapter.title,
@@ -210,7 +216,8 @@ const CoursePlayer: React.FC = () => {
             type: t.type,
             title: t.title,
           })),
-        };      });
+        };
+      });
 
       // Initialize completedSteps from backend progress
       const initialCompleted: Record<string, boolean> = {};
@@ -239,11 +246,11 @@ const CoursePlayer: React.FC = () => {
           }
         }
       });
-      
+
       if (cData?.progress?.project_status === 'submitted') {
         initialCompleted['capstone'] = true;
       }
-      
+
       setCompletedSteps(prev => ({ ...initialCompleted, ...prev }));
       setModules(formatted);
       setLoading(false);
@@ -253,12 +260,20 @@ const CoursePlayer: React.FC = () => {
       setLoading(false);
       return [];
     }
-  };
+  }, [resolvedCourseId, user]);
+
+  // ✅ PERF FIX: Track last fetched module to avoid redundant detail fetches
+  const lastFetchedModuleIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (activeModuleIndex >= 0 && modules.length > 0) {
-      fetchModuleDetails(modules[activeModuleIndex]._id);
-      
+      const moduleId = modules[activeModuleIndex]._id;
+      // Only re-fetch module details when the MODULE changes, not every lesson change
+      if (moduleId !== lastFetchedModuleIdRef.current) {
+        lastFetchedModuleIdRef.current = moduleId;
+        fetchModuleDetails(moduleId);
+      }
+
       const les = modules[activeModuleIndex]?.lessons?.[activeLessonIndex];
       if (les) {
         setActiveStage(les.type as LessonType);
@@ -470,26 +485,24 @@ const CoursePlayer: React.FC = () => {
 
   const isCurrentLessonComplete = isLessonComplete(activeModuleIndex, activeStage, activeLessonIndex);
   
-  // Dynamic Course Completion Progress Bar
-  const overallProgress = (() => {
+  // Dynamic Course Completion Progress Bar (memoized)
+  const overallProgress = useMemo(() => {
     if (!flatLessons.length) return 0;
     const trackableLessons = flatLessons.filter(l => l.type !== 'result');
     if (!trackableLessons.length) return 0;
-    
     let completedCount = 0;
     trackableLessons.forEach(l => {
       if (isLessonComplete(l.moduleIndex, l.type, l.lessonIndex)) {
         completedCount++;
       }
     });
-    
     return Math.round((completedCount / trackableLessons.length) * 100);
-  })();
+  }, [flatLessons, completedSteps]);
 
   const currentModule = modules[activeModuleIndex];
   
   const currentLessonTitle = currentModule
-    ? currentModule.lessons?.[activeLessonIndex]?.title || `${currentModule.title} — ${getLessonLabel(activeStage)}`
+    ? currentModule.lessons?.[activeLessonIndex]?.title || `${currentModule?.title || 'Module'} - ${getLessonLabel(activeStage)}`
     : activeStage === 'capstone'
       ? 'Mini Project Submission'
       : activeStage === 'result'
@@ -502,7 +515,7 @@ const CoursePlayer: React.FC = () => {
         reading: activeTopicData?.reading || activeTopicData?.content || `### ${activeTopicData?.title}\n\nNo reading content loaded.`,
         practice: activeTopicData?.practice || [],
         graded: activeTopicData?.graded || [],
-        resources: []
+        resources: activeTopicData?.resources || []
       }
     : null;
 
@@ -510,6 +523,14 @@ const CoursePlayer: React.FC = () => {
     <div className="cp-loading">
       <div className="cp-spinner" />
       <span className="cp-loading-text">Loading course modules...</span>
+    </div>
+  );
+
+  if (!courseData && !loading) return (
+    <div className="cp-empty">
+      <h2>Course Not Found</h2>
+      <p>The course data could not be loaded. Please check back later.</p>
+      <button onClick={() => navigate('/dashboard')}>Return to Dashboard</button>
     </div>
   );
 
@@ -588,7 +609,7 @@ const CoursePlayer: React.FC = () => {
                       {isCompleted ? <CheckCircle2 size={14} /> : mod.order_index}
                     </div>
                     <div className="cp-module-info">
-                      <div className="cp-module-name">{mod.title}</div>
+                      <div className="cp-module-name">{mod?.title}</div>
                       <div className="cp-module-meta">
                         {`${mod.estimated_time || '1 hour'} · ${mod.lessons?.length || 6} steps`}
                       </div>
@@ -629,7 +650,7 @@ const CoursePlayer: React.FC = () => {
                           }}
                         >
                           <Icon size={16} className="cp-lesson-icon" />
-                          <span className="cp-lesson-name">{les.title}</span>
+                          <span className="cp-lesson-name">{les?.title}</span>
                           {done ? (
                             <div className="cp-lesson-check done"><CheckCircle2 size={10} /></div>
                           ) : (
@@ -738,6 +759,25 @@ const CoursePlayer: React.FC = () => {
               {/* ── 1. MODULE OVERVIEW ── */}
               {activeStage === 'overview' && activeContentDb && (
                 <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="cp-text-lesson">
+                  {activeTopicData?.image && (
+                    <div className="cp-lesson-image my-6 text-center">
+                      <img src={activeTopicData.image.src} alt={activeTopicData.image.caption || ''} className="mx-auto rounded-lg shadow-md max-w-full h-auto" loading="lazy" />
+                      {activeTopicData.image.caption && (
+                        <p className="text-sm text-gray-500 mt-2">{activeTopicData.image.caption}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Lesson Metadata */}
+                  <div className="flex items-center text-sm text-gray-600 mb-6 space-x-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <span className="font-semibold text-indigo-700 uppercase tracking-wider text-xs">
+                      {activeTopicData?.type || 'overview'}
+                    </span>
+                    <span className="flex items-center text-gray-500">
+                      <span className="mx-2">•</span>
+                      {estimateReadingTime(activeContentDb.overview)} min read
+                    </span>
+                  </div>
                   <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
                     components={{
                       h1: ({ children }) => <h1 className="text-3xl font-extrabold text-gray-900 mb-6">{children}</h1>,
@@ -765,6 +805,25 @@ const CoursePlayer: React.FC = () => {
               {/* ── 2. READING MATERIAL ── */}
               {(activeStage === 'text' || activeStage === 'theory') && activeContentDb && (
                 <motion.div key="reading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="cp-text-lesson">
+                  {activeTopicData?.image && (
+                    <div className="cp-lesson-image my-6 text-center">
+                      <img src={activeTopicData.image.src} alt={activeTopicData.image.caption || ''} className="mx-auto rounded-lg shadow-md max-w-full h-auto" loading="lazy" />
+                      {activeTopicData.image.caption && (
+                        <p className="text-sm text-gray-500 mt-2">{activeTopicData.image.caption}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Lesson Metadata */}
+                  <div className="flex items-center text-sm text-gray-600 mb-6 space-x-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <span className="font-semibold text-indigo-700 uppercase tracking-wider text-xs">
+                      {activeTopicData?.type || 'lesson'}
+                    </span>
+                    <span className="flex items-center text-gray-500">
+                      <span className="mx-2">•</span>
+                      {estimateReadingTime(activeContentDb.reading)} min read
+                    </span>
+                  </div>
                   <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
                     components={{
                       h1: ({ children }) => <h1 className="text-3xl font-extrabold text-gray-900 mb-6">{children}</h1>,
@@ -1342,28 +1401,15 @@ const CoursePlayer: React.FC = () => {
               )}
 
               {activeToolTab === 'resources' && (
-                <div className="cp-transcript-block">
-                  {activeContentDb?.resources && activeContentDb.resources.length > 0 ? (
-                    activeContentDb.resources.map((res: string, i: number) => (
-                      <a key={i} href={res} target="_blank" rel="noreferrer" className="cp-resource-item" style={{ textDecoration: 'none' }}>
-                        <Link size={16} style={{ color: '#7C3AED' }} />
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>Resource Link {i + 1}</div>
-                          <div style={{ fontSize: 12, color: '#9ca3af', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{res}</div>
-                        </div>
-                      </a>
-                    ))
-                  ) : (
-                    <div style={{ padding: '20px 0', textAlign: 'center', opacity: 0.5 }}>
-                        <BookOpen size={24} style={{ margin: '0 auto 10px', color: '#6b7280' }} />
-                        <p style={{ fontSize: 13, color: '#6b7280' }}>No external resources for this lesson.</p>
-                    </div>
-                  )}
+                <div className="cp-transcript-block" style={{ padding: 0 }}>
+                  <ResourcesTab resources={activeContentDb?.resources || []} />
                   
-                  <button className="cp-ask-btn">
-                    <MessageCircle size={18} />
-                    Ask a question about this lesson
-                  </button>
+                  <div style={{ padding: '0 16px 16px' }}>
+                    <button className="cp-ask-btn" style={{ width: '100%' }}>
+                      <MessageCircle size={18} />
+                      Ask a question about this lesson
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
