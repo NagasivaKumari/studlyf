@@ -12,8 +12,9 @@ import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   ChevronDown, ChevronLeft, ChevronRight, FileText, HelpCircle,
   CheckCircle2, Menu, X, BookOpen, MessageCircle, StickyNote,
-  AlignLeft, Code, Award, Trophy, ShieldAlert, Link, AlertTriangle
+  AlignLeft, Code, Award, Trophy, ShieldAlert, Link, AlertTriangle, Link as LinkIcon, FileText as FileTextIcon, PlayCircle as PlayCircleIcon, Code2 as Code2Icon, Download as DownloadIcon
 } from 'lucide-react';
+import ResourcesTab from '../components/ResourcesTab';
 import { CURRICULUM_DATA } from '../data/curriculumData';
 
 /* ═══════ Types ═══════ */
@@ -69,7 +70,13 @@ const DUMMY_TRANSCRIPT: { time: string; text: string }[] = [
   { time: "1:00", text: "Please review the notes and complete the quizzes to unlock the next steps." }
 ];
 
-/* ═══════ Component ═══════ */
+const estimateReadingTime = (content: string) => {
+  if (!content) return 1;
+  const words = content.split(/\s+/).filter(Boolean).length;
+  const minutes = Math.ceil(words / 200);
+  return minutes || 1;
+};
+
 /* ═══════ Component ═══════ */
 const CoursePlayer: React.FC = () => {
   const { courseId } = useParams<{ courseId: string }>();
@@ -508,7 +515,7 @@ const CoursePlayer: React.FC = () => {
         reading: activeTopicData?.reading || activeTopicData?.content || `### ${activeTopicData?.title}\n\nNo reading content loaded.`,
         practice: activeTopicData?.practice || [],
         graded: activeTopicData?.graded || [],
-        resources: []
+        resources: activeTopicData?.resources || []
       }
     : null;
 
@@ -752,6 +759,25 @@ const CoursePlayer: React.FC = () => {
               {/* ── 1. MODULE OVERVIEW ── */}
               {activeStage === 'overview' && activeContentDb && (
                 <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="cp-text-lesson">
+                  {activeTopicData?.image && (
+                    <div className="cp-lesson-image my-6 text-center">
+                      <img src={activeTopicData.image.src} alt={activeTopicData.image.caption || ''} className="mx-auto rounded-lg shadow-md max-w-full h-auto" loading="lazy" />
+                      {activeTopicData.image.caption && (
+                        <p className="text-sm text-gray-500 mt-2">{activeTopicData.image.caption}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Lesson Metadata */}
+                  <div className="flex items-center text-sm text-gray-600 mb-6 space-x-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <span className="font-semibold text-indigo-700 uppercase tracking-wider text-xs">
+                      {activeTopicData?.type || 'overview'}
+                    </span>
+                    <span className="flex items-center text-gray-500">
+                      <span className="mx-2">•</span>
+                      {estimateReadingTime(activeContentDb.overview)} min read
+                    </span>
+                  </div>
                   <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
                     components={{
                       h1: ({ children }) => <h1 className="text-3xl font-extrabold text-gray-900 mb-6">{children}</h1>,
@@ -779,6 +805,25 @@ const CoursePlayer: React.FC = () => {
               {/* ── 2. READING MATERIAL ── */}
               {(activeStage === 'text' || activeStage === 'theory') && activeContentDb && (
                 <motion.div key="reading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="cp-text-lesson">
+                  {activeTopicData?.image && (
+                    <div className="cp-lesson-image my-6 text-center">
+                      <img src={activeTopicData.image.src} alt={activeTopicData.image.caption || ''} className="mx-auto rounded-lg shadow-md max-w-full h-auto" loading="lazy" />
+                      {activeTopicData.image.caption && (
+                        <p className="text-sm text-gray-500 mt-2">{activeTopicData.image.caption}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Lesson Metadata */}
+                  <div className="flex items-center text-sm text-gray-600 mb-6 space-x-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <span className="font-semibold text-indigo-700 uppercase tracking-wider text-xs">
+                      {activeTopicData?.type || 'lesson'}
+                    </span>
+                    <span className="flex items-center text-gray-500">
+                      <span className="mx-2">•</span>
+                      {estimateReadingTime(activeContentDb.reading)} min read
+                    </span>
+                  </div>
                   <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
                     components={{
                       h1: ({ children }) => <h1 className="text-3xl font-extrabold text-gray-900 mb-6">{children}</h1>,
@@ -1356,28 +1401,15 @@ const CoursePlayer: React.FC = () => {
               )}
 
               {activeToolTab === 'resources' && (
-                <div className="cp-transcript-block">
-                  {activeContentDb?.resources && activeContentDb.resources.length > 0 ? (
-                    activeContentDb.resources.map((res: string, i: number) => (
-                      <a key={i} href={res} target="_blank" rel="noreferrer" className="cp-resource-item" style={{ textDecoration: 'none' }}>
-                        <Link size={16} style={{ color: '#7C3AED' }} />
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>Resource Link {i + 1}</div>
-                          <div style={{ fontSize: 12, color: '#9ca3af', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{res}</div>
-                        </div>
-                      </a>
-                    ))
-                  ) : (
-                    <div style={{ padding: '20px 0', textAlign: 'center', opacity: 0.5 }}>
-                        <BookOpen size={24} style={{ margin: '0 auto 10px', color: '#6b7280' }} />
-                        <p style={{ fontSize: 13, color: '#6b7280' }}>No external resources for this lesson.</p>
-                    </div>
-                  )}
+                <div className="cp-transcript-block" style={{ padding: 0 }}>
+                  <ResourcesTab resources={activeContentDb?.resources || []} />
                   
-                  <button className="cp-ask-btn">
-                    <MessageCircle size={18} />
-                    Ask a question about this lesson
-                  </button>
+                  <div style={{ padding: '0 16px 16px' }}>
+                    <button className="cp-ask-btn" style={{ width: '100%' }}>
+                      <MessageCircle size={18} />
+                      Ask a question about this lesson
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

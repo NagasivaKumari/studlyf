@@ -3,12 +3,14 @@
 // Do not modify UI components; this file provides data consumed by CoursePlayer.
 
 export interface Topic {
-  type: 'overview' | 'text' | 'practice_quiz' | 'graded_quiz';
+  type: 'overview' | 'text' | 'practice_quiz' | 'graded_quiz' | 'image';
   title: string;
   content?: string;
+  image?: { src: string; caption?: string };
   practice?: { question: string; options: string[]; answer: number; explanation: string }[];
   graded?: { question: string; options: string[]; correct: number; explanation: string }[];
-  resources?: string[];
+  resources?: { title: string; type: string; url: string }[];
+  objectives?: string[];
 }
 
 export interface ModuleData {
@@ -48,7 +50,8 @@ This module builds the **foundation** for the entire course. Before learning too
 - OpenAI Docs: [https://platform.openai.com/docs](https://platform.openai.com/docs)
 
 > **Estimated Time:** Reading: 20 mins • Practice Quiz: 10 mins • Graded Assignment: 15 mins`,
-      },
+      image: { src: '/course_assets/Module_1_p1_img1.png', caption: 'Introduction to AI' },
+},
       {
         type: 'text',
         title: 'Section 1.1 — What is Artificial Intelligence?',
@@ -173,9 +176,9 @@ AI can generate graphics, logos, and visual content.
 #### 📚 Education
 AI tutors help students learn faster through personalized explanations and automated assistance.`,
         resources: [
-          'https://ai.google/education',
-          'https://platform.openai.com/docs',
-          'https://huggingface.co',
+          { title: 'Google AI Education', type: 'link', url: 'https://ai.google/education' },
+          { title: 'OpenAI Docs', type: 'link', url: 'https://platform.openai.com/docs' },
+          { title: 'Hugging Face', type: 'link', url: 'https://huggingface.co' },
         ],
       },
       {
@@ -298,7 +301,8 @@ Data → Machine Learning → Neural Network → Transformer → LLM → Generat
 - Original Transformer Paper: [https://arxiv.org/abs/1706.03762](https://arxiv.org/abs/1706.03762)
 
 > **Estimated Time:** Reading: 25 mins • Practice Quiz: 12 mins • Graded Assignment: 15 mins`,
-      },
+      image: { src: '/course_assets/Module_2_p10_img1.png', caption: 'How Generative AI Works' },
+},
       {
         type: 'text',
         title: 'Core Reading — How AI Models Work',
@@ -417,8 +421,8 @@ Input Prompt → Tokenization → Embedding → Transformer Layers → Next Toke
 | Gemini | Google | Multimodal, research |
 | Llama | Meta | Open-source |`,
         resources: [
-          'https://developers.google.com/machine-learning/crash-course',
-          'https://arxiv.org/abs/1706.03762',
+          { title: 'Google ML Crash Course', type: 'link', url: 'https://developers.google.com/machine-learning/crash-course' },
+          { title: 'Transformer Paper', type: 'link', url: 'https://arxiv.org/abs/1706.03762' },
         ],
       },
       {
@@ -511,7 +515,8 @@ Learners move from understanding AI to **controlling AI**. Prompt engineering is
 - Prompting Guide: [https://www.promptingguide.ai](https://www.promptingguide.ai)
 
 > **Estimated Time:** Reading: 20 mins • Practice Quiz: 12 mins • Graded Assignment: 15 mins`,
-      },
+      image: { src: '/course_assets/Module_3_p23_img1.png', caption: 'Prompt Engineering Overview' },
+},
       {
         type: 'text',
         title: 'Core Reading — Prompt Engineering Techniques',
@@ -630,7 +635,7 @@ Walk through each calculation before giving the final answer.
 | Zero-Shot | Simple tasks | Direct question |
 | Few-Shot | Consistent formatting | 2-5 examples |
 | Chain-of-Thought | Complex reasoning | "Think step by step" |`,
-        resources: ['https://www.promptingguide.ai'],
+        resources: [{ title: 'Prompting Guide', type: 'link', url: 'https://www.promptingguide.ai' }],
       },
       {
         type: 'practice_quiz',
@@ -725,7 +730,8 @@ Learners move from theory and prompting into **practical use of real Generative 
 | **Notion AI** | Notion | Note-taking, summaries |
 
 > **Estimated Time:** Reading: 20 mins • Practice Quiz: 10 mins • Graded Assignment: 15 mins`,
-      },
+      image: { src: '/course_assets/Module_4_p39_img1.png', caption: 'AI Text Generation Tools' },
+},
       {
         type: 'text',
         title: 'Core Reading — AI Tools in Practice',
@@ -854,10 +860,10 @@ Section 4.5 — Comparing Major AI Tools
 - **Research with current info** → Gemini
 - **Marketing content** → Jasper AI`,
         resources: [
-          'https://platform.openai.com/docs',
-          'https://www.anthropic.com',
-          'https://ai.google',
-        ],
+  { title: 'OpenAI Docs', type: 'link', url: 'https://platform.openai.com/docs' },
+  { title: 'Anthropic (Claude)', type: 'link', url: 'https://www.anthropic.com' },
+  { title: 'Google AI (Gemini)', type: 'link', url: 'https://ai.google' },
+],
       },
       {
         type: 'practice_quiz',
@@ -939,7 +945,8 @@ Learners understand how AI generates images and how to use modern image generati
 - Stability AI: [https://stability.ai](https://stability.ai)
 
 > **Estimated Time:** Reading: 18 mins • Practice Quiz: 10 mins • Graded Assignment: 15 mins`,
-      },
+      image: { src: '/course_assets/Module_5_p100_img1.png', caption: 'AI Image Generation' },
+},
       {
         type: 'text',
         title: 'Core Reading — AI Image Generation',
@@ -1075,10 +1082,10 @@ Now it's your turn to apply what you've learned! Build a simple web-based image 
 ### Submit Your Project:
 [![GitHub Repo Link](https://img.shields.io/badge/GitHub-Repository-blue?logo=github&style=for-the-badge)](https://github.com/)`,
         resources: [
-          'https://openai.com/dall-e',
-          'https://stability.ai',
-          'https://huggingface.co',
-        ],
+  { title: 'DALL·E', type: 'link', url: 'https://openai.com/dall-e' },
+  { title: 'Stability AI', type: 'link', url: 'https://stability.ai' },
+  { title: 'Hugging Face', type: 'link', url: 'https://huggingface.co' },
+],
       },
       {
         type: 'practice_quiz',
