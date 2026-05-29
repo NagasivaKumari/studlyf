@@ -14,7 +14,7 @@ import {
   CheckCircle2, Menu, X, BookOpen, MessageCircle, StickyNote,
   AlignLeft, Code, Award, Trophy, ShieldAlert, Link, AlertTriangle, Link as LinkIcon, FileText as FileTextIcon, PlayCircle as PlayCircleIcon, Code2 as Code2Icon, Download as DownloadIcon
 } from 'lucide-react';
-import ResourcesTab from '../components/ResourcesTab';
+import { ResourcesTab } from '../components/ResourcesTab';
 import { CURRICULUM_DATA } from '../data/curriculumData';
 
 /* ═══════ Types ═══════ */
