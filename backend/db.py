@@ -289,6 +289,7 @@ internships_col = db["internships"]
 applications_col = db["applications"] # Tracks Selections, Rejections, and Status
 opportunities_col = db["opportunities"]
 opportunity_applications_col = db["opportunity_applications"]
+opportunity_reviews_col = db["opportunity_reviews"]
 
 # Career Assessment & Goals
 career_assessments_col = db["career_assessments"]

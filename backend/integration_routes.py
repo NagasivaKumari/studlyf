@@ -4536,6 +4536,23 @@ async def extend_participant_deadline(
     }
 
 
+# ── FAQ Priority Engine ──────────────────────────────────────────
+FAQ_PRIORITY_KEYWORDS = [
+    "registration", "deadline", "fee", "last date", "team size",
+    "eligibility", "certificate", "free", "prize", "online",
+    "offline", "submission", "participate", "individual", "team",
+]
+
+def compute_faq_priority(question: str, answer: str) -> int:
+    """Score a FAQ based on important keywords in question/answer."""
+    text = (question + " " + answer).lower()
+    score = 0
+    for kw in FAQ_PRIORITY_KEYWORDS:
+        if kw in text:
+            score += 10
+    return score
+
+
 @router.get("/events/{event_id}/faqs")
 async def get_event_faqs(event_id: str, user: dict = Depends(get_auth_user_optional)):
     """Get all published FAQs for an event. Auth optional — public can see published ones."""
@@ -4547,6 +4564,14 @@ async def get_event_faqs(event_id: str, user: dict = Depends(get_auth_user_optio
     faqs = await cursor.to_list(length=200)
     for f in faqs:
         f["id"] = str(f.pop("_id"))
+    # Server-side sort: featured first, then priority desc, helpful desc, views desc, order asc
+    faqs.sort(key=lambda f: (
+        not f.get("is_featured", False),
+        -(f.get("priority_score", 0) or 0),
+        -(f.get("helpful_count", 0) or 0),
+        -(f.get("views", 0) or 0),
+        f.get("order", 0) or 0,
+    ))
     return {"faqs": faqs}
 
 @router.post("/events/{event_id}/faqs")
@@ -4554,13 +4579,23 @@ async def create_event_faq(event_id: str, faq_data: dict, user: dict = Depends(g
     """Create a new FAQ for an event. Institution/admin only."""
     from db import faqs_col
     await assert_institution_owns_event(event_id, user)
+    question = faq_data.get("question", "")
+    answer = faq_data.get("answer", "")
+    auto_pin = faq_data.get("auto_pin_enabled", True)
+    priority_score = faq_data.get("priority_score") if faq_data.get("priority_score") is not None else (compute_faq_priority(question, answer) if auto_pin else 0)
     doc = {
         "event_id": event_id,
-        "question": faq_data.get("question", ""),
-        "answer": faq_data.get("answer", ""),
+        "question": question,
+        "answer": answer,
         "category": faq_data.get("category", "General"),
         "order": faq_data.get("order", 0),
         "is_published": faq_data.get("is_published", True),
+        "is_featured": faq_data.get("is_featured", False),
+        "priority_score": priority_score,
+        "views": faq_data.get("views", 0),
+        "helpful_count": faq_data.get("helpful_count", 0),
+        "tags": faq_data.get("tags", []),
+        "auto_pin_enabled": auto_pin,
         "created_by": user.get("user_id", ""),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
@@ -4575,15 +4610,18 @@ async def update_event_faq(event_id: str, faq_id: str, faq_data: dict, user: dic
     from db import faqs_col
     from bson import ObjectId
     await assert_institution_owns_event(event_id, user)
-    update = {"$set": {
-        "question": faq_data.get("question"),
-        "answer": faq_data.get("answer"),
-        "category": faq_data.get("category"),
-        "order": faq_data.get("order"),
-        "is_published": faq_data.get("is_published"),
-        "updated_at": datetime.utcnow(),
-    }}
-    await faqs_col.update_one({"_id": ObjectId(faq_id), "event_id": event_id}, update)
+    set_fields = {}
+    for key in ("question", "answer", "category", "order", "is_published", "is_featured", "priority_score", "views", "helpful_count", "tags", "auto_pin_enabled"):
+        if key in faq_data:
+            set_fields[key] = faq_data[key]
+    set_fields["updated_at"] = datetime.utcnow()
+    # Auto-compute priority if question/answer changed and auto_pin is enabled
+    question = faq_data.get("question")
+    answer = faq_data.get("answer")
+    auto_pin = faq_data.get("auto_pin_enabled")
+    if question is not None and answer is not None and auto_pin is not False:
+        set_fields["priority_score"] = compute_faq_priority(question, answer)
+    await faqs_col.update_one({"_id": ObjectId(faq_id), "event_id": event_id}, {"$set": set_fields})
     return {"success": True}
 
 @router.delete("/events/{event_id}/faqs/{faq_id}")
@@ -4603,14 +4641,24 @@ async def bulk_update_faqs(event_id: str, faqs_data: list, user: dict = Depends(
     await faqs_col.delete_many({"event_id": event_id})
     if faqs_data:
         docs = []
-        for i, f in enumerate(faqs_data):
+        for f in faqs_data:
+            question = f.get("question", "")
+            answer = f.get("answer", "")
+            auto_pin = f.get("auto_pin_enabled", True)
+            priority_score = f.get("priority_score") if f.get("priority_score") is not None else (compute_faq_priority(question, answer) if auto_pin else 0)
             docs.append({
                 "event_id": event_id,
-                "question": f.get("question", ""),
-                "answer": f.get("answer", ""),
+                "question": question,
+                "answer": answer,
                 "category": f.get("category", "General"),
-                "order": f.get("order", i),
+                "order": f.get("order", 0),
                 "is_published": f.get("is_published", True),
+                "is_featured": f.get("is_featured", False),
+                "priority_score": priority_score,
+                "views": f.get("views", 0),
+                "helpful_count": f.get("helpful_count", 0),
+                "tags": f.get("tags", []),
+                "auto_pin_enabled": auto_pin,
                 "created_by": user.get("user_id", ""),
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
@@ -4967,6 +5015,8 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
             opp_data["maxTeamSize"] = int(event_data.get("maxTeamSize") if event_data.get("maxTeamSize") is not None else event_data.get("max_team_size") if event_data.get("max_team_size") is not None else 5)
         except:
             opp_data["maxTeamSize"] = 5
+        if opp_data["minTeamSize"] > opp_data["maxTeamSize"]:
+            raise HTTPException(status_code=400, detail="Minimum team size cannot be greater than maximum team size")
         
         # Ensure deadline is datetime
         if isinstance(opp_data["deadline"], str):
@@ -5215,6 +5265,8 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
                 opp_data["maxTeamSize"] = int(updated_event.get("maxTeamSize") if updated_event.get("maxTeamSize") is not None else updated_event.get("max_team_size") if updated_event.get("max_team_size") is not None else 5)
             except:
                 opp_data["maxTeamSize"] = 5
+            if opp_data["minTeamSize"] > opp_data["maxTeamSize"]:
+                raise HTTPException(status_code=400, detail="Minimum team size cannot be greater than maximum team size")
 
             opp_data["status"] = "active" if _is_live_like_status(updated_event.get("status")) else "draft"
             

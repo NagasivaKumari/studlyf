@@ -557,117 +557,54 @@ const MyProfile: React.FC = () => {
       </svg>`;
     return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
   };
-  const avatarCatalog = useMemo(() => {
-    const palettes = [
-      { backgroundA: '#7C3AED', backgroundB: '#06B6D4', accent: '#F59E0B' },
-      { backgroundA: '#111827', backgroundB: '#4F46E5', accent: '#22C55E' },
-      { backgroundA: '#EA580C', backgroundB: '#F59E0B', accent: '#FFFFFF' },
-      { backgroundA: '#0F766E', backgroundB: '#14B8A6', accent: '#E0F2FE' },
-      { backgroundA: '#BE185D', backgroundB: '#F43F5E', accent: '#FDE68A' },
-      { backgroundA: '#2563EB', backgroundB: '#0F172A', accent: '#A7F3D0' },
-    ];
-    const monogramFrames = [
-      (accent: string) => `<circle cx="256" cy="256" r="178" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="16" /><circle cx="256" cy="256" r="132" fill="#ffffff" opacity="0.12" /><path d="M132 166c32-40 74-64 124-64s92 24 124 64" fill="none" stroke="${accent}" stroke-width="14" stroke-linecap="round" />`,
-      (accent: string) => `<rect x="92" y="92" width="328" height="328" rx="92" fill="#ffffff" opacity="0.10" /><path d="M152 152h208v208H152z" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="12" /><circle cx="356" cy="156" r="18" fill="${accent}" />`,
-      (accent: string) => `<path d="M104 304l164-172 140 172-140 120z" fill="#ffffff" opacity="0.10" /><circle cx="176" cy="156" r="24" fill="${accent}" opacity="0.85" /><circle cx="334" cy="362" r="30" fill="#ffffff" opacity="0.16" />`,
-      (accent: string) => `<path d="M120 136h272v240H120z" fill="#ffffff" opacity="0.08" /><path d="M156 376h200" stroke="${accent}" stroke-width="16" stroke-linecap="round" /><path d="M156 136v240" stroke="#ffffff" stroke-opacity="0.14" stroke-width="10" />`,
-    ];
-    const emojiSet = ['😀', '😎', '🤩', '🥳', '🫶', '🎧', '🌈', '🚀', '💡', '📱', '🧠', '🔥'];
-    const animeAccessories = ['headphones', 'glasses', 'hairclip', 'cap', 'hood', 'none'] as const;
-    const animeEyes = ['spark', 'focused', 'round', 'smile'] as const;
-    const animeMouths = ['smile', 'calm', 'grin'] as const;
-    const animeBases = [
-      { backgroundA: '#7C3AED', backgroundB: '#06B6D4', skin: '#F5D0C5', hair: '#1F2937', shirt: '#FDE68A', accent: '#F59E0B' },
-      { backgroundA: '#111827', backgroundB: '#4F46E5', skin: '#E7C7B7', hair: '#0F172A', shirt: '#CBD5E1', accent: '#22C55E' },
-      { backgroundA: '#EA580C', backgroundB: '#F59E0B', skin: '#F8D5C2', hair: '#8B5CF6', shirt: '#F9A8D4', accent: '#FFFFFF' },
-      { backgroundA: '#0F766E', backgroundB: '#14B8A6', skin: '#E7BEA8', hair: '#14532D', shirt: '#BFDBFE', accent: '#E0F2FE' },
-      { backgroundA: '#BE185D', backgroundB: '#F43F5E', skin: '#F2C9B2', hair: '#7C2D12', shirt: '#FDE68A', accent: '#FFF7ED' },
-      { backgroundA: '#0F172A', backgroundB: '#2563EB', skin: '#EBC4B5', hair: '#111827', shirt: '#93C5FD', accent: '#A7F3D0' },
-    ];
+  // ─── 3D Cartoon Avatar Catalog (DiceBear adventurer style) ───
+  const avatarCatalog = [
+    // Row 1 – warm tones
+    { label: 'Avatar 1',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Liam&backgroundColor=EA580C' },
+    { label: 'Avatar 2',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Mia&backgroundColor=7C3AED' },
+    { label: 'Avatar 3',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Kai&backgroundColor=111827' },
+    { label: 'Avatar 4',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Zara&backgroundColor=DC2626' },
+    { label: 'Avatar 5',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Omar&backgroundColor=059669' },
+    { label: 'Avatar 6',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Priya&backgroundColor=DB2777' },
+    { label: 'Avatar 7',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Ethan&backgroundColor=6D28D9' },
+    { label: 'Avatar 8',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Sofia&backgroundColor=1D4ED8' },
+    { label: 'Avatar 9',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Marcus&backgroundColor=B45309' },
+    { label: 'Avatar 10', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Aisha&backgroundColor=7C3AED' },
+    { label: 'Avatar 11', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Noah&backgroundColor=BE185D' },
+    // Row 2 – cool tones
+    { label: 'Avatar 12', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Luna&backgroundColor=0F766E' },
+    { label: 'Avatar 13', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Ryan&backgroundColor=0D9488' },
+    { label: 'Avatar 14', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Nadia&backgroundColor=DB2777' },
+    { label: 'Avatar 15', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Jaxon&backgroundColor=EA580C' },
+    { label: 'Avatar 16', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Yuna&backgroundColor=7C3AED' },
+    { label: 'Avatar 17', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Diego&backgroundColor=DC2626' },
+    { label: 'Avatar 18', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Chloe&backgroundColor=059669' },
+    { label: 'Avatar 19', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Felix&backgroundColor=1D4ED8' },
+    { label: 'Avatar 20', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Amara&backgroundColor=B45309' },
+    { label: 'Avatar 21', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Leo&backgroundColor=111827' },
+    { label: 'Avatar 22', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Iris&backgroundColor=BE185D' },
+    // Row 3 – mixed
+    { label: 'Avatar 23', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Ravi&backgroundColor=DC2626' },
+    { label: 'Avatar 24', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Zoe&backgroundColor=059669' },
+    { label: 'Avatar 25', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Andre&backgroundColor=0D9488' },
+    { label: 'Avatar 26', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Meera&backgroundColor=6D28D9' },
+    { label: 'Avatar 27', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Jake&backgroundColor=1D4ED8' },
+    { label: 'Avatar 28', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Nia&backgroundColor=7C3AED' },
+    { label: 'Avatar 29', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Carlos&backgroundColor=EA580C' },
+    { label: 'Avatar 30', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Elena&backgroundColor=B45309' },
+    { label: 'Avatar 31', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Finn&backgroundColor=111827' },
+    { label: 'Avatar 32', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Keiko&backgroundColor=DB2777' },
+    { label: 'Avatar 33', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Samuel&backgroundColor=BE185D' },
+    // Row 4 – last set
+    { label: 'Avatar 34', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Leila&backgroundColor=0F766E' },
+    { label: 'Avatar 35', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Arjun&backgroundColor=1D4ED8' },
+    { label: 'Avatar 36', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Hana&backgroundColor=059669' },
+    { label: 'Avatar 37', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Tyler&backgroundColor=7C3AED' },
+    { label: 'Avatar 38', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Kiran&backgroundColor=DC2626' },
+    { label: 'Avatar 39', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Maya&backgroundColor=EA580C' },
+    { label: 'Avatar 40', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Ollie&backgroundColor=DB2777' },
+  ];
 
-    const buildMonogramAvatar = (index: number, palette: { backgroundA: string; backgroundB: string; accent: string }) => {
-      const frame = monogramFrames[index % monogramFrames.length](palette.accent);
-      return toAvatarDataUri(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-          <defs>
-            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="${palette.backgroundA}" />
-              <stop offset="100%" stop-color="${palette.backgroundB}" />
-            </linearGradient>
-          </defs>
-          <rect width="512" height="512" rx="132" fill="url(#bg)" />
-          <circle cx="162" cy="142" r="96" fill="#ffffff" opacity="0.12" />
-          <circle cx="360" cy="350" r="108" fill="#ffffff" opacity="0.10" />
-          ${frame}
-          <text x="256" y="280" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="136" font-weight="900" fill="#ffffff" letter-spacing="2">${profileInitials}</text>
-        </svg>`);
-    };
-
-    const buildEmojiAvatar = (emoji: string, label: string, palette: { backgroundA: string; backgroundB: string; accent: string }) => {
-      return toAvatarDataUri(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-          <defs>
-            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="${palette.backgroundA}" />
-              <stop offset="100%" stop-color="${palette.backgroundB}" />
-            </linearGradient>
-          </defs>
-          <rect width="512" height="512" rx="132" fill="url(#bg)" />
-          <circle cx="168" cy="160" r="108" fill="#ffffff" opacity="0.14" />
-          <circle cx="344" cy="352" r="118" fill="#ffffff" opacity="0.12" />
-          <circle cx="256" cy="256" r="152" fill="#111827" opacity="0.12" />
-          <text x="256" y="286" text-anchor="middle" font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif" font-size="150">${emoji}</text>
-          <rect x="144" y="368" width="224" height="16" rx="8" fill="${palette.accent}" opacity="0.92" />
-        </svg>`);
-    };
-
-    const monogramOptions = Array.from({ length: 24 }, (_, index) => ({
-      label: `Monogram ${index + 1}`,
-      category: 'monogram' as const,
-      url: buildMonogramAvatar(index, palettes[index % palettes.length]),
-    }));
-
-    const emojiOptions = Array.from({ length: emojiSet.length }, (_, index) => {
-      const emoji = emojiSet[index % emojiSet.length];
-      return {
-        label: `Emoji ${index + 1}`,
-        category: 'emoji' as const,
-        url: buildEmojiAvatar(emoji, `Mood ${index + 1}`, palettes[(index + 1) % palettes.length]),
-      };
-    });
-
-    const animeOptions = Array.from({ length: 36 }, (_, index) => {
-      const base = animeBases[index % animeBases.length];
-      const accessory = animeAccessories[index % animeAccessories.length];
-      const eyes = animeEyes[index % animeEyes.length];
-      const mouth = animeMouths[index % animeMouths.length];
-      return {
-        label: `Anime ${index + 1}`,
-        category: 'anime' as const,
-        url: createAvatarDataUri({ ...base, accessory, eyes, mouth }),
-      };
-    });
-
-    const uniqueOptions = [...monogramOptions, ...emojiOptions, ...animeOptions].filter((option, index, items) => {
-      return index === items.findIndex(candidate => candidate.url === option.url);
-    });
-
-    return uniqueOptions;
-  }, [profileInitials]);
-  const avatarSections = useMemo(() => {
-    const sectionOrder: Array<{ key: 'monogram' | 'emoji' | 'anime'; label: string }> = [
-      { key: 'monogram', label: 'Monogram' },
-      { key: 'emoji', label: 'Emoji' },
-      { key: 'anime', label: 'Anime' },
-    ];
-
-    return sectionOrder
-      .map(section => ({
-        ...section,
-        items: avatarCatalog.filter(option => option.category === section.key),
-      }))
-      .filter(section => section.items.length > 0);
-  }, [avatarCatalog]);
  const APP_BASE_URL = (import.meta as any).env?.VITE_PUBLIC_URL || window.location.origin;
 const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
   ? `${APP_BASE_URL}/profile/${user.user_id}`
@@ -1783,75 +1720,75 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
 
             {/* Form Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-               {/* Profile Photo */}
+               {/* Profile Photo & Avatar Preset Selection */}
                <div className="md:col-span-2 space-y-6 bg-gray-50/50 p-8 rounded-3xl border border-gray-100 border-dashed">
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-8">
-                    <div 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10 shrink-0"
-                    >
-                      {formData.profilePhoto ? (
-                        <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-white">
-                          <User className="w-12 h-12 text-gray-200" />
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-black uppercase tracking-widest text-center px-4">
-                        Update Photo
-                      </div>
-                    </div>
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      className="hidden" 
-                      accept="image/*" 
-                      onChange={handlePhotoUpload} 
-                    />
-                    <div className="space-y-3 min-w-0">
-                      <h4 className="font-bold text-gray-900 uppercase text-xs tracking-widest">Profile Photo / Avatar</h4>
-                      <p className="text-[10px] font-medium text-gray-400 max-w-xl">Upload a custom photo or choose one of the preset avatars below for a cleaner profile identity.</p>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="rounded-full bg-[#7C3AED] px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-sm hover:bg-[#6D28D9] transition-all"
-                      >
-                        Upload Photo
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between gap-4 mb-4">
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Choose Avatar</div>
-                        <div className="text-sm font-bold text-gray-900">{avatarCatalog.length} unique preset avatars</div>
-                      </div>
-                    </div>
-                    <div className="max-h-[22rem] overflow-y-auto pr-2 space-y-6">
-                      {avatarSections.map(section => (
-                        <div key={section.key} className="space-y-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <h5 className="text-[10px] font-black uppercase tracking-[0.24em] text-gray-500">{section.label}</h5>
-                          </div>
-                          <div className="grid grid-flow-col grid-rows-2 auto-cols-[6rem] gap-2.5 overflow-x-auto pb-2">
-                            {section.items.map(option => {
-                              const isSelected = formData.profilePhoto === option.url;
-                              return (
-                                <button
-                                  key={`${section.key}-${option.label}`}
-                                  type="button"
-                                  onClick={() => setFormData(prev => ({ ...prev, profilePhoto: option.url }))}
-                                  className={`group rounded-2xl border p-0 overflow-hidden transition-all w-[6rem] aspect-square ${isSelected ? 'border-[#7C3AED] bg-white shadow-md' : 'border-gray-200 bg-white/60 hover:border-[#7C3AED]/30'}`}
-                                >
-                                  <img src={option.url} alt={option.label} className="w-full h-full object-cover scale-125" />
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                 <div className="flex flex-col lg:flex-row lg:items-center gap-8">
+                   <div 
+                     onClick={() => fileInputRef.current?.click()}
+                     className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10 shrink-0"
+                   >
+                     {formData.profilePhoto ? (
+                       <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                     ) : (
+                       <div className="w-full h-full flex items-center justify-center bg-white">
+                         <User className="w-12 h-12 text-gray-200" />
+                       </div>
+                     )}
+                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                       <span className="text-white text-[9px] font-black uppercase tracking-widest">Edit</span>
+                     </div>
+                   </div>
+                   <input 
+                     type="file" 
+                     ref={fileInputRef} 
+                     className="hidden" 
+                     accept="image/*" 
+                     onChange={handlePhotoUpload} 
+                   />
+                   <div className="space-y-3 min-w-0 flex-1">
+                     <h4 className="font-bold text-gray-900 uppercase text-xs tracking-widest">Profile Photo / Avatar</h4>
+                     <p className="text-[10px] font-medium text-gray-400 max-w-xl">Upload a custom photo or choose one of the preset avatars below for a cleaner profile identity.</p>
+                     <button
+                       type="button"
+                       onClick={() => fileInputRef.current?.click()}
+                       className="rounded-full bg-[#7C3AED] px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-sm hover:bg-[#6D28D9] transition-all"
+                     >
+                       Upload Photo
+                     </button>
+                   </div>
+                 </div>
+
+                 {/* Presets Catalog grid */}
+                 <div className="border-t border-gray-100 pt-6">
+                   <div className="flex items-center justify-between gap-4 mb-4">
+                     <div>
+                       <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Choose Avatar</div>
+                       <div className="text-sm font-bold text-gray-900">{avatarCatalog.length} 3D character avatars</div>
+                     </div>
+                   </div>
+                   <div className="max-h-[22rem] overflow-y-auto pr-1">
+                     <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-8 gap-2.5 pb-2">
+                       {avatarCatalog.map((option) => {
+                         const isSelected = formData.profilePhoto === option.url;
+                         return (
+                           <button
+                             key={option.label}
+                             type="button"
+                             onClick={() => setFormData(prev => ({ ...prev, profilePhoto: option.url }))}
+                             className={`rounded-full border-2 overflow-hidden aspect-square transition-all ${
+                               isSelected
+                                 ? 'border-[#7C3AED] shadow-lg shadow-purple-200 ring-2 ring-[#7C3AED]/30 scale-110'
+                                 : 'border-transparent hover:border-[#7C3AED]/40 hover:scale-105'
+                             }`}
+                           >
+                             <img src={option.url} alt={option.label} className="w-full h-full object-cover" />
+                           </button>
+                         );
+                       })}
+                     </div>
+                   </div>
+                 </div>
                </div>
 
                <div className="space-y-2 group">

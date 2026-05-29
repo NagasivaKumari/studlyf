@@ -334,12 +334,37 @@ const EventHub: React.FC = () => {
         }
     };
 
-    if (loading) return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-            <Loader2 className="w-10 h-10 text-purple-600 animate-spin" />
-        </div>
-    );
-
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-[#F8FAFC] pb-32">
+                <div className="bg-slate-900 pt-32 pb-20 px-6 border-b border-slate-800">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="w-48 h-6 bg-slate-800 rounded animate-pulse mb-6"></div>
+                        <div className="w-3/4 h-16 bg-slate-800 rounded-lg animate-pulse mb-8"></div>
+                        <div className="flex flex-wrap gap-4">
+                            <div className="w-32 h-10 bg-slate-800 rounded-2xl animate-pulse"></div>
+                            <div className="w-32 h-10 bg-slate-800 rounded-2xl animate-pulse"></div>
+                            <div className="w-32 h-10 bg-slate-800 rounded-2xl animate-pulse"></div>
+                        </div>
+                    </div>
+                </div>
+                <div className="max-w-6xl mx-auto px-6 mt-8 space-y-8">
+                    <div className="w-full h-32 bg-slate-100 rounded-3xl animate-pulse"></div>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div className="lg:col-span-2 space-y-6">
+                            <div className="w-full h-64 bg-slate-100 rounded-3xl animate-pulse"></div>
+                            <div className="w-full h-64 bg-slate-100 rounded-3xl animate-pulse"></div>
+                        </div>
+                        <div className="space-y-6">
+                            <div className="w-full h-48 bg-slate-100 rounded-3xl animate-pulse"></div>
+                            <div className="w-full h-48 bg-slate-100 rounded-3xl animate-pulse"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    
     if (!participant) {
         const params = new URLSearchParams(location.search);
         const joinCode = params.get('join');

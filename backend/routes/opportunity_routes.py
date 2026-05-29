@@ -16,7 +16,7 @@ from services.opportunity_service import (
 )
 from services.subscription_service import validate_new_listing_against_plan
 from db import notifications_col
-from db import quizzes_col, events_col, participants_col, opportunities_col, opportunity_applications_col
+from db import quizzes_col, events_col, participants_col, opportunities_col, opportunity_applications_col, opportunity_reviews_col
 from services.email_service import send_notification_email
 
 router = APIRouter(prefix="/api/opportunities", tags=["Opportunities"])
@@ -745,6 +745,97 @@ async def serve_gridfs_file(file_id: str):
 
 
 
+@router.post("/{opportunity_id}/reviews")
+async def add_opportunity_review(
+    opportunity_id: str,
+    payload: dict = Body(...),
+    user: dict = Depends(get_auth_user)
+):
+    """API for registered participants to add a review."""
+    uid = user.get("user_id")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    rating = int(payload.get("rating", 0))
+    review_text = payload.get("review_text", "").strip()
+    
+    if rating < 1 or rating > 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+        
+    # Check if opportunity exists
+    try:
+        opp_oid = ObjectId(opportunity_id)
+    except:
+        opp_oid = opportunity_id
+        
+    opp = await opportunities_col.find_one({"$or": [{"_id": opp_oid}, {"_id": opportunity_id}]})
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+        
+    real_opp_id = str(opp["_id"])
+        
+    # Optional: ensure user is registered for this opportunity (by checking applications or participants)
+    # We will check if they have applied:
+    app = await opportunity_applications_col.find_one({
+        "opportunity_id": real_opp_id,
+        "user_id": uid
+    })
+    
+    # Check if they already reviewed
+    existing_review = await opportunity_reviews_col.find_one({
+        "opportunity_id": real_opp_id,
+        "user_id": uid
+    })
+    if existing_review:
+        raise HTTPException(status_code=400, detail="You have already reviewed this opportunity")
+        
+    new_review = {
+        "opportunity_id": real_opp_id,
+        "user_id": uid,
+        "user_name": user.get("name", "Anonymous"),
+        "rating": rating,
+        "review_text": review_text,
+        "created_at": datetime.utcnow()
+    }
+    await opportunity_reviews_col.insert_one(new_review)
+    
+    # Update average rating
+    pipeline = [
+        {"$match": {"opportunity_id": real_opp_id}},
+        {"$group": {"_id": "$opportunity_id", "avg": {"$avg": "$rating"}, "count": {"$sum": 1}}}
+    ]
+    aggr = await opportunity_reviews_col.aggregate(pipeline).to_list(1)
+    if aggr:
+        avg_rating = round(aggr[0]["avg"], 1)
+        total_reviews = aggr[0]["count"]
+        await opportunities_col.update_one(
+            {"_id": ObjectId(real_opp_id)},
+            {"$set": {"average_rating": avg_rating, "total_reviews": total_reviews}}
+        )
+        
+    return {"status": "success", "message": "Review submitted successfully"}
+
+@router.get("/{opportunity_id}/reviews")
+async def get_opportunity_reviews(opportunity_id: str):
+    """Fetch reviews for an opportunity."""
+    try:
+        opp_oid = ObjectId(opportunity_id)
+    except:
+        opp_oid = opportunity_id
+        
+    opp = await opportunities_col.find_one({"$or": [{"_id": opp_oid}, {"_id": opportunity_id}]})
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+        
+    real_opp_id = str(opp["_id"])
+    cursor = opportunity_reviews_col.find({"opportunity_id": real_opp_id}).sort("created_at", -1)
+    reviews = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        reviews.append(doc)
+        
+    return {"reviews": reviews, "average_rating": opp.get("average_rating", 0), "total_reviews": opp.get("total_reviews", 0)}
+
 @router.post("/events/{event_id}/stages/{stage_id}/submit")
 async def learner_submit_stage_data(
     event_id: str, 
@@ -813,6 +904,8 @@ async def learner_submit_stage_data(
                     if str(m.get("role", "")).upper() == "LEADER":
                         leader_id = m.get("user_id")
                         break
+
+
             if str(leader_id) != uid:
                 raise HTTPException(status_code=403, detail="Only the team leader can submit data for the team")
 

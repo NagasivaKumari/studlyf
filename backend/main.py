@@ -5870,6 +5870,7 @@ async def get_ai_tools():
         raise HTTPException(status_code=500, detail="Failed to fetch AI tools")
 
 @app.get("/api/user/{user_id}/profile")
+@app.get("/api/user/{user_id}")
 async def get_user_profile(user_id: str):
     """Load the complete learner profile from users_col and learner_profiles_col."""
     try:
