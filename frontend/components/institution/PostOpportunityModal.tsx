@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Upload, Info, ChevronRight, Save, Plus, Trash2, Calendar, Trophy, Users, FileText, ArrowLeft, HeadphonesIcon, ChevronDown, ChevronUp, Lock, RefreshCw, UploadCloud, Star, Globe, Code, Brain, Award, Shield } from 'lucide-react';
+import { X, Upload, Info, ChevronRight, Save, Plus, Trash2, Calendar, Trophy, Users, FileText, ArrowLeft, HeadphonesIcon, ChevronDown, ChevronUp, Lock, RefreshCw, UploadCloud } from 'lucide-react';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 
 interface PostOpportunityModalProps {
@@ -40,7 +40,6 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         perks: [],
         prizePool: '',
         prizes: [],
-        badges: [],
         faqs: [],
         benefits: '',
         compensation: '',
@@ -182,7 +181,6 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                     perks: [],
                     prizePool: '',
                     prizes: [],
-                    badges: [],
                     faqs: [],
                     benefits: '',
                     compensation: '',
@@ -320,7 +318,6 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                         perks: data.perks || [],
                         prizePool: data.prizePool || data.prize_pool || '',
                         prizes: data.prizes || [],
-                        badges: data.badges || [],
                         faqs: data.faqs || [],
                         benefits: data.benefits || '',
                         compensation: data.compensation || '',
@@ -365,9 +362,7 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
 
     const steps = [
         { id: 1, label: 'Opportunity details' },
-        { id: 2, label: 'Registration Form' },
-        { id: 3, label: 'Badges' },
-        { id: 4, label: 'FAQs' },
+        { id: 2, label: 'FAQs' },
     ];
 
     if (!isOpen) return null;
@@ -1541,365 +1536,6 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                </div>
-                            ) : step === 2 ? (
-                                <div className="space-y-12 animate-in slide-in-from-right-4 duration-500">
-                                    <div>
-                                        <h3 className="text-2xl font-black text-slate-900 mb-2">Registration Form</h3>
-                                        <p className="text-sm text-slate-500 font-medium">Customize the form candidates fill out when applying for this role.</p>
-                                    </div>
-
-                                    {/* Basic Details Section */}
-                                    <div className="space-y-6">
-                                        <h4 className="text-[15px] font-black text-slate-800">Basic Details (Filled by all team members)</h4>
-                                        <div className="space-y-3">
-                                            <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="text-slate-400 font-bold">✒️</div>
-                                                    <span className="text-sm font-bold text-slate-700">Name</span>
-                                                </div>
-                                                <div className="flex items-center gap-4">
-                                                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Required</span>
-                                                    <Lock size={14} className="text-slate-200" />
-                                                </div>
-                                            </div>
-                                            <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="text-slate-400 font-bold">📧</div>
-                                                    <span className="text-sm font-bold text-slate-700">Email</span>
-                                                </div>
-                                                <div className="flex items-center gap-4">
-                                                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Required</span>
-                                                    <Lock size={14} className="text-slate-200" />
-                                                </div>
-                                            </div>
-                                            {showMoreBasic && (
-                                                <>
-                                                    <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between animate-in fade-in slide-in-from-top-2">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="text-slate-400 font-bold">🏫</div>
-                                                            <span className="text-sm font-bold text-slate-700">College Name</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-4">
-                                                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Required</span>
-                                                            <Lock size={14} className="text-slate-200" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between animate-in fade-in slide-in-from-top-2">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="text-slate-400 font-bold">📱</div>
-                                                            <span className="text-sm font-bold text-slate-700">Mobile Number</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-4">
-                                                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Required</span>
-                                                            <Lock size={14} className="text-slate-200" />
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
-                                            <button 
-                                                onClick={() => setShowMoreBasic(!showMoreBasic)}
-                                                className="w-full py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-2 hover:text-slate-600 transition-all"
-                                            >
-                                                {showMoreBasic ? 'Show less' : 'Show more'} {showMoreBasic ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Screening Questions Section */}
-                                    <div className="space-y-6 pt-10 border-t border-slate-50">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <h4 className="text-[15px] font-black text-slate-800">Screening Questions/Additional Info (Filled by team leader only)</h4>
-                                                <p className="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest leading-relaxed">Add custom questions in registration form and use responses to shortlist candidates</p>
-                                            </div>
-                                            <button 
-                                                onClick={() => setIsAddingQuestion(true)}
-                                                className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:border-[#6C3BFF] hover:text-[#6C3BFF] transition-all shadow-sm"
-                                            >
-                                                <Plus size={20} />
-                                            </button>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                                <ChevronDown size={14} /> Suggested screening question(s)
-                                            </div>
-                                            <div className="flex flex-wrap gap-3">
-                                                {[
-                                                    { label: 'Cover Letter', icon: '📄' },
-                                                    { label: 'Highest Qualification', icon: '🎓' },
-                                                    { label: 'Portfolio/Work Samples', icon: '🎨' }
-                                                ].map(pill => (
-                                                    <button 
-                                                        key={pill.label} 
-                                                        onClick={() => addField(pill.label, 'text')}
-                                                        className="px-5 py-2.5 bg-white border border-slate-200 rounded-full text-[11px] font-bold text-slate-600 hover:border-[#6C3BFF] hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
-                                                    >
-                                                        <Plus size={14} /> {pill.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="p-8 bg-[#6C3BFF]/5 rounded-[2.5rem] border border-[#6C3BFF]/10 space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-[#6C3BFF] shadow-sm text-lg">
-                                                        🔍
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-[13px] font-black text-slate-900 uppercase tracking-widest">Make additional questions eliminatory</span>
-                                                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">Filter out candidates based on specific criteria</p>
-                                                    </div>
-                                                </div>
-                                                <div 
-                                                    onClick={() => setIsEliminatory(!isEliminatory)}
-                                                    className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-all ${isEliminatory ? 'bg-[#6C3BFF]' : 'bg-slate-200'}`}
-                                                >
-                                                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-all ${isEliminatory ? 'translate-x-6' : 'translate-x-0'}`} />
-                                                </div>
-                                            </div>
-                                            <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-                                                These "Additional Questions" will determine whether candidate(s) move forward in the opportunity. When eliminatory screening is enabled, you can mark additional questions as mandatory and set auto-shortlisting criteria. Candidate(s) who meet the criteria(s) will be automatically shortlisted.
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* Registration Platform & Timeline Section */}
-                                    <div className="space-y-8 pt-10 border-t border-slate-50">
-                                        <div>
-                                            <h4 className="text-xl font-black text-slate-900">Registration Platform & Timeline</h4>
-                                            <p className="text-sm text-slate-500 font-medium mt-1">Specify the registration platform and registration window for this Opportunity</p>
-                                        </div>
-
-                                        <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-10">
-                                            {/* Timeline */}
-                                            <div className="space-y-6">
-                                                <div className="flex items-center gap-2 text-[#6C3BFF] font-black uppercase text-[11px] tracking-widest">
-                                                    Registration Timeline <ChevronUp size={14} />
-                                                </div>
-                                                
-                                                <div className="bg-slate-50/50 p-8 rounded-[2rem] border border-slate-50 relative">
-                                                    <div className="space-y-6 relative">
-                                                        {/* Vertical Line */}
-                                                        <div className="absolute left-3.5 top-8 bottom-8 w-[2px] border-l-2 border-dashed border-[#6C3BFF]/30" />
-                                                        
-                                                        <div className="flex items-center gap-8 relative">
-                                                            <div className="w-8 h-8 rounded-full bg-[#6C3BFF] border-4 border-white shadow-sm z-10" />
-                                                            <div className="flex items-center gap-4 flex-1">
-                                                                <span className="text-sm font-black text-slate-700 w-12">Live</span>
-                                                                <div className="flex-1 bg-white border border-slate-100 rounded-xl px-6 py-4 flex items-center justify-between focus-within:ring-2 focus-within:ring-[#6C3BFF]/20 transition-all">
-                                                                    <input 
-                                                                        type="datetime-local" 
-                                                                        value={formData.registrationStartDate}
-                                                                        onChange={(e) => setFormData({...formData, registrationStartDate: e.target.value})}
-                                                                        className="w-full text-sm font-bold text-slate-800 outline-none border-none bg-transparent cursor-pointer font-sans"
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex items-center gap-8 relative">
-                                                            <div className="w-8 h-8 rounded-full bg-white border-2 border-[#6C3BFF] z-10" />
-                                                            <div className="flex items-center gap-4 flex-1">
-                                                                <span className="text-sm font-black text-slate-700 w-12">Close</span>
-                                                                <div className="flex-1 bg-white border border-slate-100 rounded-xl px-6 py-4 flex items-center justify-between focus-within:ring-2 focus-within:ring-[#6C3BFF]/20 transition-all">
-                                                                    <input 
-                                                                        type="datetime-local" 
-                                                                        value={formData.registrationDeadline}
-                                                                        onChange={(e) => setFormData({...formData, registrationDeadline: e.target.value})}
-                                                                        className="w-full text-sm font-bold text-slate-800 outline-none border-none bg-transparent cursor-pointer font-sans"
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-start gap-3 px-2">
-                                                    <div className="mt-0.5 text-slate-300"><Calendar size={16} /></div>
-                                                    <p className="text-[13px] text-slate-500 font-medium leading-relaxed">
-                                                        Candidates will be able to apply for this Opportunity from <span className="font-black text-slate-900">{(() => {
-                                                            try {
-                                                                const d = new Date(formData.registrationStartDate);
-                                                                if (isNaN(d.getTime())) return '30 Apr 26, 12:00 AM';
-                                                                return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: '2-digit' }) + ', ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                                                            } catch {
-                                                                return '30 Apr 26, 12:00 AM';
-                                                            }
-                                                        })()}</span> to <span className="font-black text-slate-900">{(() => {
-                                                            try {
-                                                                const d = new Date(formData.registrationDeadline);
-                                                                if (isNaN(d.getTime())) return '14 May 26, 12:00 AM';
-                                                                return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: '2-digit' }) + ', ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                                                            } catch {
-                                                                return '14 May 26, 12:00 AM';
-                                                            }
-                                                        })()}</span> for a period of <span className="font-black text-[#6C3BFF]">{(() => {
-                                                            try {
-                                                                const d1 = new Date(formData.registrationStartDate);
-                                                                const d2 = new Date(formData.registrationDeadline);
-                                                                if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return '14 Days';
-                                                                const diff = d2.getTime() - d1.getTime();
-                                                                const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-                                                                return `${days >= 0 ? days : 0} Days`;
-                                                            } catch {
-                                                                return '14 Days';
-                                                            }
-                                                        })()}</span>.
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            {/* Platform */}
-                                            <div className="space-y-6 pt-6 border-t border-slate-50">
-                                                <div className="flex items-center gap-2 text-[#6C3BFF] font-black uppercase text-[11px] tracking-widest">
-                                                    Platform <ChevronUp size={14} />
-                                                </div>
-
-                                                <div className="flex gap-6 items-stretch">
-                                                    <div className="w-6 flex items-center justify-center text-slate-300 font-bold">{'>'}</div>
-                                                    
-                                                    <div className="flex-1 p-6 bg-[#6C3BFF]/5 border-2 border-[#6C3BFF] rounded-2xl flex items-center gap-5 cursor-pointer shadow-lg shadow-purple-50">
-                                                        <div className="w-12 h-12 bg-[#6C3BFF] rounded-xl flex items-center justify-center text-white text-xs font-black shadow-lg shadow-purple-200">SL</div>
-                                                        <div>
-                                                            <p className="text-sm font-black text-slate-900">Studlyf</p>
-                                                            <p className="text-xs text-slate-500 font-medium mt-1">Manage and receive applications on Studlyf.</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="flex-1 p-6 bg-white border-2 border-dashed border-slate-100 rounded-2xl flex items-center gap-5 cursor-not-allowed group">
-                                                        <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-300 text-lg">🔗</div>
-                                                        <div>
-                                                            <div className="flex items-center gap-2">
-                                                                <p className="text-sm font-black text-slate-400">Other platform</p>
-                                                                <span className="px-2 py-0.5 bg-orange-50 text-orange-600 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-1">👑 Contact Sales</span>
-                                                            </div>
-                                                            <p className="text-xs text-slate-300 font-medium mt-1">Redirect candidates to an external website.</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : step === 3 ? (
-                                <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
-                                    <div>
-                                        <h3 className="text-2xl font-black text-slate-900 mb-2">Badges</h3>
-                                        <p className="text-sm text-slate-500 font-medium">Add visual badges that highlight key event attributes</p>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        {(formData.badges || []).map((badge: any, i: number) => (
-                                            <div key={i} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Badge {i + 1}</span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const updated = [...formData.badges];
-                                                            updated.splice(i, 1);
-                                                            setFormData({...formData, badges: updated});
-                                                        }}
-                                                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-all"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div>
-                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Label</label>
-                                                        <input
-                                                            type="text"
-                                                            value={badge.label || ''}
-                                                            onChange={(e) => {
-                                                                const updated = [...formData.badges];
-                                                                updated[i] = {...updated[i], label: e.target.value};
-                                                                setFormData({...formData, badges: updated});
-                                                            }}
-                                                            placeholder="e.g. Beginner Friendly"
-                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Icon</label>
-                                                        <select
-                                                            value={badge.icon || ''}
-                                                            onChange={(e) => {
-                                                                const updated = [...formData.badges];
-                                                                updated[i] = {...updated[i], icon: e.target.value};
-                                                                setFormData({...formData, badges: updated});
-                                                            }}
-                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
-                                                        >
-                                                            <option value="">Select icon</option>
-                                                            <option value="Star">Star</option>
-                                                            <option value="Trophy">Trophy</option>
-                                                            <option value="Users">Users</option>
-                                                            <option value="Globe">Globe</option>
-                                                            <option value="Code">Code</option>
-                                                            <option value="Brain">Brain</option>
-                                                            <option value="Award">Award</option>
-                                                            <option value="Calendar">Calendar</option>
-                                                            <option value="Clock">Clock</option>
-                                                            <option value="Shield">Shield</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div>
-                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Color</label>
-                                                        <select
-                                                            value={badge.color || ''}
-                                                            onChange={(e) => {
-                                                                const updated = [...formData.badges];
-                                                                updated[i] = {...updated[i], color: e.target.value};
-                                                                setFormData({...formData, badges: updated});
-                                                            }}
-                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
-                                                        >
-                                                            <option value="">Select color</option>
-                                                            <option value="Slate">Slate</option>
-                                                            <option value="Blue">Blue</option>
-                                                            <option value="Purple">Purple</option>
-                                                            <option value="Green">Green</option>
-                                                            <option value="Amber">Amber</option>
-                                                            <option value="Rose">Rose</option>
-                                                            <option value="Indigo">Indigo</option>
-                                                            <option value="Teal">Teal</option>
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Type (optional)</label>
-                                                        <input
-                                                            type="text"
-                                                            value={badge.type || ''}
-                                                            onChange={(e) => {
-                                                                const updated = [...formData.badges];
-                                                                updated[i] = {...updated[i], type: e.target.value};
-                                                                setFormData({...formData, badges: updated});
-                                                            }}
-                                                            placeholder="e.g. difficulty"
-                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const updated = [...(formData.badges || []), {}];
-                                                setFormData({...formData, badges: updated});
-                                            }}
-                                            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-dashed border-slate-300 rounded-xl text-[11px] font-bold text-slate-500 hover:border-[#6C3BFF] hover:text-[#6C3BFF] transition-all"
-                                        >
-                                            <Plus size={14} />
-                                            Add Badge
-                                        </button>
                                     </div>
                                 </div>
                             ) : (

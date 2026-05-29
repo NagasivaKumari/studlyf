@@ -42,7 +42,6 @@ import {
 import { getStatusById, getStatusColor, getStatusLabel } from '../../utils/calendarStatuses';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Helmet } from 'react-helmet-async';
-import DynamicBadges from '../../components/DynamicBadges';
 import EventFAQ from '../../components/EventFAQ';
 import SectionRenderer from '../../components/SectionRenderer';
 import { useRegistrationState } from '../../utils/useRegistrationState';
@@ -1282,13 +1281,6 @@ const OpportunityDetails: React.FC = () => {
                                         })()
                                     ) : null}
                                 </div>
-
-                                {/* Dynamic Badges from schema */}
-                                {opportunity.badges && opportunity.badges.length > 0 && (
-                                    <div className="mt-4">
-                                        <DynamicBadges badges={opportunity.badges} size="md" />
-                                    </div>
-                                )}
 
                                 {/* Compact eligibility summary under title */}
                                 {elig.length > 0 && (
