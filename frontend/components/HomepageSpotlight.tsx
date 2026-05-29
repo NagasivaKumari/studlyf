@@ -1,36 +1,36 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { BookOpen, Briefcase, BrainCircuit, Sparkles, Target, ShieldCheck, Users, ChevronRight } from 'lucide-react';
+import { Compass, Target, BrainCircuit, Briefcase, Sparkles, ShieldCheck, Users, ChevronRight } from 'lucide-react';
 
 const featureCards = [
   {
-    title: 'Career pathways',
-    desc: 'Explore structured pathways built around careers, projects, and real growth.',
+    title: 'Guided learning paths',
+    desc: 'Follow structured, step-by-step educational journeys designed for real career growth.',
     to: '/learn/courses-overview',
-    icon: BookOpen,
-    btnText: 'Explore pathway',
+    icon: Compass,
+    btnText: 'Explore pathways',
   },
   {
-    title: 'Opportunity engine',
-    desc: 'Discover internships, hackathons, startup roles, and real opportunities.',
+    title: 'Skill checkups',
+    desc: 'Precision assessments to identify skill gaps and validate your technical expertise.',
     to: '/learn/assessment-intro',
     icon: Target,
-    btnText: 'Explore now',
+    btnText: 'Start checkup',
   },
   {
-    title: 'Mentor ecosystem',
-    desc: 'Connect with mentors, founders, builders, and ambitious peers.',
+    title: 'AI support tools',
+    desc: 'Leverage intelligent agents for resume building, interview prep, and instant feedback.',
     to: '/ai-tools',
     icon: BrainCircuit,
-    btnText: 'Explore now',
+    btnText: 'Try AI tools',
   },
   {
-    title: 'Build & prove',
-    desc: 'Build real projects, showcase proof of work, and grow your profile.',
+    title: 'Job-ready practice',
+    desc: 'Build real-world projects and participate in challenges that prove your capabilities.',
     to: '/job-prep/portfolio',
     icon: Briefcase,
-    btnText: 'Explore now',
+    btnText: 'Start practicing',
   },
 ];
 
@@ -82,27 +82,36 @@ const HomepageSpotlight: React.FC = () => {
                 >
                   <Link
                     to={item.to}
-                    className="group relative block h-full rounded-[24px] bg-white border border-gray-100 p-7 overflow-hidden transition-all duration-300 hover:shadow-[0_20px_40px_-15px_rgba(124,58,237,0.12)] hover:-translate-y-1 hover:border-[#7C3AED]/30"
+                    className="group relative block h-full rounded-[28px] bg-white border border-gray-100 p-8 overflow-hidden transition-all duration-500 hover:shadow-[0_30px_60px_-15px_rgba(124,58,237,0.08)] hover:-translate-y-1 hover:border-[#7C3AED]/20"
                   >
                     {/* Hover Gradient Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#7C3AED]/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#7C3AED]/[0.01] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
                     <div className="relative z-10 flex flex-col h-full">
-                      <div className="w-14 h-14 rounded-2xl bg-[#F8F9FA] border border-gray-100 flex items-center justify-center text-[#64748B] group-hover:bg-[#7C3AED] group-hover:text-white group-hover:border-[#7C3AED] transition-all duration-300 shadow-sm mb-6">
-                        <Icon className="w-6 h-6 stroke-[1.5]" />
+                      {/* Premium Icon Container */}
+                      <div className="relative mb-8 self-start">
+                        {/* Soft Outer Glow */}
+                        <div className="absolute inset-0 bg-[#7C3AED] blur-xl opacity-0 group-hover:opacity-20 transition-opacity duration-700 rounded-[20px]" />
+                        
+                        {/* Glass Body */}
+                        <div className="relative w-[60px] h-[60px] rounded-[22px] bg-white border border-gray-100 shadow-[0_8px_16px_-4px_rgba(0,0,0,0.03),inset_0_1px_4px_rgba(255,255,255,1)] flex items-center justify-center text-[#64748B] group-hover:text-[#7C3AED] group-hover:-translate-y-1 group-hover:shadow-[0_16px_32px_-8px_rgba(124,58,237,0.15),inset_0_1px_4px_rgba(255,255,255,1)] group-hover:border-[#7C3AED]/20 transition-all duration-500 overflow-hidden">
+                          {/* Inner Subtle Gradient */}
+                          <div className="absolute inset-0 bg-gradient-to-br from-[#7C3AED]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                          <Icon className="w-6 h-6 stroke-[1.5] relative z-10 drop-shadow-sm transition-transform duration-500 group-hover:scale-110" />
+                        </div>
                       </div>
 
                       <h3 className="text-xl font-bold text-[#0F172A] tracking-tight mb-3 group-hover:text-[#7C3AED] transition-colors duration-300">
                         {item.title}
                       </h3>
 
-                      <p className="text-sm text-[#64748B] leading-relaxed mb-8 flex-grow">
+                      <p className="text-sm text-[#64748B] leading-relaxed mb-8 flex-grow group-hover:text-[#475569] transition-colors duration-300">
                         {item.desc}
                       </p>
 
                       <div className="flex items-center gap-2 text-[12px] font-bold text-[#0F172A] group-hover:text-[#7C3AED] transition-colors duration-300 mt-auto">
                         {item.btnText}
-                        <ChevronRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
+                        <ChevronRight className="w-4 h-4 transition-transform duration-500 group-hover:translate-x-1" />
                       </div>
                     </div>
                   </Link>

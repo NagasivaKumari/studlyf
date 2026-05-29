@@ -327,31 +327,42 @@ const DashboardHome: React.FC = () => {
                 </p>
               </div>
 
-              <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 relative z-20 mt-2 px-6 sm:px-16">
-                <div className="flex flex-col items-center gap-6 md:gap-10">
-                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Connected with</span>
-                  <div className="flex items-center gap-8 sm:gap-16">
-                    <div className="flex items-center gap-3 sm:gap-4 group">
-                      <img src="/images/google.png" className="h-6 sm:h-8 transition-transform group-hover:scale-110" alt="Google" />
-                      <span className="font-bold text-black tracking-tight text-lg sm:text-xl">Google</span>
-                    </div>
-                    <div className="flex items-center gap-3 sm:gap-4 group">
-                      <img src="/images/amazon.png" className="h-6 sm:h-8 transition-transform group-hover:scale-110" alt="Amazon" />
-                      <span className="font-bold text-black tracking-tight text-lg sm:text-xl">Amazon</span>
-                    </div>
+              <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 relative z-20 mt-8 px-6 sm:px-12">
+                {/* Connected With */}
+                <div className="flex flex-col items-center gap-6 md:gap-8">
+                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Built By Poeple From</span>
+                  <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10">
+                    {[
+                      { src: "/images/start.png", alt: "Start" },
+                      { src: "/images/tech.jpg", alt: "Tech" },
+                    ].map((logo, idx) => (
+                      <img
+                        key={idx}
+                        src={logo.src}
+                        alt={logo.alt}
+                        className="h-10 sm:h-12 md:h-14 w-auto max-w-[160px] object-contain rounded-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:scale-[1.02]"
+                      />
+                    ))}
                   </div>
                 </div>
-                <div className="flex flex-col items-center gap-6 md:gap-10">
+
+                {/* Collaborated With */}
+                <div className="flex flex-col items-center gap-6 md:gap-8">
                   <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Collaborated with</span>
-                  <div className="flex items-center gap-8 sm:gap-16 justify-center">
-                    <div className="flex items-center gap-3 sm:gap-4 group">
-                      <img src="https://cdn.simpleicons.org/ycombinator" className="h-6 sm:h-8 transition-transform group-hover:scale-110" alt="Y Combinator" />
-                      <span className="font-bold text-black tracking-tight text-base sm:text-lg">Combinator</span>
-                    </div>
-                    <div className="flex items-center gap-3 sm:gap-4 group">
-                      <Zap className="w-5 h-5 sm:w-7 sm:h-7 text-[#7C3AED] fill-current group-hover:animate-pulse" />
-                      <span className="font-bold text-black tracking-tight text-base sm:text-lg">Rebright</span>
-                    </div>
+                  <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10">
+                    {[
+                      { src: "/images/gogo.jpg", alt: "Gogo" },
+                      { src: "/images/micr.jpg", alt: "Microsoft" },
+                      { src: "/images/nvidia.webp", alt: "Nvidia" },
+                      { src: "/images/zoho.webp", alt: "Zoho" },
+                    ].map((logo, idx) => (
+                      <img
+                        key={idx}
+                        src={logo.src}
+                        alt={logo.alt}
+                        className="h-10 sm:h-12 md:h-14 w-auto max-w-[160px] object-contain rounded-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:scale-[1.02]"
+                      />
+                    ))}
                   </div>
                 </div>
               </div>

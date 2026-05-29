@@ -7,10 +7,10 @@ import {
 } from 'lucide-react';
 
 const stats = [
-    { value: "20+", label: "Sessions", icon: <Server className="w-5 h-5 text-[#7C3AED]" /> },
-    { value: "15+", label: "Colleges", icon: <GraduationCap className="w-5 h-5 text-[#7C3AED]" /> },
-    { value: "10+", label: "Partnerships", icon: <Building2 className="w-5 h-5 text-[#7C3AED]" /> },
-    { value: "3+", label: "Startups", icon: <Users className="w-5 h-5 text-[#7C3AED]" /> },
+    { value: "1 Lakh+", label: "Media Reach", icon: <Server className="w-5 h-5 text-[#7C3AED]" /> },
+    { value: "40+", label: "Sessions", icon: <GraduationCap className="w-5 h-5 text-[#7C3AED]" /> },
+    { value: "3+", label: "Startups Supported", icon: <Building2 className="w-5 h-5 text-[#7C3AED]" /> },
+    { value: "15+", label: "Hiring Partners", icon: <Users className="w-5 h-5 text-[#7C3AED]" /> },
 ];
 
 const features = [
@@ -244,40 +244,63 @@ const WhyUsSection: React.FC = () => {
                         initial={{ opacity: 0, x: -30 }}
                         whileInView={{ opacity: 1, x: 0 }}
                         viewport={{ once: true }}
-                        className="flex flex-col h-full"
+                        className="flex flex-col h-[500px] lg:h-full min-h-[450px] bg-white rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden relative"
                     >
-                        <div className="relative group">
-                            <div className="absolute -inset-4 bg-gradient-to-r from-[#7C3AED]/20 to-transparent blur-2xl opacity-0 group-hover:opacity-100 transition-opacity rounded-[2rem]" />
-                            <div className="relative bg-white rounded-[2rem] overflow-hidden border border-gray-100 shadow-xl">
-                                <img
-                                    src="https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&q=80&w=800"
-                                    alt="Why Us Illustration"
-                                    className="w-full h-[280px] object-cover transform group-hover:scale-105 transition-transform duration-700"
-                                />
-                            </div>
+                        <div className="p-6 md:p-8 pb-4 z-20 bg-white relative">
+                            <h3 className="text-xl md:text-2xl font-black text-[#111827] uppercase tracking-tight">
+                                Institutional Outreach
+                            </h3>
+                            <p className="text-[10px] sm:text-xs font-bold text-[#7C3AED] uppercase tracking-[0.2em] mt-1">
+                                CEO Campus Visits
+                            </p>
                         </div>
 
-                        <div className="mt-auto pt-6 space-y-4">
-                            <h3 className="text-3xl font-bold text-[#111827] uppercase tracking-tight">
-                                The Growth Engine for Engineers.
-                            </h3>
-
-                            <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {features.map((feature, i) => (
-                                    <motion.li
-                                        key={i}
-                                        initial={{ opacity: 0, x: -10 }}
-                                        whileInView={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: i * 0.1 }}
-                                        className="flex items-center gap-3 p-2.5 bg-gray-50 rounded-2xl hover:bg-[#F5F3FF] transition-colors group"
-                                    >
-                                        <div className="w-2 h-2 bg-[#7C3AED] rounded-full group-hover:scale-150 transition-transform" />
-                                        <span className="text-sm font-bold text-gray-700 uppercase tracking-wide">
-                                            {feature}
-                                        </span>
-                                    </motion.li>
+                        {/* Horizontal Marquee */}
+                        <div className="relative flex-1 flex items-center overflow-hidden bg-gray-50/30 group">
+                            <motion.div
+                                className="flex gap-6 px-6"
+                                animate={{ x: ["0%", "-50%"] }}
+                                transition={{ duration: 45, repeat: Infinity, ease: "linear" }}
+                                style={{ width: "fit-content" }}
+                            >
+                                {[
+                                    { img: '/images/s1.jpg', college: 'MVSR Engineering College' },
+                                    { img: '/images/s2.jpg', college: 'Matrusri Engineering College' },
+                                    { img: '/images/s3.jpg', college: 'IIT Hyderabad' },
+                                    { img: '/images/s4.jpg', college: 'CMR Group of Institutions' },
+                                    { img: '/images/s5.jpg', college: 'Vignan Jyothi Institute of Management' },
+                                    { img: '/images/s6.jpg', college: 'IIT Madras' },
+                                    { img: '/images/s7.jpg', college: 'SRM University' },
+                                    { img: '/images/s8.jpg', college: 'IIT Bombay' },
+                                    { img: '/images/s1.jpg', college: 'MVSR Engineering College' },
+                                    { img: '/images/s2.jpg', college: 'Matrusri Engineering College' },
+                                    { img: '/images/s3.jpg', college: 'IIT Hyderabad' },
+                                    { img: '/images/s4.jpg', college: 'CMR Group of Institutions' },
+                                    { img: '/images/s5.jpg', college: 'Vignan Jyothi Institute of Management' },
+                                    { img: '/images/s6.jpg', college: 'IIT Madras' },
+                                    { img: '/images/s7.jpg', college: 'SRM University' },
+                                    { img: '/images/s8.jpg', college: 'IIT Bombay' },
+                                ].map((visit, idx) => (
+                                    <div key={idx} className="flex flex-col gap-3 group/card cursor-pointer shrink-0 w-[260px] sm:w-[300px]">
+                                        <div className="relative overflow-hidden rounded-xl bg-white shadow-sm border border-gray-100">
+                                            <img
+                                                src={visit.img}
+                                                alt={visit.college}
+                                                className="w-full h-40 sm:h-48 object-cover transform transition-transform duration-700 group-hover/card:scale-105"
+                                            />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/60 via-transparent to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-300" />
+                                        </div>
+                                        <div className="px-1 flex flex-col">
+                                            <h4 className="text-sm font-bold text-gray-900 group-hover/card:text-[#7C3AED] transition-colors truncate">{visit.college}</h4>
+                                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mt-0.5">Leadership Session</span>
+                                        </div>
+                                    </div>
                                 ))}
-                            </ul>
+                            </motion.div>
+
+                            {/* Gradient fades for left and right edges */}
+                            <div className="absolute top-0 bottom-0 left-0 w-16 bg-gradient-to-r from-white via-white/80 to-transparent pointer-events-none z-10" />
+                            <div className="absolute top-0 bottom-0 right-0 w-16 bg-gradient-to-l from-white via-white/80 to-transparent pointer-events-none z-10" />
                         </div>
                     </motion.div>
 
