@@ -330,7 +330,7 @@ const DashboardHome: React.FC = () => {
               <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 relative z-20 mt-8 px-6 sm:px-12">
                 {/* Connected With */}
                 <div className="flex flex-col items-center gap-6 md:gap-8">
-                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Connected with</span>
+                  <span className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-[0.4em] leading-none text-center">Built By Poeple From</span>
                   <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10">
                     {[
                       { src: "/images/start.png", alt: "Start" },
