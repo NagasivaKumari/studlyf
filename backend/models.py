@@ -252,6 +252,7 @@ class Event(BaseModel):
     institution_id: str
     title: str
     description: str
+    external_registration_link: Optional[str] = None
 
     # Classification
     category: str  # Hackathon, Coding Competition, Design Challenge

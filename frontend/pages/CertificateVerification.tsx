@@ -107,14 +107,16 @@ const CertificateVerification: React.FC = () => {
               </div>
             </div>
             <div className="space-y-3">
-              <button className="w-full py-4 bg-gray-900 text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-gray-800 transition-all active:scale-95">
+            <button className="w-full py-4 bg-gray-900 text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-gray-800 transition-all active:scale-95"
+                onClick={() => window.open(`/api/v1/institution/download-certificate/${id}`, '_blank')}>
                 <Download size={18} />
                 Download PDF
-              </button>
-              <button className="w-full py-4 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl flex items-center justify-center gap-2 hover:border-blue-400 transition-all">
+            </button>
+            <button className="w-full py-4 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl flex items-center justify-center gap-2 hover:border-blue-400 transition-all"
+                onClick={() => { navigator.clipboard?.writeText?.(window.location.href); alert('Verification link copied!'); }}>
                 <Share2 size={18} />
                 Share Credential
-              </button>
+            </button>
             </div>
           </div>
         </div>

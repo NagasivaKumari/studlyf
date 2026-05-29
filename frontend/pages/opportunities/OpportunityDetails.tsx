@@ -27,7 +27,10 @@ import {
     Star,
     CheckSquare,
     DollarSign,
-    CalendarX,
+    Trophy,
+    Gift,
+    Award,
+    Briefcase,
 } from 'lucide-react';
 import { getStatusById, getStatusColor, getStatusLabel } from '../../utils/calendarStatuses';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -113,6 +116,7 @@ const OpportunityDetails: React.FC = () => {
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [isApplied, setIsApplied] = useState(false);
+    const [timeLeftStr, setTimeLeftStr] = useState('');
 
     const [formData, setFormData] = useState({
         name: user?.full_name || user?.name || '',
@@ -181,7 +185,7 @@ const OpportunityDetails: React.FC = () => {
     const [prefilledFields, setPrefilledFields] = useState<Record<string, any>>({});
     const [loadingFields, setLoadingFields] = useState(false);
     const [showRegistrationModal, setShowRegistrationModal] = useState(false);
-    
+    const [showReferModal, setShowReferModal] = useState(false);
     // Decoupled global profile onboarding states
     const [registrationStatus, setRegistrationStatus] = useState<string>('NOT_REGISTERED');
     const effectiveRegStatus = useMemo(() => {
@@ -239,12 +243,49 @@ const OpportunityDetails: React.FC = () => {
         if (!hideLeaderboard) {
             fetch(`${API_BASE_URL}/api/hackathons/events/${id}/leaderboard`)
                 .then(res => res.json())
-                .then(data => setEventLeaderboard(data))
+                .then(data => { if (Array.isArray(data)) setEventLeaderboard(data); })
                 .catch(err => console.error("Leaderboard fetch error:", err));
         } else {
             setEventLeaderboard([]);
         }
     }, [id, opportunity?.title, opportunity?.name, opportunity?.location, opportunity?.venue, opportunity?.opportunity_title, opportunity?.opportunityName]);
+
+    // Real-time countdown timer effect
+    useEffect(() => {
+        if (!opportunity?.deadline) {
+            setTimeLeftStr('');
+            return;
+        }
+        const deadline = new Date(opportunity.deadline).getTime();
+        
+        const updateTimer = () => {
+            const now = new Date().getTime();
+            const distance = deadline - now;
+            
+            if (distance < 0) {
+                setTimeLeftStr('Registration Closed');
+                return;
+            }
+            
+            const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            
+            if (days > 1) {
+                setTimeLeftStr(`${days} Days Left`);
+            } else if (days === 1) {
+                setTimeLeftStr('1 Day Left');
+            } else if (hours > 0) {
+                setTimeLeftStr(`${hours} Hours Left`);
+            } else {
+                setTimeLeftStr(`${minutes} Minutes Left`);
+            }
+        };
+        
+        updateTimer();
+        const interval = setInterval(updateTimer, 60000); // Update every minute
+        return () => clearInterval(interval);
+    }, [opportunity?.deadline]);
 
     const FAV_KEY = 'studlyf_opp_favorites';
 
@@ -304,6 +345,19 @@ const OpportunityDetails: React.FC = () => {
                 if (!oppRes.ok) {
                     setOpportunity(null);
                 } else {
+                    if (opp.event_link_id) {
+                        try {
+                            const evRes = await fetch(`${API_BASE_URL}/api/v1/events/${opp.event_link_id}`, { headers: { ...authHeaders() } });
+                            if (evRes.ok) {
+                                const evData = await evRes.json();
+                                if (evData.external_registration_link || evData.externalRegistrationLink) {
+                                    opp.external_registration_link = evData.external_registration_link || evData.externalRegistrationLink;
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Failed to fetch raw event for external link', e);
+                        }
+                    }
                     setOpportunity(opp);
                 }
                 const list = Array.isArray(apps) ? apps : [];
@@ -740,6 +794,11 @@ const OpportunityDetails: React.FC = () => {
         const isRegistrationStage = stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION');
 
         if (isRegistrationStage) {
+            const extLink = opportunity?.external_registration_link || opportunity?.externalRegistrationLink;
+            if (extLink) {
+                window.open(extLink, '_blank', 'noopener,noreferrer');
+                return;
+            }
             if (regStatusStr === 'APPROVED') return;
             setShowRegistrationModal(true);
             return;
@@ -1042,7 +1101,8 @@ const OpportunityDetails: React.FC = () => {
                 </div>
             </header>
 
-            <div className="max-w-6xl mx-auto px-4 pt-10">
+            <div className="max-w-[1400px] mx-auto px-4 pt-10 pb-20 flex flex-col lg:flex-row gap-8 relative items-start">
+                <div className="flex-1 min-w-0 w-full space-y-8">
                 <button
                     type="button"
                     onClick={handleBack}
@@ -1076,104 +1136,7 @@ const OpportunityDetails: React.FC = () => {
                     </div>
                 ) : (
                 <>
-                {/* Onboarding Lock & Congratulations Banners */}
-                {user && (
-                    <div className={`mb-6 p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all duration-300 shadow-sm
-                        ${effectiveRegStatus === 'APPROVED' ? 'bg-purple-50/50 border-purple-200 text-purple-900' :
-                          effectiveRegStatus === 'PENDING_APPROVAL' ? 'bg-amber-50/60 border-amber-200 text-amber-900' :
-                          effectiveRegStatus === 'REJECTED' ? 'bg-rose-50 border-rose-200 text-rose-900' :
-                          'bg-slate-50 border-slate-200 text-slate-700'}`}
-                    >
-                        <div className="flex items-center gap-4">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm shrink-0
-                                ${effectiveRegStatus === 'APPROVED' ? 'bg-[#6C3BFF]' :
-                                  effectiveRegStatus === 'PENDING_APPROVAL' ? 'bg-amber-500' :
-                                  effectiveRegStatus === 'REJECTED' ? 'bg-rose-500' :
-                                  'bg-slate-500'}`}
-                            >
-                                {effectiveRegStatus === 'APPROVED' ? <CheckCircle2 size={24} /> :
-                                 effectiveRegStatus === 'PENDING_APPROVAL' ? <Clock size={24} /> :
-                                 effectiveRegStatus === 'REJECTED' ? <XCircle size={24} /> :
-                                 <Users size={24} />}
-                            </div>
-                            <div>
-                                <h3 className="font-black text-sm uppercase tracking-wider">
-                                    {effectiveRegStatus === 'APPROVED' ? 'Registration Approved' :
-                                     effectiveRegStatus === 'PENDING_APPROVAL' ? 'Registration Pending Host Review' :
-                                     effectiveRegStatus === 'REJECTED' ? 'Registration Rejected' :
-                                     'Registration Required'}
-                                </h3>
-                                <p className="text-xs font-semibold opacity-95 mt-1">
-                                    {effectiveRegStatus === 'APPROVED' ? 'Congratulations! You are officially registered. All event assessment stages are unlocked.' :
-                                     effectiveRegStatus === 'PENDING_APPROVAL' ? 'Your registration is under manual host evaluation. Downstream stages will unlock upon approval.' :
-                                     effectiveRegStatus === 'REJECTED' ? 'Unfortunately, your application did not meet the host criteria. Contact organizers for feedback.' :
-                                     'Complete the decoupled global registration form to unlock stages and timeline assessments.'}
-                                </p>
-                            </div>
-                        </div>
-                        {effectiveRegStatus === 'NOT_REGISTERED' && (
-                            <button
-                                type="button"
-                                onClick={() => setShowRegistrationModal(true)}
-                                className="px-5 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shrink-0 self-start md:self-auto"
-                            >
-                                Register Now
-                            </button>
-                        )}
-                    </div>
-                )}
 
-                {/* Stages Timeline */}
-                {Array.isArray(opportunity?.stages) && opportunity.stages.length > 0 && (
-                    <div className="mb-8">
-                        <h2 className="text-2xl font-black text-slate-800 mb-4">Event Timeline</h2>
-                        <div className="flex items-center overflow-x-auto pb-4 -mb-4">
-                            {opportunity.stages.map((stage: any, index: number) => {
-                                const startDate = stage.startDate || stage.start_date ? new Date(stage.startDate || stage.start_date) : null;
-                                const endDate = stage.endDate || stage.end_date ? new Date(stage.endDate || stage.end_date) : null;
-                                const status = computeStageStatus(stage);
-                                const regStatusStr = (effectiveRegStatus || 'NOT_REGISTERED').toUpperCase();
-                                const isRegistration = (String(stage.type || '').toUpperCase() === 'REGISTRATION') || (String(stage.name || '').toUpperCase().includes('REGISTER'));
-                                const canInteract = (status === 'active') && (isRegistration || regStatusStr === 'APPROVED');
-
-                                return (
-                                    <React.Fragment key={stage.id || index}>
-                                        <div 
-                                            className={`flex flex-col items-center ${canInteract ? 'cursor-pointer group' : 'cursor-not-allowed opacity-60'}`}
-                                            onClick={canInteract ? () => handleStageClick(stage) : undefined}
-                                            aria-disabled={!canInteract}
-                                        >
-                                            <div className={`w-16 h-16 rounded-full flex items-center justify-center border-4 ${
-                                                status === 'active' ? 'bg-purple-100 border-purple-500' :
-                                                status === 'completed' ? 'bg-green-100 border-green-500' :
-                                                'bg-slate-100 border-slate-300'
-                                            }`}>
-                                                <span className={`text-2xl font-bold ${
-                                                    status === 'active' ? 'text-purple-600' :
-                                                    status === 'completed' ? 'text-green-600' :
-                                                    'text-slate-500'
-                                                }`}>{index + 1}</span>
-                                            </div>
-                                            <p className={`mt-2 text-sm font-bold text-center w-32 ${
-                                                status === 'active' ? 'text-purple-700' :
-                                                status === 'completed' ? 'text-green-700' :
-                                                'text-slate-600'
-                                            }`}>{stage.name}</p>
-                                            <p className="text-xs text-slate-500 text-center">
-                                                {status === 'active' ? 'Live Now' : 
-                                                 status === 'completed' ? 'Finished' : 
-                                                 status === 'upcoming' ? `Starts ${startDate?.toLocaleDateString()}` : 'Locked'}
-                                            </p>
-                                        </div>
-                                        {index < opportunity.stages.length - 1 && (
-                                            <div className={`flex-1 h-1 ${canInteract ? 'bg-slate-300 group-hover:bg-purple-300' : 'bg-slate-200'} transition-colors`} style={{minWidth: '50px'}}></div>
-                                        )}
-                                    </React.Fragment>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
 
                 {/* Hero card — reference layout */}
                 <article className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden mb-8">
@@ -1313,13 +1276,13 @@ const OpportunityDetails: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="shrink-0 mx-auto md:mx-0">
-                                <div className="w-28 h-28 md:w-36 md:h-36 rounded-full border-4 border-slate-100 shadow-md overflow-hidden bg-white flex items-center justify-center relative">
+                            <div className="shrink-0 mx-auto md:mx-0 flex flex-col items-center gap-4">
+                                <div className="w-28 h-28 md:w-36 md:h-36 rounded-3xl border border-slate-200 shadow-sm overflow-hidden bg-white flex items-center justify-center relative">
                                     {logoSrc ? (
                                         <img 
                                             src={logoSrc} 
                                             alt="" 
-                                            className="w-full h-full object-cover"
+                                            className="w-full h-full object-contain p-2"
                                             onError={(e) => {
                                                 // Log failing URL for diagnostics
                                                 try { console.warn('[LogoLoadError] failed to load', (e.currentTarget && e.currentTarget.src) || logoSrc); } catch (err) {}
@@ -1330,12 +1293,31 @@ const OpportunityDetails: React.FC = () => {
                                         />
                                     ) : null}
                                     <div 
-                                        className="w-full h-full bg-purple-100 text-[#6C3BFF] font-black text-3xl md:text-4xl flex items-center justify-center uppercase shadow-inner"
+                                        className="w-full h-full bg-purple-50 text-[#6C3BFF] font-black text-3xl md:text-4xl flex items-center justify-center uppercase"
                                         style={{ display: logoSrc ? 'none' : 'flex' }}
                                     >
                                         {orgDisplay.charAt(0)}
                                     </div>
                                 </div>
+
+                                {/* Custom Hero Prize Badge */}
+                                {prizePoolLabel ? (
+                                    <div className="relative overflow-visible hidden md:flex">
+                                        <div className="bg-gradient-to-r from-blue-50 via-blue-100 to-blue-50 px-5 py-2.5 rounded-full border border-blue-200 flex flex-col items-center justify-center shadow-sm relative z-10 w-full whitespace-nowrap pr-12">
+                                            {opportunity?.hero_badge_text ? (
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-800">
+                                                    {opportunity.hero_badge_text}
+                                                </p>
+                                            ) : null}
+                                            <p className="text-sm font-black text-blue-900 mt-0.5">
+                                                {opportunity?.hero_badge_text ? '& ' : ''}Prizes worth <span className="text-lg">{prizePoolLabel}</span>
+                                            </p>
+                                        </div>
+                                        <div className="absolute -right-4 -bottom-2 z-20">
+                                            <span role="img" aria-label="trophy" className="text-5xl drop-shadow-md">🏆</span>
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
 
@@ -1384,8 +1366,7 @@ const OpportunityDetails: React.FC = () => {
                     </div>
                 </article>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-                    <div className="lg:col-span-2 space-y-8">
+
                         <div ref={detailsRef}>
                             {elig.length > 0 ? (
                                 <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
@@ -1481,7 +1462,7 @@ const OpportunityDetails: React.FC = () => {
                                     <p className="text-sm text-slate-500 font-medium -mt-2">
                                         Defined by the host — each hackathon can have different stages.
                                     </p>
-                                    <ol className="space-y-3">
+                                    <div className="relative border-l-2 border-slate-200 ml-4 pl-8 space-y-6">
                                         {opportunity.stages.map((s: any, i: number) => {
                                             const stype = s.type?.toUpperCase();
                                             const sname = s.name?.toUpperCase() || '';
@@ -1505,85 +1486,54 @@ const OpportunityDetails: React.FC = () => {
                                             const canAct = (stageStatus === 'active') && (isApplied || isReg || isSubmissionStage || effectiveRegStatus === 'APPROVED');
 
                                             return (
-                                                <li
+                                                <div
                                                     key={s.id || i}
                                                     onClick={canAct ? () => handleStageClick(s) : undefined}
-                                                    className={`flex items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-all group animate-fade-in ${canAct ? 'hover:border-purple-300 hover:bg-purple-50/20 hover:scale-[1.01] hover:shadow-md cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}
+                                                    className={`relative bg-white border border-slate-200 p-5 rounded-2xl transition-all shadow-sm group ${canAct ? 'hover:border-[#6C3BFF]/40 hover:shadow-md cursor-pointer' : 'opacity-80 cursor-not-allowed'}`}
                                                     aria-disabled={!canAct}
                                                 >
-                                                    <div className="flex gap-4 min-w-0 flex-grow">
-                                                        <span className="flex-shrink-0 w-9 h-9 rounded-lg bg-purple-600/10 text-purple-600 font-black flex items-center justify-center text-sm group-hover:bg-purple-600 group-hover:text-white transition-all">
-                                                            {i + 1}
-                                                        </span>
-                                                        <div className="min-w-0 flex-grow">
-                                                            <p className="font-bold text-slate-900 truncate">{s.name || `Stage ${i + 1}`}</p>
+                                                    {/* Timeline Dot */}
+                                                    <div className={`absolute -left-[41px] top-6 w-5 h-5 rounded-full border-4 border-white ${stageStatus === 'active' ? 'bg-[#6C3BFF] shadow-[0_0_0_2px_#6C3BFF]' : stageStatus === 'completed' ? 'bg-emerald-500 shadow-[0_0_0_2px_#10B981]' : 'bg-slate-300'}`}></div>
+
+                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                        <div>
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <h3 className="font-black text-slate-900 text-lg">{s.name || `Stage ${i + 1}`}</h3>
+                                                                {stageStatus === 'active' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-purple-100 text-purple-700">Live</span>}
+                                                                {stageStatus === 'completed' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">Completed</span>}
+                                                            </div>
                                                             {s.type ? (
-                                                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                                                                    {s.type}
-                                                                    {s.roundMode || s.mode || s.round_mode ? (
-                                                                        <span className="ml-2 text-slate-300">
-                                                                            • {String(s.roundMode || s.mode || s.round_mode)}
-                                                                        </span>
-                                                                    ) : null}
+                                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                                                    {s.type} {s.roundMode || s.mode ? `• ${String(s.roundMode || s.mode)}` : ''}
                                                                 </p>
                                                             ) : null}
                                                             
                                                             {(s.startDate || s.endDate || s.start_date || s.end_date) && (() => {
                                                                 const start = s.startDate || s.start_date;
                                                                 const end = s.endDate || s.end_date;
-                                                                const now = new Date();
-                                                                let statusNode = null;
-                                                                
-                                                                if (start && end) {
-                                                                    const startDate = new Date(start);
-                                                                    const endDate = new Date(end);
-                                                                    
-                                                                    // If end date is just a date (00:00:00), treat as end of day
-                                                                    if (endDate.getHours() === 0 && endDate.getMinutes() === 0 && !end.includes('T')) {
-                                                                        endDate.setHours(23, 59, 59, 999);
-                                                                    }
-                                                                    
-                                                                    if (now < startDate) {
-                                                                        const days = Math.max(1, Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-                                                                        statusNode = <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Starts in {days} day{days !== 1 ? 's' : ''}</span>;
-                                                                    } else if (now > endDate) {
-                                                                        statusNode = <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-400">Ended</span>;
-                                                                    } else {
-                                                                        const days = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-                                                                        statusNode = (
-                                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 flex items-center gap-1">
-                                                                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
-                                                                                {days === 0 ? 'Ends today' : `Ends in ${days} day${days !== 1 ? 's' : ''}`}
-                                                                            </span>
-                                                                        );
-                                                                    }
-                                                                }
-                                                                
                                                                 return (
-                                                                    <div className="mt-2.5 flex items-center gap-3">
-                                                                        <div className="text-[11px] font-medium text-slate-500 flex items-center gap-1.5">
-                                                                            <Calendar className="w-3.5 h-3.5 opacity-70" />
-                                                                            <span>
-                                                                                {start ? new Date(start).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'TBD'} 
-                                                                                {' — '}
-                                                                                {end ? new Date(end).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'TBD'}
-                                                                            </span>
-                                                                        </div>
-                                                                        {statusNode}
+                                                                    <div className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-600 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-lg inline-flex">
+                                                                        <Calendar className="w-4 h-4 text-slate-400" />
+                                                                        <span>
+                                                                            {start ? new Date(start).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'}) : 'TBD'}
+                                                                            {' → '}
+                                                                            {end ? new Date(end).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'}) : 'TBD'}
+                                                                        </span>
                                                                     </div>
                                                                 );
                                                             })()}
                                                         </div>
+
+                                                        {canAct && (
+                                                            <button type="button" className="shrink-0 px-5 py-2.5 bg-[#6C3BFF] text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-purple-700 transition-colors">
+                                                                {actionLabel}
+                                                            </button>
+                                                        )}
                                                     </div>
-                                                    <div className="flex items-center shrink-0 ml-2">
-                                                        <button type="button" className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-purple-600 transition-colors flex items-center gap-1 bg-white border border-slate-150 px-3 py-1.5 rounded-xl shadow-sm hover:border-purple-200 hover:bg-purple-50/30">
-                                                            {actionLabel} <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform text-slate-400 group-hover:text-purple-600" />
-                                                        </button>
-                                                    </div>
-                                                </li>
+                                                </div>
                                             );
                                         })}
-                                    </ol>
+                                    </div>
                                 </section>
                             ) : null}
 
@@ -1714,44 +1664,119 @@ const OpportunityDetails: React.FC = () => {
                                             Rewards &amp; prizes
                                         </h2>
                                         {prizePoolLabel ? (
-                                            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                                    Prize pool
-                                                </p>
-                                                <p className="mt-1 text-xl font-black text-slate-900">{prizePoolLabel}</p>
+                                            <div className="p-6 rounded-3xl bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 flex items-center justify-between gap-6 shadow-sm">
+                                                <div>
+                                                    <p className="text-xs font-black uppercase tracking-widest text-purple-600 mb-1">
+                                                        Total Prize Pool
+                                                    </p>
+                                                    <p className="text-2xl font-black text-slate-900">{prizePoolLabel}</p>
+                                                    <p className="text-sm font-medium text-slate-500 mt-2">
+                                                        Participate and stand a chance to win amazing rewards!
+                                                    </p>
+                                                </div>
+                                                <div className="w-16 h-16 shrink-0 bg-white rounded-2xl shadow-sm border border-purple-100 flex items-center justify-center text-purple-600">
+                                                    <Trophy size={32} strokeWidth={2} />
+                                                </div>
                                             </div>
                                         ) : null}
                                         {Array.isArray(prizesList) && prizesList.length > 0 ? (
-                                            <div className="space-y-3">
-                                                {prizesList.map((p: any, idx: number) => (
-                                                    <div
-                                                        key={p.id || `${idx}`}
-                                                        className="p-4 rounded-xl bg-white border border-slate-200 flex items-start justify-between gap-4"
-                                                    >
-                                                        <div>
-                                                            <p className="font-black text-slate-900">
-                                                                {p.rank || p.title || p.label || `Prize ${idx + 1}`}
-                                                            </p>
-                                                            {p.description ? (
-                                                                <p className="text-sm text-slate-600 font-medium mt-1 whitespace-pre-wrap">
-                                                                    {String(p.description)}
+                                            <div className="space-y-4">
+                                                    {prizesList.map((p: any, idx: number) => {
+                                                    const amountStr = String(p.amount || p.value || '');
+                                                    const isCash = amountStr.includes('₹') || amountStr.includes('$') || String(p.type || '').toLowerCase().includes('cash');
+
+                                                    // Prize type detection for auto-icon mapping
+                                                    const pType = String(p.type || '').toLowerCase();
+                                                    const pBadge = String(p.badge_text || p.badge || '').toLowerCase();
+                                                    const pTitle = String(p.title || p.rank || p.label || '').toLowerCase();
+                                                    let detectedType: string | null = null;
+                                                    if (pType.includes('placement') || pBadge.includes('placement') || pBadge.includes('ppo') || pBadge.includes('internship') || pTitle.includes('placement')) detectedType = 'placement';
+                                                    else if (pType.includes('certificate') || pBadge.includes('certificate') || pTitle.includes('certificate')) detectedType = 'certificate';
+                                                    else if (pType.includes('trophy') || pBadge.includes('trophy') || pType.includes('winner') || pTitle.match(/^(winner|1st|2nd|3rd)/i)) detectedType = 'trophy';
+
+                                                    // Admin icon URL — only use if valid
+                                                    const rawIconUrl = p.icon_url || p.image_url || p.icon || p.image;
+                                                    const iconUrl = rawIconUrl && (String(rawIconUrl).startsWith('http') || String(rawIconUrl).startsWith('data:') || String(rawIconUrl).startsWith('/'))
+                                                        ? rawIconUrl : null;
+                                                    const badgeText = p.badge_text || p.badge;
+                                                    const badgeIconUrl = p.badge_icon_url || p.badge_icon || p.badge_image;
+
+                                                    return (
+                                                        <div
+                                                            key={p.id || `${idx}`}
+                                                            className="relative bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col sm:flex-row sm:items-center transition-all hover:shadow-md"
+                                                        >
+                                                            {/* Glowing left edge for cash */}
+                                                            {isCash && (
+                                                                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-400 shadow-[4px_0_24px_rgba(16,185,129,0.4)] z-10" />
+                                                            )}
+                                                            
+                                                            {/* Left column: Amount / Admin Icon / Type-mapped Icon (No static fallback) */}
+                                                            {(isCash || iconUrl || detectedType) && (
+                                                                <>
+                                                                    <div className={`w-36 shrink-0 flex flex-col justify-center items-center py-6 px-4 ${isCash ? 'bg-gradient-to-r from-emerald-50/40 to-transparent pl-6' : ''}`}>
+                                                                        {isCash ? (
+                                                                            <div className="text-center relative z-20">
+                                                                                <p className="text-xl font-black text-emerald-700 tracking-tight">{amountStr || 'CASH'}</p>
+                                                                                <p className="text-lg font-black text-emerald-900 uppercase tracking-widest mt-0.5">CASH</p>
+                                                                            </div>
+                                                                        ) : iconUrl ? (
+                                                                            <div className="relative z-20 h-14 w-14 flex items-center justify-center">
+                                                                                <img src={iconUrl} alt="" className="max-w-full max-h-full object-contain" />
+                                                                            </div>
+                                                                        ) : detectedType === 'placement' ? (
+                                                                            <div className="relative z-20 h-14 w-14 flex items-center justify-center">
+                                                                                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-500">
+                                                                                    <Briefcase size={24} strokeWidth={1.5} />
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : detectedType === 'certificate' ? (
+                                                                            <div className="relative z-20 h-14 w-14 flex items-center justify-center">
+                                                                                <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-500">
+                                                                                    <Award size={24} strokeWidth={1.5} />
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : detectedType === 'trophy' ? (
+                                                                            <div className="relative z-20 h-14 w-14 flex items-center justify-center">
+                                                                                <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500">
+                                                                                    <Trophy size={24} strokeWidth={1.5} />
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : null}
+                                                                    </div>
+                                                                    {/* Vertical separator */}
+                                                                    <div className="hidden sm:block w-px h-16 bg-slate-100 shrink-0" />
+                                                                </>
+                                                            )}
+
+                                                            {/* Middle column: Title and Description */}
+                                                            <div className={`flex-1 py-5 ${(isCash || iconUrl || detectedType) ? 'px-6' : 'px-8'}`}>
+                                                                <p className="text-lg font-bold text-slate-800">
+                                                                    {p.rank || p.title || p.label || `Prize ${idx + 1}`}
                                                                 </p>
-                                                            ) : null}
-                                                        </div>
-                                                        {p.amount || p.value ? (
-                                                            <div className="text-right shrink-0">
-                                                                <p className="text-sm font-black text-slate-900">
-                                                                    {String(p.amount || p.value)}
-                                                                </p>
-                                                                {p.type ? (
-                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
-                                                                        {String(p.type)}
+                                                                {p.description ? (
+                                                                    <p className="text-sm text-slate-500 font-medium mt-1 whitespace-pre-wrap">
+                                                                        {String(p.description)}
                                                                     </p>
                                                                 ) : null}
                                                             </div>
-                                                        ) : null}
-                                                    </div>
-                                                ))}
+
+                                                            {/* Right column: Dynamic Admin Badge (No static fallback) */}
+                                                            {badgeText ? (
+                                                                <div className="shrink-0 px-6 pb-6 sm:pb-0 sm:py-6 flex justify-start sm:justify-end">
+                                                                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-slate-200 bg-white shadow-sm hover:shadow transition-shadow">
+                                                                        {badgeIconUrl ? (
+                                                                            <img src={badgeIconUrl} alt="" className="w-5 h-5 object-contain" />
+                                                                        ) : p.badge_emoji ? (
+                                                                            <span role="img" aria-label="badge icon" className="text-sm">{p.badge_emoji}</span>
+                                                                        ) : null}
+                                                                        <span className="text-xs font-bold text-slate-700">{badgeText}</span>
+                                                                    </div>
+                                                                </div>
+                                                            ) : null}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         ) : (
                                             <p className="text-slate-600 text-sm font-medium">
@@ -2055,24 +2080,45 @@ const OpportunityDetails: React.FC = () => {
 
                         {!hideExtras ? (
                             <div ref={faqRef}>
-                                <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
-                                    <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-4">
-                                        <span className="w-1 h-7 bg-purple-600 rounded-full" />
-                                        Frequently asked questions / discussions
-                                    </h2>
-                                    <p className="text-slate-600 text-sm font-medium mb-4">
-                                        No posts yet. Start a new discussion.
-                                    </p>
-                                    {user ? (
-                                        <p className="text-xs text-slate-400 font-bold">Discussion threads are coming soon.</p>
-                                    ) : (
-                                        <Link
-                                            to={`/login?next=${encodeURIComponent(window.location.pathname)}`}
-                                            className="text-sm font-black text-purple-600 hover:underline"
-                                        >
-                                            Please log in to start a comment.
-                                        </Link>
-                                    )}
+                                <section className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+                                    {/* Tabs */}
+                                    <div className="flex border-b border-slate-200">
+                                        <button className="flex-1 py-4 text-center font-black text-[#d97706] border-b-2 border-[#d97706] bg-orange-50/30">
+                                            FAQs
+                                        </button>
+                                        <button className="flex-1 py-4 text-center font-bold text-slate-500 hover:text-slate-800 transition-colors">
+                                            Discussions
+                                        </button>
+                                    </div>
+
+                                    <div className="p-6 md:p-8">
+                                        {/* Filters */}
+                                        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+                                            <span className="shrink-0 px-4 py-2 bg-slate-800 text-white text-xs font-black rounded-full cursor-pointer hover:bg-slate-700">All</span>
+                                            <span className="shrink-0 px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-full cursor-pointer hover:bg-slate-200">Registration</span>
+                                            <span className="shrink-0 px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-full cursor-pointer hover:bg-slate-200">Coding Challenge</span>
+                                        </div>
+
+                                        {/* Accordion List */}
+                                        <div className="space-y-4">
+                                            {['Can I change my team members after registering for this competition?', 'Why is my college name not mentioned in the eligible institutes?', 'How can I delete my registration from this opportunity?', 'I am unable to verify my phone number. What should I do?'].map((q, idx) => (
+                                                <div key={idx} className="border-b border-slate-100 pb-4">
+                                                    <button className="w-full flex items-center justify-between text-left group">
+                                                        <span className="text-sm font-bold text-slate-700 group-hover:text-purple-600 transition-colors pr-4">{q}</span>
+                                                        <span className="shrink-0 w-8 h-8 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-purple-50 group-hover:text-purple-600 transition-colors">
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                                        </span>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="mt-8 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                                            <p className="text-sm font-bold text-slate-600">
+                                                Can't find the answer you are looking for? <span className="text-[#d97706] cursor-pointer hover:underline">Ask a question (Be specific)</span>
+                                            </p>
+                                        </div>
+                                    </div>
                                 </section>
                             </div>
                         ) : (
@@ -2080,22 +2126,36 @@ const OpportunityDetails: React.FC = () => {
                         )}
 
                         {related.length > 0 ? (
-                            <section className="space-y-4">
-                                <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 px-1">
-                                    <span className="w-1 h-7 bg-purple-600 rounded-full" />
-                                    Related opportunities
+                            <section className="space-y-6 pt-4 border-t border-slate-100">
+                                <h2 className="text-xl font-black text-slate-900 px-1">
+                                    Related opportunities & Articles
                                 </h2>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="flex overflow-x-auto gap-4 pb-6 snap-x hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                                    <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
                                     {related.map((r: any) => (
                                         <Link
                                             key={String(r._id)}
                                             to={`/opportunities/${r._id}`}
-                                            className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-purple-600/40 hover:shadow-md transition-all"
+                                            className="min-w-[280px] max-w-[280px] sm:min-w-[320px] sm:max-w-[320px] bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:border-purple-300 hover:shadow-lg transition-all snap-start flex flex-col group"
                                         >
-                                            <p className="font-black text-slate-900 line-clamp-2">{r.title}</p>
-                                            <p className="text-sm text-slate-500 font-semibold mt-1 line-clamp-1">
-                                                {r.organization || r.institution_profile_name || 'Host'}
-                                            </p>
+                                            <div className="h-40 bg-slate-100 relative overflow-hidden">
+                                                {r.banner_url ? (
+                                                    <img src={getImageUrl(r.banner_url)} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                ) : (
+                                                    <div className="absolute inset-0 bg-gradient-to-br from-purple-100 to-indigo-50"></div>
+                                                )}
+                                                <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                                    {r.type || 'Opportunity'}
+                                                </div>
+                                            </div>
+                                            <div className="p-5 flex-1 flex flex-col">
+                                                <p className="font-black text-slate-900 line-clamp-2 text-lg leading-tight mb-2 group-hover:text-purple-600 transition-colors">
+                                                    {r.title}
+                                                </p>
+                                                <p className="text-sm text-slate-500 font-bold line-clamp-1 mt-auto">
+                                                    {r.organization || r.institution_profile_name || 'Host'}
+                                                </p>
+                                            </div>
                                         </Link>
                                     ))}
                                 </div>
@@ -2123,12 +2183,112 @@ const OpportunityDetails: React.FC = () => {
                                 if you need help or want to report an issue.
                             </p>
                         </footer>
-                    </div>
-
-                    {/* Right column removed: submission CTA moved to the 'Submissions' tab */}
-                </div>
-                </>
+                    </>
                 )}
+                </div>
+                
+                {/* Right Column: Sticky Registration Card */}
+                {activeTab !== 'team' && activeTab !== 'submissions' && (
+                    <div className="w-full lg:w-[350px] shrink-0 sticky top-24 space-y-4">
+                        <div className="relative">
+                            {/* Unique Tab Header */}
+                            {timeLeftStr && (
+                                <div className="absolute -top-7 left-0 bg-black text-white px-5 py-2 rounded-t-xl rounded-br-2xl shadow-md z-10 flex items-center gap-2">
+                                    <Clock size={14} className="text-[#ff6b00]" />
+                                    <span className="text-sm font-bold tracking-tight whitespace-nowrap">{timeLeftStr}</span>
+                                    {/* The curved cut-out effect can be simulated by the border radii above */}
+                                </div>
+                            )}
+
+                            {/* Main Card */}
+                            <div className="bg-white rounded-[2rem] border-2 border-slate-200 shadow-sm overflow-hidden relative z-0 mt-3 pt-6 pb-6 px-6">
+                                {/* User Info Mini */}
+                                {user ? (
+                                    <div className="flex items-center gap-4 mb-5 p-2">
+                                        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center border-2 border-blue-200 shrink-0 overflow-hidden">
+                                            {user.profile_pic ? (
+                                                <img src={user.profile_pic} alt="Avatar" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <span className="text-blue-700 font-black text-xl">{user.name ? user.name.charAt(0).toUpperCase() : 'U'}</span>
+                                            )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-black text-slate-800 text-lg leading-tight truncate">{user.name || 'Student'}</p>
+                                            {/* Decorative squiggly line from reference image */}
+                                            <div className="w-3/4 h-2 mt-1 bg-[#ff6b00] rounded-full opacity-90 transform -skew-x-12"></div>
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {/* Main CTA Button */}
+                                {effectiveRegStatus === 'NOT_REGISTERED' ? (
+                                    opportunity?.external_registration_link ? (
+                                        <a
+                                            href={opportunity.external_registration_link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="w-full py-3.5 bg-[#0070F3] hover:bg-blue-600 text-white rounded-full text-base font-bold tracking-wide transition-all shadow-md flex justify-center items-center"
+                                        >
+                                            Register
+                                        </a>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowRegistrationModal(true)}
+                                            className="w-full py-3.5 bg-[#0070F3] hover:bg-blue-600 text-white rounded-full text-base font-bold tracking-wide transition-all shadow-md flex justify-center items-center"
+                                        >
+                                            Register
+                                        </button>
+                                    )
+                                ) : (
+                                    <button
+                                        type="button"
+                                        disabled
+                                        className="w-full py-3.5 bg-emerald-500 text-white rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2"
+                                    >
+                                        <CheckCircle2 size={20} /> Registered
+                                    </button>
+                                )}
+
+                                <div className="mt-5 flex items-center justify-center gap-2 text-slate-600 font-semibold text-sm">
+                                    <span className="cursor-pointer hover:text-slate-900 transition-colors">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                                    </span>
+                                    <span><span className="text-slate-800 font-bold">{(stats.participants || 0).toLocaleString()}</span> Registered</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Dynamic Refer Banner */}
+                        <div 
+                            onClick={() => setShowReferModal(true)}
+                            className="w-full relative rounded-[1.5rem] overflow-hidden cursor-pointer shadow-sm hover:shadow-md transition-all group border border-slate-200"
+                        >
+                            {opportunity?.refer_banner_url || opportunity?.refer_banner_image ? (
+                                <img 
+                                    src={opportunity.refer_banner_url || opportunity.refer_banner_image} 
+                                    alt="Refer & Win" 
+                                    className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-500"
+                                />
+                            ) : (
+                                <div className="bg-gradient-to-r from-blue-100 to-indigo-100 p-4 flex items-center justify-between">
+                                    <div className="flex flex-col gap-1 pr-4">
+                                        <div className="font-black italic text-slate-800 text-xl leading-tight">
+                                            Refer & Win
+                                        </div>
+                                        <div className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">
+                                            Win Exciting Prizes
+                                        </div>
+                                    </div>
+                                    <button className="px-5 py-2.5 bg-[#002244] text-white rounded-full text-xs font-black tracking-wider flex items-center gap-2 group-hover:bg-blue-600 transition-colors shadow-md">
+                                        <Share2 size={14} /> Refer now
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* Registration Modal */}
             <AnimatePresence>
@@ -2488,8 +2648,87 @@ const OpportunityDetails: React.FC = () => {
             </AnimatePresence>
 
             {/* Hackathon Submission Modal */}
+            {/* Refer & Win Modal */}
+            <AnimatePresence>
+                {showReferModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 pt-20 sm:pt-6">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowReferModal(false)}
+                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+                        />
+                        
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                            className="relative w-full max-w-[480px] bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col z-10"
+                        >
+                            {/* Close button top right */}
+                            <button 
+                                onClick={() => setShowReferModal(false)}
+                                className="absolute top-4 right-4 z-20 w-8 h-8 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 text-slate-800 transition-colors"
+                            >
+                                <XCircle size={20} />
+                            </button>
 
-        </div>
+                            {/* Banner Header */}
+                            <div className="bg-[#EBF3FC] p-6 relative overflow-hidden flex items-center min-h-[140px]">
+                                <div className="relative z-10 flex-1 pr-32">
+                                    <h3 className="text-2xl font-black italic text-[#002244] tracking-tight mb-2">Refer & Win</h3>
+                                    <p className="text-xs font-bold text-[#002244]/80 mb-3 leading-snug">
+                                        Win Macbook, iPhone, Apple watch, Cash & More.
+                                    </p>
+                                    <button className="text-xs font-black text-[#002244] underline decoration-2 underline-offset-4 hover:text-blue-600">
+                                        Know more
+                                    </button>
+                                </div>
+                                {/* Emulated graphical banner side with emojis/images */}
+                                <div className="absolute right-[-20px] top-1/2 -translate-y-1/2 flex flex-col gap-1 drop-shadow-xl select-none pointer-events-none transform rotate-[-10deg]">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-4xl filter drop-shadow-md">💰</span>
+                                        <span className="text-5xl filter drop-shadow-md">💻</span>
+                                    </div>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <span className="text-5xl filter drop-shadow-md">📱</span>
+                                        <span className="text-4xl filter drop-shadow-md">🎧</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-6">
+                                <p className="text-sm font-semibold text-slate-600 mb-4">Share with</p>
+                                <div className="flex items-center gap-4 flex-wrap">
+                                    <button className="w-12 h-12 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-transform shadow-md" title="X (Twitter)">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true" className="w-6 h-6 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 22.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+                                    </button>
+                                    <button className="w-12 h-12 rounded-full bg-[#25D366] text-white flex items-center justify-center hover:scale-110 transition-transform shadow-md" title="WhatsApp">
+                                        <svg viewBox="0 0 24 24" className="w-7 h-7 fill-current"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                                    </button>
+                                    <button className="w-12 h-12 rounded-full bg-[#0077b5] text-white flex items-center justify-center hover:scale-110 transition-transform shadow-md" title="LinkedIn">
+                                        <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                                    </button>
+                                    <button className="w-12 h-12 rounded-full bg-[#EA4335] text-white flex items-center justify-center hover:scale-110 transition-transform shadow-md" title="Email">
+                                        <Mail size={22} className="fill-current text-white stroke-none" />
+                                    </button>
+                                    
+                                    <button 
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(window.location.href);
+                                            // Optionally toast here
+                                        }}
+                                        className="ml-auto px-5 py-2.5 rounded-full border border-slate-300 bg-white text-slate-700 flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors shadow-sm font-bold text-sm"
+                                    >
+                                        <Copy size={16} /> Copy
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
