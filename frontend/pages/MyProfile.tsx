@@ -554,28 +554,8 @@ const MyProfile: React.FC = () => {
         setSaveStatus({ type: 'success', message: 'Deleted successfully!' });
         setTimeout(() => setSaveStatus(null), 2000);
       }
-    } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         setSaveStatus({ type: 'error', message: 'Delete failed: ' + errorMessage });
-      setTimeout(() => setSaveStatus(null), 3000);
     }
-  };
-
-
-    if (formData.location) score += 5;
-    if (formData.bio) score += 10;
-    if (formData.careerGoal) score += 5;
-    if (formData.profilePhoto) score += 10;
-    if (formData.skills && formData.skills.length > 0) score += 10;
-    if (formData.interests && formData.interests.length > 0) score += 5;
-    if (formData.educationList && formData.educationList.length > 0) score += 10;
-    if (formData.experienceList && formData.experienceList.length > 0) score += 10;
-    if (formData.projects && formData.projects.length > 0) score += 5;
-    if (formData.certifications && formData.certifications.length > 0) score += 5;
-    if (formData.linkedin) score += 5;
-    if (formData.github || formData.githubUsername) score += 5;
-    if (formData.portfolio) score += 5;
-    return Math.min(100, score);
   };
   const profileCompletion = Math.min(100, calculateStrength());
   const profileDisplayName = [formData.firstName, formData.lastName].filter(Boolean).join(' ') || user?.full_name || 'Your Profile';
