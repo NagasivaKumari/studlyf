@@ -562,44 +562,6 @@ const MyProfile: React.FC = () => {
   };
 
 
-  const addSkillToList = () => {
-    const trimmed = newSkillInput.trim();
-    if (!trimmed) return;
-    setFormData(prev => ({ ...prev, skills: [...prev.skills, { name: trimmed, proficiency: 'Intermediate', years: '' }] }));
-    setNewSkillInput('');
-  };
-
-  const removeSkillFromList = (index: number) => {
-    setFormData(prev => ({ ...prev, skills: prev.skills.filter((_, i) => i !== index) }));
-  };
-
-  const updateSkillField = (index: number, field: string, value: string) => {
-    setFormData(prev => {
-      const updated = [...prev.skills];
-      updated[index] = { ...updated[index], [field]: value };
-      return { ...prev, skills: updated };
-    });
-  };
-
-  const copyImageToClipboard = async (blob: Blob): Promise<boolean> => {
-    try {
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      return true;
-    } catch { return false; }
-  };
-
-
-  const chooseStrongWord = (word: string) => {
-    setFormData(prev => ({ ...prev, oneStrongWord: word }));
-    setIsEditingStrongWord(false);
-  };
-
-  const calculateStrength = () => {
-    let score = 0;
-    if (formData.firstName && formData.lastName) score += 10;
-    if (formData.phone) score += 5;
-    if (formData.gender) score += 5;
-    if (formData.dob) score += 5;
     if (formData.location) score += 5;
     if (formData.bio) score += 10;
     if (formData.careerGoal) score += 5;
