@@ -9,92 +9,9 @@ import {
   User, FileText, Book, Award, Briefcase, 
   Terminal, Share2, Settings, ShieldCheck, 
   ChevronLeft, Plus, Save, Sparkles, Scan,
-  Globe, MapPin, Calendar, Heart, GraduationCap, Download, Copy, Palette, Type, RefreshCw, Quote
+  Globe, MapPin, Calendar, Heart, GraduationCap, Download, Copy
 } from 'lucide-react';
 import AvatarImage from '../components/AvatarImage';
-
-export const STUD_TEMPLATE_QUOTES = [
-  'Your mindset is your operating system.',
-  'Build loud. Fail fast. Grow forever.',
-  'Execution separates dreamers from builders.',
-  'Code. Create. Contribute. Repeat.',
-  'Ambition without action is just a wish.',
-  'Ship it. Learn it. Ship it better.',
-  'Skills are currency. Invest daily.',
-  'Be so good they can\'t ignore you.',
-  'Consistency beats talent when talent doesn\'t show up.',
-  'The best time to build was yesterday.',
-  'Dream big. Start small. Move fast.',
-  'Your network is your net worth.',
-  'Growth happens outside comfort zones.',
-  'Ideas are common. Execution is rare.',
-  'One skill at a time. One project at a time.',
-  'Fail forward. Learn always.',
-  'Make it work. Make it right. Make it fast.',
-  'The future belongs to builders.',
-  'Stay curious. Stay humble. Stay hungry.',
-  'Progress over perfection. Always.',
-  'Think different. Build different.',
-  'Success is a series of small wins.',
-  'Learn deeply. Ship boldly.',
-  'Every expert was once a beginner.',
-  'Invest in yourself daily.',
-];
-
-const STUD_BASE_PALETTES = [
-  // ── DARK (5) ──
-  { name: 'Cosmic Night',  cat: 'Dark',    a: '#0f0c29', b: '#302b63', c: '#24243e', accent: '#a78bfa', text: '#fff', bubble: '#1e1b4b', bb: '#6d28d9', nameCol: '#e0e7ff', tag: '#818cf8' },
-  { name: 'Midnight Blue', cat: 'Dark',    a: '#1a1a2e', b: '#16213e', c: '#0f3460', accent: '#4fc3f7', text: '#fff', bubble: '#0d1b2a', bb: '#0288d1', nameCol: '#e3f2fd', tag: '#81d4fa' },
-  { name: 'Dark Forest',   cat: 'Dark',    a: '#1b4332', b: '#081c15', c: '#074f32', accent: '#52b788', text: '#fff', bubble: '#051f0f', bb: '#2d6a4f', nameCol: '#d8f3dc', tag: '#74c69d' },
-  { name: 'Obsidian',      cat: 'Dark',    a: '#0a0a0a', b: '#1a1a1a', c: '#2d2d2d', accent: '#e5e5e5', text: '#fff', bubble: '#111',    bb: '#444',    nameCol: '#f5f5f5', tag: '#aaa' },
-  { name: 'Dark Cherry',   cat: 'Dark',    a: '#1a0010', b: '#2d0020', c: '#0a0008', accent: '#f472b6', text: '#fff', bubble: '#150010', bb: '#db2777', nameCol: '#fdf2f8', tag: '#f9a8d4' },
-  // ── VIBRANT (5) ──
-  { name: 'Flame Energy',  cat: 'Vibrant', a: '#1a1a1a', b: '#2d1b00', c: '#1a0a00', accent: '#fb923c', text: '#fff', bubble: '#431407', bb: '#ea580c', nameCol: '#fff7ed', tag: '#fdba74' },
-  { name: 'Electric Purple',cat:'Vibrant', a: '#2e1065', b: '#4c1d95', c: '#5b21b6', accent: '#e879f9', text: '#fff', bubble: '#1e0936', bb: '#c026d3', nameCol: '#fdf4ff', tag: '#e879f9' },
-  { name: 'Crimson Rush',  cat: 'Vibrant', a: '#1f0000', b: '#450a0a', c: '#7f1d1d', accent: '#f87171', text: '#fff', bubble: '#3c0a0a', bb: '#dc2626', nameCol: '#fff1f2', tag: '#fca5a5' },
-  { name: 'Ocean Pulse',   cat: 'Vibrant', a: '#0c1445', b: '#1a237e', c: '#0d47a1', accent: '#40c4ff', text: '#fff', bubble: '#071a5e', bb: '#0288d1', nameCol: '#e3f2fd', tag: '#80d8ff' },
-  { name: 'Tropical Surge',cat: 'Vibrant', a: '#004d40', b: '#00695c', c: '#00897b', accent: '#69f0ae', text: '#fff', bubble: '#00352a', bb: '#00bfa5', nameCol: '#e0f2f1', tag: '#a7ffeb' },
-  // ── PASTEL (5) ──
-  { name: 'Rose Cloud',    cat: 'Pastel',  a: '#fff0f5', b: '#ffe4ef', c: '#ffd6e7', accent: '#e91e8c', text: '#2a0030', bubble: '#fff', bb: '#f48fb1', nameCol: '#880e4f', tag: '#c2185b' },
-  { name: 'Sky Bliss',     cat: 'Pastel',  a: '#e3f2fd', b: '#bbdefb', c: '#e8f5e9', accent: '#1565c0', text: '#0d2550', bubble: '#fff', bb: '#90caf9', nameCol: '#0d47a1', tag: '#1976d2' },
-  { name: 'Lavender Dream',cat: 'Pastel',  a: '#f3e5f5', b: '#e8daef', c: '#ede7f6', accent: '#7b1fa2', text: '#2a0035', bubble: '#fff', bb: '#ce93d8', nameCol: '#4a148c', tag: '#8e24aa' },
-  { name: 'Peach Glow',    cat: 'Pastel',  a: '#fff3e0', b: '#ffe0b2', c: '#fff8e1', accent: '#e65100', text: '#1a0d00', bubble: '#fff', bb: '#ffb74d', nameCol: '#bf360c', tag: '#f57c00' },
-  { name: 'Mint Fresh',    cat: 'Pastel',  a: '#e8f5e9', b: '#c8e6c9', c: '#f1f8e9', accent: '#2e7d32', text: '#002800', bubble: '#fff', bb: '#81c784', nameCol: '#1b5e20', tag: '#388e3c' },
-  // ── NEON (5) ──
-  { name: 'Neon Matrix',   cat: 'Neon',    a: '#000000', b: '#001100', c: '#002200', accent: '#00ff41', text: '#fff', bubble: '#001500', bb: '#00cc33', nameCol: '#ccffcc', tag: '#00ff41' },
-  { name: 'Cyber Pink',    cat: 'Neon',    a: '#0d0010', b: '#1a0020', c: '#2a0035', accent: '#ff00ff', text: '#fff', bubble: '#100015', bb: '#cc00cc', nameCol: '#ffccff', tag: '#ff66ff' },
-  { name: 'Electric Arc',  cat: 'Neon',    a: '#000510', b: '#000a20', c: '#00102a', accent: '#00b0ff', text: '#fff', bubble: '#000d1a', bb: '#0080cc', nameCol: '#ccecff', tag: '#40c4ff' },
-  { name: 'Plasma Fire',   cat: 'Neon',    a: '#100500', b: '#1a0a00', c: '#2a1000', accent: '#ff6d00', text: '#fff', bubble: '#150800', bb: '#cc5500', nameCol: '#ffe0cc', tag: '#ff9933' },
-  { name: 'UV Indigo',     cat: 'Neon',    a: '#0a0020', b: '#15003a', c: '#200060', accent: '#bf5fff', text: '#fff', bubble: '#0d0025', bb: '#9b00ff', nameCol: '#eeccff', tag: '#d09aff' },
-];
-
-export const STUD_TEMPLATES = STUD_BASE_PALETTES.map((p, pi) => ({
-  id: `${p.cat.toLowerCase()}-${pi}`,
-  label: p.name,
-  category: p.cat,
-  cardBg: `linear-gradient(135deg,${p.a} 0%,${p.b} 50%,${p.c} 100%)`,
-  accent: p.accent,
-  text: p.text,
-  bubbleBg: p.bubble,
-  bubbleBorder: p.bb,
-  nameCol: p.nameCol,
-  tag: p.tag,
-})); // exactly 20 unique templates
-
-const STUD_CATEGORIES = ['All', 'Dark', 'Vibrant', 'Pastel', 'Neon'];
-
-const EXTERNAL_VISITING_CARD_SITES = [
-  { label: 'Canva Cards',     url: 'https://www.canva.com/cards/templates/', color: '#00C4B4', desc: 'Free visiting card templates' },
-  { label: 'Adobe Express',   url: 'https://www.adobe.com/express/create/card', color: '#FF0000', desc: 'Professional card designs' },
-  { label: 'Freepik',         url: 'https://www.freepik.com/free-templates/visiting-card', color: '#F89B00', desc: 'Premium free templates' },
-  { label: 'Picsart',         url: 'https://picsart.com/create/templates/business-card/', color: '#FF3366', desc: 'Trendy card designs' },
-];
-
-const EXTERNAL_PORTFOLIO_SITES = [
-  { label: 'Canva Resume',    url: 'https://www.canva.com/resumes/templates/', color: '#00C4B4', desc: 'Portfolio & resume templates' },
-  { label: 'Adobe Resume',    url: 'https://www.adobe.com/express/create/resume', color: '#FF0000', desc: 'Clean portfolio layouts' },
-  { label: 'Reactive Resume', url: 'https://rxresu.me/', color: '#2563EB', desc: 'Open-source resume builder' },
-];
 
 const MyProfile: React.FC = () => {
   const { user } = useAuth();
@@ -193,235 +110,6 @@ const MyProfile: React.FC = () => {
       } catch { /* use fallback below */ }
     })();
   }, []);
-
-    // Stud Templates state
-  const [studTemplateId, setStudTemplateId]         = useState(STUD_TEMPLATES[0].id);
-  const [studQuote, setStudQuote]                   = useState(STUD_TEMPLATE_QUOTES[0]);
-  const [studCustomQuote, setStudCustomQuote]       = useState('');
-  const [studUseCustomQuote, setStudUseCustomQuote] = useState(false);
-  const [studCustomTitle, setStudCustomTitle]       = useState('');
-  const [studCategoryFilter, setStudCategoryFilter] = useState('All');
-  const [studEditName, setStudEditName]             = useState('');
-  const [studEditTitle, setStudEditTitle]           = useState('');
-  const [studEditAccent, setStudEditAccent]         = useState('');
-  const [studEditTextColor, setStudEditTextColor]   = useState('');
-  const [studEditFontSize, setStudEditFontSize]     = useState<'sm'|'md'|'lg'>('md');
-  const [studShowEditor, setStudShowEditor]         = useState(false);
-  const [isDownloadingStudCard, setIsDownloadingStudCard] = useState(false);
-  const [studDownloaded, setStudDownloaded]         = useState(false);
-  const studBgInputRef  = useRef<HTMLInputElement>(null);
-
-  const navigate = useNavigate();
-  const studCardRef = useRef<HTMLDivElement>(null);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const target = e.target as HTMLInputElement & HTMLSelectElement & HTMLTextAreaElement;
-    const name = target.name as string;
-    if (!name) return;
-    let value: any = target.value;
-    if (e.target instanceof HTMLInputElement && e.target.type === 'checkbox') {
-      value = e.target.checked;
-    }
-
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const chooseStrongWord = (word: string) => {
-    setFormData(prev => ({ ...prev, oneStrongWord: word }));
-    setIsEditingStrongWord(false);
-  };
-
-  const handleStrongWordInputBlur = () => {
-    if (formData.oneStrongWord.trim()) {
-      setIsEditingStrongWord(false);
-    }
-  };
-
-  const copyImageToClipboard = async (blob: Blob) => {
-    try {
-      if (!navigator.clipboard || typeof ClipboardItem === 'undefined') return false;
-      const item = new ClipboardItem({ 'image/png': blob });
-      await navigator.clipboard.write([item]);
-      return true;
-    } catch (e) {
-      console.warn('copyImageToClipboard failed', e);
-      return false;
-    }
-  };
-
-  const removeInterest = (tag: string) => {
-    setFormData(prev => ({
-      ...prev,
-      interests: prev.interests.filter(interest => interest !== tag),
-    }));
-  };
-
-  const copyImageImmediate = async () => {
-    if (isGeneratingTemplate) return;
-    setCopiedForPlatform(null);
-    setIsGeneratingTemplate(true);
-    try {
-      const { blob, dataUrl } = await generateProfileCardBlob();
-      const ok = await copyImageToClipboard(blob);
-      if (ok) {
-        setSaveStatus({ type: 'success', message: 'Image copied to clipboard — paste into the composer.' });
-      } else {
-        const link = document.createElement('a');
-        link.href = dataUrl;
-        link.download = profileTemplateFileName;
-        link.click();
-        setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the post.' });
-      }
-    } catch (e) {
-      console.warn('copyImageImmediate failed', e);
-      setSaveStatus({ type: 'error', message: 'Unable to copy or download image.' });
-    } finally {
-      setTimeout(() => setSaveStatus(null), 3000);
-      setIsGeneratingTemplate(false);
-    }
-  };
-
-  const calculateStrength = () => {
-    let score = 0;
-    if (formData.profilePhoto) score += 10;
-    if (formData.firstName && formData.lastName) score += 10;
-    if (formData.bio && formData.bio.length > 10) score += 10;
-    if (formData.skills.length > 0) score += 10;
-    if (formData.education.institution || formData.educationList.length > 0) score += 10;
-    if (formData.certifications.length > 0) score += 10;
-    if (formData.experience.company || formData.experienceList.length > 0) score += 10;
-    if (formData.projects.length > 0) score += 10;
-    if (formData.linkedin) score += 10;
-    if (formData.resume.fileName && formData.resume.fileName !== 'No resume uploaded') score += 10;
-
-    return score;
-  };
-
-  const [isExtracting, setIsExtracting] = useState(false);
-
-  // ─── REAL: Add / Remove individual skills ───
-  const addSkillToList = () => {
-    const trimmed = newSkillInput.trim();
-    if (!trimmed) return;
-    setFormData(prev => ({
-      ...prev,
-      skills: [
-        ...prev.skills,
-        { name: trimmed, proficiency: 'Intermediate', years: '' }
-      ]
-    }));
-    setNewSkillInput('');
-  };
-
-  const removeSkillFromList = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      skills: prev.skills.filter((_, i) => i !== index)
-    }));
-  };
-
-  const updateSkillField = (index: number, field: 'name' | 'proficiency' | 'years', value: string) => {
-    setFormData(prev => {
-      const updated = [...prev.skills];
-      updated[index] = { ...updated[index], [field]: value };
-      return { ...prev, skills: updated };
-    });
-  };
-
-  // ─── REAL: Upload resume and parse via backend ───
-  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    setUploadProgress(0);
-    setResumeParseResult(null);
-
-    // Animate progress bar during upload
-    const progressInterval = setInterval(() => {
-      setUploadProgress(prev => prev < 80 ? prev + 10 : prev);
-    }, 200);
-
-    try {
-      const formPayload = new FormData();
-      formPayload.append('file', file);
-
-      if (!user?.user_id) throw new Error('User not logged in');
-      const res = await fetch(`${API_BASE_URL}/api/user/${user.user_id}/upload-resume`, {
-        method: 'POST',
-        body: formPayload,
-      });
-
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Resume parsing failed');
-      }
-
-      const data = await res.json();
-      setResumeParseResult(data);
-
-      // Auto-populate skills from resume
-      const newSkills: { name: string; proficiency: string; years: string }[] = (data.skills || []).map((s: string) => ({
-        name: s,
-        proficiency: 'Intermediate',
-        years: ''
-      }));
-      setExtractedSkills(data.skills || []);
-
-      setFormData(prev => ({
-        ...prev,
-        firstName: data.full_name ? data.full_name.split(' ')[0] : prev.firstName,
-        lastName: data.full_name ? data.full_name.split(' ').slice(1).join(' ') : prev.lastName,
-        phone: data.phone || prev.phone,
-        resume: {
-          ...prev.resume,
-          fileName: file.name,
-          uploadDate: new Date().toLocaleDateString('en-IN'),
-          atsScore: data.ats_score || prev.resume.atsScore,
-        },
-        // Merge extracted skills with existing ones (no duplicates)
-        skills: [
-          ...prev.skills,
-          ...newSkills.filter(ns => !prev.skills.some(es => es.name.toLowerCase() === ns.name.toLowerCase()))
-        ]
-      }));
-    } catch (err) {
-      clearInterval(progressInterval);
-      setUploadProgress(0);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Upload failed: ${errorMessage}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // ─── REAL: Re-extract skills from already-uploaded resume ───
-  const extractSkills = async () => {
-    if (!resumeInputRef.current?.files?.[0] && formData.resume.fileName === 'No resume uploaded') {
-      alert('Please upload a resume first.');
-      return;
-      alert(`Extraction complete! Found ${resumeParseResult.skills.length} skills already loaded.`);
-    } else {
-      alert('No new skills found. Please re-upload your resume.');
-    }
-  };
-
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, profilePhoto: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   useEffect(() => {
     if (!user?.user_id) {
@@ -555,9 +243,108 @@ const MyProfile: React.FC = () => {
         setTimeout(() => setSaveStatus(null), 2000);
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setSaveStatus({ type: 'error', message: 'Delete failed: ' + errorMessage });
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setSaveStatus({ type: 'error', message: 'Delete failed: ' + errorMessage });
+      setTimeout(() => setSaveStatus(null), 3000);
     }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFormData(prev => ({ ...prev, profilePhoto: reader.result as string }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const form = new FormData();
+      form.append('resume', file);
+      const res = await fetch(`${API_BASE_URL}/api/user/${user?.user_id}/upload-resume`, {
+        method: 'POST',
+        body: form,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFormData(prev => ({ ...prev, resume: { fileName: file.name, uploadDate: new Date().toISOString(), atsScore: data.atsScore || 0, version: '1.0' } }));
+        if (data.skills) setFormData(prev => ({ ...prev, skills: data.skills }));
+        if (data.extractedSkills) setExtractedSkills(data.extractedSkills);
+        setResumeParseResult(data);
+      }
+    } catch { /* ignore */ }
+    setIsUploading(false);
+  };
+
+  const removeInterest = (tag: string) => {
+    setFormData(prev => ({ ...prev, interests: prev.interests.filter(t => t !== tag) }));
+  };
+
+  const addSkillToList = () => {
+    const trimmed = newSkillInput.trim();
+    if (!trimmed) return;
+    setFormData(prev => ({ ...prev, skills: [...prev.skills, { name: trimmed, proficiency: 'Intermediate', years: '' }] }));
+    setNewSkillInput('');
+  };
+
+  const removeSkillFromList = (index: number) => {
+    setFormData(prev => ({ ...prev, skills: prev.skills.filter((_, i) => i !== index) }));
+  };
+
+  const updateSkillField = (index: number, field: string, value: string) => {
+    setFormData(prev => {
+      const updated = [...prev.skills];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, skills: updated };
+    });
+  };
+
+  const copyImageToClipboard = async (blob: Blob): Promise<boolean> => {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      return true;
+    } catch { return false; }
+  };
+
+  const handleStrongWordInputBlur = () => {
+    setIsEditingStrongWord(false);
+  };
+
+  const chooseStrongWord = (word: string) => {
+    setFormData(prev => ({ ...prev, oneStrongWord: word }));
+    setIsEditingStrongWord(false);
+  };
+
+  const calculateStrength = () => {
+    let score = 0;
+    if (formData.firstName && formData.lastName) score += 10;
+    if (formData.phone) score += 5;
+    if (formData.gender) score += 5;
+    if (formData.dob) score += 5;
+    if (formData.location) score += 5;
+    if (formData.bio) score += 10;
+    if (formData.careerGoal) score += 5;
+    if (formData.profilePhoto) score += 10;
+    if (formData.skills && formData.skills.length > 0) score += 10;
+    if (formData.interests && formData.interests.length > 0) score += 5;
+    if (formData.educationList && formData.educationList.length > 0) score += 10;
+    if (formData.experienceList && formData.experienceList.length > 0) score += 10;
+    if (formData.projects && formData.projects.length > 0) score += 5;
+    if (formData.certifications && formData.certifications.length > 0) score += 5;
+    if (formData.linkedin) score += 5;
+    if (formData.github || formData.githubUsername) score += 5;
+    if (formData.portfolio) score += 5;
+    return Math.min(100, score);
   };
   const profileCompletion = Math.min(100, calculateStrength());
   const profileDisplayName = [formData.firstName, formData.lastName].filter(Boolean).join(' ') || user?.full_name || 'Your Profile';
@@ -1385,42 +1172,6 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
       setIsGeneratingTemplate(false);
     }
   };
-
-  const downloadStudCard = async () => {
-    if (!studCardRef.current || isDownloadingStudCard) return;
-    setIsDownloadingStudCard(true);
-    try {
-      const canvas = await html2canvas(studCardRef.current, {
-        scale: 3,
-        backgroundColor: null,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-      });
-      const link = document.createElement('a');
-      link.download = `${(profileDisplayName || 'studlyf').toLowerCase().replace(/\s+/g, '-')}-stud-card.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      setStudDownloaded(true);
-      setSaveStatus({ type: 'success', message: 'Stud card downloaded! Share it anywhere.' });
-      setTimeout(() => { setSaveStatus(null); setStudDownloaded(false); }, 3000);
-    } catch (err) {
-      setSaveStatus({ type: 'error', message: 'Card download failed. Please try again.' });
-      setTimeout(() => setSaveStatus(null), 3000);
-    } finally {
-      setIsDownloadingStudCard(false);
-    }
-  };
-
-  const activeStudTemplate = STUD_TEMPLATES.find(t => t.id === studTemplateId) ?? STUD_TEMPLATES[0];
-  const activeStudQuote    = studUseCustomQuote ? (studCustomQuote || 'Your quote here...') : studQuote;
-  const activeStudTitle    = studCustomTitle || profileRole;
-  const cardAccent       = studEditAccent || activeStudTemplate.accent;
-  const cardText         = studEditTextColor || activeStudTemplate.text;
-  const cardNameFontSize = studEditFontSize === 'sm' ? '16px' : studEditFontSize === 'lg' ? '28px' : '22px';
-  const filteredStudTemplates = studCategoryFilter === 'All'
-    ? STUD_TEMPLATES
-    : STUD_TEMPLATES.filter(t => t.category === studCategoryFilter);
   
   const shareToSocial = async (platform: 'linkedin' | 'whatsapp') => {
   if (!publicProfileUrl) return;
@@ -3149,7 +2900,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
           </motion.div>
         );
     }
-
+  };
 
   return (
     <div className="max-w-[1400px] mx-auto min-h-screen bg-white/90 backdrop-blur-sm pt-0 px-4 sm:px-8 lg:px-12 pb-12 font-sans selection:bg-[#7C3AED] selection:text-white">
@@ -3537,381 +3288,6 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
         )}
 
       </div>
-
-       {/* ══════════════ STUD TEMPLATES SECTION ══════════════ */}
-      <motion.div
-        initial={{ opacity: 0, y: 28 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: false, amount: 0.1 }}
-        transition={{ duration: 0.65, ease: 'easeOut' }}
-        className="mb-12 rounded-[3rem] border border-gray-100 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.05)] overflow-hidden"
-      >
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between px-10 pt-10 pb-6 border-b border-gray-50">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#EC4899] flex items-center justify-center shadow-lg shadow-[#7C3AED]/30">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-xl font-black uppercase tracking-tight text-gray-900">Stud Templates</h3>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-0.5">
-                {STUD_TEMPLATES.length}+ visiting card designs · Download &amp; share instantly
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={downloadStudCard}
-              disabled={isDownloadingStudCard}
-              className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] text-white shadow-lg transition-all disabled:opacity-60 active:scale-95 ${studDownloaded ? 'bg-emerald-500 shadow-emerald-500/30' : 'bg-[#7C3AED] shadow-[#7C3AED]/25 hover:bg-[#6D28D9]'}`}
-            >
-              <Download className="w-4 h-4" />
-              {studDownloaded ? 'Downloaded!' : isDownloadingStudCard ? 'Generating...' : 'Download Card'}
-            </button>
-          </div>
-        </div>
-
-        <div className="grid lg:grid-cols-[1fr_380px] gap-0">
-
-          {/* ── LEFT: Controls ── */}
-          <div className="p-8 space-y-6 border-r border-gray-50">
-
-            {/* Category filter tabs */}
-            <div className="flex gap-2 flex-wrap">
-              {STUD_CATEGORIES.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setStudCategoryFilter(cat)}
-                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all ${studCategoryFilter === cat ? 'bg-[#7C3AED] text-white shadow-md shadow-[#7C3AED]/25' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                >
-                  {cat}
-                  {cat !== 'All' && <span className="ml-1 opacity-60">{STUD_TEMPLATES.filter(t => t.category === cat).length}</span>}
-                </button>
-              ))}
-            </div>
-
-            {/* Template Grid — scrollable */}
-            <div>
-              <div className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3">
-                {filteredStudTemplates.length} Templates
-              </div>
-              <div className="grid grid-cols-5 gap-2 max-h-[280px] overflow-y-auto pr-1 pb-1"
-                style={{ scrollbarWidth: 'thin' }}>
-                {filteredStudTemplates.map(tmpl => (
-                  <button
-                    key={tmpl.id}
-                    onClick={() => setStudTemplateId(tmpl.id)}
-                    title={tmpl.label}
-                    className={`rounded-2xl overflow-hidden border-2 transition-all aspect-[3/4] flex flex-col ${tmpl.id === studTemplateId ? 'border-[#7C3AED] shadow-lg shadow-[#7C3AED]/25 scale-105' : 'border-transparent hover:border-gray-200'}`}
-                  >
-                    <div className="flex-1" style={{ background: tmpl.cardBg }} />
-                    <div
-                      className="h-[3px]"
-                      style={{ background: tmpl.accent }}
-                    />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Quote section */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Quote</div>
-                <button
-                  onClick={() => setStudUseCustomQuote(!studUseCustomQuote)}
-                  className={`text-[9px] font-black uppercase tracking-[0.15em] px-3 py-1.5 rounded-lg border transition-all ${studUseCustomQuote ? 'bg-[#7C3AED] text-white border-[#7C3AED]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#7C3AED]/40'}`}
-                >
-                  {studUseCustomQuote ? '✓ Custom' : '+ Write Custom'}
-                </button>
-              </div>
-              {studUseCustomQuote ? (
-                <textarea
-                  value={studCustomQuote}
-                  onChange={e => setStudCustomQuote(e.target.value)}
-                  placeholder="Your unique quote here..."
-                  rows={3}
-                  className="w-full px-5 py-3 bg-[#f5f3ff] border border-[#7C3AED]/30 rounded-2xl text-sm font-semibold text-gray-900 outline-none resize-none focus:border-[#7C3AED] transition-all"
-                />
-              ) : (
-                <div className="grid grid-cols-1 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
-                  {STUD_TEMPLATE_QUOTES.map((q, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setStudQuote(q)}
-                      className={`text-left px-4 py-2.5 rounded-xl text-[11px] font-semibold leading-1.5 transition-all border ${studQuote === q ? 'bg-[#f5f3ff] border-[#7C3AED]/50 text-[#5b21b6]' : 'bg-white border-gray-100 text-gray-500 hover:border-gray-200'}`}
-                    >
-                      "{q}"
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Title override */}
-            <div className="space-y-2">
-              <div className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Your Title / Role</div>
-              <input
-                type="text"
-                value={studCustomTitle}
-                onChange={e => setStudCustomTitle(e.target.value)}
-                placeholder={profileRole || 'CS Student · Full Stack Developer'}
-                className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold text-gray-900 outline-none focus:bg-white focus:border-[#7C3AED]/40 transition-all"
-              />
-            </div>
-
-            {/* ── In-Card Editor ── */}
-<div className="space-y-4">
-  <button
-    onClick={() => setStudShowEditor(prev => !prev)}
-    className={`w-full flex items-center justify-between px-5 py-3 rounded-2xl border text-[10px] font-black uppercase tracking-[0.15em] transition-all ${studShowEditor ? 'bg-[#7C3AED] text-white border-[#7C3AED]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#7C3AED]/40'}`}
-  >
-    <span className="flex items-center gap-2">
-      <Type className="w-3.5 h-3.5" /> Edit Card Content
-    </span>
-    <span>{studShowEditor ? '▲' : '▼'}</span>
-  </button>
-
-  {studShowEditor && (
-    <motion.div
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-[1.75rem] border border-[#7C3AED]/20 bg-[#f5f3ff]/60 p-5 space-y-4"
-    >
-      <div className="space-y-1.5">
-        <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Display Name</label>
-        <input
-          type="text"
-          value={studEditName}
-          onChange={e => setStudEditName(e.target.value)}
-          placeholder={profileDisplayName || 'Your Name'}
-          className="w-full px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm font-bold text-gray-900 outline-none focus:border-[#7C3AED]/40 transition-all"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Role / Title</label>
-        <input
-          type="text"
-          value={studEditTitle}
-          onChange={e => setStudEditTitle(e.target.value)}
-          placeholder={activeStudTitle}
-          className="w-full px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm font-bold text-gray-900 outline-none focus:border-[#7C3AED]/40 transition-all"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Accent Colour</label>
-        <div className="flex items-center gap-3">
-          <input
-            type="color"
-            value={studEditAccent || activeStudTemplate.accent}
-            onChange={e => setStudEditAccent(e.target.value)}
-            className="w-10 h-10 rounded-xl border border-gray-100 cursor-pointer bg-white p-1"
-          />
-          <div className="flex gap-2 flex-wrap">
-            {['#a78bfa','#34d399','#f472b6','#60a5fa','#fb923c','#facc15'].map(col => (
-              <button
-                key={col}
-                onClick={() => setStudEditAccent(col)}
-                style={{ background: col }}
-                className={`w-7 h-7 rounded-lg border-2 transition-all ${(studEditAccent || activeStudTemplate.accent) === col ? 'border-gray-900 scale-110' : 'border-white'}`}
-              />
-            ))}
-          </div>
-          {studEditAccent && (
-            <button onClick={() => setStudEditAccent('')} className="text-[9px] font-black text-gray-400 uppercase hover:text-red-400 transition-colors">Reset</button>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Text Colour</label>
-        <div className="flex items-center gap-3">
-          <input
-            type="color"
-            value={studEditTextColor || (activeStudTemplate.text === '#fff' ? '#ffffff' : activeStudTemplate.text)}
-            onChange={e => setStudEditTextColor(e.target.value)}
-            className="w-10 h-10 rounded-xl border border-gray-100 cursor-pointer bg-white p-1"
-          />
-          <div className="flex gap-2">
-            {['#ffffff','#f1f5f9','#0f172a','#1e1b4b'].map(col => (
-              <button
-                key={col}
-                onClick={() => setStudEditTextColor(col)}
-                style={{ background: col, border: col === '#ffffff' ? '1px solid #e2e8f0' : 'none' }}
-                className={`w-7 h-7 rounded-lg border-2 transition-all ${(studEditTextColor || activeStudTemplate.text) === col ? 'border-[#7C3AED] scale-110' : 'border-transparent'}`}
-              />
-            ))}
-          </div>
-          {studEditTextColor && (
-            <button onClick={() => setStudEditTextColor('')} className="text-[9px] font-black text-gray-400 uppercase hover:text-red-400 transition-colors">Reset</button>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Name Size</label>
-        <div className="flex gap-2">
-          {(['sm','md','lg'] as const).map(sz => (
-            <button
-              key={sz}
-              onClick={() => setStudEditFontSize(sz)}
-              className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.12em] border transition-all ${studEditFontSize === sz ? 'bg-[#7C3AED] text-white border-[#7C3AED]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#7C3AED]/40'}`}
-            >
-              {sz === 'sm' ? 'Small' : sz === 'md' ? 'Medium' : 'Large'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <button
-        onClick={() => { setStudEditName(''); setStudEditTitle(''); setStudEditAccent(''); setStudEditTextColor(''); setStudEditFontSize('md'); }}
-        className="w-full py-2.5 rounded-xl border border-dashed border-gray-200 text-[9px] font-black uppercase tracking-[0.15em] text-gray-400 hover:border-red-300 hover:text-red-400 transition-all flex items-center justify-center gap-2"
-      >
-        <RefreshCw className="w-3 h-3" /> Reset All Edits
-      </button>
-    </motion.div>
-  )}
-</div>
-          </div>
-          {/* ── RIGHT: Live Card Preview ── */}
-          <div className="p-8 flex flex-col items-center gap-5 bg-gray-50/60">
-            <div className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Live Preview</div>
-
-            {/* THE STUD CARD */}
-            <div
-              ref={studCardRef}
-              style={{
-                width: '320px',
-                minHeight: '400px',
-                borderRadius: '28px',
-                background: activeStudTemplate.cardBg,
-                position: 'relative',
-                overflow: 'hidden',
-                boxShadow: '0 32px 80px rgba(0,0,0,0.28)',
-                display: 'flex',
-                flexDirection: 'column',
-                padding: '26px 22px 22px',
-                boxSizing: 'border-box',
-              }}
-            >
-              {/* Decorative blobs (only when no custom bg) */}
-              {[
-                { size: 130, color: `${cardAccent}33`, top: '-35px', left: '-35px' },
-                { size: 180, color: `${cardAccent}18`, top: '55%', left: '55%' },
-                { size: 100, color: `${cardAccent}22`, top: '20%', left: '35%' },
-              ].map((blob, i) => (
-                <div key={i} style={{
-                  position: 'absolute',
-                  width: `${blob.size}px`, height: `${blob.size}px`,
-                  borderRadius: '50%',
-                  background: `radial-gradient(circle, ${blob.color}, transparent 70%)`,
-                  top: blob.top, left: blob.left,
-                  pointerEvents: 'none', zIndex: 1,
-                }} />
-              ))}
-
-              {/* Card content */}
-              <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', flex: 1, gap: '0' }}>
-                {/* Top: Badge + Name + Avatar */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                  <div>
-                    {/* Company Logo - Clean Version */}
-<div style={{
-  display: 'inline-flex', 
-  alignItems: 'center', 
-  marginBottom: '12px',
-  height: '24px', // This limits the height of the container
-}}>
-  <img 
-    src="/images/studlyf_secondary.png" 
-    alt="Studlyf Logo" 
-    style={{ 
-      height: '100%', 
-      width: 'auto', 
-      objectFit: 'contain',
-      // We removed the brightness/invert filter so it shows original colors
-    }} 
-  />
-</div>
-                    <div style={{ fontSize: cardNameFontSize, fontWeight: 900, color: cardText, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
-                      {studEditName || profileDisplayName || 'Your Name'}
-                    </div>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: cardAccent, marginTop: '5px', textTransform: 'uppercase', letterSpacing: '0.11em' }}>
-                      {studEditTitle || activeStudTitle}
-                    </div>
-                  </div>
-                  {/* Avatar */}
-                  <div style={{
-                    width: '60px', height: '60px', borderRadius: '16px', flexShrink: 0,
-                    border: `2.5px solid ${cardAccent}66`,
-                    background: `${cardAccent}22`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    overflow: 'hidden',
-                    boxShadow: `0 8px 24px ${cardAccent}33`,
-                  }}>
-                    {formData.profilePhoto ? (
-                      <img src={formData.profilePhoto} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} crossOrigin="anonymous" />
-                    ) : (
-                      <span style={{ fontSize: '18px', fontWeight: 900, color: cardAccent }}>{profileInitials}</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Divider */}
-                <div style={{ height: '1px', background: `${cardAccent}33`, margin: '16px 0' }} />
-
-                {/* Quote bubble */}
-                <div style={{
-                  flex: 1, borderRadius: '18px', padding: '16px 18px',
-                  background: activeStudTemplate.bubbleBg,
-                  border: `1px solid ${activeStudTemplate.bubbleBorder}55`,
-                  display: 'flex', flexDirection: 'column', gap: '8px',
-                }}>
-                  <div style={{ fontSize: '44px', lineHeight: 0.7, fontWeight: 900, color: cardAccent, opacity: 0.6, fontFamily: 'Georgia,serif', marginBottom: '2px' }}>"</div>
-                  <p style={{ fontSize: '12px', fontWeight: 600, lineHeight: 1.7, color: cardText, margin: 0, fontStyle: 'italic' }}>
-                    {activeStudQuote}
-                  </p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginTop: '4px' }}>
-                    <div style={{ width: '20px', height: '2px', background: cardAccent, borderRadius: '999px' }} />
-                    <span style={{ fontSize: '9px', fontWeight: 800, color: cardAccent, textTransform: 'uppercase', letterSpacing: '0.13em' }}>
-                      {profileDisplayName || 'Studlyf'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Bottom bar */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '16px' }}>
-                  <div style={{ height: '3px', borderRadius: '999px', flex: 1, marginRight: '12px', background: `linear-gradient(90deg,${cardAccent},transparent)` }} />
-                  <span style={{ fontSize: '8px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.22em', color: cardAccent }}>studlyf.com</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="w-full space-y-2">
-              <button
-                onClick={downloadStudCard}
-                disabled={isDownloadingStudCard}
-                className={`w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] text-white transition-all disabled:opacity-60 active:scale-95 flex items-center justify-center gap-2 ${studDownloaded ? 'bg-emerald-500' : 'bg-[#7C3AED] hover:bg-[#6D28D9]'} shadow-lg`}
-              >
-                <Download className="w-4 h-4" />
-                {studDownloaded ? '✓ Downloaded!' : isDownloadingStudCard ? 'Generating...' : 'Download PNG'}
-              </button>
-              <p className="text-[9px] font-bold text-gray-400 text-center uppercase tracking-widest">
-                High-res PNG · Share on LinkedIn, WhatsApp, Instagram
-              </p>
-            </div>
-
-          </div>
-          {/* ── end right column ── */}
-        </div>
-        {/* ── end grid ── */}
-      </motion.div>
-      {/* ══════════════ END STUD TEMPLATES SECTION ══════════════ */}
-
-      {/* ══════════════ END STUD TEMPLATES SECTION ══════════════ */}
 
       <div className="mb-12 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
 <motion.div
