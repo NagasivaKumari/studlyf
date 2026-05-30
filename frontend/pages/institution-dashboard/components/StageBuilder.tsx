@@ -18,7 +18,12 @@ import {
     Info,
     Send,
     Check,
-    AlertCircle
+    AlertCircle,
+    Code2,
+    Video,
+    Award,
+    BadgeCheck,
+    MonitorPlay
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL, authHeaders } from '../../../apiConfig';
@@ -203,11 +208,16 @@ interface StageBuilderProps {
 
 const STAGE_TYPES = [
     { id: 'REGISTRATION', label: 'Registration', icon: UserCheck, color: 'text-blue-500', bg: 'bg-blue-50' },
-    { id: 'TEAM_FORMATION', label: 'Team Formation', icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50' },
-    { id: 'QUIZ', label: 'Quiz', icon: FileText, color: 'text-amber-500', bg: 'bg-amber-50' },
+    { id: 'QUIZ', label: 'Assessment / Quiz', icon: FileText, color: 'text-amber-500', bg: 'bg-amber-50' },
     { id: 'SUBMISSION', label: 'Submission', icon: Plus, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-    { id: 'REVIEW', label: 'Review', icon: Gavel, color: 'text-purple-500', bg: 'bg-purple-50' },
-    { id: 'FINAL', label: 'Final', icon: Trophy, color: 'text-orange-500', bg: 'bg-orange-50' },
+    { id: 'HACKATHON', label: 'Hackathon', icon: Code2, color: 'text-indigo-500', bg: 'bg-indigo-50' },
+    { id: 'MENTORSHIP', label: 'Mentorship', icon: Users, color: 'text-pink-500', bg: 'bg-pink-50' },
+    { id: 'REVIEW', label: 'Review / Evaluation', icon: Gavel, color: 'text-purple-500', bg: 'bg-purple-50' },
+    { id: 'INTERVIEW', label: 'Interview', icon: Video, color: 'text-teal-500', bg: 'bg-teal-50' },
+    { id: 'FINALE', label: 'Finale', icon: Trophy, color: 'text-orange-500', bg: 'bg-orange-50' },
+    { id: 'RESULTS', label: 'Results', icon: Award, color: 'text-rose-500', bg: 'bg-rose-50' },
+    { id: 'CERTIFICATION', label: 'Certification', icon: BadgeCheck, color: 'text-cyan-500', bg: 'bg-cyan-50' },
+    { id: 'WORKSHOP', label: 'Workshop / Webinar', icon: MonitorPlay, color: 'text-fuchsia-500', bg: 'bg-fuchsia-50' },
     { id: 'CUSTOM', label: 'Custom', icon: Settings2, color: 'text-slate-500', bg: 'bg-slate-50' },
 ];
 
@@ -475,8 +485,8 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                     stages.map((stage, index) => {
                         const stageTypeId = normalizeStageTypeId(stage.type);
                         const stageMeta = getStageMeta(stage.type);
-                        const showStageBrief = stageTypeId !== 'TEAM_FORMATION';
-                        const showFieldBuilder = stageTypeId === 'SUBMISSION' || stageTypeId === 'REGISTRATION';
+                        const showStageBrief = true;
+                        const showFieldBuilder = !['QUIZ', 'REVIEW'].includes(stageTypeId);
                         return (
                         <div 
                             key={stage.id}
@@ -598,6 +608,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                         type="datetime-local" 
                                                         value={stage.start_date || ''}
                                                         min={new Date().toISOString().slice(0, 16)}
+                                                        max="2099-12-31T23:59"
                                                         onChange={(e) => updateStage(stage.id, { start_date: e.target.value })}
                                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm"
                                                     />
@@ -608,6 +619,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                         type="datetime-local" 
                                                         value={stage.end_date || ''}
                                                         min={stage.start_date || new Date().toISOString().slice(0, 16)}
+                                                        max="2099-12-31T23:59"
                                                         onChange={(e) => updateStage(stage.id, { end_date: e.target.value })}
                                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm"
                                                     />
@@ -637,6 +649,7 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                     <input
                                                         type="datetime-local"
                                                         value={stage.result_time || ''}
+                                                        max="2099-12-31T23:59"
                                                         onChange={(e) => updateStage(stage.id, { result_time: e.target.value || undefined })}
                                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm"
                                                     />
@@ -906,6 +919,85 @@ const StageBuilder: React.FC<StageBuilderProps> = ({ stages, onUpdate, onConfigu
                                                                     config: { ...(stage.config || {}), fields: newFields } 
                                                                 })} 
                                                             />
+                                                        </div>
+
+                                                        {/* Team Formation Section */}
+                                                        <div className="space-y-4 pt-6 border-t border-slate-100">
+                                                            <div className="flex items-center gap-2">
+                                                                <Users size={16} className="text-indigo-500" />
+                                                                <h6 className="text-xs font-black text-slate-900 uppercase tracking-tight">Team Formation</h6>
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500 font-medium">Configure team settings for this registration stage.</p>
+                                                            
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div>
+                                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Min Team Size</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        min={1}
+                                                                        value={stage.config?.team_min_size ?? 1}
+                                                                        onChange={(e) => updateStage(stage.id, {
+                                                                            config: { ...(stage.config || {}), team_min_size: parseInt(e.target.value) || 1 }
+                                                                        })}
+                                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Max Team Size</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        min={1}
+                                                                        value={stage.config?.team_max_size ?? 5}
+                                                                        onChange={(e) => updateStage(stage.id, {
+                                                                            config: { ...(stage.config || {}), team_max_size: parseInt(e.target.value) || 5 }
+                                                                        })}
+                                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm"
+                                                                    />
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <label className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={stage.config?.allow_individual_registration ?? true}
+                                                                        onChange={(e) => updateStage(stage.id, {
+                                                                            config: { ...(stage.config || {}), allow_individual_registration: e.target.checked }
+                                                                        })}
+                                                                        className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                                    />
+                                                                    <div>
+                                                                        <span className="text-sm font-bold text-slate-800">Allow Individual Registration</span>
+                                                                        <p className="text-[10px] text-slate-500 font-medium">Participants can register solo without a team.</p>
+                                                                    </div>
+                                                                </label>
+                                                                <label className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={stage.config?.allow_cross_college_teams ?? true}
+                                                                        onChange={(e) => updateStage(stage.id, {
+                                                                            config: { ...(stage.config || {}), allow_cross_college_teams: e.target.checked }
+                                                                        })}
+                                                                        className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                                    />
+                                                                    <div>
+                                                                        <span className="text-sm font-bold text-slate-800">Allow Cross-College Teams</span>
+                                                                        <p className="text-[10px] text-slate-500 font-medium">Participants from different colleges can team up.</p>
+                                                                    </div>
+                                                                </label>
+                                                            </div>
+
+                                                            <div className="space-y-2">
+                                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Team Formation Instructions</label>
+                                                                <textarea
+                                                                    value={stage.config?.team_formation_instructions || ''}
+                                                                    onChange={(e) => updateStage(stage.id, {
+                                                                        config: { ...(stage.config || {}), team_formation_instructions: e.target.value }
+                                                                    })}
+                                                                    placeholder="e.g., Form a team of up to 4 members. You can invite teammates using their email or share your team invite code."
+                                                                    className="w-full min-h-20 px-5 py-4 bg-white border border-indigo-100 rounded-2xl focus:ring-2 focus:ring-indigo-200 outline-none font-medium text-slate-700"
+                                                                />
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 ) : (

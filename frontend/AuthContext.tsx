@@ -14,6 +14,7 @@ interface User {
     college_name?: string;
     graduation_year?: string;
     status?: string;
+    profilePhoto?: string | null;
 }
 
 interface AuthContextType {

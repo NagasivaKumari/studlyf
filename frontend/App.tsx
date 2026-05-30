@@ -20,7 +20,7 @@ import SplashScreen from './components/SplashScreen';
 import RoleFixer from './RoleFixer';
 
 // Lazy-loaded pages (code-split per route)
-const Home = lazy(() => import('./pages/Home'));
+import Home from './pages/Home';
 const CourseDetail = lazy(() => import('./pages/CourseDetail'));
 const CareerFit = lazy(() => import('./pages/CareerFit'));
 const Assessment = lazy(() => import('./pages/Assessment'));
@@ -35,11 +35,11 @@ const GroupDiscussion = lazy(() => import('./pages/GroupDiscussion'));
 const PlayLearnEarn = lazy(() => import('./pages/PlayLearnEarn'));
 const GoalSelector = lazy(() => import('./pages/GoalSelector'));
 const About = lazy(() => import('./pages/About'));
-const UnifiedAuth = lazy(() => import('./pages/UnifiedAuth'));
+import UnifiedAuth from './pages/UnifiedAuth';
 const JudgeInvitation = lazy(() => import('./pages/JudgeInvitation'));
-const LearnerDashboard = lazy(() => import('./pages/LearnerDashboard'));
-const PartnerDashboard = lazy(() => import('./pages/PartnerDashboard'));
-const DashboardHome = lazy(() => import('./pages/DashboardHome'));
+import LearnerDashboard from './pages/LearnerDashboard';
+import PartnerDashboard from './pages/PartnerDashboard';
+import DashboardHome from './pages/DashboardHome';
 const Blog = lazy(() => import('./pages/Blog'));
 const CompanyModules = lazy(() => import('./pages/CompanyModules'));
 const ResumeBuilder = lazy(() => import('./pages/ResumeBuilder'));
@@ -63,13 +63,14 @@ const StudHub = lazy(() => import('./pages/StudHub'));
 const StudentDiscounts = lazy(() => import('./pages/StudentDiscounts'));
 const StudentSchemes = lazy(() => import('./pages/StudentSchemes'));
 const FeaturePreview = lazy(() => import('./pages/FeaturePreview'));
-const InstitutionDashboard = lazy(() => import('./pages/institution-dashboard/InstitutionDashboard'));
+import InstitutionDashboard from './pages/institution-dashboard/InstitutionDashboard';
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const RoadmapClone = lazy(() => import('./pages/RoadmapClone'));
-const OpportunitiesList = lazy(() => import('./pages/opportunities/OpportunitiesList'));
+import OpportunitiesList from './pages/opportunities/OpportunitiesList';
 const OpportunityDetails = lazy(() => import('./pages/opportunities/OpportunityDetails'));
+const ResultsPage = lazy(() => import('./pages/opportunities/ResultsPage'));
 const MyApplications = lazy(() => import('./pages/opportunities/MyApplications'));
 const EventHub = lazy(() => import('./pages/events/EventHub'));
 const EventPackagePage = lazy(() => import('./pages/events/EventPackagePage'));
@@ -440,6 +441,7 @@ const App: React.FC = () => {
             <Route path="/opportunities" element={<ProtectedRoute><OpportunitiesList /></ProtectedRoute>} />
             <Route path="/opportunities/my-applications" element={<ProtectedRoute><MyApplications /></ProtectedRoute>} />
             <Route path="/opportunities/:id" element={<ProtectedRoute><OpportunityDetails /></ProtectedRoute>} />
+            <Route path="/opportunities/:id/results" element={<PublicRoute><ResultsPage /></PublicRoute>} />
 
             {/* Events */}
             <Route path="/events/:eventId" element={<ProtectedRoute><EventHub /></ProtectedRoute>} />

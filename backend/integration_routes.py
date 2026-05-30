@@ -23,7 +23,7 @@ from services.email_service import (
 from services.institutional_analytics_service import analytics_service
 from services.institutional_certificate_service import certificate_service
 from services.leaderboard_service import leaderboard_service
-from db import leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col, event_certificates_col
+from db import leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col, event_certificates_col, avatars_col
 from bson import ObjectId
 from services.audit_service import log_admin_action
 from notification_helpers import notify_institution
@@ -1697,6 +1697,75 @@ async def fetch_leaderboard(event_id: str):
     rankings = await leaderboard_col.find({"event_id": event_id}).sort("rank", 1).to_list(None)
     for r in rankings: r["_id"] = str(r["_id"])
     return rankings
+
+@router.get("/results/{event_id}")
+async def fetch_event_results(event_id: str):
+    """Returns leaderboard enriched with team member details for the results page."""
+    event = await events_col.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    rankings = await leaderboard_col.find({"event_id": event_id}).sort("rank", 1).to_list(None)
+    for r in rankings:
+        r["_id"] = str(r["_id"])
+
+    from db import teams_col, users_col
+    enriched = []
+    for entry in rankings:
+        team_id = entry.get("team_id")
+        members = []
+        org = ""
+        if team_id:
+            try:
+                team = await teams_col.find_one({"_id": ObjectId(team_id)})
+                if team:
+                    raw_members = team.get("members", [])
+                    member_user_ids = [str(m.get("user_id")) for m in raw_members if m.get("user_id")]
+                    user_map = {}
+                    if member_user_ids:
+                        u_cursor = users_col.find({"user_id": {"$in": member_user_ids}})
+                        async for u in u_cursor:
+                            uid = str(u["user_id"])
+                            user_map[uid] = {
+                                "name": u.get("full_name") or u.get("name") or "Student",
+                                "email": u.get("email", ""),
+                                "college": u.get("college_name") or u.get("college", "") or u.get("organization", "") or u.get("institution_name", ""),
+                            }
+                    for m in raw_members:
+                        uid = str(m.get("user_id", ""))
+                        info = user_map.get(uid, {})
+                        members.append({
+                            "user_id": uid,
+                            "name": info.get("name") or m.get("name") or "Member",
+                            "email": info.get("email") or m.get("email", ""),
+                            "college": info.get("college", ""),
+                            "is_leader": uid == str(team.get("team_leader_id") or team.get("leader_id")),
+                        })
+                    if members:
+                        leader = next((m for m in members if m.get("is_leader")), members[0])
+                        org = leader.get("college", "")
+            except Exception:
+                pass
+        enriched.append({
+            "rank": entry.get("rank"),
+            "team_id": team_id,
+            "team_name": entry.get("team_name", "Team"),
+            "lead_name": entry.get("recipient_name", "Participant"),
+            "organization": org,
+            "total_score": entry.get("total_score", 0),
+            "project_name": entry.get("project_name", ""),
+            "members": members,
+            "participation_type": entry.get("participation_type", "TEAM"),
+        })
+
+    return {
+        "event": {
+            "title": event.get("title") or event.get("name", ""),
+            "logo_url": event.get("logo_url") or event.get("logoUrl", ""),
+            "banner_url": event.get("banner_url") or event.get("bannerUrl", ""),
+        },
+        "results": enriched,
+    }
 
 @router.get("/leaderboard/{event_id}/export-pdf")
 async def export_leaderboard_pdf(event_id: str):
@@ -4536,6 +4605,23 @@ async def extend_participant_deadline(
     }
 
 
+# ── FAQ Priority Engine ──────────────────────────────────────────
+FAQ_PRIORITY_KEYWORDS = [
+    "registration", "deadline", "fee", "last date", "team size",
+    "eligibility", "certificate", "free", "prize", "online",
+    "offline", "submission", "participate", "individual", "team",
+]
+
+def compute_faq_priority(question: str, answer: str) -> int:
+    """Score a FAQ based on important keywords in question/answer."""
+    text = (question + " " + answer).lower()
+    score = 0
+    for kw in FAQ_PRIORITY_KEYWORDS:
+        if kw in text:
+            score += 10
+    return score
+
+
 @router.get("/events/{event_id}/faqs")
 async def get_event_faqs(event_id: str, user: dict = Depends(get_auth_user_optional)):
     """Get all published FAQs for an event. Auth optional — public can see published ones."""
@@ -4547,6 +4633,14 @@ async def get_event_faqs(event_id: str, user: dict = Depends(get_auth_user_optio
     faqs = await cursor.to_list(length=200)
     for f in faqs:
         f["id"] = str(f.pop("_id"))
+    # Server-side sort: featured first, then priority desc, helpful desc, views desc, order asc
+    faqs.sort(key=lambda f: (
+        not f.get("is_featured", False),
+        -(f.get("priority_score", 0) or 0),
+        -(f.get("helpful_count", 0) or 0),
+        -(f.get("views", 0) or 0),
+        f.get("order", 0) or 0,
+    ))
     return {"faqs": faqs}
 
 @router.post("/events/{event_id}/faqs")
@@ -4554,13 +4648,23 @@ async def create_event_faq(event_id: str, faq_data: dict, user: dict = Depends(g
     """Create a new FAQ for an event. Institution/admin only."""
     from db import faqs_col
     await assert_institution_owns_event(event_id, user)
+    question = faq_data.get("question", "")
+    answer = faq_data.get("answer", "")
+    auto_pin = faq_data.get("auto_pin_enabled", True)
+    priority_score = faq_data.get("priority_score") if faq_data.get("priority_score") is not None else (compute_faq_priority(question, answer) if auto_pin else 0)
     doc = {
         "event_id": event_id,
-        "question": faq_data.get("question", ""),
-        "answer": faq_data.get("answer", ""),
+        "question": question,
+        "answer": answer,
         "category": faq_data.get("category", "General"),
         "order": faq_data.get("order", 0),
         "is_published": faq_data.get("is_published", True),
+        "is_featured": faq_data.get("is_featured", False),
+        "priority_score": priority_score,
+        "views": faq_data.get("views", 0),
+        "helpful_count": faq_data.get("helpful_count", 0),
+        "tags": faq_data.get("tags", []),
+        "auto_pin_enabled": auto_pin,
         "created_by": user.get("user_id", ""),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
@@ -4575,15 +4679,18 @@ async def update_event_faq(event_id: str, faq_id: str, faq_data: dict, user: dic
     from db import faqs_col
     from bson import ObjectId
     await assert_institution_owns_event(event_id, user)
-    update = {"$set": {
-        "question": faq_data.get("question"),
-        "answer": faq_data.get("answer"),
-        "category": faq_data.get("category"),
-        "order": faq_data.get("order"),
-        "is_published": faq_data.get("is_published"),
-        "updated_at": datetime.utcnow(),
-    }}
-    await faqs_col.update_one({"_id": ObjectId(faq_id), "event_id": event_id}, update)
+    set_fields = {}
+    for key in ("question", "answer", "category", "order", "is_published", "is_featured", "priority_score", "views", "helpful_count", "tags", "auto_pin_enabled"):
+        if key in faq_data:
+            set_fields[key] = faq_data[key]
+    set_fields["updated_at"] = datetime.utcnow()
+    # Auto-compute priority if question/answer changed and auto_pin is enabled
+    question = faq_data.get("question")
+    answer = faq_data.get("answer")
+    auto_pin = faq_data.get("auto_pin_enabled")
+    if question is not None and answer is not None and auto_pin is not False:
+        set_fields["priority_score"] = compute_faq_priority(question, answer)
+    await faqs_col.update_one({"_id": ObjectId(faq_id), "event_id": event_id}, {"$set": set_fields})
     return {"success": True}
 
 @router.delete("/events/{event_id}/faqs/{faq_id}")
@@ -4603,14 +4710,24 @@ async def bulk_update_faqs(event_id: str, faqs_data: list, user: dict = Depends(
     await faqs_col.delete_many({"event_id": event_id})
     if faqs_data:
         docs = []
-        for i, f in enumerate(faqs_data):
+        for f in faqs_data:
+            question = f.get("question", "")
+            answer = f.get("answer", "")
+            auto_pin = f.get("auto_pin_enabled", True)
+            priority_score = f.get("priority_score") if f.get("priority_score") is not None else (compute_faq_priority(question, answer) if auto_pin else 0)
             docs.append({
                 "event_id": event_id,
-                "question": f.get("question", ""),
-                "answer": f.get("answer", ""),
+                "question": question,
+                "answer": answer,
                 "category": f.get("category", "General"),
-                "order": f.get("order", i),
+                "order": f.get("order", 0),
                 "is_published": f.get("is_published", True),
+                "is_featured": f.get("is_featured", False),
+                "priority_score": priority_score,
+                "views": f.get("views", 0),
+                "helpful_count": f.get("helpful_count", 0),
+                "tags": f.get("tags", []),
+                "auto_pin_enabled": auto_pin,
                 "created_by": user.get("user_id", ""),
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
@@ -4967,6 +5084,8 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
             opp_data["maxTeamSize"] = int(event_data.get("maxTeamSize") if event_data.get("maxTeamSize") is not None else event_data.get("max_team_size") if event_data.get("max_team_size") is not None else 5)
         except:
             opp_data["maxTeamSize"] = 5
+        if opp_data["minTeamSize"] > opp_data["maxTeamSize"]:
+            raise HTTPException(status_code=400, detail="Minimum team size cannot be greater than maximum team size")
         
         # Ensure deadline is datetime
         if isinstance(opp_data["deadline"], str):
@@ -5215,6 +5334,8 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
                 opp_data["maxTeamSize"] = int(updated_event.get("maxTeamSize") if updated_event.get("maxTeamSize") is not None else updated_event.get("max_team_size") if updated_event.get("max_team_size") is not None else 5)
             except:
                 opp_data["maxTeamSize"] = 5
+            if opp_data["minTeamSize"] > opp_data["maxTeamSize"]:
+                raise HTTPException(status_code=400, detail="Minimum team size cannot be greater than maximum team size")
 
             opp_data["status"] = "active" if _is_live_like_status(updated_event.get("status")) else "draft"
             
@@ -5846,6 +5967,105 @@ async def get_institution_stats(institution_id: str, user: dict = Depends(get_au
     except Exception as e:
         print(f"Stats API Error: {str(e)}")
         return {"error": str(e)}, 500
+
+# ─── Avatar Management ────────────────────────────────────────────────────────
+
+@router.get("/avatars")
+async def list_avatars():
+    """Get all active avatars sorted by order."""
+    try:
+        cursor = avatars_col.find({"is_active": True}).sort("order", 1)
+        avatars = await cursor.to_list(length=200)
+        for a in avatars:
+            a["_id"] = str(a["_id"])
+        return {"avatars": avatars}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/avatars", dependencies=[Depends(assert_institution_scope)])
+async def create_avatar(
+    label: str = Form(...),
+    image_url: str = Form(...),
+    category: Optional[str] = Form(None),
+    order: int = Form(0),
+    user: dict = Depends(get_auth_user)
+):
+    """Add a new avatar."""
+    try:
+        doc = {
+            "label": label,
+            "image_url": image_url,
+            "category": category or "default",
+            "is_active": True,
+            "order": order,
+            "created_at": datetime.utcnow(),
+        }
+        result = await avatars_col.insert_one(doc)
+        doc["_id"] = str(result.inserted_id)
+        return {"success": True, "avatar": doc}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/avatars/{avatar_id}", dependencies=[Depends(assert_institution_scope)])
+async def delete_avatar(
+    avatar_id: str,
+    user: dict = Depends(get_auth_user)
+):
+    """Remove an avatar (soft delete by setting is_active=false)."""
+    try:
+        await avatars_col.update_one(
+            {"_id": ObjectId(avatar_id)},
+            {"$set": {"is_active": False}}
+        )
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/avatars/seed")
+async def seed_avatars():
+    """Seed default avatars (64 from catalog.png) into the database."""
+    try:
+        existing = await avatars_col.count_documents({})
+        if existing > 0:
+            return {"message": f"Avatars already seeded ({existing} exist)", "count": existing}
+
+        CATALOG_URL = "/avatars/catalog.png"
+        crops = [
+            (20, 15, 115, 112), (141, 15, 115, 112), (262, 15, 117, 112), (385, 15, 116, 112),
+            (508, 15, 116, 112), (631, 15, 117, 112), (754, 15, 117, 112), (878, 15, 119, 112),
+            (20, 136, 115, 114), (141, 136, 115, 114), (262, 136, 117, 114), (385, 136, 116, 114),
+            (508, 136, 116, 114), (631, 136, 117, 114), (754, 136, 117, 114), (878, 136, 119, 114),
+            (20, 261, 115, 114), (141, 261, 115, 114), (262, 261, 117, 114), (385, 261, 116, 114),
+            (508, 261, 116, 114), (631, 261, 117, 114), (754, 261, 117, 114), (878, 261, 119, 114),
+            (20, 383, 115, 117), (141, 383, 115, 117), (262, 383, 117, 117), (385, 383, 116, 117),
+            (508, 383, 116, 117), (631, 383, 117, 117), (754, 383, 117, 117), (878, 383, 119, 117),
+            (20, 508, 115, 118), (141, 508, 115, 118), (262, 508, 117, 118), (385, 508, 116, 118),
+            (508, 508, 116, 118), (631, 508, 117, 118), (754, 508, 117, 118), (878, 508, 119, 118),
+            (20, 632, 115, 119), (141, 632, 115, 119), (262, 632, 117, 119), (385, 632, 116, 119),
+            (508, 632, 116, 119), (631, 632, 117, 119), (754, 632, 117, 119), (878, 632, 119, 119),
+            (20, 758, 115, 119), (141, 758, 115, 119), (262, 758, 117, 119), (385, 758, 116, 119),
+            (508, 758, 116, 119), (631, 758, 117, 119), (754, 758, 117, 119), (878, 758, 119, 119),
+            (20, 884, 115, 117), (141, 884, 115, 117), (262, 884, 117, 117), (385, 884, 116, 117),
+            (508, 884, 116, 117), (631, 884, 117, 117), (754, 884, 117, 117), (878, 884, 119, 117),
+        ]
+        seeds = []
+        for idx, (cx, cy, cw, ch) in enumerate(crops):
+            seeds.append({
+                "label": f"Avatar {idx + 1}",
+                "image_url": CATALOG_URL,
+                "crop_x": cx,
+                "crop_y": cy,
+                "crop_w": cw,
+                "crop_h": ch,
+                "category": "default",
+                "order": idx,
+                "is_active": True,
+                "created_at": datetime.utcnow(),
+            })
+        await avatars_col.insert_many(seeds)
+        return {"message": f"Seeded {len(seeds)} avatars", "count": len(seeds)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/events/{event_id}/email-templates")
 async def list_email_templates(

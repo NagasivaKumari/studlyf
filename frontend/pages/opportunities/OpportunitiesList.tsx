@@ -1,12 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Filter, Briefcase, Calendar, MapPin, ChevronRight, ChevronLeft, Sparkles, Loader2, Building2, Globe, Target, Zap, Clock } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, Briefcase, Calendar, MapPin, ChevronRight, ChevronLeft, Sparkles, Loader2, SlidersHorizontal, X } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
 import { plainTextFromRichContent, formatOpportunityLocation } from '../../utils/text';
 
-const typeOptions = ['All', 'My Events', 'Hackathon', 'Competition', 'Challenge', 'Conference', 'Workshop', 'Case Study', 'Webinar', 'Internship', 'Job'];
+const typeOptions = ['All', 'Hackathon', 'Competition', 'Challenge', 'Conference', 'Workshop', 'Internship', 'Job'];
 const locationOptions = ['All', 'Remote', 'On-site', 'Hybrid'];
 const sortOptions = ['Newest', 'Deadline soon', 'Most applied'];
 
@@ -18,13 +18,11 @@ const matchesOpportunityType = (opportunityType: unknown, selectedType: string) 
     const type = normalizeText(opportunityType);
     const keywordMap: Record<string, string[]> = {
         'my events': [],
-        hackathon: ['hackathon', 'coding challenge', 'coding challenge', 'coding challenges', 'contest'],
-        competition: ['competition', 'contest', 'challenge', 'case competition'],
-        challenge: ['challenge', 'coding challenge', 'ideathon'],
+        hackathon: ['hackathon', 'coding challenge'],
+        competition: ['competition', 'case competition'],
+        challenge: ['challenge', 'ideathon'],
         conference: ['conference', 'summit', 'expo', 'forum'],
         workshop: ['workshop', 'bootcamp', 'masterclass'],
-        'case study': ['case study', 'case competition', 'case challenge'],
-        webinar: ['webinar', 'virtual session', 'online session'],
         internship: ['internship', 'trainee', 'apprenticeship', 'placement'],
         job: ['job', 'role', 'career', 'hiring']
     };
@@ -37,9 +35,9 @@ const matchesOpportunityType = (opportunityType: unknown, selectedType: string) 
 const matchesLocation = (location: unknown, selectedLocation: string) => {
     if (selectedLocation === 'All') return true;
     const text = normalizeText(location);
-    if (!text) return selectedLocation === 'Remote' ? false : true;
-    if (selectedLocation === 'Remote') return text.includes('remote') || text.includes('online') || text.includes('virtual');
-    if (selectedLocation === 'On-site') return text.includes('on-site') || text.includes('onsite') || text.includes('in-person') || text.includes('offline');
+    if (!text) return selectedLocation === 'Online' || selectedLocation === 'Remote' ? false : true;
+    if (selectedLocation === 'Remote' || selectedLocation === 'Online') return text.includes('remote') || text.includes('online') || text.includes('virtual');
+    if (selectedLocation === 'On-site' || selectedLocation === 'Offline') return text.includes('on-site') || text.includes('onsite') || text.includes('in-person') || text.includes('offline');
     if (selectedLocation === 'Hybrid') return text.includes('hybrid');
     return true;
 };
@@ -57,8 +55,17 @@ const OpportunitiesList: React.FC = () => {
     const [selectedLocation, setSelectedLocation] = useState('All');
     const [selectedSort, setSelectedSort] = useState('Newest');
     const [showAppliedOnly, setShowAppliedOnly] = useState(false);
-    const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+    const [showFilters, setShowFilters] = useState(false);
+    const [selectedStatus, setSelectedStatus] = useState('All');
+    const [selectedParticipation, setSelectedParticipation] = useState('All');
+    const [selectedTeamSize, setSelectedTeamSize] = useState('All');
+    const [selectedPayment, setSelectedPayment] = useState('All');
+    const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+        location: false, status: false, teamSize: false, participation: false, skills: false
+    });
     const [appliedIds, setAppliedIds] = useState<string[]>([]);
+    const filtersRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
     const { user } = useAuth();
 
@@ -101,7 +108,30 @@ const OpportunitiesList: React.FC = () => {
                 : matchesOpportunityType(opp.type, selectedType);
             const matchesSelectedLocation = matchesLocation(opp.location, selectedLocation);
 
-            return matchesSearch && matchesApplied && matchesType && matchesSelectedLocation;
+            const oppStatus = normalizeText(opp.status);
+            const matchesStatus = selectedStatus === 'All' || oppStatus === normalizeText(selectedStatus);
+
+            const oppParticipation = normalizeText(opp.participationType);
+            const matchesParticipation = selectedParticipation === 'All' || oppParticipation === normalizeText(selectedParticipation);
+
+            let matchesTeamSize = true;
+            if (selectedTeamSize !== 'All') {
+                const min = Number(opp.minTeamSize) || 0;
+                const max = Number(opp.maxTeamSize) || 0;
+                if (selectedTeamSize === '1-3') matchesTeamSize = (min >= 1 && max <= 3);
+                else if (selectedTeamSize === '4-6') matchesTeamSize = (min >= 4 && max <= 6);
+                else if (selectedTeamSize === '7+') matchesTeamSize = (max >= 7);
+            }
+
+            const matchesPayment = selectedPayment === 'All' || selectedPayment === 'Free';
+
+            let matchesSkills = true;
+            if (selectedSkills.length > 0) {
+                const oppSkills = (opp.skills || []).map((s: string) => normalizeText(s));
+                matchesSkills = selectedSkills.some((s) => oppSkills.includes(normalizeText(s)));
+            }
+
+            return matchesSearch && matchesApplied && matchesType && matchesSelectedLocation && matchesStatus && matchesParticipation && matchesTeamSize && matchesPayment && matchesSkills;
         });
 
         const sorted = [...filtered].sort((a, b) => {
@@ -120,7 +150,7 @@ const OpportunitiesList: React.FC = () => {
         });
 
         return sorted;
-    }, [appliedIds, opportunities, searchQuery, selectedLocation, selectedSort, selectedType, showAppliedOnly]);
+    }, [appliedIds, opportunities, searchQuery, selectedLocation, selectedSort, selectedType, showAppliedOnly, selectedStatus, selectedParticipation, selectedTeamSize, selectedPayment, selectedSkills]);
 
     const getTypeColor = (type: string) => {
         switch (type.toLowerCase()) {
@@ -143,7 +173,30 @@ const OpportunitiesList: React.FC = () => {
         setSelectedSort('Newest');
         setSearchQuery('');
         setShowAppliedOnly(false);
+        setSelectedStatus('All');
+        setSelectedParticipation('All');
+        setSelectedTeamSize('All');
+        setSelectedPayment('All');
+        setSelectedSkills([]);
     };
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
+                setShowFilters(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    useEffect(() => {
+        const isJob = selectedType === 'Job' || selectedType === 'Internship';
+        const jobLocations = ['Remote', 'On-site', 'Hybrid', 'All'];
+        const eventLocations = ['Online', 'Offline', 'Hybrid', 'All'];
+        if (isJob && !jobLocations.includes(selectedLocation)) setSelectedLocation('All');
+        if (!isJob && selectedType !== 'All' && !eventLocations.includes(selectedLocation)) setSelectedLocation('All');
+    }, [selectedType]);
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] pb-24 font-sans selection:bg-purple-200">
@@ -266,73 +319,210 @@ const OpportunitiesList: React.FC = () => {
                 </div>
             </div>
 
-            {/* Category System */}
-            <div className="border-b border-slate-200/60 bg-white/70 backdrop-blur-xl sticky top-0 z-40 shadow-sm">
-                <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4 overflow-x-auto scrollbar-hide">
-                    {typeOptions.map((type) => {
-                        const isActive = selectedType === type;
-                        return (
-                            <button
-                                key={type}
-                                onClick={() => setSelectedType(type)}
-                                className={`px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.15em] transition-all flex-shrink-0 flex items-center gap-2 ${isActive
-                                        ? 'bg-slate-900 text-white shadow-xl shadow-slate-900/20 scale-105'
-                                        : 'bg-slate-50 text-slate-500 border border-slate-200/60 hover:bg-white hover:border-slate-300 hover:text-slate-900 hover:shadow-sm hover:-translate-y-0.5'
+                    {/* Category chips */}
+                    <div className="flex items-center gap-3 py-4 flex-wrap">
+                        <div className="flex gap-3 flex-wrap">
+                            {typeOptions.map((type) => (
+                                <button
+                                    key={type}
+                                    onClick={() => setSelectedType(type)}
+                                    className={`px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all border flex-shrink-0 ${
+                                        selectedType === type
+                                        ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/20'
+                                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
                                     }`}
-                            >
-                                {isActive && <div className="w-2 h-2 rounded-full bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.8)]" />}
-                                {type}
-                            </button>
-                        );
-                    })}
-                    <div className="flex-1" />
-                    <button
-                        onClick={() => setIsFiltersOpen((v) => !v)}
-                        className="lg:hidden inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-[0.15em] shadow-lg flex-shrink-0"
-                    >
-                        <Filter size={16} /> Filters
-                    </button>
-                </div>
-            </div>
-
-            <AnimatePresence>
-                {isFiltersOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="lg:hidden overflow-hidden bg-white border-b border-slate-100"
-                    >
-                        <div className="px-6 py-8">
-                            <FilterPanel
-                                selectedType={selectedType}
-                                setSelectedType={setSelectedType}
-                                selectedLocation={selectedLocation}
-                                setSelectedLocation={setSelectedLocation}
-                                selectedSort={selectedSort}
-                                setSelectedSort={setSelectedSort}
-                                showAppliedOnly={showAppliedOnly}
-                                setShowAppliedOnly={setShowAppliedOnly}
-                                resetFilters={resetFilters}
-                                getTypeColor={getTypeColor}
-                            />
+                                >
+                                    {type}
+                                </button>
+                            ))}
                         </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
 
-            {/* Main Content Grid */}
-            <div className="max-w-7xl mx-auto px-6 mt-12 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-10 lg:items-start relative">
-                <div>
-                    {loading ? (
-                        <div className="space-y-6">
-                            {[1, 2, 3].map((i) => (
-                                <div key={i} className="bg-white rounded-[32px] p-8 border border-slate-100 shadow-sm h-[260px] flex gap-8">
-                                    <div className="hidden sm:block w-16 h-16 bg-slate-100 rounded-2xl animate-pulse shrink-0" />
-                                    <div className="flex-1 space-y-6">
-                                        <div className="flex gap-2">
-                                            <div className="w-20 h-6 bg-slate-100 rounded-lg animate-pulse" />
-                                            <div className="w-20 h-6 bg-slate-100 rounded-lg animate-pulse" />
+                        <div className="relative" ref={filtersRef}>
+                            {(() => {
+                                const activeCount = [selectedType !== 'All' && 'Category', selectedLocation !== 'All' && 'Location', selectedStatus !== 'All' && 'Status', selectedParticipation !== 'All' && 'Participation', selectedTeamSize !== 'All' && 'Team Size', selectedPayment !== 'All' && 'Payment', selectedSkills.length > 0 && 'Skills'].filter(Boolean).length;
+                                const isJobType = selectedType === 'Job' || selectedType === 'Internship';
+                                const filterLocationOptions = isJobType ? ['All', 'Remote', 'On-site', 'Hybrid'] : ['All', 'Online', 'Offline', 'Hybrid'];
+                                return (
+                            <>
+                            <button
+                                onClick={() => setShowFilters(!showFilters)}
+                                className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${
+                                    activeCount > 0
+                                    ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/20'
+                                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                                }`}
+                            >
+                                <SlidersHorizontal size={12} />
+                                Filters
+                                {activeCount > 0 && (
+                                    <span className="w-5 h-5 rounded-full bg-purple-500 text-white text-[9px] flex items-center justify-center font-black">{activeCount}</span>
+                                )}
+                            </button>
+
+                            {showFilters && (
+                                <div className="absolute right-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl shadow-slate-900/10 z-50 w-[320px] max-h-[70vh] overflow-y-auto">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                                        <span className="text-sm font-black text-slate-900">All Filters</span>
+                                        <button onClick={() => setShowFilters(false)} className="p-1 hover:bg-slate-50 rounded-lg transition-colors">
+                                            <X size={16} className="text-slate-400" />
+                                        </button>
+                                    </div>
+
+                                    {/* Quick Filters */}
+                                    {isJobType && (
+                                        <div className="px-5 py-4 border-b border-slate-100">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Quick Filters</span>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-slate-200 text-slate-500 hover:border-purple-200 hover:text-purple-600 transition-all">Open to all</button>
+                                                <button className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-slate-200 text-slate-500 hover:border-purple-200 hover:text-purple-600 transition-all">Quick Apply</button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Category */}
+                                    <div className="px-5 py-4 border-b border-slate-100">
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Category</span>
+                                        <div className="flex flex-wrap gap-2">
+                                            {typeOptions.map((cat) => (
+                                                <button
+                                                    key={cat}
+                                                    onClick={() => setSelectedType(cat)}
+                                                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                                                        selectedType === cat
+                                                        ? 'bg-slate-900 text-white border-slate-900'
+                                                        : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                                                    }`}
+                                                >
+                                                    {cat}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Location */}
+                                    <div className="px-5 py-4 border-b border-slate-100">
+                                        <button onClick={() => setExpandedSections(s => ({ ...s, location: !s.location }))} className="w-full flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0">
+                                            Location
+                                            <ChevronRight size={12} className={`transition-transform ${expandedSections.location ? 'rotate-90' : ''}`} />
+                                        </button>
+                                        {expandedSections.location && (
+                                            <div className="mt-3 space-y-1">
+                                                {filterLocationOptions.map((loc) => (
+                                                    <button key={loc} onClick={() => setSelectedLocation(loc)} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedLocation === loc ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>{loc}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Status */}
+                                    <div className="px-5 py-4 border-b border-slate-100">
+                                        <button onClick={() => setExpandedSections(s => ({ ...s, status: !s.status }))} className="w-full flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                            Status
+                                            <ChevronRight size={12} className={`transition-transform ${expandedSections.status ? 'rotate-90' : ''}`} />
+                                        </button>
+                                        {expandedSections.status && (
+                                            <div className="mt-3 space-y-1">
+                                                {['All', 'Active', 'Closed'].map((s) => (
+                                                    <button key={s} onClick={() => setSelectedStatus(s)} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedStatus === s ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>{s}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Team Size (for events) */}
+                                    {!isJobType && (
+                                        <div className="px-5 py-4 border-b border-slate-100">
+                                            <button onClick={() => setExpandedSections(s => ({ ...s, teamSize: !s.teamSize }))} className="w-full flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                Team Size
+                                                <ChevronRight size={12} className={`transition-transform ${expandedSections.teamSize ? 'rotate-90' : ''}`} />
+                                            </button>
+                                            {expandedSections.teamSize && (
+                                                <div className="mt-3 space-y-1">
+                                                    {['All', '1-3', '4-6', '7+'].map((s) => (
+                                                        <button key={s} onClick={() => setSelectedTeamSize(s)} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedTeamSize === s ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>{s}</button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Participation Type */}
+                                    {!isJobType && (
+                                        <div className="px-5 py-4 border-b border-slate-100">
+                                            <button onClick={() => setExpandedSections(s => ({ ...s, participation: !s.participation }))} className="w-full flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                Participation
+                                                <ChevronRight size={12} className={`transition-transform ${expandedSections.participation ? 'rotate-90' : ''}`} />
+                                            </button>
+                                            {expandedSections.participation && (
+                                                <div className="mt-3 space-y-1">
+                                                    {['All', 'INDIVIDUAL', 'TEAM', 'BOTH'].map((s) => (
+                                                        <button key={s} onClick={() => setSelectedParticipation(s)} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedParticipation === s ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>{s}</button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Bottom bar */}
+                                    <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100 bg-slate-50/50">
+                                        <button onClick={() => { resetFilters(); setShowFilters(false); }} className="text-xs font-black text-slate-500 hover:text-slate-700 uppercase tracking-widest transition-colors">Clear All</button>
+                                        <button onClick={() => setShowFilters(false)} className="px-6 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/20">
+                                            Show Results {activeCount > 0 && <span className="ml-1">({activeCount})</span>}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            </>
+                            );
+                        })()}
+                        </div>
+                    </div>
+                </div>
+                </div>
+
+            {/* Content Section */}
+            <div className="max-w-7xl mx-auto px-6 mt-12">
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center py-32 space-y-4">
+                        <div className="relative">
+                            <div className="w-12 h-12 border-4 border-purple-100 border-t-purple-600 rounded-full animate-spin" />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-2 h-2 bg-purple-600 rounded-full animate-pulse" />
+                            </div>
+                        </div>
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Synchronizing Stream...</p>
+                    </div>
+                ) : filteredOpportunities.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                        {filteredOpportunities.map((opp, idx) => (
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.05 }}
+                                key={opp._id}
+                                onClick={() => navigate(`/opportunities/${opp._id}`)}
+                                className="group bg-white rounded-[32px] p-8 border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-purple-900/5 transition-all cursor-pointer flex flex-col justify-between"
+                            >
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-start">
+                                        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${getTypeColor(opp.type)}`}>
+                                            {opp.type}
+                                        </span>
+                                        {appliedIds.includes(opp._id) && (
+                                            <span className="bg-green-500 text-white px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-lg shadow-green-500/20">
+                                                Applied
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <h3 className="text-xl font-black text-slate-900 group-hover:text-purple-600 transition-colors leading-tight">
+                                            {opp.title}
+                                        </h3>
+                                        <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
+                                            <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center text-[10px]">🏢</div>
+                                            {opp.organization}
                                         </div>
                                         <div className="space-y-3">
                                             <div className="w-3/4 h-8 bg-slate-100 rounded-xl animate-pulse" />
@@ -457,165 +647,11 @@ const OpportunitiesList: React.FC = () => {
                                 );
                             })}
                         </div>
-                    ) : (
-                        <div className="bg-white rounded-[40px] p-16 md:p-24 text-center border border-slate-100 shadow-sm flex flex-col items-center justify-center relative overflow-hidden h-[400px]">
-                            <div className="absolute inset-0 bg-gradient-to-b from-purple-50/50 to-transparent pointer-events-none" />
-                            <div className="w-28 h-28 bg-white shadow-2xl shadow-purple-500/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-purple-100 relative z-10">
-                                <Search size={40} className="text-purple-400" />
-                            </div>
-                            <h2 className="text-3xl font-black text-slate-900 mb-4 relative z-10 tracking-tight">No roles found</h2>
-                            <p className="text-slate-500 font-medium text-lg mb-8 max-w-md relative z-10">
-                                We couldn't find any opportunities matching your exact criteria. Clear your filters to explore the ecosystem.
-                            </p>
-                            <button
-                                onClick={resetFilters}
-                                className="relative z-10 px-8 py-4 rounded-xl bg-slate-900 text-white font-black text-xs uppercase tracking-widest hover:bg-purple-600 hover:shadow-xl hover:shadow-purple-600/30 transition-all hover:-translate-y-0.5"
-                            >
-                                Clear All Filters
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                <aside className="hidden lg:block sticky top-32">
-                    <div className="bg-white/80 backdrop-blur-2xl border border-slate-200/60 rounded-[32px] shadow-xl shadow-slate-200/30 p-8 space-y-8 relative overflow-hidden">
-                        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white to-transparent opacity-50" />
-                        <FilterPanel
-                            selectedType={selectedType}
-                            setSelectedType={setSelectedType}
-                            selectedLocation={selectedLocation}
-                            setSelectedLocation={setSelectedLocation}
-                            selectedSort={selectedSort}
-                            setSelectedSort={setSelectedSort}
-                            showAppliedOnly={showAppliedOnly}
-                            setShowAppliedOnly={setShowAppliedOnly}
-                            resetFilters={resetFilters}
-                            getTypeColor={getTypeColor}
-                        />
+                        <h2 className="text-2xl font-black text-slate-900 mb-2">No opportunities found</h2>
+                        <p className="text-slate-400 font-bold mb-8">Try adjusting your filters or search terms</p>
                     </div>
-                </aside>
-            </div>
-        </div>
-    );
-};
+                )}
 
-interface FilterPanelProps {
-    selectedType: string;
-    setSelectedType: React.Dispatch<React.SetStateAction<string>>;
-    selectedLocation: string;
-    setSelectedLocation: React.Dispatch<React.SetStateAction<string>>;
-    selectedSort: string;
-    setSelectedSort: React.Dispatch<React.SetStateAction<string>>;
-    showAppliedOnly: boolean;
-    setShowAppliedOnly: React.Dispatch<React.SetStateAction<boolean>>;
-    resetFilters: () => void;
-    getTypeColor: (type: string) => string;
-}
-
-const FilterPanel: React.FC<FilterPanelProps> = ({
-    selectedType,
-    setSelectedType,
-    selectedLocation,
-    setSelectedLocation,
-    selectedSort,
-    setSelectedSort,
-    showAppliedOnly,
-    setShowAppliedOnly,
-    resetFilters,
-    getTypeColor,
-}) => {
-    return (
-        <div className="space-y-8">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-5">
-                <div>
-                    <h2 className="text-xl font-black text-slate-900 tracking-tight">Discovery Filters</h2>
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-500 mt-1">Refine your search</p>
-                </div>
-                <button
-                    onClick={resetFilters}
-                    className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 hover:text-slate-900 transition-colors bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg shadow-sm"
-                >
-                    Reset
-                </button>
-            </div>
-
-            <div className="space-y-4">
-                <label className="block text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
-                    <Briefcase size={14} className="text-slate-300" /> Type
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                    {typeOptions.map((type) => {
-                        const isActive = selectedType === type;
-                        return (
-                            <button
-                                key={type}
-                                onClick={() => setSelectedType(type)}
-                                className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] border-2 transition-all text-left truncate ${isActive
-                                        ? 'bg-slate-900 text-white border-slate-900 shadow-md shadow-slate-900/10'
-                                        : `bg-white border-slate-100 hover:border-slate-300 ${getTypeColor(type)} hover:shadow-sm`
-                                    }`}
-                            >
-                                {type}
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-                <label className="block text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
-                    <MapPin size={14} className="text-slate-300" /> Location
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                    {locationOptions.map((location) => {
-                        const isActive = selectedLocation === location;
-                        return (
-                            <button
-                                key={location}
-                                onClick={() => setSelectedLocation(location)}
-                                className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] border-2 transition-all ${isActive
-                                        ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-600/15'
-                                        : 'bg-white border-slate-100 text-slate-500 hover:border-slate-300 hover:shadow-sm'
-                                    }`}
-                            >
-                                {location}
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-                <label className="block text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
-                    <Clock size={14} className="text-slate-300" /> Sort by
-                </label>
-                <div className="relative">
-                    <select
-                        value={selectedSort}
-                        onChange={(e) => setSelectedSort(e.target.value)}
-                        className="w-full px-5 py-4 rounded-xl border-2 border-slate-100 bg-slate-50 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-300 transition-all appearance-none shadow-sm cursor-pointer hover:border-slate-200"
-                    >
-                        {sortOptions.map((sort) => (
-                            <option key={sort} value={sort}>{sort}</option>
-                        ))}
-                    </select>
-                    <ChevronRight size={16} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" />
-                </div>
-            </div>
-
-            <div className="pt-6">
-                <button
-                    onClick={() => setShowAppliedOnly((value) => !value)}
-                    className={`w-full px-5 py-4 rounded-xl text-[11px] font-black uppercase tracking-[0.15em] border-2 transition-all flex justify-between items-center ${showAppliedOnly
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-sm'
-                            : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300 shadow-sm'
-                        }`}
-                >
-                    <span>{showAppliedOnly ? 'Applied Only Active' : 'Show Applied Only'}</span>
-                    <div className={`w-10 h-6 rounded-full p-1 transition-colors shadow-inner ${showAppliedOnly ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                        <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${showAppliedOnly ? 'translate-x-4' : 'translate-x-0'}`} />
-                    </div>
-                </button>
             </div>
         </div>
     );

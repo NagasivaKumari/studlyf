@@ -11,6 +11,11 @@ export interface IStageConfig {
     judgeIds?: string[];
     quiz_id?: string;
     pass_mark?: number;
+    team_min_size?: number;
+    team_max_size?: number;
+    allow_individual_registration?: boolean;
+    allow_cross_college_teams?: boolean;
+    team_formation_instructions?: string;
 }
 
 export interface IStageCommunication {

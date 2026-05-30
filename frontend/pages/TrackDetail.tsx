@@ -32,7 +32,14 @@ const TrackDetail: React.FC = () => {
     };
 
     if (loading) {
-        return <div className="h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-gray-200 border-t-purple-600 rounded-full animate-spin" /></div>;
+        return (
+            <div className="min-h-screen bg-[#FAFAFA] pt-32 px-6">
+                <div className="max-w-5xl mx-auto space-y-8">
+                    <div className="w-64 h-12 bg-slate-200 rounded-2xl animate-pulse"></div>
+                    <div className="w-full h-64 bg-slate-100 rounded-[3rem] animate-pulse"></div>
+                </div>
+            </div>
+        );
     }
 
     if (!detail) {

@@ -6,6 +6,8 @@ import {
     MapPin, 
     ChevronLeft, 
     ChevronRight,
+    ChevronDown,
+    ChevronUp,
     CheckCircle2, 
     Upload, 
     Send,
@@ -48,6 +50,7 @@ import { useRegistrationState } from '../../utils/useRegistrationState';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
 import SubmissionForm from '../../components/opportunities/SubmissionForm';
+import AvatarImage from '../../components/AvatarImage';
 import TeamManager from '../../components/opportunities/TeamManager';
 import {
     formatOpportunityLocation,
@@ -128,6 +131,7 @@ const OpportunityDetails: React.FC = () => {
     const [submitted, setSubmitted] = useState(false);
     const [isApplied, setIsApplied] = useState(false);
     const [timeLeftStr, setTimeLeftStr] = useState('');
+    const [sidebarProfilePhoto, setSidebarProfilePhoto] = useState<string | null>(null);
 
     const [formData, setFormData] = useState({
         name: user?.full_name || user?.name || '',
@@ -141,6 +145,11 @@ const OpportunityDetails: React.FC = () => {
     const [myApplication, setMyApplication] = useState<any>(null);
     const [related, setRelated] = useState<any[]>([]);
     const [favorited, setFavorited] = useState(false);
+    const [reviews, setReviews] = useState<any[]>([]);
+    const [reviewForm, setReviewForm] = useState({ rating: 0, text: '' });
+    const [reviewSubmitting, setReviewSubmitting] = useState(false);
+    const [reviewSuccess, setReviewSuccess] = useState(false);
+    const [reviewExpanded, setReviewExpanded] = useState(false);
     const [descExpanded, setDescExpanded] = useState(false);
     const [activeSection, setActiveSection] = useState<'details' | 'dates' | 'prizes' | 'reviews' | 'faq' | 'submissions' | 'leaderboard'>('details');
     const getFieldAllowedExtensions = (field: RegField) => {
@@ -216,9 +225,14 @@ const OpportunityDetails: React.FC = () => {
     const [formConfig, setFormConfig] = useState<any>(null);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [uploadingField, setUploadingField] = useState<string | null>(null);
+    const [teamAction, setTeamAction] = useState<'individual' | 'create' | 'join'>('individual');
+    const [teamName, setTeamName] = useState('');
+    const [inviteCode, setInviteCode] = useState('');
+    const [teamInviteCodeResponse, setTeamInviteCodeResponse] = useState<string | null>(null);
     const eventId = String(opportunity?.event_link_id || opportunity?.event_id || id || '');
 
     const computeStageStatus = (stage: any) => {
+        if (stage?.status) return stage.status;
         const now = new Date();
         const startRaw = stage?.startDate || stage?.start_date;
         const endRaw = stage?.endDate || stage?.end_date;
@@ -270,7 +284,21 @@ const OpportunityDetails: React.FC = () => {
         }
     }, [id, opportunity?.title, opportunity?.name, opportunity?.location, opportunity?.venue, opportunity?.opportunity_title, opportunity?.opportunityName]);
 
+    // Fetch user profile photo & gender for sidebar
+    useEffect(() => {
+        if (!user?.user_id) return;
+        fetch(`${API_BASE_URL}/api/user/${user.user_id}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (data) {
+                    setSidebarProfilePhoto(data.profilePhoto || null);
+                }
+            })
+            .catch(() => {});
+    }, [user?.user_id]);
+
     // Real-time countdown timer effect
+
     useEffect(() => {
         if (!opportunity?.deadline) {
             setTimeLeftStr('');
@@ -338,7 +366,7 @@ const OpportunityDetails: React.FC = () => {
                 const oppUrl = user?.user_id
                     ? `${API_BASE_URL}/api/opportunities/${id}?applicant_user_id=${encodeURIComponent(user.user_id)}`
                     : `${API_BASE_URL}/api/opportunities/${id}`;
-                const [oppRes, appRes, subRes] = await Promise.all([
+                const [oppRes, appRes, subRes, reviewsRes] = await Promise.all([
                     fetch(oppUrl, { headers: { ...authHeaders() } }),
                     user
                         ? fetch(`${API_BASE_URL}/api/opportunities/me/applications`, {
@@ -350,6 +378,7 @@ const OpportunityDetails: React.FC = () => {
                               headers: { ...authHeaders() },
                           })
                         : Promise.resolve({ ok: false, json: async () => ({ hasSubmitted: false }) } as Response),
+                    fetch(`${API_BASE_URL}/api/opportunities/${id}/reviews`)
                 ]);
 
                 const opp = await oppRes.json();
@@ -360,6 +389,18 @@ const OpportunityDetails: React.FC = () => {
                     } catch {
                         apps = [];
                     }
+                }
+                
+                // Extract reviewsRes
+                if (reviewsRes && reviewsRes.ok) {
+                    try {
+                        const rData = await reviewsRes.json();
+                        setReviews(rData.reviews || []);
+                        if (opp && oppRes.ok) {
+                            opp.average_rating = rData.average_rating;
+                            opp.total_reviews = rData.total_reviews;
+                        }
+                    } catch(e) {}
                 }
 
                 if (!oppRes.ok) {
@@ -571,6 +612,50 @@ const OpportunityDetails: React.FC = () => {
         }
     };
 
+    const handleApply = async () => {
+        if (!user) {
+            navigate(`/auth?redirect=${encodeURIComponent(location.pathname)}`);
+            return;
+        }
+        setShowRegistrationModal(true);
+    };
+
+    const handleReviewSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (reviewForm.rating === 0) return;
+        setReviewSubmitting(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/opportunities/${id}/reviews`, {
+                method: 'POST',
+                headers: {
+                    ...authHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ rating: reviewForm.rating, review_text: reviewForm.text })
+            });
+            if (res.ok) {
+                setReviewSuccess(true);
+                // Refresh reviews
+                const rRes = await fetch(`${API_BASE_URL}/api/opportunities/${id}/reviews`);
+                if (rRes.ok) {
+                    const rData = await rRes.json();
+                    setReviews(rData.reviews || []);
+                    if (opportunity) {
+                        setOpportunity({
+                            ...opportunity,
+                            average_rating: rData.average_rating,
+                            total_reviews: rData.total_reviews
+                        });
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Failed to submit review", err);
+        } finally {
+            setReviewSubmitting(false);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) {
@@ -611,16 +696,24 @@ const OpportunityDetails: React.FC = () => {
                     },
                     body: JSON.stringify({
                         profile_data,
-                        custom_answers
+                        custom_answers,
+                        ...(teamAction === 'create' && teamName ? { team_action: 'CREATE', team_payload: teamName } : {}),
+                        ...(teamAction === 'join' && inviteCode ? { team_action: 'JOIN', team_payload: inviteCode } : {})
                     }),
                 });
 
                 const data = await response.json();
                 if (response.ok) {
                     setRegistrationStatus(data.reg_status);
+                    if (data.team_invite_code) {
+                        setTeamInviteCodeResponse(data.team_invite_code);
+                    }
                     setSubmitted(true);
                     setIsApplied(true);
-                    setShowRegistrationModal(false);
+                    // Don't close modal immediately so they can see their invite code
+                    if (teamAction !== 'create') {
+                        setShowRegistrationModal(false);
+                    }
                     alert("Registration submitted successfully!");
                 } else {
                     alert(`Registration failed: ${data.detail || 'Unknown error'}`);
@@ -690,8 +783,33 @@ const OpportunityDetails: React.FC = () => {
 
     if (loading) {
         return (
-            <div className="h-screen flex items-center justify-center bg-[#F8FAFC]">
-                <div className="w-12 h-12 border-4 border-purple-100 border-t-purple-600 rounded-full animate-spin" />
+            <div className="min-h-screen bg-[#F8FAFC] pb-32">
+                <div className="bg-slate-900 pt-32 pb-20 px-6 border-b border-slate-800">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="flex items-center gap-4 mb-8 opacity-50">
+                            <div className="w-16 h-16 bg-slate-800 rounded-2xl animate-pulse"></div>
+                            <div className="space-y-3 flex-1">
+                                <div className="w-32 h-6 bg-slate-800 rounded animate-pulse"></div>
+                                <div className="w-48 h-4 bg-slate-800 rounded animate-pulse"></div>
+                            </div>
+                        </div>
+                        <div className="w-3/4 h-12 bg-slate-800 rounded-lg animate-pulse mb-6"></div>
+                        <div className="flex gap-4">
+                            <div className="w-24 h-8 bg-slate-800 rounded-full animate-pulse"></div>
+                            <div className="w-24 h-8 bg-slate-800 rounded-full animate-pulse"></div>
+                        </div>
+                    </div>
+                </div>
+                <div className="max-w-4xl mx-auto px-6 -mt-8 relative z-10">
+                    <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 flex flex-col md:flex-row gap-8">
+                        <div className="flex-1 space-y-6">
+                            <div className="w-full h-4 bg-slate-100 rounded animate-pulse"></div>
+                            <div className="w-full h-4 bg-slate-100 rounded animate-pulse"></div>
+                            <div className="w-3/4 h-4 bg-slate-100 rounded animate-pulse"></div>
+                        </div>
+                        <div className="w-full md:w-80 h-48 bg-slate-100 rounded-2xl animate-pulse shrink-0"></div>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -812,6 +930,13 @@ const OpportunityDetails: React.FC = () => {
         const isSubmissionStage = stype === 'SUBMISSION' || sname.includes('SUBMISSION');
         const regStatusStr = (effectiveRegStatus || 'NOT_REGISTERED').toUpperCase();
         const isRegistrationStage = stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION');
+
+        // Results stage → open results page in new tab (public)
+        const stageStatus = computeStageStatus(s);
+        if (stageStatus === 'results' || stype === 'RESULT' || sname.includes('RESULT')) {
+            window.open(`/opportunities/${encodeURIComponent(String(id))}/results`, '_blank', 'noopener,noreferrer');
+            return;
+        }
 
         if (isRegistrationStage) {
             const extLink = opportunity?.external_registration_link || opportunity?.externalRegistrationLink;
@@ -1601,6 +1726,7 @@ const OpportunityDetails: React.FC = () => {
                                                                     <h3 className="font-black text-slate-900 text-lg">{s.name || `Stage ${i + 1}`}</h3>
                                                                     {stageStatus === 'active' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-purple-100 text-purple-700">Live</span>}
                                                                     {stageStatus === 'completed' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">Completed</span>}
+                                                                    {stageStatus === 'results' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-amber-100 text-amber-700">Results</span>}
                                                                 </div>
                                                                 {s.type ? (
                                                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
@@ -1632,6 +1758,23 @@ const OpportunityDetails: React.FC = () => {
                                                                 )}
                                                             </div>
                                                         </div>
+
+                                                        {/* Winners for stages with results */}
+                                                        {stageStatus === 'results' && eventLeaderboard.length > 0 && (
+                                                            <div className="mt-3 pt-3 border-t border-slate-100">
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 mb-2">Winners</p>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {eventLeaderboard.slice(0, 3).map((entry, idx) => (
+                                                                        <div key={entry.team_id || idx} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-800">
+                                                                            <span className={idx === 0 ? 'text-yellow-600' : idx === 1 ? 'text-slate-400' : 'text-amber-700'}>
+                                                                                {idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}
+                                                                            </span>
+                                                                            {entry.team_name || entry.name || `Team ${idx + 1}`}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
 
                                                         {/* Per-stage FAQ link (scrolls to FAQ section) */}
                                                         <div className="mt-3 pt-3 border-t border-slate-100">
@@ -1845,18 +1988,14 @@ const OpportunityDetails: React.FC = () => {
                                                                 <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-400 shadow-[4px_0_24px_rgba(16,185,129,0.4)] z-10" />
                                                             )}
                                                             
-                                                            {/* Left column: Amount / Admin Icon / Type-mapped Icon (No static fallback) */}
-                                                            {(isCash || iconUrl || detectedType) && (
+                                                            {/* Left column: Type-based icon (Cash / Certificate / Trophy / Placement) */}
+                                                            {(isCash || detectedType) && (
                                                                 <>
                                                                     <div className={`w-36 shrink-0 flex flex-col justify-center items-center py-6 px-4 ${isCash ? 'bg-gradient-to-r from-emerald-50/40 to-transparent pl-6' : ''}`}>
                                                                         {isCash ? (
                                                                             <div className="text-center relative z-20">
                                                                                 <p className="text-xl font-black text-emerald-700 tracking-tight">{amountStr || 'CASH'}</p>
                                                                                 <p className="text-lg font-black text-emerald-900 uppercase tracking-widest mt-0.5">CASH</p>
-                                                                            </div>
-                                                                        ) : iconUrl ? (
-                                                                            <div className="relative z-20 h-14 w-14 flex items-center justify-center">
-                                                                                <img src={iconUrl} alt="" className="max-w-full max-h-full object-contain" />
                                                                             </div>
                                                                         ) : detectedType === 'placement' ? (
                                                                             <div className="relative z-20 h-14 w-14 flex items-center justify-center">
@@ -1883,11 +2022,16 @@ const OpportunityDetails: React.FC = () => {
                                                                 </>
                                                             )}
 
-                                                            {/* Middle column: Title and Description */}
+                                                            {/* Middle column: Admin icon URL + Title + Description */}
                                                             <div className={`flex-1 py-5 ${(isCash || iconUrl || detectedType) ? 'px-6' : 'px-8'}`}>
-                                                                <p className="text-lg font-bold text-slate-800">
-                                                                    {p.rank || p.title || p.label || `Prize ${idx + 1}`}
-                                                                </p>
+                                                                <div className="flex items-center gap-3">
+                                                                    {iconUrl && (
+                                                                        <img src={iconUrl} alt="" className="w-9 h-9 object-contain shrink-0" />
+                                                                    )}
+                                                                    <p className="text-lg font-bold text-slate-800">
+                                                                        {p.rank || p.title || p.label || `Prize ${idx + 1}`}
+                                                                    </p>
+                                                                </div>
                                                                 {p.description ? (
                                                                     <p className="text-sm text-slate-500 font-medium mt-1 whitespace-pre-wrap">
                                                                         {String(p.description)}
@@ -1935,35 +2079,18 @@ const OpportunityDetails: React.FC = () => {
                                     </h2>
                                     <div className="space-y-3">
                                         {contactList.map((c: any, idx: number) => {
-                                            const name = String(c?.name || c?.full_name || c?.title || 'Organiser').trim();
                                             const email = String(c?.email || '').trim();
-                                            const phone = String(c?.phone || c?.mobile || '').trim();
-                                            return (
-                                                <div
+                                            return email ? (
+                                                <button
                                                     key={c?.id || `${idx}`}
-                                                    className="p-4 rounded-xl bg-slate-50 border border-slate-100"
+                                                    type="button"
+                                                    onClick={() => window.location.href = `mailto:${email}`}
+                                                    className="w-full p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-3 hover:bg-slate-100 transition-colors text-left"
                                                 >
-                                                    <p className="font-black text-slate-900">{name}</p>
-                                                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold text-slate-600">
-                                                        {email ? (
-                                                            <a
-                                                                className="inline-flex items-center gap-2 hover:text-purple-600"
-                                                                href={`mailto:${email}`}
-                                                            >
-                                                                <Mail size={16} /> {email}
-                                                            </a>
-                                                        ) : null}
-                                                        {phone ? (
-                                                            <a
-                                                                className="inline-flex items-center gap-2 hover:text-purple-600"
-                                                                href={`tel:${phone}`}
-                                                            >
-                                                                <Phone size={16} /> {phone}
-                                                            </a>
-                                                        ) : null}
-                                                    </div>
-                                                </div>
-                                            );
+                                                    <Mail size={16} className="text-purple-500 shrink-0" />
+                                                    <span className="text-sm font-semibold text-slate-700 hover:text-purple-600">{email}</span>
+                                                </button>
+                                            ) : null;
                                         })}
                                     </div>
                                 </section>
@@ -2199,21 +2326,115 @@ const OpportunityDetails: React.FC = () => {
                         ) : null}
 
                         <div ref={reviewsRef}>
-                            <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
-                                <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-4">
-                                    <span className="w-1 h-7 bg-purple-600 rounded-full" />
-                                    Feedback &amp; rating
-                                </h2>
-                                <h3 className="text-sm font-black text-slate-800 mb-2">Write a review</h3>
-                                {isApplied ? (
-                                    <p className="text-slate-600 text-sm font-medium">
-                                        Thanks for applying — you can share feedback with the host from your applications
-                                        dashboard when messaging is enabled.
-                                    </p>
-                                ) : (
-                                    <p className="text-slate-600 text-sm font-medium">
-                                        Register for this opportunity to give your feedback and review.
-                                    </p>
+                            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setReviewExpanded(prev => !prev)}
+                                    className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50/50 transition-colors"
+                                >
+                                    <h2 className="text-lg font-black text-slate-900 flex items-center gap-3">
+                                        <span className="w-1 h-7 bg-purple-600 rounded-full" />
+                                        Feedback &amp; rating
+                                    </h2>
+                                    <div className="flex items-center gap-3">
+                                        {opportunity?.average_rating > 0 && (
+                                            <div className="flex items-center gap-1 bg-amber-50 text-amber-700 px-3 py-1 rounded-full">
+                                                <Star size={14} className="fill-amber-400 stroke-amber-400" />
+                                                <span className="text-sm font-black">{opportunity.average_rating.toFixed(1)}</span>
+                                                <span className="text-[10px] uppercase font-bold ml-1">({opportunity.total_reviews})</span>
+                                            </div>
+                                        )}
+                                        {reviewExpanded ? <ChevronUp size={18} className="text-slate-400" /> : <ChevronDown size={18} className="text-slate-400" />}
+                                    </div>
+                                </button>
+
+                                {reviewExpanded && (
+                                    <div className="px-6 md:px-8 pb-6 md:pb-8 space-y-6">
+                                        {isApplied && !reviewSuccess ? (
+                                            <form onSubmit={handleReviewSubmit} className="border border-slate-100 bg-slate-50 p-4 md:p-6 rounded-2xl">
+                                                <h3 className="text-sm font-black text-slate-800 mb-4">Write your review</h3>
+                                                <div className="flex items-center gap-2 mb-4">
+                                                    {[1, 2, 3, 4, 5].map(num => (
+                                                        <button 
+                                                            key={num} type="button" 
+                                                            onClick={() => setReviewForm(prev => ({ ...prev, rating: num }))}
+                                                            className={`p-1 hover:scale-110 transition-transform ${reviewForm.rating >= num ? 'text-amber-400' : 'text-slate-300'}`}
+                                                        >
+                                                            <Star size={28} className={reviewForm.rating >= num ? 'fill-amber-400' : ''} />
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <textarea
+                                                    rows={3}
+                                                    required
+                                                    value={reviewForm.text}
+                                                    onChange={e => setReviewForm(prev => ({ ...prev, text: e.target.value }))}
+                                                    placeholder="What did you think about this opportunity? Your feedback helps others!"
+                                                    className="w-full bg-white border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-600/20 focus:border-purple-600 transition-all resize-none mb-4"
+                                                />
+                                                <div className="flex justify-end">
+                                                    <button 
+                                                        type="submit" 
+                                                        disabled={reviewSubmitting || reviewForm.rating === 0}
+                                                        className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-black rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                                    >
+                                                        {reviewSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                                                        Submit Review
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        ) : reviewSuccess ? (
+                                            <div className="bg-emerald-50 text-emerald-700 p-4 rounded-2xl border border-emerald-100 flex items-center gap-3">
+                                                <CheckCircle2 className="shrink-0" />
+                                                <p className="text-sm font-bold">Thanks for your feedback! Your review has been published.</p>
+                                            </div>
+                                        ) : !isApplied ? (
+                                            <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowRegistrationModal(true);
+                                                setReviewExpanded(false);
+                                            }}
+                                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-center hover:bg-slate-100 transition-colors cursor-pointer"
+                                        >
+                                            <p className="text-slate-500 text-sm font-medium">
+                                                Register for this opportunity to give your feedback and review.
+                                            </p>
+                                        </button>
+                                        ) : null}
+
+                                        <div className="space-y-4">
+                                            {reviews.length > 0 ? (
+                                                reviews.map(rev => (
+                                                    <div key={rev._id} className="border border-slate-100 rounded-2xl p-5 hover:border-slate-200 transition-colors">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-black text-xs uppercase">
+                                                                    {rev.user_name?.charAt(0) || 'U'}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-sm font-black text-slate-900">{rev.user_name}</p>
+                                                                    <p className="text-[10px] font-bold text-slate-500">
+                                                                        {new Date(rev.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-0.5">
+                                                                {[1, 2, 3, 4, 5].map(num => (
+                                                                    <Star key={num} size={14} className={rev.rating >= num ? "fill-amber-400 stroke-amber-400" : "fill-slate-100 stroke-slate-200"} />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <p className="text-sm font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">
+                                                            {rev.review_text}
+                                                        </p>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <p className="text-center text-sm font-bold text-slate-400 py-8">No reviews yet. Be the first to share your experience!</p>
+                                            )}
+                                        </div>
+                                    </div>
                                 )}
                             </section>
                         </div>
@@ -2226,11 +2447,11 @@ const OpportunityDetails: React.FC = () => {
                         {!hideExtras ? (
                             <div ref={faqRef}>
                                 {opportunity.faqs && opportunity.faqs.length > 0 ? (
-                                    <EventFAQ faqs={opportunity.faqs} title="Frequently Asked Questions" />
+                                    <EventFAQ faqs={opportunity.faqs} title="Frequently Asked Questions" opportunityTitle={opportunity.title} />
                                 ) : (
                                     <section className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
                                         <div className="flex border-b border-slate-200">
-                                            <button className="flex-1 py-4 text-center font-black text-[#d97706] border-b-2 border-[#d97706] bg-orange-50/30">
+                                            <button className="flex-1 py-4 text-center font-black text-purple-600 border-b-2 border-purple-600 bg-purple-50/30">
                                                 FAQs
                                             </button>
                                             <button className="flex-1 py-4 text-center font-bold text-slate-500 hover:text-slate-800 transition-colors">
@@ -2257,7 +2478,7 @@ const OpportunityDetails: React.FC = () => {
                                             </div>
                                             <div className="mt-8 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                                                 <p className="text-sm font-bold text-slate-600">
-                                                    Can't find the answer you are looking for? <span className="text-[#d97706] cursor-pointer hover:underline">Ask a question (Be specific)</span>
+                                                    Can't find the answer you are looking for? <span className="text-purple-600 cursor-pointer hover:underline">Ask a question (Be specific)</span>
                                                 </p>
                                             </div>
                                         </div>
@@ -2305,6 +2526,19 @@ const OpportunityDetails: React.FC = () => {
                             </section>
                         ) : null}
 
+                        {/* Breadcrumb */}
+                        <nav className="flex items-center gap-1.5 text-xs text-slate-400 font-medium pt-2">
+                            <Link to="/" className="hover:text-purple-600 transition-colors flex items-center gap-1">
+                                <Home size={12} />
+                            </Link>
+                            <span className="text-slate-300">/</span>
+                            <Link to="/opportunities" className="hover:text-purple-600 transition-colors capitalize">
+                                {opportunity.category || opportunity.opportunity_type || 'Opportunity'}
+                            </Link>
+                            <span className="text-slate-300">/</span>
+                            <span className="text-slate-500 truncate max-w-[200px]">{opportunity.title}</span>
+                        </nav>
+
                         <footer className="text-xs text-slate-500 font-medium space-y-3 pt-2 pb-4">
                             <p>
                                 Updated on:{' '}
@@ -2326,8 +2560,8 @@ const OpportunityDetails: React.FC = () => {
                             </p>
                             <button
                                 type="button"
-                                onClick={() => window.open('mailto:support@studlyf.com?subject=Report Issue&body=' + encodeURIComponent(`Issue with: ${opportunity.title}\n${window.location.href}`))}
-                                className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors flex items-center gap-1.5"
+                                onClick={() => window.location.href = 'mailto:support@studlyf.com?subject=Report Issue&body=' + encodeURIComponent(`Issue with: ${opportunity.title}\n${window.location.href}`)}
+                                className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors flex items-center gap-1.5 cursor-pointer"
                             >
                                 <AlertCircle size={12} /> Report an Issue
                             </button>
@@ -2353,21 +2587,39 @@ const OpportunityDetails: React.FC = () => {
                             <div className="bg-white rounded-[2rem] border-2 border-slate-200 shadow-sm overflow-hidden relative z-0 mt-3 pt-6 pb-6 px-6">
                                 {/* User Info Mini */}
                                 {user ? (
-                                    <div className="flex items-center gap-4 mb-5 p-2">
-                                        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center border-2 border-blue-200 shrink-0 overflow-hidden">
-                                            {user.profile_pic ? (
-                                                <img src={user.profile_pic} alt="Avatar" className="w-full h-full object-cover" />
+                                    <div className="flex items-center gap-3 mb-5 p-2">
+                                        <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center border-2 border-purple-200 shrink-0 overflow-hidden">
+                                            {sidebarProfilePhoto ? (
+                                                <AvatarImage src={sidebarProfilePhoto} alt="Avatar" className="w-full h-full object-cover" />
                                             ) : (
-                                                <span className="text-blue-700 font-black text-xl">{user.name ? user.name.charAt(0).toUpperCase() : 'U'}</span>
+                                                <span className="text-purple-700 font-black text-xl">
+                                                    {user.full_name ? user.full_name.charAt(0).toUpperCase() : 'U'}
+                                                </span>
                                             )}
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="font-black text-slate-800 text-lg leading-tight truncate">{user.name || 'Student'}</p>
-                                            {/* Decorative squiggly line from reference image */}
-                                            <div className="w-3/4 h-2 mt-1 bg-[#ff6b00] rounded-full opacity-90 transform -skew-x-12"></div>
+                                            <p className="font-black text-slate-800 text-base leading-tight truncate">{user.full_name || 'Student'}</p>
+                                            {user.email && (
+                                                <p className="text-xs text-slate-400 font-medium truncate mt-0.5">{user.email}</p>
+                                            )}
                                         </div>
                                     </div>
-                                ) : null}
+                                ) : (
+                                    <div className="flex items-center gap-3 mb-5 p-2">
+                                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center border-2 border-slate-200 shrink-0">
+                                            <span className="text-slate-400 font-black text-xl">?</span>
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-semibold text-slate-600 text-sm leading-snug">
+                                                Hi! Please{' '}
+                                                <Link to="/login" className="text-purple-600 font-bold hover:underline">login</Link>
+                                                {' '}or{' '}
+                                                <Link to="/register" className="text-purple-600 font-bold hover:underline">register</Link>
+                                            </p>
+                                            <p className="text-[11px] text-slate-400 mt-0.5">to participate in this opportunity</p>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Main CTA Button */}
                                 {(() => {
@@ -2386,7 +2638,7 @@ const OpportunityDetails: React.FC = () => {
                                             );
                                         case 'closed':
                                             return (
-                                                <button type="button" disabled className="w-full py-3.5 bg-slate-400 text-white/80 rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2 cursor-not-allowed">
+                                                <button type="button" disabled className="w-full py-3.5 bg-amber-700 text-white rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2 cursor-not-allowed opacity-90">
                                                     <XCircle size={18} /> {regCTA.label}
                                                 </button>
                                             );
@@ -2412,10 +2664,7 @@ const OpportunityDetails: React.FC = () => {
                                     }
                                 })()}
 
-                                <div className="mt-5 flex items-center justify-center gap-2 text-slate-600 font-semibold text-sm">
-                                    <span className="cursor-pointer hover:text-slate-900 transition-colors">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-                                    </span>
+                                <div className="mt-5 flex items-center justify-center text-slate-600 font-semibold text-sm">
                                     <span><span className="text-slate-800 font-bold">{(stats.participants || 0).toLocaleString()}</span> Registered</span>
                                 </div>
                             </div>
@@ -2449,21 +2698,21 @@ const OpportunityDetails: React.FC = () => {
                             )}
                         </div>
 
-                        {/* Powered by Studlyf */}
-                        <div className="pt-4 pb-2 text-center">
-                            <a href="/" className="inline-flex items-center gap-2 text-[11px] font-bold text-slate-400 hover:text-purple-600 transition-colors">
-                                <img src="/images/studlyf_secondary.png" alt="Studlyf" className="h-5 w-auto" />
-                                <span>Powered by Studlyf</span>
-                            </a>
-                            <p className="text-[10px] text-slate-300 font-medium mt-1.5">
-                                Best Viewed in Chrome, Opera, Mozilla, EDGE & Safari
-                            </p>
-                            <p className="text-[10px] text-slate-300 font-medium mt-0.5">
-                                Copyright &copy; {new Date().getFullYear()} FLIVE Consulting Pvt Ltd
-                            </p>
-                        </div>
+
                     </div>
                 )}
+            </div>
+
+            {/* Full-width Bottom Footer */}
+            <div className="border-t border-slate-100 mt-6 pt-6 pb-8 text-center space-y-1.5">
+                <a href="/" className="inline-flex items-center gap-2 text-[12px] font-bold text-slate-500 hover:text-purple-600 transition-colors">
+                    <img src="/images/studlyf_secondary.png" alt="Studlyf" className="h-5 w-auto" />
+                    <span>Powered by Studlyf</span>
+                </a>
+                <p className="text-[11px] text-slate-400 font-medium">
+                    Best Viewed in Chrome, Opera, Mozilla, EDGE &amp; Safari.
+                    Copyright &copy; {new Date().getFullYear()} FLIVE Consulting Pvt Ltd &mdash; All rights reserved.
+                </p>
             </div>
 
             {/* Registration Modal */}
@@ -2503,10 +2752,24 @@ const OpportunityDetails: React.FC = () => {
                                     <CheckCircle2 size={48} className="text-emerald-500 mb-4" />
                                     <h3 className="text-lg font-black text-slate-900">Registration Submitted!</h3>
                                     <p className="text-sm text-slate-500 mt-2">
-                                        {registrationStatus === 'PENDING_APPROVAL' 
-                                            ? 'Your registration is under host review. Downstream timeline rounds will unlock once approved!'
-                                            : 'Your registration is approved. All competition assessment stages are unlocked!'}
-                                    </p>
+                                            {registrationStatus === 'PENDING_APPROVAL' 
+                                                ? 'Your registration is under host review. Downstream timeline rounds will unlock once approved!'
+                                                : 'Your registration is approved. All competition assessment stages are unlocked!'}
+                                        </p>
+                                        
+                                        {teamInviteCodeResponse && (
+                                            <div className="mt-6 p-4 bg-purple-50 border-2 border-purple-100 rounded-2xl w-full max-w-sm mx-auto">
+                                                <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Your Team Invite Code</p>
+                                                <div className="flex items-center justify-between bg-white border border-purple-200 rounded-xl p-2 px-4 shadow-sm">
+                                                    <span className="font-black text-lg text-slate-800 tracking-[0.2em]">{teamInviteCodeResponse}</span>
+                                                    <button type="button" onClick={() => { navigator.clipboard.writeText(teamInviteCodeResponse); alert("Code copied!"); }} className="p-2 text-purple-600 hover:bg-purple-100 rounded-lg transition-colors" title="Copy Code">
+                                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                                    </button>
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 font-bold mt-2">Share this code with your teammates so they can join!</p>
+                                            </div>
+                                        )}
+
                                     <button
                                         onClick={() => { setShowRegistrationModal(false); navigate(`/opportunities/${id}`); }}
                                         className="mt-6 px-6 py-3 bg-[#6C3BFF] text-white rounded-xl font-black text-xs uppercase tracking-wider"
@@ -2542,6 +2805,13 @@ const OpportunityDetails: React.FC = () => {
                                     if (educationFields.length > 0 && !isProfessional) activeSteps.push({ id: 'education', title: 'Education', fields: educationFields, type: 'core' });
                                     if (professionalFields.length > 0) activeSteps.push({ id: 'professional', title: 'Professional', fields: professionalFields, type: 'core' });
                                     if (customQuestionsList.length > 0) activeSteps.push({ id: 'custom', title: 'Questions', fields: customQuestionsList, type: 'custom' });
+                                    
+                                    const pType = String(opportunity?.participationType || opportunity?.participation_type || 'individual').toLowerCase();
+                                    const allowsTeams = pType === 'team' || pType === 'both';
+                                    
+                                    if (allowsTeams) {
+                                        activeSteps.push({ id: 'team_details', title: 'Team', fields: [], type: 'team' });
+                                    }
 
                                     if (activeSteps.length === 0) {
                                         return (
@@ -2597,7 +2867,42 @@ const OpportunityDetails: React.FC = () => {
 
                                             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
                                                 <div className="space-y-4">
-                                                    {currentStep.fields.map((field: any) => {
+                                                    {currentStep.type === 'team' ? (
+                                                        <div className="space-y-6">
+                                                            <label className="text-sm font-black text-slate-900">How would you like to participate?</label>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                                {String(opportunity?.participationType || opportunity?.participation_type || 'individual').toLowerCase() === 'both' && (
+                                                                    <button type="button" onClick={() => setTeamAction('individual')} className={`p-4 rounded-xl border-2 text-left transition-all ${teamAction === 'individual' ? 'border-[#6C3BFF] bg-purple-50' : 'border-slate-100 bg-white hover:border-slate-200'}`}>
+                                                                        <div className="font-black text-slate-800 text-sm">Individual</div>
+                                                                        <div className="text-[10px] text-slate-500 font-bold mt-1">Participate solo</div>
+                                                                    </button>
+                                                                )}
+                                                                <button type="button" onClick={() => setTeamAction('create')} className={`p-4 rounded-xl border-2 text-left transition-all ${teamAction === 'create' ? 'border-[#6C3BFF] bg-purple-50' : 'border-slate-100 bg-white hover:border-slate-200'}`}>
+                                                                    <div className="font-black text-slate-800 text-sm">Create Team</div>
+                                                                    <div className="text-[10px] text-slate-500 font-bold mt-1">Form a new team</div>
+                                                                </button>
+                                                                <button type="button" onClick={() => setTeamAction('join')} className={`p-4 rounded-xl border-2 text-left transition-all ${teamAction === 'join' ? 'border-[#6C3BFF] bg-purple-50' : 'border-slate-100 bg-white hover:border-slate-200'}`}>
+                                                                    <div className="font-black text-slate-800 text-sm">Join Team</div>
+                                                                    <div className="text-[10px] text-slate-500 font-bold mt-1">Use an invite code</div>
+                                                                </button>
+                                                            </div>
+                                                            
+                                                            {teamAction === 'create' && (
+                                                                <div className="space-y-2 mt-4">
+                                                                    <label className="text-xs font-bold text-slate-700">Team Name <span className="text-rose-500">*</span></label>
+                                                                    <input type="text" value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="e.g. Code Ninjas" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all" />
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {teamAction === 'join' && (
+                                                                <div className="space-y-2 mt-4">
+                                                                    <label className="text-xs font-bold text-slate-700">Team Invite Code <span className="text-rose-500">*</span></label>
+                                                                    <input type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value)} placeholder="Enter 12-character code" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all uppercase" />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                    currentStep.fields.map((field: any) => {
                                                         const isEmail = field.id === 'email';
                                                         const isPrefilled = Boolean(field.prefilled_value);
                                                         const allowedExts = field.type === 'file' ? getFieldAllowedExtensions(field) : [];
@@ -2616,9 +2921,9 @@ const OpportunityDetails: React.FC = () => {
                                                                     )}
                                                                 </label>
 
-                                                                {field.id === 'profile_type' ? (
-                                                                    <div className="flex gap-4 mt-1.5">
-                                                                        {(['Student', 'Working Professional'] as const).map((typeOpt) => {
+                                                                 {field.id === 'profile_type' ? (
+                                                                     <div className="flex gap-4 mt-1.5">
+                                                                         {(['Student', 'Working Professional', 'Fresher'] as const).map((typeOpt) => {
                                                                             const isSelected = regAnswers[field.id] === typeOpt || (!regAnswers[field.id] && typeOpt === 'Student');
                                                                             return (
                                                                                 <button
@@ -2711,16 +3016,23 @@ const OpportunityDetails: React.FC = () => {
                                                                                 </div>
                                                                             </div>
                                                                         ) : (
-                                                                            <div className="flex items-center gap-3 p-3 border border-dashed border-slate-350 rounded-xl bg-slate-50/50 hover:bg-slate-50 hover:border-slate-400 transition-colors">
-                                                                                <label
-                                                                                    htmlFor={`file-${field.id}`}
-                                                                                    className="px-4 py-2 bg-white border border-slate-250 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
-                                                                                >
-                                                                                    <Upload size={14} /> Choose File
-                                                                                </label>
-                                                                                <span className="text-xs text-slate-400 font-medium">
-                                                                                    Accepts {displayFormats} only
-                                                                                </span>
+                                                                            <div className="flex flex-col gap-1.5">
+                                                                                <div className="flex items-center gap-3 p-3 border border-dashed border-slate-350 rounded-xl bg-slate-50/50 hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                                                                                    <label
+                                                                                        htmlFor={`file-${field.id}`}
+                                                                                        className="px-4 py-2 bg-white border border-slate-250 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+                                                                                    >
+                                                                                        <Upload size={14} /> Choose File
+                                                                                    </label>
+                                                                                    <span className="text-xs text-slate-400 font-medium">
+                                                                                        Accepts {displayFormats} only
+                                                                                    </span>
+                                                                                </div>
+                                                                                {field.placeholder && (
+                                                                                    <span className="text-[10px] text-slate-500 font-medium px-1">
+                                                                                        {field.placeholder}
+                                                                                    </span>
+                                                                                )}
                                                                             </div>
                                                                         )}
                                                                     </div>
@@ -2767,7 +3079,7 @@ const OpportunityDetails: React.FC = () => {
                                                                 )}
                                                             </div>
                                                         );
-                                                    })}
+                                                    }))}
                                                 </div>
 
                                                 {/* Action Buttons */}

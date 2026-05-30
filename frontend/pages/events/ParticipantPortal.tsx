@@ -173,8 +173,12 @@ const ParticipantPortal: React.FC = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <Loader2 className="w-10 h-10 animate-spin text-[#6C3BFF]" />
+            <div className="min-h-screen bg-slate-50 pt-32 px-6">
+                <div className="max-w-4xl mx-auto space-y-8">
+                    <div className="w-64 h-10 bg-slate-200 rounded-xl animate-pulse"></div>
+                    <div className="w-full h-48 bg-white rounded-3xl border border-slate-100 animate-pulse"></div>
+                    <div className="w-full h-64 bg-white rounded-3xl border border-slate-100 animate-pulse"></div>
+                </div>
             </div>
         );
     }

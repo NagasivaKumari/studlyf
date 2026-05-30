@@ -5870,6 +5870,7 @@ async def get_ai_tools():
         raise HTTPException(status_code=500, detail="Failed to fetch AI tools")
 
 @app.get("/api/user/{user_id}/profile")
+@app.get("/api/user/{user_id}")
 async def get_user_profile(user_id: str):
     """Load the complete learner profile from users_col and learner_profiles_col."""
     try:
@@ -6563,7 +6564,8 @@ async def get_me(user_payload: dict = Depends(get_current_user)):
         "institution_name": user.get("institution_name"),
         "college_name": user.get("college_name"),
         "graduation_year": user.get("graduation_year"),
-        "status": user.get("status")
+        "status": user.get("status"),
+        "profilePhoto": user.get("profilePhoto")
     }
 
 class UserRoleUpdate(BaseModel):

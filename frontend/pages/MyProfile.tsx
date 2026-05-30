@@ -5,12 +5,13 @@ import html2canvas from 'html2canvas';
 import QRCode from 'qrcode';
 import { useAuth } from '../AuthContext';
 import { API_BASE_URL } from '../apiConfig';
-import { 
+import {
   User, FileText, Book, Award, Briefcase, 
   Terminal, Share2, Settings, ShieldCheck, 
   ChevronLeft, Plus, Save, Sparkles, Scan,
   Globe, MapPin, Calendar, Heart, GraduationCap, Download, Copy, Palette, Type, RefreshCw, Quote
 } from 'lucide-react';
+import AvatarImage from '../components/AvatarImage';
 
 export const STUD_TEMPLATE_QUOTES = [
   'Your mindset is your operating system.',
@@ -165,29 +166,33 @@ const MyProfile: React.FC = () => {
   const [extractedSkills, setExtractedSkills] = useState<string[]>([]);
   const [resumeParseResult, setResumeParseResult] = useState<any>(null);
   const [newSkillInput, setNewSkillInput] = useState('');
+  const [isEditingStrongWord, setIsEditingStrongWord] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [avatars, setAvatars] = useState<{ label: string; image_url: string; crop_x: number; crop_y: number; crop_w: number; crop_h: number }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+  const shareTemplateRef = useRef<HTMLDivElement>(null);
+
+  const [sectionStatus, setSectionStatus] = useState<Record<string, 'saving' | 'saved' | 'error' | null>>({});
   const [isGeneratingTemplate, setIsGeneratingTemplate] = useState(false);
-  const [copyFeedback, setCopyFeedback] = useState<{ target: 'accountShare' | 'profilePanel'; type: 'success' | 'error'; message: string } | null>(null);
-  const [sectionStatus, setSectionStatus] = useState<{ section: string; type: 'success' | 'error'; message: string } | null>(null);
-  const [githubAnalytics, setGithubAnalytics] = useState<{
-    username: string;
-    displayName: string;
-    avatarUrl: string;
-    profileUrl: string;
-    repoCount: number;
-    totalStars: number;
-    totalForks: number;
-    totalWatchers: number;
-    followers: number;
-    score: number;
-    topLanguages: string[];
-    bio: string;
-    computedAt: string;
-  } | null>(null);
-  const [githubError, setGithubError] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [isFetchingGithub, setIsFetchingGithub] = useState(false);
+  const [githubError, setGithubError] = useState<string | null>(null);
+  const [githubAnalytics, setGithubAnalytics] = useState<any>(null);
   const [shareQrDataUrl, setShareQrDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/institution/avatars`);
+        if (res.ok) {
+          const data = await res.json();
+          setAvatars(data.avatars || []);
+        }
+      } catch { /* use fallback below */ }
+    })();
+  }, []);
   const [isEditingStrongWord, setIsEditingStrongWord] = useState(true);
   
     // Stud Templates state
@@ -561,6 +566,103 @@ const MyProfile: React.FC = () => {
     }
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFormData(prev => ({ ...prev, profilePhoto: reader.result as string }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const form = new FormData();
+      form.append('resume', file);
+      const res = await fetch(`${API_BASE_URL}/api/user/${user?.user_id}/upload-resume`, {
+        method: 'POST',
+        body: form,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFormData(prev => ({ ...prev, resume: { fileName: file.name, uploadDate: new Date().toISOString(), atsScore: data.atsScore || 0, version: '1.0' } }));
+        if (data.skills) setFormData(prev => ({ ...prev, skills: data.skills }));
+        if (data.extractedSkills) setExtractedSkills(data.extractedSkills);
+        setResumeParseResult(data);
+      }
+    } catch { /* ignore */ }
+    setIsUploading(false);
+  };
+
+  const removeInterest = (tag: string) => {
+    setFormData(prev => ({ ...prev, interests: prev.interests.filter(t => t !== tag) }));
+  };
+
+  const addSkillToList = () => {
+    const trimmed = newSkillInput.trim();
+    if (!trimmed) return;
+    setFormData(prev => ({ ...prev, skills: [...prev.skills, { name: trimmed, proficiency: 'Intermediate', years: '' }] }));
+    setNewSkillInput('');
+  };
+
+  const removeSkillFromList = (index: number) => {
+    setFormData(prev => ({ ...prev, skills: prev.skills.filter((_, i) => i !== index) }));
+  };
+
+  const updateSkillField = (index: number, field: string, value: string) => {
+    setFormData(prev => {
+      const updated = [...prev.skills];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, skills: updated };
+    });
+  };
+
+  const copyImageToClipboard = async (blob: Blob): Promise<boolean> => {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      return true;
+    } catch { return false; }
+  };
+
+  const handleStrongWordInputBlur = () => {
+    setIsEditingStrongWord(false);
+  };
+
+  const chooseStrongWord = (word: string) => {
+    setFormData(prev => ({ ...prev, oneStrongWord: word }));
+    setIsEditingStrongWord(false);
+  };
+
+  const calculateStrength = () => {
+    let score = 0;
+    if (formData.firstName && formData.lastName) score += 10;
+    if (formData.phone) score += 5;
+    if (formData.gender) score += 5;
+    if (formData.dob) score += 5;
+    if (formData.location) score += 5;
+    if (formData.bio) score += 10;
+    if (formData.careerGoal) score += 5;
+    if (formData.profilePhoto) score += 10;
+    if (formData.skills && formData.skills.length > 0) score += 10;
+    if (formData.interests && formData.interests.length > 0) score += 5;
+    if (formData.educationList && formData.educationList.length > 0) score += 10;
+    if (formData.experienceList && formData.experienceList.length > 0) score += 10;
+    if (formData.projects && formData.projects.length > 0) score += 5;
+    if (formData.certifications && formData.certifications.length > 0) score += 5;
+    if (formData.linkedin) score += 5;
+    if (formData.github || formData.githubUsername) score += 5;
+    if (formData.portfolio) score += 5;
+    return Math.min(100, score);
+  };
   const profileCompletion = Math.min(100, calculateStrength());
   const profileDisplayName = [formData.firstName, formData.lastName].filter(Boolean).join(' ') || user?.full_name || 'Your Profile';
   const profileRole = formData.userType || user?.role || 'Contributor';
@@ -658,118 +760,7 @@ const MyProfile: React.FC = () => {
       </svg>`;
     return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
   };
-  const avatarCatalog = useMemo(() => {
-    const palettes = [
-      { backgroundA: '#7C3AED', backgroundB: '#06B6D4', accent: '#F59E0B' },
-      { backgroundA: '#111827', backgroundB: '#4F46E5', accent: '#22C55E' },
-      { backgroundA: '#EA580C', backgroundB: '#F59E0B', accent: '#FFFFFF' },
-      { backgroundA: '#0F766E', backgroundB: '#14B8A6', accent: '#E0F2FE' },
-      { backgroundA: '#BE185D', backgroundB: '#F43F5E', accent: '#FDE68A' },
-      { backgroundA: '#2563EB', backgroundB: '#0F172A', accent: '#A7F3D0' },
-    ];
-    const monogramFrames = [
-      (accent: string) => `<circle cx="256" cy="256" r="178" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="16" /><circle cx="256" cy="256" r="132" fill="#ffffff" opacity="0.12" /><path d="M132 166c32-40 74-64 124-64s92 24 124 64" fill="none" stroke="${accent}" stroke-width="14" stroke-linecap="round" />`,
-      (accent: string) => `<rect x="92" y="92" width="328" height="328" rx="92" fill="#ffffff" opacity="0.10" /><path d="M152 152h208v208H152z" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="12" /><circle cx="356" cy="156" r="18" fill="${accent}" />`,
-      (accent: string) => `<path d="M104 304l164-172 140 172-140 120z" fill="#ffffff" opacity="0.10" /><circle cx="176" cy="156" r="24" fill="${accent}" opacity="0.85" /><circle cx="334" cy="362" r="30" fill="#ffffff" opacity="0.16" />`,
-      (accent: string) => `<path d="M120 136h272v240H120z" fill="#ffffff" opacity="0.08" /><path d="M156 376h200" stroke="${accent}" stroke-width="16" stroke-linecap="round" /><path d="M156 136v240" stroke="#ffffff" stroke-opacity="0.14" stroke-width="10" />`,
-    ];
-    const emojiSet = ['😀', '😎', '🤩', '🥳', '🫶', '🎧', '🌈', '🚀', '💡', '📱', '🧠', '🔥'];
-    const animeAccessories = ['headphones', 'glasses', 'hairclip', 'cap', 'hood', 'none'] as const;
-    const animeEyes = ['spark', 'focused', 'round', 'smile'] as const;
-    const animeMouths = ['smile', 'calm', 'grin'] as const;
-    const animeBases = [
-      { backgroundA: '#7C3AED', backgroundB: '#06B6D4', skin: '#F5D0C5', hair: '#1F2937', shirt: '#FDE68A', accent: '#F59E0B' },
-      { backgroundA: '#111827', backgroundB: '#4F46E5', skin: '#E7C7B7', hair: '#0F172A', shirt: '#CBD5E1', accent: '#22C55E' },
-      { backgroundA: '#EA580C', backgroundB: '#F59E0B', skin: '#F8D5C2', hair: '#8B5CF6', shirt: '#F9A8D4', accent: '#FFFFFF' },
-      { backgroundA: '#0F766E', backgroundB: '#14B8A6', skin: '#E7BEA8', hair: '#14532D', shirt: '#BFDBFE', accent: '#E0F2FE' },
-      { backgroundA: '#BE185D', backgroundB: '#F43F5E', skin: '#F2C9B2', hair: '#7C2D12', shirt: '#FDE68A', accent: '#FFF7ED' },
-      { backgroundA: '#0F172A', backgroundB: '#2563EB', skin: '#EBC4B5', hair: '#111827', shirt: '#93C5FD', accent: '#A7F3D0' },
-    ];
-
-    const buildMonogramAvatar = (index: number, palette: { backgroundA: string; backgroundB: string; accent: string }) => {
-      const frame = monogramFrames[index % monogramFrames.length](palette.accent);
-      return toAvatarDataUri(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-          <defs>
-            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="${palette.backgroundA}" />
-              <stop offset="100%" stop-color="${palette.backgroundB}" />
-            </linearGradient>
-          </defs>
-          <rect width="512" height="512" rx="132" fill="url(#bg)" />
-          <circle cx="162" cy="142" r="96" fill="#ffffff" opacity="0.12" />
-          <circle cx="360" cy="350" r="108" fill="#ffffff" opacity="0.10" />
-          ${frame}
-          <text x="256" y="280" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="136" font-weight="900" fill="#ffffff" letter-spacing="2">${profileInitials}</text>
-        </svg>`);
-    };
-
-    const buildEmojiAvatar = (emoji: string, label: string, palette: { backgroundA: string; backgroundB: string; accent: string }) => {
-      return toAvatarDataUri(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-          <defs>
-            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="${palette.backgroundA}" />
-              <stop offset="100%" stop-color="${palette.backgroundB}" />
-            </linearGradient>
-          </defs>
-          <rect width="512" height="512" rx="132" fill="url(#bg)" />
-          <circle cx="168" cy="160" r="108" fill="#ffffff" opacity="0.14" />
-          <circle cx="344" cy="352" r="118" fill="#ffffff" opacity="0.12" />
-          <circle cx="256" cy="256" r="152" fill="#111827" opacity="0.12" />
-          <text x="256" y="286" text-anchor="middle" font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif" font-size="150">${emoji}</text>
-          <rect x="144" y="368" width="224" height="16" rx="8" fill="${palette.accent}" opacity="0.92" />
-        </svg>`);
-    };
-
-    const monogramOptions = Array.from({ length: 24 }, (_, index) => ({
-      label: `Monogram ${index + 1}`,
-      category: 'monogram' as const,
-      url: buildMonogramAvatar(index, palettes[index % palettes.length]),
-    }));
-
-    const emojiOptions = Array.from({ length: emojiSet.length }, (_, index) => {
-      const emoji = emojiSet[index % emojiSet.length];
-      return {
-        label: `Emoji ${index + 1}`,
-        category: 'emoji' as const,
-        url: buildEmojiAvatar(emoji, `Mood ${index + 1}`, palettes[(index + 1) % palettes.length]),
-      };
-    });
-
-    const animeOptions = Array.from({ length: 36 }, (_, index) => {
-      const base = animeBases[index % animeBases.length];
-      const accessory = animeAccessories[index % animeAccessories.length];
-      const eyes = animeEyes[index % animeEyes.length];
-      const mouth = animeMouths[index % animeMouths.length];
-      return {
-        label: `Anime ${index + 1}`,
-        category: 'anime' as const,
-        url: createAvatarDataUri({ ...base, accessory, eyes, mouth }),
-      };
-    });
-
-    const uniqueOptions = [...monogramOptions, ...emojiOptions, ...animeOptions].filter((option, index, items) => {
-      return index === items.findIndex(candidate => candidate.url === option.url);
-    });
-
-    return uniqueOptions;
-  }, [profileInitials]);
-  const avatarSections = useMemo(() => {
-    const sectionOrder: Array<{ key: 'monogram' | 'emoji' | 'anime'; label: string }> = [
-      { key: 'monogram', label: 'Monogram' },
-      { key: 'emoji', label: 'Emoji' },
-      { key: 'anime', label: 'Anime' },
-    ];
-
-    return sectionOrder
-      .map(section => ({
-        ...section,
-        items: avatarCatalog.filter(option => option.category === section.key),
-      }))
-      .filter(section => section.items.length > 0);
-  }, [avatarCatalog]);
- const APP_BASE_URL = (import.meta as any).env?.VITE_PUBLIC_URL || window.location.origin;
+  const APP_BASE_URL = (import.meta as any).env?.VITE_PUBLIC_URL || window.location.origin;
 const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
   ? `${APP_BASE_URL}/profile/${user.user_id}`
   : '';
@@ -1920,75 +1911,76 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
 
             {/* Form Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-               {/* Profile Photo */}
+               {/* Profile Photo & Avatar Preset Selection */}
                <div className="md:col-span-2 space-y-6 bg-gray-50/50 p-8 rounded-3xl border border-gray-100 border-dashed">
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-8">
-                    <div 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10 shrink-0"
-                    >
+                 <div className="flex flex-col lg:flex-row lg:items-center gap-8">
+                   <div 
+                     onClick={() => fileInputRef.current?.click()}
+                     className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10 shrink-0"
+                   >
                       {formData.profilePhoto ? (
-                        <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                        <AvatarImage src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-white">
                           <User className="w-12 h-12 text-gray-200" />
                         </div>
                       )}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-black uppercase tracking-widest text-center px-4">
-                        Update Photo
-                      </div>
-                    </div>
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      className="hidden" 
-                      accept="image/*" 
-                      onChange={handlePhotoUpload} 
-                    />
-                    <div className="space-y-3 min-w-0">
-                      <h4 className="font-bold text-gray-900 uppercase text-xs tracking-widest">Profile Photo / Avatar</h4>
-                      <p className="text-[10px] font-medium text-gray-400 max-w-xl">Upload a custom photo or choose one of the preset avatars below for a cleaner profile identity.</p>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="rounded-full bg-[#7C3AED] px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-sm hover:bg-[#6D28D9] transition-all"
-                      >
-                        Upload Photo
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between gap-4 mb-4">
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Choose Avatar</div>
-                        <div className="text-sm font-bold text-gray-900">{avatarCatalog.length} unique preset avatars</div>
-                      </div>
-                    </div>
-                    <div className="max-h-[22rem] overflow-y-auto pr-2 space-y-6">
-                      {avatarSections.map(section => (
-                        <div key={section.key} className="space-y-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <h5 className="text-[10px] font-black uppercase tracking-[0.24em] text-gray-500">{section.label}</h5>
-                          </div>
-                          <div className="grid grid-flow-col grid-rows-2 auto-cols-[6rem] gap-2.5 overflow-x-auto pb-2">
-                            {section.items.map(option => {
-                              const isSelected = formData.profilePhoto === option.url;
-                              return (
-                                <button
-                                  key={`${section.key}-${option.label}`}
-                                  type="button"
-                                  onClick={() => setFormData(prev => ({ ...prev, profilePhoto: option.url }))}
-                                  className={`group rounded-2xl border p-0 overflow-hidden transition-all w-[6rem] aspect-square ${isSelected ? 'border-[#7C3AED] bg-white shadow-md' : 'border-gray-200 bg-white/60 hover:border-[#7C3AED]/30'}`}
-                                >
-                                  <img src={option.url} alt={option.label} className="w-full h-full object-cover scale-125" />
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                       <span className="text-white text-[9px] font-black uppercase tracking-widest">Edit</span>
+                     </div>
+                   </div>
+                   <input 
+                     type="file" 
+                     ref={fileInputRef} 
+                     className="hidden" 
+                     accept="image/*" 
+                     onChange={handlePhotoUpload} 
+                   />
+                   <div className="space-y-3 min-w-0 flex-1">
+                     <h4 className="font-bold text-gray-900 uppercase text-xs tracking-widest">Profile Photo / Avatar</h4>
+                     <p className="text-[10px] font-medium text-gray-400 max-w-xl">Upload a custom photo or choose one of the preset avatars below for a cleaner profile identity.</p>
+                     <button
+                       type="button"
+                       onClick={() => fileInputRef.current?.click()}
+                       className="rounded-full bg-[#7C3AED] px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-sm hover:bg-[#6D28D9] transition-all"
+                     >
+                       Upload Photo
+                     </button>
+                   </div>
+                 </div>
+
+                 {/* Presets Catalog grid */}
+                 <div className="border-t border-gray-100 pt-6">
+                   <div className="flex items-center justify-between gap-4 mb-4">
+                     <div>
+                       <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Choose Avatar</div>
+                        <div className="text-sm font-bold text-gray-900">{avatars.length} 3D character avatars</div>
+                     </div>
+                   </div>
+                   <div className="max-h-[22rem] overflow-y-auto pr-1">
+                     <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-8 gap-2.5 pb-2">
+                        {avatars.map((option) => {
+                          const cropUrl = option.image_url + '#' + option.crop_x + ',' + option.crop_y + ',' + option.crop_w + ',' + option.crop_h;
+                          const isSelected = formData.profilePhoto === cropUrl;
+                          return (
+                            <button
+                              key={option.label}
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, profilePhoto: cropUrl }))}
+                              className={`rounded-full border-2 overflow-hidden aspect-square transition-all ${
+                                isSelected
+                                  ? 'border-[#7C3AED] shadow-lg shadow-purple-200 ring-2 ring-[#7C3AED]/30 scale-110'
+                                  : 'border-transparent hover:border-[#7C3AED]/40 hover:scale-105'
+                              }`}
+                            >
+                              <AvatarImage src={cropUrl} alt={option.label} className="w-full h-full" />
+                            </button>
+                          );
+                        })}
+                     </div>
+                   </div>
+                 </div>
                </div>
 
                <div className="space-y-2 group">
@@ -3330,7 +3322,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
                     <div className="space-y-6">
                       <div className="relative inline-flex items-center justify-center w-36 h-36 rounded-[2.5rem] overflow-hidden border-4 border-white bg-[#F8FAFC] shadow-2xl">
                         {formData.profilePhoto ? (
-                          <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                          <AvatarImage src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-3xl font-black text-gray-500">{profileInitials}</span>
                         )}
@@ -4190,7 +4182,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
             <div className="flex w-[260px] flex-col items-center rounded-[32px] border border-white/15 bg-white/10 p-6 text-center backdrop-blur-md">
               <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-[28px] bg-white/90 text-3xl font-black text-[#5B21B6] shadow-xl">
                 {formData.profilePhoto ? (
-                  <img src={formData.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
+                  <AvatarImage src={formData.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
                 ) : (
                   <span>{profileDisplayName.split(' ').map(part => part[0]).join('').slice(0, 2)}</span>
                 )}

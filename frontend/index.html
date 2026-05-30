@@ -143,7 +143,50 @@
 
 <body class="text-[#374151]">
     <div class="grain"></div>
-    <div id="root"></div>
+    <div id="root">
+        <style>
+            @keyframes boot-pulse { 0%, 100% { opacity: 0.4; transform: scale(0.98); } 50% { opacity: 1; transform: scale(1.02); } }
+            @keyframes boot-spin { 100% { transform: rotate(360deg); } }
+            .boot-screen {
+                position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+                background: radial-gradient(circle at 50% 50%, #170f1d 0%, #0d0f18 100%);
+                z-index: 999999;
+                color: white;
+            }
+            .boot-ring {
+                position: relative; width: 120px; height: 120px;
+                display: flex; align-items: center; justify-content: center;
+            }
+            .boot-ring::before {
+                content: ''; position: absolute; inset: 0; border-radius: 50%;
+                border: 2px solid rgba(124, 58, 237, 0.15);
+            }
+            .boot-ring::after {
+                content: ''; position: absolute; inset: -2px; border-radius: 50%;
+                border: 2px solid transparent; border-top-color: #7C3AED; border-right-color: #c084fc;
+                animation: boot-spin 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+            }
+            .boot-logo {
+                width: 52px; height: 52px; border-radius: 50%;
+                background: url('/stud.png') center/contain no-repeat;
+                animation: boot-pulse 2s ease-in-out infinite;
+                background-color: white;
+                box-shadow: 0 0 25px rgba(124, 58, 237, 0.4);
+            }
+            .boot-text {
+                position: absolute; bottom: -45px; white-space: nowrap;
+                font-family: 'JetBrains Mono', monospace; font-size: 10px;
+                letter-spacing: 0.4em; text-transform: uppercase;
+                color: #a78bfa; animation: boot-pulse 2s ease-in-out infinite;
+            }
+        </style>
+        <div class="boot-screen">
+            <div class="boot-ring">
+                <div class="boot-logo"></div>
+                <div class="boot-text">Igniting Engine...</div>
+            </div>
+        </div>
+    </div>
     <script type="module" src="/index.tsx"></script>
 </body>
 

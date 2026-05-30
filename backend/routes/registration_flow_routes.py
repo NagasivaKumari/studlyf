@@ -3,10 +3,13 @@ Decoupled Onboarding & Registration Engine Router
 """
 import os
 import uuid
+from stage_access_control import check_stage_deadline
+import traceback
+import json
 import csv
 import io
 import logging
-from fastapi import APIRouter, HTTPException, Depends, Body, File, UploadFile, status
+from fastapi import APIRouter, HTTPException, Depends, Body, File, UploadFile, status, Query
 from fastapi.responses import StreamingResponse
 from auth_institution import get_auth_user
 from db import db, user_profiles_col, registrations_col, events_col, participants_col, users_col, opportunities_col
@@ -233,6 +236,24 @@ PROFILE_TYPE_DEFAULT_OVERRIDES = {
         "years_of_experience": "HIDDEN",
         "industry": "OPTIONAL",
         "website_url": "OPTIONAL"
+    },
+    "fresher": {
+        "college": "OPTIONAL",
+        "degree": "OPTIONAL",
+        "branch": "OPTIONAL",
+        "graduation_year": "OPTIONAL",
+        "cgpa": "OPTIONAL",
+        "company": "HIDDEN",
+        "job_title": "HIDDEN",
+        "years_of_experience": "HIDDEN",
+        "industry": "HIDDEN",
+        "organization_name": "HIDDEN",
+        "website_url": "OPTIONAL",
+        "resume_url": "OPTIONAL",
+        "linkedin_url": "OPTIONAL",
+        "github_url": "OPTIONAL",
+        "portfolio_url": "OPTIONAL",
+        "skills": "OPTIONAL"
     }
 }
 
@@ -241,7 +262,7 @@ def normalize_profile_type(value: Any) -> str:
     v = str(value or "").strip().lower()
     if v in ("working professional", "working_professional"):
         return "professional"
-    if v in ("student", "professional", "freelancer", "organization", "recruiter"):
+    if v in ("student", "professional", "freelancer", "organization", "recruiter", "fresher"):
         return v
     return "student"
 
@@ -320,6 +341,8 @@ class UserProfileSchema(BaseModel):
 class ApplyRegistrationRequest(BaseModel):
     profile_data: Dict[str, Any]
     custom_answers: Dict[str, Any]
+    team_action: Optional[str] = None
+    team_payload: Optional[str] = None
 
 async def fetch_legacy_profile(user_id: str) -> dict:
     """Helper to fetch profile from legacy users_col and learner_profiles."""
@@ -641,6 +664,14 @@ async def submit_event_registration(event_id: str, request: ApplyRegistrationReq
         for field, default_state in defaults_map.items():
             if field not in profile_fields_config:
                 profile_fields_config[field] = default_state
+                
+        # 0. STRICT DEADLINE ENFORCEMENT
+        stages = event.get("stages", [])
+        if stages:
+            first_stage = stages[0]
+            if str(first_stage.get("type")).upper() == "REGISTRATION":
+                # Check if registration stage deadline has passed using the core stage_access_control
+                await check_stage_deadline(event_id=str(event_id), stage_index=0)
         
         # 1. Validate required profile fields
         profile_data = request.profile_data
@@ -757,10 +788,48 @@ async def submit_event_registration(event_id: str, request: ApplyRegistrationReq
             upsert=True
         )
         
+        # 8. Handle Bundled Team Creation or Joining
+        team_invite_code = None
+        final_team_id = None
+        final_team_name = None
+        
+        if request.team_action and request.team_payload:
+            from services.team_service import create_team, generate_invite_code, join_team_with_code
+            
+            action = request.team_action.upper()
+            if action == "CREATE":
+                team_resp = await create_team(
+                    event_id=str(event_id),
+                    user_id=user["user_id"],
+                    team_name=request.team_payload
+                )
+                if team_resp.get("status") == "success":
+                    team_id = team_resp["team"]["_id"]
+                    final_team_id = team_id
+                    final_team_name = team_resp["team"]["team_name"]
+                    code_resp = await generate_invite_code(team_id)
+                    team_invite_code = code_resp.get("invite_code")
+            elif action == "JOIN":
+                join_resp = await join_team_with_code(
+                    event_id=str(event_id),
+                    user_id=user["user_id"],
+                    invite_code=request.team_payload
+                )
+                if join_resp.get("status") == "success":
+                    final_team_id = join_resp["team"]["_id"]
+                    final_team_name = join_resp["team"]["team_name"]
+                    
+        if final_team_id and final_team_name:
+            await registrations_col.update_one(
+                {"_id": reg_doc["_id"]},
+                {"$set": {"team_id": final_team_id, "team_name": final_team_name}}
+            )
+
         return {
             "status": "success",
             "message": "Registration submitted successfully.",
-            "reg_status": status_val
+            "reg_status": status_val,
+            "team_invite_code": team_invite_code
         }
         
     except HTTPException:
@@ -909,6 +978,143 @@ async def update_registration_status_admin(
         )
 
         return {"status": "success", "message": f"Candidate status updated to {new_status} and propagated."}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/events/{event_id}/roster")
+async def get_event_roster(
+    event_id: str,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    search: Optional[str] = None,
+    user: dict = Depends(get_auth_user)
+):
+    """
+    Host Admin Endpoint: Returns a grouped roster of solos and teams for easy approval.
+    """
+    try:
+        try:
+            ev_id = ObjectId(event_id)
+        except Exception:
+            ev_id = event_id
+            
+        event = await events_col.find_one({"_id": ev_id}) if isinstance(ev_id, ObjectId) else await events_col.find_one({"event_id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+            
+        if str(event.get("institution_id")) != str(user.get("institution_id")):
+            raise HTTPException(status_code=403, detail="Permission denied")
+            
+        query = {"event_id": str(event_id)}
+        if status_filter:
+            query["status"] = status_filter.upper()
+            
+        if search:
+            search_regex = {"$regex": search, "$options": "i"}
+            query["$or"] = [
+                {"profile_snapshot.full_name": search_regex},
+                {"profile_snapshot.email": search_regex},
+                {"profile_snapshot.college": search_regex},
+                {"team_name": search_regex}
+            ]
+            
+        cursor = registrations_col.find(query).sort("registered_at", -1)
+        
+        solos = []
+        teams_map = {}
+        
+        async for r in cursor:
+            r["_id"] = str(r["_id"])
+            team_id = r.get("team_id")
+            
+            if team_id:
+                if team_id not in teams_map:
+                    teams_map[team_id] = {
+                        "team_id": team_id,
+                        "team_name": r.get("team_name") or "Unknown Team",
+                        "status": r.get("status"), # use first member's status as team status proxy
+                        "members": []
+                    }
+                teams_map[team_id]["members"].append(r)
+            else:
+                solos.append(r)
+                
+        total_applicants = await registrations_col.count_documents({"event_id": str(event_id)})
+        approved_count = await registrations_col.count_documents({"event_id": str(event_id), "status": "APPROVED"})
+        pending_count = await registrations_col.count_documents({"event_id": str(event_id), "status": "PENDING_APPROVAL"})
+        rejected_count = await registrations_col.count_documents({"event_id": str(event_id), "status": "REJECTED"})
+        waitlisted_count = await registrations_col.count_documents({"event_id": str(event_id), "status": "WAITLISTED"})
+        
+        return {
+            "status": "success",
+            "stats": {
+                "total": total_applicants,
+                "approved": approved_count,
+                "pending": pending_count,
+                "rejected": rejected_count,
+                "waitlisted": waitlisted_count
+            },
+            "roster": {
+                "solos": solos,
+                "teams": list(teams_map.values())
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/events/{event_id}/teams/{team_id}/status")
+async def update_team_status_admin(
+    event_id: str,
+    team_id: str,
+    status_update: str = Body(embed=True),
+    user: dict = Depends(get_auth_user)
+):
+    """
+    Host Admin Endpoint: Bulk approve/reject all members of a team.
+    """
+    try:
+        try:
+            ev_id = ObjectId(event_id)
+        except Exception:
+            ev_id = event_id
+            
+        event = await events_col.find_one({"_id": ev_id}) if isinstance(ev_id, ObjectId) else await events_col.find_one({"event_id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+            
+        if str(event.get("institution_id")) != str(user.get("institution_id")):
+            raise HTTPException(status_code=403, detail="Permission denied")
+            
+        new_status = status_update.upper()
+        allowed_statuses = {"APPROVED", "REJECTED", "WAITLISTED", "PENDING_APPROVAL"}
+        if new_status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail=f"Invalid status value. Must be one of: {allowed_statuses}")
+            
+        # Update all registrations for this team
+        await registrations_col.update_many(
+            {"event_id": str(event_id), "team_id": team_id},
+            {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc)}}
+        )
+        
+        # Propagate to participants collection
+        participant_status = "registered"
+        if new_status == "APPROVED":
+            participant_status = "registered"
+        elif new_status == "REJECTED":
+            participant_status = "rejected"
+        elif new_status == "WAITLISTED":
+            participant_status = "pending"
+            
+        await participants_col.update_many(
+            {"event_id": str(event_id), "team_id": team_id},
+            {"$set": {"status": participant_status, "updated_at": datetime.now(timezone.utc)}}
+        )
+        
+        return {"status": "success", "message": f"All team members updated to {new_status}."}
 
     except HTTPException:
         raise
