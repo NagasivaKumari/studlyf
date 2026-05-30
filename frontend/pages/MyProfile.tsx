@@ -3167,7 +3167,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
           </motion.div>
         );
     }
-  };
+
 
   return (
     <div className="max-w-[1400px] mx-auto min-h-screen bg-white/90 backdrop-blur-sm pt-0 px-4 sm:px-8 lg:px-12 pb-12 font-sans selection:bg-[#7C3AED] selection:text-white">
