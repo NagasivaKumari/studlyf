@@ -554,7 +554,9 @@ const MyProfile: React.FC = () => {
         setSaveStatus({ type: 'success', message: 'Deleted successfully!' });
         setTimeout(() => setSaveStatus(null), 2000);
       }
-        setSaveStatus({ type: 'error', message: 'Delete failed: ' + errorMessage });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setSaveStatus({ type: 'error', message: 'Delete failed: ' + errorMessage });
     }
   };
   const profileCompletion = Math.min(100, calculateStrength());
