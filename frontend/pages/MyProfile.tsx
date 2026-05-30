@@ -193,8 +193,7 @@ const MyProfile: React.FC = () => {
       } catch { /* use fallback below */ }
     })();
   }, []);
-  const [isEditingStrongWord, setIsEditingStrongWord] = useState(true);
-  
+
     // Stud Templates state
   const [studTemplateId, setStudTemplateId]         = useState(STUD_TEMPLATES[0].id);
   const [studQuote, setStudQuote]                   = useState(STUD_TEMPLATE_QUOTES[0]);
@@ -213,11 +212,7 @@ const MyProfile: React.FC = () => {
   const studBgInputRef  = useRef<HTMLInputElement>(null);
 
   const navigate = useNavigate();
-  const shareTemplateRef = useRef<HTMLDivElement>(null);
-  const studCardRef = useRef<HTMLDivElement>(null); // Add this
-  const fileInputRef = useRef<HTMLInputElement>(null); // Add this
-  const resumeInputRef = useRef<HTMLInputElement>(null); // Add this
-
+  const studCardRef = useRef<HTMLDivElement>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const target = e.target as HTMLInputElement & HTMLSelectElement & HTMLTextAreaElement;
@@ -566,46 +561,6 @@ const MyProfile: React.FC = () => {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFormData(prev => ({ ...prev, profilePhoto: reader.result as string }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsUploading(true);
-    try {
-      const form = new FormData();
-      form.append('resume', file);
-      const res = await fetch(`${API_BASE_URL}/api/user/${user?.user_id}/upload-resume`, {
-        method: 'POST',
-        body: form,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setFormData(prev => ({ ...prev, resume: { fileName: file.name, uploadDate: new Date().toISOString(), atsScore: data.atsScore || 0, version: '1.0' } }));
-        if (data.skills) setFormData(prev => ({ ...prev, skills: data.skills }));
-        if (data.extractedSkills) setExtractedSkills(data.extractedSkills);
-        setResumeParseResult(data);
-      }
-    } catch { /* ignore */ }
-    setIsUploading(false);
-  };
-
-  const removeInterest = (tag: string) => {
-    setFormData(prev => ({ ...prev, interests: prev.interests.filter(t => t !== tag) }));
-  };
 
   const addSkillToList = () => {
     const trimmed = newSkillInput.trim();
@@ -633,9 +588,6 @@ const MyProfile: React.FC = () => {
     } catch { return false; }
   };
 
-  const handleStrongWordInputBlur = () => {
-    setIsEditingStrongWord(false);
-  };
 
   const chooseStrongWord = (word: string) => {
     setFormData(prev => ({ ...prev, oneStrongWord: word }));
