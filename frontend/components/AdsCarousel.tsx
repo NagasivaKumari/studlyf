@@ -7,7 +7,7 @@ export interface SpotlightItem {
     id: string;
     title: string;
     description: string;
-    image: string;
+    image: string | string[];
     type: string;
     cta: string;
     date: string;
@@ -19,53 +19,60 @@ export interface SpotlightItem {
 const SPOTLIGHT_DATA: SpotlightItem[] = [
     {
         id: "event-1",
-        title: "Global AI Hackathon 2026",
-        description: "Join 2,000+ developers worldwide to build the next generation of AI agents. Compete for prizes and exclusive internships.",
-        image: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80",
-        type: "Hackathon",
-        cta: "Register Now",
-        date: "Oct 15 - Oct 17, 2026",
-        community: "STUDLYF × TechCorp",
+        title: "Hyderabad’s First Claude Community Campus Experience",
+        description: "Partner with us to bring real-world AI workflows, Claude workshops, and campus innovation to your institution. 2-Day immersive experience featuring Claude AI workshops, guided innovation, hands-on building, expert mentorship, certificates, and community exposure.",
+        image: "/images/ad1.jpg",
+        type: "Campus Workshop",
+        cta: "JOIN US",
+        date: "Free Participation",
+        community: "AI Community Event",
         color: "from-purple-600 to-indigo-600",
         glow: "shadow-purple-500/30"
     },
     {
         id: "event-2",
-        title: "Founder's Masterclass: Scaling SaaS",
-        description: "Learn how to scale your startup from zero to one. An exclusive workshop by industry leaders focusing on growth loops.",
-        image: "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80",
-        type: "Workshop",
-        cta: "Save Your Seat",
-        date: "Nov 5, 2026 • Live Virtual",
-        community: "Startup Hub",
-        color: "from-pink-600 to-rose-600",
-        glow: "shadow-pink-500/30"
-    },
-    {
-        id: "event-3",
-        title: "Web3 Builders Summit",
-        description: "The ultimate gathering for blockchain developers and crypto enthusiasts. Keynotes, technical deep-dives, and networking.",
-        image: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&w=1200&q=80",
-        type: "Community Event",
-        cta: "Explore Event",
-        date: "Dec 10, 2026 • Dubai",
-        community: "Web3 Foundation",
+        title: "STUDLYF × Hackprix Community Partnership",
+        description: "Connecting student builders, creators, and innovators with one of the most exciting hackathon ecosystems. Join an ecosystem of hackathons, collaborative projects, networking opportunities, and student innovation communities.",
+        image: "/images/ad2.jpg",
+        type: "Community Partner",
+        cta: "JOIN US",
+        date: "Builder Network",
+        community: "Hackathon",
         color: "from-blue-600 to-cyan-600",
         glow: "shadow-blue-500/30"
     },
     {
-        id: "event-4",
-        title: "Open Source Contribution Month",
-        description: "Kickstart your open source journey. Find mentorship, contribute to massive projects, and build your developer portfolio.",
-        image: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80",
-        type: "Collaboration",
-        cta: "Join Initiative",
-        date: "Entire Month of January",
-        community: "STUDLYF Originals",
+        id: "event-3",
+        title: "Building the Future of Student Innovation",
+        description: "From hackathons to partnerships, mentorship and product launches — STUDLYF continues building a thriving ecosystem for learners and builders. A growing movement powered by mentors, institutions, builders, startups, and student communities across campuses.",
+        image: "/images/ad3.jpg",
+        type: "25+ Institutions",
+        cta: "JOIN US",
+        date: "4K+ Community",
+        community: "5+ Hackathons",
         color: "from-emerald-600 to-teal-600",
         glow: "shadow-emerald-500/30"
+    },
+    {
+        id: "event-4",
+        title: "Inside the STUDLYF Community",
+        description: "Hackathons, workshops, campus collaborations, and builder communities shaping the next generation of innovators. A glimpse into recent hackathons, student communities, mentorship sessions, collaborations, and real-world innovation experiences.",
+        image: [
+            "/images/a1.jpg",
+            "/images/a2.jpg",
+            "/images/a3.jpg",
+            "/images/a4.jpg"
+        ],
+        type: "Campus Innovation",
+        cta: "JOIN US",
+        date: "Hackathons",
+        community: "Community Events",
+        color: "from-orange-500 to-rose-500",
+        glow: "shadow-orange-500/30"
     }
 ];
+
+const LINKTREE_URL = "https://linktr.ee/STUD_LYF";
 
 export default function AdsCarousel() {
     // In the future, this can be hydrated by fetch(`${API_BASE_URL}/api/ads`) 
@@ -139,11 +146,25 @@ export default function AdsCarousel() {
                             >
                                 {/* Background Image */}
                                 <div className="absolute inset-0">
-                                    <img 
-                                        src={currentItem.image} 
-                                        alt={currentItem.title}
-                                        className="w-full h-full object-cover transition-transform duration-[10s] ease-out group-hover:scale-110"
-                                    />
+                                    {Array.isArray(currentItem.image) ? (
+                                        <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-2 p-2 bg-[#0B0F19]">
+                                            {currentItem.image.map((imgSrc, i) => (
+                                                <div key={i} className="w-full h-full rounded-2xl overflow-hidden relative bg-gray-900">
+                                                    <img 
+                                                        src={imgSrc} 
+                                                        alt={`${currentItem.title} ${i + 1}`}
+                                                        className="w-full h-full object-cover object-center transition-transform duration-[10s] ease-out group-hover:scale-110"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <img 
+                                            src={currentItem.image as string} 
+                                            alt={currentItem.title}
+                                            className="w-full h-full object-cover object-top transition-transform duration-[10s] ease-out group-hover:scale-110"
+                                        />
+                                    )}
                                     {/* Cinematic Gradient Overlays */}
                                     <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/60 to-transparent" />
                                     <div className="absolute inset-0 bg-gradient-to-r from-[#0B0F19]/90 via-[#0B0F19]/40 to-transparent" />
@@ -199,10 +220,10 @@ export default function AdsCarousel() {
                                         transition={{ delay: 0.6, duration: 0.5 }}
                                         className="flex flex-col sm:flex-row items-start sm:items-center gap-6"
                                     >
-                                        <button className={`px-8 py-4 rounded-xl font-black text-sm uppercase tracking-widest text-white bg-gradient-to-r ${currentItem.color} hover:opacity-90 transition-all hover:-translate-y-1 hover:shadow-2xl flex items-center gap-2 shadow-lg ${currentItem.glow}`}>
+                                        <a href={LINKTREE_URL} target="_blank" rel="noopener noreferrer" className={`px-8 py-4 rounded-xl font-black text-sm uppercase tracking-widest text-white bg-gradient-to-r ${currentItem.color} hover:opacity-90 transition-all hover:-translate-y-1 hover:shadow-2xl flex items-center gap-2 shadow-lg ${currentItem.glow}`}>
                                             {currentItem.cta}
                                             <ArrowRight size={18} />
-                                        </button>
+                                        </a>
                                         
                                         <div className="flex flex-col gap-1.5 border-l-2 border-white/20 pl-6 hidden sm:flex">
                                             <div className="flex items-center gap-2 text-sm text-gray-300 font-bold tracking-wide">
@@ -249,7 +270,15 @@ export default function AdsCarousel() {
                                     `}
                                 >
                                     <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-[1rem] overflow-hidden shrink-0 relative shadow-inner">
-                                        <img src={item.image} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                                        {Array.isArray(item.image) ? (
+                                            <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-0.5 bg-gray-100">
+                                                {item.image.map((imgSrc, i) => (
+                                                    <img key={i} src={imgSrc} alt="" className="w-full h-full object-cover object-center" />
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <img src={item.image as string} alt={item.title} className="w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-110" />
+                                        )}
                                         <div className={`absolute inset-0 transition-colors duration-300 ${isActive ? 'bg-transparent' : 'bg-black/30 group-hover:bg-black/10'}`} />
                                     </div>
                                     

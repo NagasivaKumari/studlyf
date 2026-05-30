@@ -2,7 +2,6 @@
 import React from 'react';
 import LandingHero from '../components/LandingHero';
 import HomepageSpotlight from '../components/HomepageSpotlight';
-import ColorfulHighlights from '../components/ColorfulHighlights';
 import WhatIsStudlyf from '../components/WhatIsStudlyf';
 import VoicesThatInspire from '../components/VoicesThatInspire';
 import OldVsNewSection from '../components/OldVsNewSection';
@@ -27,8 +26,6 @@ const Home: React.FC = () => {
       </div>
 
       <HomepageSpotlight />
-
-      <ColorfulHighlights />
 
       {/* Scrollable content starts here */}
       <WhatIsStudlyf />
