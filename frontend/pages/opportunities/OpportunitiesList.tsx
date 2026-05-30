@@ -1,12 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Filter, Briefcase, Calendar, MapPin, ChevronRight, ChevronLeft, Sparkles, Loader2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, Briefcase, Calendar, MapPin, ChevronRight, ChevronLeft, Sparkles, Loader2, SlidersHorizontal, X } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
 import { plainTextFromRichContent, formatOpportunityLocation } from '../../utils/text';
 
-const typeOptions = ['All', 'My Events', 'Hackathon', 'Competition', 'Challenge', 'Conference', 'Workshop', 'Case Study', 'Webinar', 'Internship', 'Job'];
+const typeOptions = ['All', 'Hackathon', 'Competition', 'Challenge', 'Conference', 'Workshop', 'Internship', 'Job'];
 const locationOptions = ['All', 'Remote', 'On-site', 'Hybrid'];
 const sortOptions = ['Newest', 'Deadline soon', 'Most applied'];
 
@@ -18,13 +18,11 @@ const matchesOpportunityType = (opportunityType: unknown, selectedType: string) 
     const type = normalizeText(opportunityType);
     const keywordMap: Record<string, string[]> = {
         'my events': [],
-        hackathon: ['hackathon', 'coding challenge', 'coding challenge', 'coding challenges', 'contest'],
-        competition: ['competition', 'contest', 'challenge', 'case competition'],
-        challenge: ['challenge', 'coding challenge', 'ideathon'],
+        hackathon: ['hackathon', 'coding challenge'],
+        competition: ['competition', 'case competition'],
+        challenge: ['challenge', 'ideathon'],
         conference: ['conference', 'summit', 'expo', 'forum'],
         workshop: ['workshop', 'bootcamp', 'masterclass'],
-        'case study': ['case study', 'case competition', 'case challenge'],
-        webinar: ['webinar', 'virtual session', 'online session'],
         internship: ['internship', 'trainee', 'apprenticeship', 'placement'],
         job: ['job', 'role', 'career', 'hiring']
     };
@@ -37,9 +35,9 @@ const matchesOpportunityType = (opportunityType: unknown, selectedType: string) 
 const matchesLocation = (location: unknown, selectedLocation: string) => {
     if (selectedLocation === 'All') return true;
     const text = normalizeText(location);
-    if (!text) return selectedLocation === 'Remote' ? false : true;
-    if (selectedLocation === 'Remote') return text.includes('remote') || text.includes('online') || text.includes('virtual');
-    if (selectedLocation === 'On-site') return text.includes('on-site') || text.includes('onsite') || text.includes('in-person') || text.includes('offline');
+    if (!text) return selectedLocation === 'Online' || selectedLocation === 'Remote' ? false : true;
+    if (selectedLocation === 'Remote' || selectedLocation === 'Online') return text.includes('remote') || text.includes('online') || text.includes('virtual');
+    if (selectedLocation === 'On-site' || selectedLocation === 'Offline') return text.includes('on-site') || text.includes('onsite') || text.includes('in-person') || text.includes('offline');
     if (selectedLocation === 'Hybrid') return text.includes('hybrid');
     return true;
 };
@@ -56,8 +54,17 @@ const OpportunitiesList: React.FC = () => {
     const [selectedLocation, setSelectedLocation] = useState('All');
     const [selectedSort, setSelectedSort] = useState('Newest');
     const [showAppliedOnly, setShowAppliedOnly] = useState(false);
-    const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+    const [showFilters, setShowFilters] = useState(false);
+    const [selectedStatus, setSelectedStatus] = useState('All');
+    const [selectedParticipation, setSelectedParticipation] = useState('All');
+    const [selectedTeamSize, setSelectedTeamSize] = useState('All');
+    const [selectedPayment, setSelectedPayment] = useState('All');
+    const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+        location: false, status: false, teamSize: false, participation: false, skills: false
+    });
     const [appliedIds, setAppliedIds] = useState<string[]>([]);
+    const filtersRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
     const { user } = useAuth();
 
@@ -100,7 +107,30 @@ const OpportunitiesList: React.FC = () => {
                 : matchesOpportunityType(opp.type, selectedType);
             const matchesSelectedLocation = matchesLocation(opp.location, selectedLocation);
 
-            return matchesSearch && matchesApplied && matchesType && matchesSelectedLocation;
+            const oppStatus = normalizeText(opp.status);
+            const matchesStatus = selectedStatus === 'All' || oppStatus === normalizeText(selectedStatus);
+
+            const oppParticipation = normalizeText(opp.participationType);
+            const matchesParticipation = selectedParticipation === 'All' || oppParticipation === normalizeText(selectedParticipation);
+
+            let matchesTeamSize = true;
+            if (selectedTeamSize !== 'All') {
+                const min = Number(opp.minTeamSize) || 0;
+                const max = Number(opp.maxTeamSize) || 0;
+                if (selectedTeamSize === '1-3') matchesTeamSize = (min >= 1 && max <= 3);
+                else if (selectedTeamSize === '4-6') matchesTeamSize = (min >= 4 && max <= 6);
+                else if (selectedTeamSize === '7+') matchesTeamSize = (max >= 7);
+            }
+
+            const matchesPayment = selectedPayment === 'All' || selectedPayment === 'Free';
+
+            let matchesSkills = true;
+            if (selectedSkills.length > 0) {
+                const oppSkills = (opp.skills || []).map((s: string) => normalizeText(s));
+                matchesSkills = selectedSkills.some((s) => oppSkills.includes(normalizeText(s)));
+            }
+
+            return matchesSearch && matchesApplied && matchesType && matchesSelectedLocation && matchesStatus && matchesParticipation && matchesTeamSize && matchesPayment && matchesSkills;
         });
 
         const sorted = [...filtered].sort((a, b) => {
@@ -119,7 +149,7 @@ const OpportunitiesList: React.FC = () => {
         });
 
         return sorted;
-    }, [appliedIds, opportunities, searchQuery, selectedLocation, selectedSort, selectedType, showAppliedOnly]);
+    }, [appliedIds, opportunities, searchQuery, selectedLocation, selectedSort, selectedType, showAppliedOnly, selectedStatus, selectedParticipation, selectedTeamSize, selectedPayment, selectedSkills]);
 
     const getTypeColor = (type: string) => {
         switch (type.toLowerCase()) {
@@ -142,7 +172,30 @@ const OpportunitiesList: React.FC = () => {
         setSelectedSort('Newest');
         setSearchQuery('');
         setShowAppliedOnly(false);
+        setSelectedStatus('All');
+        setSelectedParticipation('All');
+        setSelectedTeamSize('All');
+        setSelectedPayment('All');
+        setSelectedSkills([]);
     };
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
+                setShowFilters(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    useEffect(() => {
+        const isJob = selectedType === 'Job' || selectedType === 'Internship';
+        const jobLocations = ['Remote', 'On-site', 'Hybrid', 'All'];
+        const eventLocations = ['Online', 'Offline', 'Hybrid', 'All'];
+        if (isJob && !jobLocations.includes(selectedLocation)) setSelectedLocation('All');
+        if (!isJob && selectedType !== 'All' && !eventLocations.includes(selectedLocation)) setSelectedLocation('All');
+    }, [selectedType]);
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] pb-20 font-sans">
@@ -183,9 +236,9 @@ const OpportunitiesList: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Category chips: single horizontal row; filters live on the right (desktop) or toggle (mobile) */}
-                    <div className="flex items-center gap-3 overflow-x-auto py-4">
-                        <div className="flex gap-3">
+                    {/* Category chips */}
+                    <div className="flex items-center gap-3 py-4 flex-wrap">
+                        <div className="flex gap-3 flex-wrap">
                             {typeOptions.map((type) => (
                                 <button
                                     key={type}
@@ -200,49 +253,153 @@ const OpportunitiesList: React.FC = () => {
                                 </button>
                             ))}
                         </div>
-                        <div className="flex-1" />
-                        <div className="hidden xl:flex items-center">
+
+                        <div className="relative" ref={filtersRef}>
+                            {(() => {
+                                const activeCount = [selectedType !== 'All' && 'Category', selectedLocation !== 'All' && 'Location', selectedStatus !== 'All' && 'Status', selectedParticipation !== 'All' && 'Participation', selectedTeamSize !== 'All' && 'Team Size', selectedPayment !== 'All' && 'Payment', selectedSkills.length > 0 && 'Skills'].filter(Boolean).length;
+                                const isJobType = selectedType === 'Job' || selectedType === 'Internship';
+                                const filterLocationOptions = isJobType ? ['All', 'Remote', 'On-site', 'Hybrid'] : ['All', 'Online', 'Offline', 'Hybrid'];
+                                return (
+                            <>
                             <button
-                                onClick={() => setIsFiltersOpen((v) => !v)}
-                                className="inline-flex items-center gap-2 px-5 py-2 rounded-2xl bg-slate-900 text-white text-sm font-black uppercase tracking-widest shadow-xl shadow-slate-900/15"
+                                onClick={() => setShowFilters(!showFilters)}
+                                className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${
+                                    activeCount > 0
+                                    ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/20'
+                                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                                }`}
                             >
-                                <Filter size={16} /> Filters
+                                <SlidersHorizontal size={12} />
+                                Filters
+                                {activeCount > 0 && (
+                                    <span className="w-5 h-5 rounded-full bg-purple-500 text-white text-[9px] flex items-center justify-center font-black">{activeCount}</span>
+                                )}
                             </button>
+
+                            {showFilters && (
+                                <div className="absolute right-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl shadow-slate-900/10 z-50 w-[320px] max-h-[70vh] overflow-y-auto">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                                        <span className="text-sm font-black text-slate-900">All Filters</span>
+                                        <button onClick={() => setShowFilters(false)} className="p-1 hover:bg-slate-50 rounded-lg transition-colors">
+                                            <X size={16} className="text-slate-400" />
+                                        </button>
+                                    </div>
+
+                                    {/* Quick Filters */}
+                                    {isJobType && (
+                                        <div className="px-5 py-4 border-b border-slate-100">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Quick Filters</span>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-slate-200 text-slate-500 hover:border-purple-200 hover:text-purple-600 transition-all">Open to all</button>
+                                                <button className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-slate-200 text-slate-500 hover:border-purple-200 hover:text-purple-600 transition-all">Quick Apply</button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Category */}
+                                    <div className="px-5 py-4 border-b border-slate-100">
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Category</span>
+                                        <div className="flex flex-wrap gap-2">
+                                            {typeOptions.map((cat) => (
+                                                <button
+                                                    key={cat}
+                                                    onClick={() => setSelectedType(cat)}
+                                                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                                                        selectedType === cat
+                                                        ? 'bg-slate-900 text-white border-slate-900'
+                                                        : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                                                    }`}
+                                                >
+                                                    {cat}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Location */}
+                                    <div className="px-5 py-4 border-b border-slate-100">
+                                        <button onClick={() => setExpandedSections(s => ({ ...s, location: !s.location }))} className="w-full flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0">
+                                            Location
+                                            <ChevronRight size={12} className={`transition-transform ${expandedSections.location ? 'rotate-90' : ''}`} />
+                                        </button>
+                                        {expandedSections.location && (
+                                            <div className="mt-3 space-y-1">
+                                                {filterLocationOptions.map((loc) => (
+                                                    <button key={loc} onClick={() => setSelectedLocation(loc)} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedLocation === loc ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>{loc}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Status */}
+                                    <div className="px-5 py-4 border-b border-slate-100">
+                                        <button onClick={() => setExpandedSections(s => ({ ...s, status: !s.status }))} className="w-full flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                            Status
+                                            <ChevronRight size={12} className={`transition-transform ${expandedSections.status ? 'rotate-90' : ''}`} />
+                                        </button>
+                                        {expandedSections.status && (
+                                            <div className="mt-3 space-y-1">
+                                                {['All', 'Active', 'Closed'].map((s) => (
+                                                    <button key={s} onClick={() => setSelectedStatus(s)} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedStatus === s ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>{s}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Team Size (for events) */}
+                                    {!isJobType && (
+                                        <div className="px-5 py-4 border-b border-slate-100">
+                                            <button onClick={() => setExpandedSections(s => ({ ...s, teamSize: !s.teamSize }))} className="w-full flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                Team Size
+                                                <ChevronRight size={12} className={`transition-transform ${expandedSections.teamSize ? 'rotate-90' : ''}`} />
+                                            </button>
+                                            {expandedSections.teamSize && (
+                                                <div className="mt-3 space-y-1">
+                                                    {['All', '1-3', '4-6', '7+'].map((s) => (
+                                                        <button key={s} onClick={() => setSelectedTeamSize(s)} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedTeamSize === s ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>{s}</button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Participation Type */}
+                                    {!isJobType && (
+                                        <div className="px-5 py-4 border-b border-slate-100">
+                                            <button onClick={() => setExpandedSections(s => ({ ...s, participation: !s.participation }))} className="w-full flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                Participation
+                                                <ChevronRight size={12} className={`transition-transform ${expandedSections.participation ? 'rotate-90' : ''}`} />
+                                            </button>
+                                            {expandedSections.participation && (
+                                                <div className="mt-3 space-y-1">
+                                                    {['All', 'INDIVIDUAL', 'TEAM', 'BOTH'].map((s) => (
+                                                        <button key={s} onClick={() => setSelectedParticipation(s)} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedParticipation === s ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>{s}</button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Bottom bar */}
+                                    <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100 bg-slate-50/50">
+                                        <button onClick={() => { resetFilters(); setShowFilters(false); }} className="text-xs font-black text-slate-500 hover:text-slate-700 uppercase tracking-widest transition-colors">Clear All</button>
+                                        <button onClick={() => setShowFilters(false)} className="px-6 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/20">
+                                            Show Results {activeCount > 0 && <span className="ml-1">({activeCount})</span>}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            </>
+                            );
+                        })()}
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <AnimatePresence>
-                {isFiltersOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -12 }}
-                        className="lg:hidden px-6 pt-6"
-                    >
-                        <div className="max-w-7xl mx-auto bg-white border border-slate-100 rounded-[28px] shadow-lg p-5 space-y-5">
-                            <FilterPanel
-                                selectedType={selectedType}
-                                setSelectedType={setSelectedType}
-                                selectedLocation={selectedLocation}
-                                setSelectedLocation={setSelectedLocation}
-                                selectedSort={selectedSort}
-                                setSelectedSort={setSelectedSort}
-                                showAppliedOnly={showAppliedOnly}
-                                setShowAppliedOnly={setShowAppliedOnly}
-                                resetFilters={resetFilters}
-                                getTypeColor={getTypeColor}
-                            />
-                        </div>
-                    </motion.div>
-                )}
-
-            </AnimatePresence>
+                </div>
 
             {/* Content Section */}
-            <div className="max-w-7xl mx-auto px-6 mt-12 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8 lg:items-start">
-                <div>
+            <div className="max-w-7xl mx-auto px-6 mt-12">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-32 space-y-4">
                         <div className="relative">
@@ -254,7 +411,7 @@ const OpportunitiesList: React.FC = () => {
                         <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Synchronizing Stream...</p>
                     </div>
                 ) : filteredOpportunities.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                         {filteredOpportunities.map((opp, idx) => (
                             <motion.div
                                 initial={{ opacity: 0, y: 20 }}
@@ -337,131 +494,10 @@ const OpportunitiesList: React.FC = () => {
                         <p className="text-slate-400 font-bold mb-8">Try adjusting your filters or search terms</p>
                     </div>
                 )}
-                </div>
 
-                <aside className="hidden lg:block self-start">
-                    <div className="bg-white border border-slate-100 rounded-[28px] shadow-sm p-6 space-y-6">
-                        <FilterPanel
-                            selectedType={selectedType}
-                            setSelectedType={setSelectedType}
-                            selectedLocation={selectedLocation}
-                            setSelectedLocation={setSelectedLocation}
-                            selectedSort={selectedSort}
-                            setSelectedSort={setSelectedSort}
-                            showAppliedOnly={showAppliedOnly}
-                            setShowAppliedOnly={setShowAppliedOnly}
-                            resetFilters={resetFilters}
-                            getTypeColor={getTypeColor}
-                        />
-                    </div>
-                </aside>
             </div>
         </div>
     );
 };
 
-interface FilterPanelProps {
-    selectedType: string;
-    setSelectedType: React.Dispatch<React.SetStateAction<string>>;
-    selectedLocation: string;
-    setSelectedLocation: React.Dispatch<React.SetStateAction<string>>;
-    selectedSort: string;
-    setSelectedSort: React.Dispatch<React.SetStateAction<string>>;
-    showAppliedOnly: boolean;
-    setShowAppliedOnly: React.Dispatch<React.SetStateAction<boolean>>;
-    resetFilters: () => void;
-    getTypeColor: (type: string) => string;
-}
-
-const FilterPanel: React.FC<FilterPanelProps> = ({
-    selectedType,
-    setSelectedType,
-    selectedLocation,
-    setSelectedLocation,
-    selectedSort,
-    setSelectedSort,
-    showAppliedOnly,
-    setShowAppliedOnly,
-    resetFilters,
-    getTypeColor,
-}) => {
-    return (
-        <>
-            <div className="flex items-center justify-between gap-3">
-                <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-500">Filters</p>
-                    <h2 className="text-lg font-black text-slate-900 mt-1">Narrow results</h2>
-                </div>
-                <button
-                    onClick={resetFilters}
-                    className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-700 transition-colors"
-                >
-                    Reset
-                </button>
-            </div>
-
-            <div className="space-y-3">
-                <label className="block text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                    {typeOptions.map((type) => (
-                        <button
-                            key={type}
-                            onClick={() => setSelectedType(type)}
-                            className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
-                                selectedType === type
-                                    ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-900/15'
-                                    : `bg-white border-slate-200 hover:border-slate-300 ${getTypeColor(type)}`
-                            }`}
-                        >
-                            {type}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="space-y-3">
-                <label className="block text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Location</label>
-                <div className="grid grid-cols-2 gap-2">
-                    {locationOptions.map((location) => (
-                        <button
-                            key={location}
-                            onClick={() => setSelectedLocation(location)}
-                            className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
-                                selectedLocation === location
-                                    ? 'bg-purple-600 text-white border-purple-600 shadow-lg shadow-purple-600/15'
-                                    : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
-                            }`}
-                        >
-                            {location}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="space-y-3">
-                <label className="block text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Sort by</label>
-                <select
-                    value={selectedSort}
-                    onChange={(e) => setSelectedSort(e.target.value)}
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-purple-50 focus:border-purple-200"
-                >
-                    {sortOptions.map((sort) => (
-                        <option key={sort} value={sort}>{sort}</option>
-                    ))}
-                </select>
-            </div>
-
-            <button
-                onClick={() => setShowAppliedOnly((value) => !value)}
-                className={`w-full px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.24em] border transition-all ${
-                    showAppliedOnly
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                }`}
-            >
-                {showAppliedOnly ? 'Showing applied only' : 'Show applied only'}
-            </button>
-        </>
-    );
-};
 export default OpportunitiesList;

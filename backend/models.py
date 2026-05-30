@@ -534,3 +534,16 @@ class OpportunityReview(BaseModel):
     review_text: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+class Avatar(BaseModel):
+    id: str = Field(..., alias="_id")
+    label: str
+    image_url: str
+    category: Optional[str] = None
+    crop_x: Optional[int] = None
+    crop_y: Optional[int] = None
+    crop_w: Optional[int] = None
+    crop_h: Optional[int] = None
+    is_active: bool = True
+    order: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+

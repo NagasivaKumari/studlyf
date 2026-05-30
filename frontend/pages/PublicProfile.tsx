@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { API_BASE_URL } from '../apiConfig';
 import { ArrowLeft, Award, BadgeCheck, BookOpen, Briefcase, Calendar, Copy, Globe, MapPin, Share2, Sparkles, Star, TrendingUp, User } from 'lucide-react';
+import AvatarImage from '../components/AvatarImage';
 
 const PublicProfile: React.FC = () => {
   const { userId } = useParams();
@@ -144,7 +145,7 @@ const PublicProfile: React.FC = () => {
             <div className="relative flex flex-col gap-8 lg:flex-row lg:items-center">
               <div className="flex items-start gap-5 flex-1">
                 <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[2rem] border border-white bg-gray-50 shadow-xl ring-4 ring-[#7C3AED]/10">
-                  {profile.profilePhoto ? <img src={profile.profilePhoto} alt={name} className="h-full w-full object-cover" /> : <User className="h-10 w-10 text-gray-300" />}
+                  {profile.profilePhoto ? <AvatarImage src={profile.profilePhoto} alt={name} className="h-full w-full object-cover" /> : <User className="h-10 w-10 text-gray-300" />}
                 </div>
                 <div className="min-w-0">
                   <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#7C3AED]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-[#7C3AED]">

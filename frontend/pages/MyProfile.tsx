@@ -5,12 +5,13 @@ import html2canvas from 'html2canvas';
 import QRCode from 'qrcode';
 import { useAuth } from '../AuthContext';
 import { API_BASE_URL } from '../apiConfig';
-import { 
+import {
   User, FileText, Book, Award, Briefcase, 
   Terminal, Share2, Settings, ShieldCheck, 
   ChevronLeft, Plus, Save, Sparkles, Scan,
   Globe, MapPin, Calendar, Heart, GraduationCap, Download, Copy
 } from 'lucide-react';
+import AvatarImage from '../components/AvatarImage';
 
 const MyProfile: React.FC = () => {
   const { user } = useAuth();
@@ -82,245 +83,33 @@ const MyProfile: React.FC = () => {
   const [extractedSkills, setExtractedSkills] = useState<string[]>([]);
   const [resumeParseResult, setResumeParseResult] = useState<any>(null);
   const [newSkillInput, setNewSkillInput] = useState('');
+  const [isEditingStrongWord, setIsEditingStrongWord] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [isGeneratingTemplate, setIsGeneratingTemplate] = useState(false);
-  const [copyFeedback, setCopyFeedback] = useState<{ target: 'accountShare' | 'profilePanel'; type: 'success' | 'error'; message: string } | null>(null);
-  const [sectionStatus, setSectionStatus] = useState<{ section: string; type: 'success' | 'error'; message: string } | null>(null);
-  const [githubAnalytics, setGithubAnalytics] = useState<{
-    username: string;
-    displayName: string;
-    avatarUrl: string;
-    profileUrl: string;
-    repoCount: number;
-    totalStars: number;
-    totalForks: number;
-    totalWatchers: number;
-    followers: number;
-    score: number;
-    topLanguages: string[];
-    bio: string;
-    computedAt: string;
-  } | null>(null);
-  const [githubError, setGithubError] = useState<string | null>(null);
-  const [isFetchingGithub, setIsFetchingGithub] = useState(false);
-  const [shareQrDataUrl, setShareQrDataUrl] = useState<string | null>(null);
-  const [isEditingStrongWord, setIsEditingStrongWord] = useState(true);
-  const navigate = useNavigate();
+  const [avatars, setAvatars] = useState<{ label: string; image_url: string; crop_x: number; crop_y: number; crop_w: number; crop_h: number }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
   const shareTemplateRef = useRef<HTMLDivElement>(null);
 
+  const [sectionStatus, setSectionStatus] = useState<Record<string, 'saving' | 'saved' | 'error' | null>>({});
+  const [isGeneratingTemplate, setIsGeneratingTemplate] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [isFetchingGithub, setIsFetchingGithub] = useState(false);
+  const [githubError, setGithubError] = useState<string | null>(null);
+  const [githubAnalytics, setGithubAnalytics] = useState<any>(null);
+  const [shareQrDataUrl, setShareQrDataUrl] = useState<string | null>(null);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const target = e.target as HTMLInputElement & HTMLSelectElement & HTMLTextAreaElement;
-    const name = target.name as string;
-    if (!name) return;
-    let value: any = target.value;
-    if (e.target instanceof HTMLInputElement && e.target.type === 'checkbox') {
-      value = e.target.checked;
-    }
-
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const chooseStrongWord = (word: string) => {
-    setFormData(prev => ({ ...prev, oneStrongWord: word }));
-    setIsEditingStrongWord(false);
-  };
-
-  const handleStrongWordInputBlur = () => {
-    if (formData.oneStrongWord.trim()) {
-      setIsEditingStrongWord(false);
-    }
-  };
-
-  const copyImageToClipboard = async (blob: Blob) => {
-    try {
-      if (!navigator.clipboard || typeof ClipboardItem === 'undefined') return false;
-      const item = new ClipboardItem({ 'image/png': blob });
-      await navigator.clipboard.write([item]);
-      return true;
-    } catch (e) {
-      console.warn('copyImageToClipboard failed', e);
-      return false;
-    }
-  };
-
-  const removeInterest = (tag: string) => {
-    setFormData(prev => ({
-      ...prev,
-      interests: prev.interests.filter(interest => interest !== tag),
-    }));
-  };
-
-  const copyImageImmediate = async () => {
-    if (isGeneratingTemplate) return;
-    setCopiedForPlatform(null);
-    setIsGeneratingTemplate(true);
-    try {
-      const { blob, dataUrl } = await generateProfileCardBlob();
-      const ok = await copyImageToClipboard(blob);
-      if (ok) {
-        setSaveStatus({ type: 'success', message: 'Image copied to clipboard — paste into the composer.' });
-      } else {
-        const link = document.createElement('a');
-        link.href = dataUrl;
-        link.download = profileTemplateFileName;
-        link.click();
-        setSaveStatus({ type: 'success', message: 'Image downloaded — attach it manually to the post.' });
-      }
-    } catch (e) {
-      console.warn('copyImageImmediate failed', e);
-      setSaveStatus({ type: 'error', message: 'Unable to copy or download image.' });
-    } finally {
-      setTimeout(() => setSaveStatus(null), 3000);
-      setIsGeneratingTemplate(false);
-    }
-  };
-
-  const calculateStrength = () => {
-    let score = 0;
-    if (formData.profilePhoto) score += 10;
-    if (formData.firstName && formData.lastName) score += 10;
-    if (formData.bio && formData.bio.length > 10) score += 10;
-    if (formData.skills.length > 0) score += 10;
-    if (formData.education.institution || formData.educationList.length > 0) score += 10;
-    if (formData.certifications.length > 0) score += 10;
-    if (formData.experience.company || formData.experienceList.length > 0) score += 10;
-    if (formData.projects.length > 0) score += 10;
-    if (formData.linkedin) score += 10;
-    if (formData.resume.fileName && formData.resume.fileName !== 'No resume uploaded') score += 10;
-
-    return score;
-  };
-
-  const [isExtracting, setIsExtracting] = useState(false);
-
-  // ─── REAL: Add / Remove individual skills ───
-  const addSkillToList = () => {
-    const trimmed = newSkillInput.trim();
-    if (!trimmed) return;
-    setFormData(prev => ({
-      ...prev,
-      skills: [
-        ...prev.skills,
-        { name: trimmed, proficiency: 'Intermediate', years: '' }
-      ]
-    }));
-    setNewSkillInput('');
-  };
-
-  const removeSkillFromList = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      skills: prev.skills.filter((_, i) => i !== index)
-    }));
-  };
-
-  const updateSkillField = (index: number, field: 'name' | 'proficiency' | 'years', value: string) => {
-    setFormData(prev => {
-      const updated = [...prev.skills];
-      updated[index] = { ...updated[index], [field]: value };
-      return { ...prev, skills: updated };
-    });
-  };
-
-  // ─── REAL: Upload resume and parse via backend ───
-  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    setUploadProgress(0);
-    setResumeParseResult(null);
-
-    // Animate progress bar during upload
-    const progressInterval = setInterval(() => {
-      setUploadProgress(prev => prev < 80 ? prev + 10 : prev);
-    }, 200);
-
-    try {
-      const formPayload = new FormData();
-      formPayload.append('file', file);
-
-      if (!user?.user_id) throw new Error('User not logged in');
-      const res = await fetch(`${API_BASE_URL}/api/user/${user.user_id}/upload-resume`, {
-        method: 'POST',
-        body: formPayload,
-      });
-
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Resume parsing failed');
-      }
-
-      const data = await res.json();
-      setResumeParseResult(data);
-
-      // Auto-populate skills from resume
-      const newSkills: { name: string; proficiency: string; years: string }[] = (data.skills || []).map((s: string) => ({
-        name: s,
-        proficiency: 'Intermediate',
-        years: ''
-      }));
-      setExtractedSkills(data.skills || []);
-
-      setFormData(prev => ({
-        ...prev,
-        firstName: data.full_name ? data.full_name.split(' ')[0] : prev.firstName,
-        lastName: data.full_name ? data.full_name.split(' ').slice(1).join(' ') : prev.lastName,
-        phone: data.phone || prev.phone,
-        resume: {
-          ...prev.resume,
-          fileName: file.name,
-          uploadDate: new Date().toLocaleDateString('en-IN'),
-          atsScore: data.ats_score || prev.resume.atsScore,
-        },
-        // Merge extracted skills with existing ones (no duplicates)
-        skills: [
-          ...prev.skills,
-          ...newSkills.filter(ns => !prev.skills.some(es => es.name.toLowerCase() === ns.name.toLowerCase()))
-        ]
-      }));
-    } catch (err) {
-      clearInterval(progressInterval);
-      setUploadProgress(0);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Upload failed: ${errorMessage}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // ─── REAL: Re-extract skills from already-uploaded resume ───
-  const extractSkills = async () => {
-    if (!resumeInputRef.current?.files?.[0] && formData.resume.fileName === 'No resume uploaded') {
-      alert('Please upload a resume first.');
-      return;
-      alert(`Extraction complete! Found ${resumeParseResult.skills.length} skills already loaded.`);
-    } else {
-      alert('No new skills found. Please re-upload your resume.');
-    }
-  };
-
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const resumeInputRef = React.useRef<HTMLInputElement>(null);
-
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, profilePhoto: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/institution/avatars`);
+        if (res.ok) {
+          const data = await res.json();
+          setAvatars(data.avatars || []);
+        }
+      } catch { /* use fallback below */ }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!user?.user_id) {
@@ -460,6 +249,103 @@ const MyProfile: React.FC = () => {
     }
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFormData(prev => ({ ...prev, profilePhoto: reader.result as string }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const form = new FormData();
+      form.append('resume', file);
+      const res = await fetch(`${API_BASE_URL}/api/user/${user?.user_id}/upload-resume`, {
+        method: 'POST',
+        body: form,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFormData(prev => ({ ...prev, resume: { fileName: file.name, uploadDate: new Date().toISOString(), atsScore: data.atsScore || 0, version: '1.0' } }));
+        if (data.skills) setFormData(prev => ({ ...prev, skills: data.skills }));
+        if (data.extractedSkills) setExtractedSkills(data.extractedSkills);
+        setResumeParseResult(data);
+      }
+    } catch { /* ignore */ }
+    setIsUploading(false);
+  };
+
+  const removeInterest = (tag: string) => {
+    setFormData(prev => ({ ...prev, interests: prev.interests.filter(t => t !== tag) }));
+  };
+
+  const addSkillToList = () => {
+    const trimmed = newSkillInput.trim();
+    if (!trimmed) return;
+    setFormData(prev => ({ ...prev, skills: [...prev.skills, { name: trimmed, proficiency: 'Intermediate', years: '' }] }));
+    setNewSkillInput('');
+  };
+
+  const removeSkillFromList = (index: number) => {
+    setFormData(prev => ({ ...prev, skills: prev.skills.filter((_, i) => i !== index) }));
+  };
+
+  const updateSkillField = (index: number, field: string, value: string) => {
+    setFormData(prev => {
+      const updated = [...prev.skills];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, skills: updated };
+    });
+  };
+
+  const copyImageToClipboard = async (blob: Blob): Promise<boolean> => {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      return true;
+    } catch { return false; }
+  };
+
+  const handleStrongWordInputBlur = () => {
+    setIsEditingStrongWord(false);
+  };
+
+  const chooseStrongWord = (word: string) => {
+    setFormData(prev => ({ ...prev, oneStrongWord: word }));
+    setIsEditingStrongWord(false);
+  };
+
+  const calculateStrength = () => {
+    let score = 0;
+    if (formData.firstName && formData.lastName) score += 10;
+    if (formData.phone) score += 5;
+    if (formData.gender) score += 5;
+    if (formData.dob) score += 5;
+    if (formData.location) score += 5;
+    if (formData.bio) score += 10;
+    if (formData.careerGoal) score += 5;
+    if (formData.profilePhoto) score += 10;
+    if (formData.skills && formData.skills.length > 0) score += 10;
+    if (formData.interests && formData.interests.length > 0) score += 5;
+    if (formData.educationList && formData.educationList.length > 0) score += 10;
+    if (formData.experienceList && formData.experienceList.length > 0) score += 10;
+    if (formData.projects && formData.projects.length > 0) score += 5;
+    if (formData.certifications && formData.certifications.length > 0) score += 5;
+    if (formData.linkedin) score += 5;
+    if (formData.github || formData.githubUsername) score += 5;
+    if (formData.portfolio) score += 5;
+    return Math.min(100, score);
+  };
   const profileCompletion = Math.min(100, calculateStrength());
   const profileDisplayName = [formData.firstName, formData.lastName].filter(Boolean).join(' ') || user?.full_name || 'Your Profile';
   const profileRole = formData.userType || user?.role || 'Contributor';
@@ -557,55 +443,7 @@ const MyProfile: React.FC = () => {
       </svg>`;
     return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
   };
-  // ─── 3D Cartoon Avatar Catalog (DiceBear adventurer style) ───
-  const avatarCatalog = [
-    // Row 1 – warm tones
-    { label: 'Avatar 1',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Liam&backgroundColor=EA580C' },
-    { label: 'Avatar 2',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Mia&backgroundColor=7C3AED' },
-    { label: 'Avatar 3',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Kai&backgroundColor=111827' },
-    { label: 'Avatar 4',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Zara&backgroundColor=DC2626' },
-    { label: 'Avatar 5',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Omar&backgroundColor=059669' },
-    { label: 'Avatar 6',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Priya&backgroundColor=DB2777' },
-    { label: 'Avatar 7',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Ethan&backgroundColor=6D28D9' },
-    { label: 'Avatar 8',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Sofia&backgroundColor=1D4ED8' },
-    { label: 'Avatar 9',  url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Marcus&backgroundColor=B45309' },
-    { label: 'Avatar 10', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Aisha&backgroundColor=7C3AED' },
-    { label: 'Avatar 11', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Noah&backgroundColor=BE185D' },
-    // Row 2 – cool tones
-    { label: 'Avatar 12', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Luna&backgroundColor=0F766E' },
-    { label: 'Avatar 13', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Ryan&backgroundColor=0D9488' },
-    { label: 'Avatar 14', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Nadia&backgroundColor=DB2777' },
-    { label: 'Avatar 15', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Jaxon&backgroundColor=EA580C' },
-    { label: 'Avatar 16', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Yuna&backgroundColor=7C3AED' },
-    { label: 'Avatar 17', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Diego&backgroundColor=DC2626' },
-    { label: 'Avatar 18', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Chloe&backgroundColor=059669' },
-    { label: 'Avatar 19', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Felix&backgroundColor=1D4ED8' },
-    { label: 'Avatar 20', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Amara&backgroundColor=B45309' },
-    { label: 'Avatar 21', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Leo&backgroundColor=111827' },
-    { label: 'Avatar 22', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Iris&backgroundColor=BE185D' },
-    // Row 3 – mixed
-    { label: 'Avatar 23', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Ravi&backgroundColor=DC2626' },
-    { label: 'Avatar 24', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Zoe&backgroundColor=059669' },
-    { label: 'Avatar 25', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Andre&backgroundColor=0D9488' },
-    { label: 'Avatar 26', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Meera&backgroundColor=6D28D9' },
-    { label: 'Avatar 27', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Jake&backgroundColor=1D4ED8' },
-    { label: 'Avatar 28', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Nia&backgroundColor=7C3AED' },
-    { label: 'Avatar 29', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Carlos&backgroundColor=EA580C' },
-    { label: 'Avatar 30', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Elena&backgroundColor=B45309' },
-    { label: 'Avatar 31', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Finn&backgroundColor=111827' },
-    { label: 'Avatar 32', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Keiko&backgroundColor=DB2777' },
-    { label: 'Avatar 33', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Samuel&backgroundColor=BE185D' },
-    // Row 4 – last set
-    { label: 'Avatar 34', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Leila&backgroundColor=0F766E' },
-    { label: 'Avatar 35', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Arjun&backgroundColor=1D4ED8' },
-    { label: 'Avatar 36', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Hana&backgroundColor=059669' },
-    { label: 'Avatar 37', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Tyler&backgroundColor=7C3AED' },
-    { label: 'Avatar 38', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Kiran&backgroundColor=DC2626' },
-    { label: 'Avatar 39', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Maya&backgroundColor=EA580C' },
-    { label: 'Avatar 40', url: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Ollie&backgroundColor=DB2777' },
-  ];
-
- const APP_BASE_URL = (import.meta as any).env?.VITE_PUBLIC_URL || window.location.origin;
+  const APP_BASE_URL = (import.meta as any).env?.VITE_PUBLIC_URL || window.location.origin;
 const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
   ? `${APP_BASE_URL}/profile/${user.user_id}`
   : '';
@@ -1727,13 +1565,13 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
                      onClick={() => fileInputRef.current?.click()}
                      className="w-32 h-32 bg-white rounded-[2rem] shadow-xl flex items-center justify-center relative group cursor-pointer overflow-hidden border-2 border-white ring-4 ring-[#7C3AED]/10 shrink-0"
                    >
-                     {formData.profilePhoto ? (
-                       <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
-                     ) : (
-                       <div className="w-full h-full flex items-center justify-center bg-white">
-                         <User className="w-12 h-12 text-gray-200" />
-                       </div>
-                     )}
+                      {formData.profilePhoto ? (
+                        <AvatarImage src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-white">
+                          <User className="w-12 h-12 text-gray-200" />
+                        </div>
+                      )}
                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                        <span className="text-white text-[9px] font-black uppercase tracking-widest">Edit</span>
@@ -1764,28 +1602,29 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
                    <div className="flex items-center justify-between gap-4 mb-4">
                      <div>
                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Choose Avatar</div>
-                       <div className="text-sm font-bold text-gray-900">{avatarCatalog.length} 3D character avatars</div>
+                        <div className="text-sm font-bold text-gray-900">{avatars.length} 3D character avatars</div>
                      </div>
                    </div>
                    <div className="max-h-[22rem] overflow-y-auto pr-1">
                      <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-8 gap-2.5 pb-2">
-                       {avatarCatalog.map((option) => {
-                         const isSelected = formData.profilePhoto === option.url;
-                         return (
-                           <button
-                             key={option.label}
-                             type="button"
-                             onClick={() => setFormData(prev => ({ ...prev, profilePhoto: option.url }))}
-                             className={`rounded-full border-2 overflow-hidden aspect-square transition-all ${
-                               isSelected
-                                 ? 'border-[#7C3AED] shadow-lg shadow-purple-200 ring-2 ring-[#7C3AED]/30 scale-110'
-                                 : 'border-transparent hover:border-[#7C3AED]/40 hover:scale-105'
-                             }`}
-                           >
-                             <img src={option.url} alt={option.label} className="w-full h-full object-cover" />
-                           </button>
-                         );
-                       })}
+                        {avatars.map((option) => {
+                          const cropUrl = option.image_url + '#' + option.crop_x + ',' + option.crop_y + ',' + option.crop_w + ',' + option.crop_h;
+                          const isSelected = formData.profilePhoto === cropUrl;
+                          return (
+                            <button
+                              key={option.label}
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, profilePhoto: cropUrl }))}
+                              className={`rounded-full border-2 overflow-hidden aspect-square transition-all ${
+                                isSelected
+                                  ? 'border-[#7C3AED] shadow-lg shadow-purple-200 ring-2 ring-[#7C3AED]/30 scale-110'
+                                  : 'border-transparent hover:border-[#7C3AED]/40 hover:scale-105'
+                              }`}
+                            >
+                              <AvatarImage src={cropUrl} alt={option.label} className="w-full h-full" />
+                            </button>
+                          );
+                        })}
                      </div>
                    </div>
                  </div>
@@ -3130,7 +2969,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
                     <div className="space-y-6">
                       <div className="relative inline-flex items-center justify-center w-36 h-36 rounded-[2.5rem] overflow-hidden border-4 border-white bg-[#F8FAFC] shadow-2xl">
                         {formData.profilePhoto ? (
-                          <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                          <AvatarImage src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-3xl font-black text-gray-500">{profileInitials}</span>
                         )}
@@ -3615,7 +3454,7 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
             <div className="flex w-[260px] flex-col items-center rounded-[32px] border border-white/15 bg-white/10 p-6 text-center backdrop-blur-md">
               <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-[28px] bg-white/90 text-3xl font-black text-[#5B21B6] shadow-xl">
                 {formData.profilePhoto ? (
-                  <img src={formData.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
+                  <AvatarImage src={formData.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
                 ) : (
                   <span>{profileDisplayName.split(' ').map(part => part[0]).join('').slice(0, 2)}</span>
                 )}

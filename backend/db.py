@@ -327,6 +327,9 @@ hackathon_event_config_col = db["hackathon_event_config"]
 # Institution Event Packages (dynamic event-package feature)
 institution_event_packages_col = db["institution_event_packages"]
 
+# Avatar Management
+avatars_col = db["avatars"]
+
 # Certificate Management
 cert_templates_col = db["cert_templates"]
 

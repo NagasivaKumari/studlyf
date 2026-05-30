@@ -6564,7 +6564,8 @@ async def get_me(user_payload: dict = Depends(get_current_user)):
         "institution_name": user.get("institution_name"),
         "college_name": user.get("college_name"),
         "graduation_year": user.get("graduation_year"),
-        "status": user.get("status")
+        "status": user.get("status"),
+        "profilePhoto": user.get("profilePhoto")
     }
 
 class UserRoleUpdate(BaseModel):

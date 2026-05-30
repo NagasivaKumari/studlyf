@@ -236,6 +236,24 @@ PROFILE_TYPE_DEFAULT_OVERRIDES = {
         "years_of_experience": "HIDDEN",
         "industry": "OPTIONAL",
         "website_url": "OPTIONAL"
+    },
+    "fresher": {
+        "college": "OPTIONAL",
+        "degree": "OPTIONAL",
+        "branch": "OPTIONAL",
+        "graduation_year": "OPTIONAL",
+        "cgpa": "OPTIONAL",
+        "company": "HIDDEN",
+        "job_title": "HIDDEN",
+        "years_of_experience": "HIDDEN",
+        "industry": "HIDDEN",
+        "organization_name": "HIDDEN",
+        "website_url": "OPTIONAL",
+        "resume_url": "OPTIONAL",
+        "linkedin_url": "OPTIONAL",
+        "github_url": "OPTIONAL",
+        "portfolio_url": "OPTIONAL",
+        "skills": "OPTIONAL"
     }
 }
 
@@ -244,7 +262,7 @@ def normalize_profile_type(value: Any) -> str:
     v = str(value or "").strip().lower()
     if v in ("working professional", "working_professional"):
         return "professional"
-    if v in ("student", "professional", "freelancer", "organization", "recruiter"):
+    if v in ("student", "professional", "freelancer", "organization", "recruiter", "fresher"):
         return v
     return "student"
 

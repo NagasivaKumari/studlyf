@@ -56,6 +56,13 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         eligibleOrganizations: ['Allow All'],
         sameOrgTeam: false,
         registrationLevel: 'both', // 'festival', 'both', 'competition'
+        // Dates & Deadlines
+        registrationStartDate: '',
+        registrationDeadline: '',
+        eventStartDate: '',
+        eventEndDate: '',
+        stages: [],
+        contacts: [],
         // Festival Creation Fields
         festivalData: {
             name: '',
@@ -331,8 +338,17 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                         eligibleOrganizations: data.eligibleOrganizations || ['Allow All'],
                         sameOrgTeam: data.sameOrgTeam || false,
                         registrationLevel: data.registrationLevel || 'both',
-                        registrationStartDate: formatToDatetimeLocal(data.start_date || data.startDate) || new Date(Date.now() + 86400000).toISOString().slice(0, 16),
-                        registrationDeadline: formatToDatetimeLocal(data.registrationDeadline || data.deadline) || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16),
+                        registrationStartDate: formatToDatetimeLocal(data.eventStartDate || data.start_date || data.startDate) || '',
+                        registrationDeadline: formatToDatetimeLocal(data.registrationDeadline || data.deadline) || '',
+                        eventStartDate: formatToDatetimeLocal(data.eventStartDate || data.start_date || data.startDate) || '',
+                        eventEndDate: formatToDatetimeLocal(data.eventEndDate || data.end_date || data.endDate) || '',
+                        stages: Array.isArray(data.stages) ? data.stages.map((s: any) => ({
+                            ...s,
+                            startDate: formatToDatetimeLocal(s.startDate || s.start_date) || '',
+                            endDate: formatToDatetimeLocal(s.endDate || s.end_date) || '',
+                            deadline: formatToDatetimeLocal(s.deadline) || '',
+                        })) : [],
+                        contacts: Array.isArray(data.contact || data.contacts) ? (data.contact || data.contacts) : [],
                         festivalData: data.festivalData ? {
                             name: data.festivalData.name || '',
                             mode: data.festivalData.mode || 'online',
@@ -438,8 +454,23 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                 const submitData = new FormData();
                 
                 const submitFormData = { ...formData };
-                submitFormData.registrationStartDate = new Date(Date.now() + 86400000).toISOString().slice(0, 16);
-                submitFormData.registrationDeadline = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16);
+                // Derive dates from stages
+                const stages = submitFormData.stages || [];
+                const regStage = stages.find((s: any) => (s.type || '').toUpperCase() === 'REGISTRATION');
+                if (regStage) {
+                    if (!submitFormData.registrationStartDate) submitFormData.registrationStartDate = regStage.startDate;
+                    if (!submitFormData.registrationDeadline) submitFormData.registrationDeadline = regStage.endDate;
+                }
+                if (stages.length > 0) {
+                    const allStarts = stages.map((s: any) => s.startDate).filter(Boolean);
+                    const allEnds = stages.map((s: any) => s.endDate).filter(Boolean);
+                    if (!submitFormData.eventStartDate && allStarts.length > 0) {
+                        submitFormData.eventStartDate = allStarts.sort()[0];
+                    }
+                    if (!submitFormData.eventEndDate && allEnds.length > 0) {
+                        submitFormData.eventEndDate = allEnds.sort().reverse()[0];
+                    }
+                }
                 
                 // Append all regular fields (exclude description — appended live below)
                 Object.entries(submitFormData).forEach(([key, value]) => {
@@ -547,8 +578,23 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
             const submitData = new FormData();
             
             const submitFormData = { ...formData };
-            submitFormData.registrationStartDate = new Date(Date.now() + 86400000).toISOString().slice(0, 16);
-            submitFormData.registrationDeadline = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16);
+            // Derive dates from stages
+            const draftStages = submitFormData.stages || [];
+            const draftRegStage = draftStages.find((s: any) => (s.type || '').toUpperCase() === 'REGISTRATION');
+            if (draftRegStage) {
+                if (!submitFormData.registrationStartDate) submitFormData.registrationStartDate = draftRegStage.startDate;
+                if (!submitFormData.registrationDeadline) submitFormData.registrationDeadline = draftRegStage.endDate;
+            }
+            if (draftStages.length > 0) {
+                const allStarts = draftStages.map((s: any) => s.startDate).filter(Boolean);
+                const allEnds = draftStages.map((s: any) => s.endDate).filter(Boolean);
+                if (!submitFormData.eventStartDate && allStarts.length > 0) {
+                    submitFormData.eventStartDate = allStarts.sort()[0];
+                }
+                if (!submitFormData.eventEndDate && allEnds.length > 0) {
+                    submitFormData.eventEndDate = allEnds.sort().reverse()[0];
+                }
+            }
             
             // Append all regular fields (exclude description — appended live below)
             Object.entries(submitFormData).forEach(([key, value]) => {
@@ -1001,6 +1047,170 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                 placeholder="e.g. Photoshop, React, Python (Comma separated)"
                                                 className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-xl outline-none transition-all text-slate-900 font-medium"
                                             />
+                                        </div>
+
+                                        {/* Stages & Timelines Section */}
+                                        <div className="pt-8 border-t border-slate-50">
+                                            <div className="flex items-center gap-3 mb-8">
+                                                <h4 className="text-[13px] font-black text-slate-900 uppercase tracking-widest">Stages &amp; Timelines</h4>
+                                                <Calendar size={14} className="text-slate-300" />
+                                            </div>
+                                            <div className="space-y-6">
+                                                <div className="p-5 bg-amber-50 border border-amber-200 rounded-xl">
+                                                    <p className="text-[11px] font-medium text-amber-800">
+                                                        Important dates &amp; deadlines are automatically derived from stage dates below. No need to set them separately.
+                                                    </p>
+                                                </div>
+
+                                                {/* Stages / Timeline */}
+                                                <div>
+                                                    <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                                                        Stage Timeline <span className="text-slate-300 font-normal normal-case">(Optional)</span>
+                                                    </label>
+                                                    <div className="space-y-3">
+                                                        {(formData.stages || []).map((stage: any, i: number) => (
+                                                            <div key={i} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stage {i + 1}</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const updated = [...formData.stages];
+                                                                            updated.splice(i, 1);
+                                                                            setFormData({...formData, stages: updated});
+                                                                        }}
+                                                                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-all"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-3">
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Stage Name</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={stage.name || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.stages];
+                                                                                updated[i] = {...updated[i], name: e.target.value};
+                                                                                setFormData({...formData, stages: updated});
+                                                                            }}
+                                                                            placeholder="e.g. Coding Challenge"
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Type</label>
+                                                                        <select
+                                                                            value={stage.type || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.stages];
+                                                                                updated[i] = {...updated[i], type: e.target.value};
+                                                                                setFormData({...formData, stages: updated});
+                                                                            }}
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
+                                                                        >
+                                                                            <option value="">Select type</option>
+                                                                            <option value="REGISTRATION">Registration</option>
+                                                                            <option value="SUBMISSION">Submission</option>
+                                                                            <option value="EVALUATION">Evaluation</option>
+                                                                            <option value="RESULT">Result</option>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
+                                                                    <textarea
+                                                                        rows={3}
+                                                                        value={stage.description || ''}
+                                                                        onChange={(e) => {
+                                                                            const updated = [...formData.stages];
+                                                                            updated[i] = {...updated[i], description: e.target.value};
+                                                                            setFormData({...formData, stages: updated});
+                                                                        }}
+                                                                        placeholder="Describe what happens in this stage..."
+                                                                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium resize-none"
+                                                                    />
+                                                                </div>
+                                                                <div className="grid grid-cols-4 gap-3">
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Start Date</label>
+                                                                        <input
+                                                                            type="datetime-local"
+                                                                            value={stage.startDate || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.stages];
+                                                                                updated[i] = {...updated[i], startDate: e.target.value};
+                                                                                setFormData({...formData, stages: updated});
+                                                                            }}
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">End Date</label>
+                                                                        <input
+                                                                            type="datetime-local"
+                                                                            value={stage.endDate || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.stages];
+                                                                                updated[i] = {...updated[i], endDate: e.target.value};
+                                                                                setFormData({...formData, stages: updated});
+                                                                            }}
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Mode</label>
+                                                                        <select
+                                                                            value={stage.mode || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.stages];
+                                                                                updated[i] = {...updated[i], mode: e.target.value};
+                                                                                setFormData({...formData, stages: updated});
+                                                                            }}
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
+                                                                        >
+                                                                            <option value="">Select mode</option>
+                                                                            <option value="Online">Online</option>
+                                                                            <option value="Offline">Offline</option>
+                                                                            <option value="Hybrid">Hybrid</option>
+                                                                        </select>
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Status</label>
+                                                                        <select
+                                                                            value={stage.status || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...formData.stages];
+                                                                                updated[i] = {...updated[i], status: e.target.value};
+                                                                                setFormData({...formData, stages: updated});
+                                                                            }}
+                                                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
+                                                                        >
+                                                                            <option value="">Auto (from dates)</option>
+                                                                            <option value="upcoming">Upcoming</option>
+                                                                            <option value="active">Live</option>
+                                                                            <option value="completed">Completed</option>
+                                                                            <option value="results">Results</option>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = [...(formData.stages || []), { name: '', type: '', startDate: '', endDate: '', description: '', mode: '', status: '' }];
+                                                            setFormData({...formData, stages: updated});
+                                                        }}
+                                                        className="mt-3 flex items-center gap-2 px-4 py-2.5 bg-white border border-dashed border-slate-300 rounded-xl text-[11px] font-bold text-slate-500 hover:border-[#6C3BFF] hover:text-[#6C3BFF] transition-all"
+                                                    >
+                                                        <Plus size={14} />
+                                                        Add Stage
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         {/* Perks and Benefits Section */}
@@ -1513,6 +1723,59 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                         )}
                                                     </div>
                                                 </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Contact the organisers */}
+                                        <div className="pt-8 border-t border-slate-50">
+                                            <div className="flex items-center gap-3 mb-8">
+                                                <h4 className="text-[13px] font-black text-slate-900 uppercase tracking-widest">Contact the Organisers</h4>
+                                                <HeadphonesIcon size={14} className="text-slate-300" />
+                                            </div>
+                                            <div className="space-y-4">
+                                                {(formData.contacts || []).map((contact: any, i: number) => (
+                                                    <div key={i} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contact {i + 1}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const updated = [...formData.contacts];
+                                                                    updated.splice(i, 1);
+                                                                    setFormData({...formData, contacts: updated});
+                                                                }}
+                                                                className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-all"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Email</label>
+                                                            <input
+                                                                type="email"
+                                                                value={contact.email || ''}
+                                                                onChange={(e) => {
+                                                                    const updated = [...formData.contacts];
+                                                                    updated[i] = {...updated[i], email: e.target.value};
+                                                                    setFormData({...formData, contacts: updated});
+                                                                }}
+                                                                placeholder="support@example.com"
+                                                                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const updated = [...(formData.contacts || []), { email: '' }];
+                                                        setFormData({...formData, contacts: updated});
+                                                    }}
+                                                    className="flex items-center gap-2 px-4 py-2.5 bg-white border border-dashed border-slate-300 rounded-xl text-[11px] font-bold text-slate-500 hover:border-[#6C3BFF] hover:text-[#6C3BFF] transition-all"
+                                                >
+                                                    <Plus size={14} />
+                                                    Add Contact
+                                                </button>
                                             </div>
                                         </div>
                                     </div>

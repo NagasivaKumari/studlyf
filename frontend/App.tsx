@@ -70,6 +70,7 @@ const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const RoadmapClone = lazy(() => import('./pages/RoadmapClone'));
 import OpportunitiesList from './pages/opportunities/OpportunitiesList';
 const OpportunityDetails = lazy(() => import('./pages/opportunities/OpportunityDetails'));
+const ResultsPage = lazy(() => import('./pages/opportunities/ResultsPage'));
 const MyApplications = lazy(() => import('./pages/opportunities/MyApplications'));
 const EventHub = lazy(() => import('./pages/events/EventHub'));
 const EventPackagePage = lazy(() => import('./pages/events/EventPackagePage'));
@@ -440,6 +441,7 @@ const App: React.FC = () => {
             <Route path="/opportunities" element={<ProtectedRoute><OpportunitiesList /></ProtectedRoute>} />
             <Route path="/opportunities/my-applications" element={<ProtectedRoute><MyApplications /></ProtectedRoute>} />
             <Route path="/opportunities/:id" element={<ProtectedRoute><OpportunityDetails /></ProtectedRoute>} />
+            <Route path="/opportunities/:id/results" element={<PublicRoute><ResultsPage /></PublicRoute>} />
 
             {/* Events */}
             <Route path="/events/:eventId" element={<ProtectedRoute><EventHub /></ProtectedRoute>} />

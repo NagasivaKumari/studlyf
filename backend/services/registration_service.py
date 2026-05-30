@@ -55,8 +55,9 @@ async def validate_event_restrictions(
                 user_role = str(user.get("role") or "").lower().strip()
 
                 # Build heuristics — use get_user_profile_data for consistency with form auto-fill
-                is_college_student = bool(user_college) and not bool(user_company)  # has college, no company
-                is_fresher = False  # No reliable field; could check years of experience if available
+                profile_type = str(user_profile.get("profile_type") or "").lower().strip()
+                is_college_student = bool(user_college) and not bool(user_company) and profile_type != "fresher"
+                is_fresher = profile_type == "fresher"
                 is_professional = bool(user_company) or user_role in ("professional", "institution", "alumni")
                 is_school_student = "school" in user_college.lower() if user_college else False
 

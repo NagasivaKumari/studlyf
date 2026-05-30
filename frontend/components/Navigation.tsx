@@ -3,7 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { API_BASE_URL } from '../apiConfig';
 import { ShoppingCart, User } from 'lucide-react';
+import AvatarImage from './AvatarImage';
 
 const StudlyfLogo = ({ className = "h-8 sm:h-10" }: { className?: string }) => (
   <div className={`flex items-center ${className}`}>
@@ -109,6 +111,18 @@ const Navigation: React.FC = () => {
   const { user, role, logout } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.user_id) return;
+    fetch(`${API_BASE_URL}/api/user/${user.user_id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.profilePhoto) setProfilePhoto(data.profilePhoto);
+      })
+      .catch(() => {});
+  }, [user?.user_id]);
 
   const courseRoutePrefixes = [
     '/learn/course',
@@ -229,9 +243,13 @@ const Navigation: React.FC = () => {
                   <div className="relative hidden sm:block" ref={userDropdownRef}>
                     <button
                       onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                      className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 border border-white/30 hover:bg-white/30 transition-all mr-2 group/profile cursor-pointer outline-none"
+                      className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 border border-white/30 hover:bg-white/30 transition-all mr-2 group/profile cursor-pointer outline-none overflow-hidden"
                     >
-                      <User className="w-5 h-5 text-white group-hover/profile:text-[#A78BFA] transition-colors" />
+                      {profilePhoto ? (
+                        <AvatarImage src={profilePhoto} alt="" className="w-full h-full" />
+                      ) : (
+                        <User className="w-5 h-5 text-white group-hover/profile:text-[#A78BFA] transition-colors" />
+                      )}
                     </button>
                     
                     <AnimatePresence>
@@ -248,8 +266,12 @@ const Navigation: React.FC = () => {
                               AUTHENTICATED MEMBER
                             </span>
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#7C3AED] to-[#A78BFA] flex items-center justify-center text-white font-black text-sm shadow-md">
-                                {user?.full_name?.split(' ').map((n: string) => n[0]).join('') || 'U'}
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#7C3AED] to-[#A78BFA] flex items-center justify-center text-white font-black text-sm shadow-md overflow-hidden">
+                                {profilePhoto ? (
+                                  <AvatarImage src={profilePhoto} alt="" className="w-full h-full" />
+                                ) : (
+                                  user?.full_name?.split(' ').map((n: string) => n[0]).join('') || 'U'
+                                )}
                               </div>
                               <div className="min-w-0">
                                 <p className="text-xs font-black text-slate-900 truncate">{user?.full_name || 'User'}</p>

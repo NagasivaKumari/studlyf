@@ -6,6 +6,8 @@ import {
     MapPin, 
     ChevronLeft, 
     ChevronRight,
+    ChevronDown,
+    ChevronUp,
     CheckCircle2, 
     Upload, 
     Send,
@@ -48,6 +50,7 @@ import { useRegistrationState } from '../../utils/useRegistrationState';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
 import SubmissionForm from '../../components/opportunities/SubmissionForm';
+import AvatarImage from '../../components/AvatarImage';
 import TeamManager from '../../components/opportunities/TeamManager';
 import {
     formatOpportunityLocation,
@@ -146,6 +149,7 @@ const OpportunityDetails: React.FC = () => {
     const [reviewForm, setReviewForm] = useState({ rating: 0, text: '' });
     const [reviewSubmitting, setReviewSubmitting] = useState(false);
     const [reviewSuccess, setReviewSuccess] = useState(false);
+    const [reviewExpanded, setReviewExpanded] = useState(false);
     const [descExpanded, setDescExpanded] = useState(false);
     const [activeSection, setActiveSection] = useState<'details' | 'dates' | 'prizes' | 'reviews' | 'faq' | 'submissions' | 'leaderboard'>('details');
     const getFieldAllowedExtensions = (field: RegField) => {
@@ -228,6 +232,7 @@ const OpportunityDetails: React.FC = () => {
     const eventId = String(opportunity?.event_link_id || opportunity?.event_id || id || '');
 
     const computeStageStatus = (stage: any) => {
+        if (stage?.status) return stage.status;
         const now = new Date();
         const startRaw = stage?.startDate || stage?.start_date;
         const endRaw = stage?.endDate || stage?.end_date;
@@ -925,6 +930,13 @@ const OpportunityDetails: React.FC = () => {
         const isSubmissionStage = stype === 'SUBMISSION' || sname.includes('SUBMISSION');
         const regStatusStr = (effectiveRegStatus || 'NOT_REGISTERED').toUpperCase();
         const isRegistrationStage = stype === 'REGISTRATION' || sname.includes('REGISTER') || sname.includes('REGISTRATION');
+
+        // Results stage → open results page in new tab (public)
+        const stageStatus = computeStageStatus(s);
+        if (stageStatus === 'results' || stype === 'RESULT' || sname.includes('RESULT')) {
+            window.open(`/opportunities/${encodeURIComponent(String(id))}/results`, '_blank', 'noopener,noreferrer');
+            return;
+        }
 
         if (isRegistrationStage) {
             const extLink = opportunity?.external_registration_link || opportunity?.externalRegistrationLink;
@@ -1714,6 +1726,7 @@ const OpportunityDetails: React.FC = () => {
                                                                     <h3 className="font-black text-slate-900 text-lg">{s.name || `Stage ${i + 1}`}</h3>
                                                                     {stageStatus === 'active' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-purple-100 text-purple-700">Live</span>}
                                                                     {stageStatus === 'completed' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">Completed</span>}
+                                                                    {stageStatus === 'results' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-amber-100 text-amber-700">Results</span>}
                                                                 </div>
                                                                 {s.type ? (
                                                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
@@ -1745,6 +1758,23 @@ const OpportunityDetails: React.FC = () => {
                                                                 )}
                                                             </div>
                                                         </div>
+
+                                                        {/* Winners for stages with results */}
+                                                        {stageStatus === 'results' && eventLeaderboard.length > 0 && (
+                                                            <div className="mt-3 pt-3 border-t border-slate-100">
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 mb-2">Winners</p>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {eventLeaderboard.slice(0, 3).map((entry, idx) => (
+                                                                        <div key={entry.team_id || idx} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-800">
+                                                                            <span className={idx === 0 ? 'text-yellow-600' : idx === 1 ? 'text-slate-400' : 'text-amber-700'}>
+                                                                                {idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}
+                                                                            </span>
+                                                                            {entry.team_name || entry.name || `Team ${idx + 1}`}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
 
                                                         {/* Per-stage FAQ link (scrolls to FAQ section) */}
                                                         <div className="mt-3 pt-3 border-t border-slate-100">
@@ -1958,18 +1988,14 @@ const OpportunityDetails: React.FC = () => {
                                                                 <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-400 shadow-[4px_0_24px_rgba(16,185,129,0.4)] z-10" />
                                                             )}
                                                             
-                                                            {/* Left column: Amount / Admin Icon / Type-mapped Icon (No static fallback) */}
-                                                            {(isCash || iconUrl || detectedType) && (
+                                                            {/* Left column: Type-based icon (Cash / Certificate / Trophy / Placement) */}
+                                                            {(isCash || detectedType) && (
                                                                 <>
                                                                     <div className={`w-36 shrink-0 flex flex-col justify-center items-center py-6 px-4 ${isCash ? 'bg-gradient-to-r from-emerald-50/40 to-transparent pl-6' : ''}`}>
                                                                         {isCash ? (
                                                                             <div className="text-center relative z-20">
                                                                                 <p className="text-xl font-black text-emerald-700 tracking-tight">{amountStr || 'CASH'}</p>
                                                                                 <p className="text-lg font-black text-emerald-900 uppercase tracking-widest mt-0.5">CASH</p>
-                                                                            </div>
-                                                                        ) : iconUrl ? (
-                                                                            <div className="relative z-20 h-14 w-14 flex items-center justify-center">
-                                                                                <img src={iconUrl} alt="" className="max-w-full max-h-full object-contain" />
                                                                             </div>
                                                                         ) : detectedType === 'placement' ? (
                                                                             <div className="relative z-20 h-14 w-14 flex items-center justify-center">
@@ -1996,11 +2022,16 @@ const OpportunityDetails: React.FC = () => {
                                                                 </>
                                                             )}
 
-                                                            {/* Middle column: Title and Description */}
+                                                            {/* Middle column: Admin icon URL + Title + Description */}
                                                             <div className={`flex-1 py-5 ${(isCash || iconUrl || detectedType) ? 'px-6' : 'px-8'}`}>
-                                                                <p className="text-lg font-bold text-slate-800">
-                                                                    {p.rank || p.title || p.label || `Prize ${idx + 1}`}
-                                                                </p>
+                                                                <div className="flex items-center gap-3">
+                                                                    {iconUrl && (
+                                                                        <img src={iconUrl} alt="" className="w-9 h-9 object-contain shrink-0" />
+                                                                    )}
+                                                                    <p className="text-lg font-bold text-slate-800">
+                                                                        {p.rank || p.title || p.label || `Prize ${idx + 1}`}
+                                                                    </p>
+                                                                </div>
                                                                 {p.description ? (
                                                                     <p className="text-sm text-slate-500 font-medium mt-1 whitespace-pre-wrap">
                                                                         {String(p.description)}
@@ -2048,35 +2079,18 @@ const OpportunityDetails: React.FC = () => {
                                     </h2>
                                     <div className="space-y-3">
                                         {contactList.map((c: any, idx: number) => {
-                                            const name = String(c?.name || c?.full_name || c?.title || 'Organiser').trim();
                                             const email = String(c?.email || '').trim();
-                                            const phone = String(c?.phone || c?.mobile || '').trim();
-                                            return (
-                                                <div
+                                            return email ? (
+                                                <button
                                                     key={c?.id || `${idx}`}
-                                                    className="p-4 rounded-xl bg-slate-50 border border-slate-100"
+                                                    type="button"
+                                                    onClick={() => window.location.href = `mailto:${email}`}
+                                                    className="w-full p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-3 hover:bg-slate-100 transition-colors text-left"
                                                 >
-                                                    <p className="font-black text-slate-900">{name}</p>
-                                                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold text-slate-600">
-                                                        {email ? (
-                                                            <a
-                                                                className="inline-flex items-center gap-2 hover:text-purple-600"
-                                                                href={`mailto:${email}`}
-                                                            >
-                                                                <Mail size={16} /> {email}
-                                                            </a>
-                                                        ) : null}
-                                                        {phone ? (
-                                                            <a
-                                                                className="inline-flex items-center gap-2 hover:text-purple-600"
-                                                                href={`tel:${phone}`}
-                                                            >
-                                                                <Phone size={16} /> {phone}
-                                                            </a>
-                                                        ) : null}
-                                                    </div>
-                                                </div>
-                                            );
+                                                    <Mail size={16} className="text-purple-500 shrink-0" />
+                                                    <span className="text-sm font-semibold text-slate-700 hover:text-purple-600">{email}</span>
+                                                </button>
+                                            ) : null;
                                         })}
                                     </div>
                                 </section>
@@ -2312,98 +2326,116 @@ const OpportunityDetails: React.FC = () => {
                         ) : null}
 
                         <div ref={reviewsRef}>
-                            <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
-                                <div className="flex items-center justify-between mb-6">
+                            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setReviewExpanded(prev => !prev)}
+                                    className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50/50 transition-colors"
+                                >
                                     <h2 className="text-lg font-black text-slate-900 flex items-center gap-3">
                                         <span className="w-1 h-7 bg-purple-600 rounded-full" />
                                         Feedback &amp; rating
                                     </h2>
-                                    {opportunity?.average_rating > 0 && (
-                                        <div className="flex items-center gap-1 bg-amber-50 text-amber-700 px-3 py-1 rounded-full">
-                                            <Star size={14} className="fill-amber-400 stroke-amber-400" />
-                                            <span className="text-sm font-black">{opportunity.average_rating.toFixed(1)}</span>
-                                            <span className="text-[10px] uppercase font-bold ml-1">({opportunity.total_reviews})</span>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {isApplied && !reviewSuccess ? (
-                                    <form onSubmit={handleReviewSubmit} className="mb-8 border border-slate-100 bg-slate-50 p-4 md:p-6 rounded-2xl">
-                                        <h3 className="text-sm font-black text-slate-800 mb-4">Write your review</h3>
-                                        <div className="flex items-center gap-2 mb-4">
-                                            {[1, 2, 3, 4, 5].map(num => (
-                                                <button 
-                                                    key={num} type="button" 
-                                                    onClick={() => setReviewForm(prev => ({ ...prev, rating: num }))}
-                                                    className={`p-1 hover:scale-110 transition-transform ${reviewForm.rating >= num ? 'text-amber-400' : 'text-slate-300'}`}
-                                                >
-                                                    <Star size={28} className={reviewForm.rating >= num ? 'fill-amber-400' : ''} />
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <textarea
-                                            rows={3}
-                                            required
-                                            value={reviewForm.text}
-                                            onChange={e => setReviewForm(prev => ({ ...prev, text: e.target.value }))}
-                                            placeholder="What did you think about this opportunity? Your feedback helps others!"
-                                            className="w-full bg-white border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-600/20 focus:border-purple-600 transition-all resize-none mb-4"
-                                        />
-                                        <div className="flex justify-end">
-                                            <button 
-                                                type="submit" 
-                                                disabled={reviewSubmitting || reviewForm.rating === 0}
-                                                className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-black rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                            >
-                                                {reviewSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                                                Submit Review
-                                            </button>
-                                        </div>
-                                    </form>
-                                ) : reviewSuccess ? (
-                                    <div className="mb-8 bg-emerald-50 text-emerald-700 p-4 rounded-2xl border border-emerald-100 flex items-center gap-3">
-                                        <CheckCircle2 className="shrink-0" />
-                                        <p className="text-sm font-bold">Thanks for your feedback! Your review has been published.</p>
-                                    </div>
-                                ) : !isApplied ? (
-                                    <div className="mb-8 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-center">
-                                        <p className="text-slate-500 text-sm font-medium">
-                                            Register for this opportunity to give your feedback and review.
-                                        </p>
-                                    </div>
-                                ) : null}
-
-                                <div className="space-y-4">
-                                    {reviews.length > 0 ? (
-                                        reviews.map(rev => (
-                                            <div key={rev._id} className="border border-slate-100 rounded-2xl p-5 hover:border-slate-200 transition-colors">
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-black text-xs uppercase">
-                                                            {rev.user_name?.charAt(0) || 'U'}
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-sm font-black text-slate-900">{rev.user_name}</p>
-                                                            <p className="text-[10px] font-bold text-slate-500">
-                                                                {new Date(rev.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-0.5">
-                                                        {[1, 2, 3, 4, 5].map(num => (
-                                                            <Star key={num} size={14} className={rev.rating >= num ? "fill-amber-400 stroke-amber-400" : "fill-slate-100 stroke-slate-200"} />
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                                <p className="text-sm font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">
-                                                    {rev.review_text}
-                                                </p>
+                                    <div className="flex items-center gap-3">
+                                        {opportunity?.average_rating > 0 && (
+                                            <div className="flex items-center gap-1 bg-amber-50 text-amber-700 px-3 py-1 rounded-full">
+                                                <Star size={14} className="fill-amber-400 stroke-amber-400" />
+                                                <span className="text-sm font-black">{opportunity.average_rating.toFixed(1)}</span>
+                                                <span className="text-[10px] uppercase font-bold ml-1">({opportunity.total_reviews})</span>
                                             </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-center text-sm font-bold text-slate-400 py-8">No reviews yet. Be the first to share your experience!</p>
-                                    )}
-                                </div>
+                                        )}
+                                        {reviewExpanded ? <ChevronUp size={18} className="text-slate-400" /> : <ChevronDown size={18} className="text-slate-400" />}
+                                    </div>
+                                </button>
+
+                                {reviewExpanded && (
+                                    <div className="px-6 md:px-8 pb-6 md:pb-8 space-y-6">
+                                        {isApplied && !reviewSuccess ? (
+                                            <form onSubmit={handleReviewSubmit} className="border border-slate-100 bg-slate-50 p-4 md:p-6 rounded-2xl">
+                                                <h3 className="text-sm font-black text-slate-800 mb-4">Write your review</h3>
+                                                <div className="flex items-center gap-2 mb-4">
+                                                    {[1, 2, 3, 4, 5].map(num => (
+                                                        <button 
+                                                            key={num} type="button" 
+                                                            onClick={() => setReviewForm(prev => ({ ...prev, rating: num }))}
+                                                            className={`p-1 hover:scale-110 transition-transform ${reviewForm.rating >= num ? 'text-amber-400' : 'text-slate-300'}`}
+                                                        >
+                                                            <Star size={28} className={reviewForm.rating >= num ? 'fill-amber-400' : ''} />
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <textarea
+                                                    rows={3}
+                                                    required
+                                                    value={reviewForm.text}
+                                                    onChange={e => setReviewForm(prev => ({ ...prev, text: e.target.value }))}
+                                                    placeholder="What did you think about this opportunity? Your feedback helps others!"
+                                                    className="w-full bg-white border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-600/20 focus:border-purple-600 transition-all resize-none mb-4"
+                                                />
+                                                <div className="flex justify-end">
+                                                    <button 
+                                                        type="submit" 
+                                                        disabled={reviewSubmitting || reviewForm.rating === 0}
+                                                        className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-black rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                                    >
+                                                        {reviewSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                                                        Submit Review
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        ) : reviewSuccess ? (
+                                            <div className="bg-emerald-50 text-emerald-700 p-4 rounded-2xl border border-emerald-100 flex items-center gap-3">
+                                                <CheckCircle2 className="shrink-0" />
+                                                <p className="text-sm font-bold">Thanks for your feedback! Your review has been published.</p>
+                                            </div>
+                                        ) : !isApplied ? (
+                                            <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowRegistrationModal(true);
+                                                setReviewExpanded(false);
+                                            }}
+                                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-center hover:bg-slate-100 transition-colors cursor-pointer"
+                                        >
+                                            <p className="text-slate-500 text-sm font-medium">
+                                                Register for this opportunity to give your feedback and review.
+                                            </p>
+                                        </button>
+                                        ) : null}
+
+                                        <div className="space-y-4">
+                                            {reviews.length > 0 ? (
+                                                reviews.map(rev => (
+                                                    <div key={rev._id} className="border border-slate-100 rounded-2xl p-5 hover:border-slate-200 transition-colors">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-black text-xs uppercase">
+                                                                    {rev.user_name?.charAt(0) || 'U'}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-sm font-black text-slate-900">{rev.user_name}</p>
+                                                                    <p className="text-[10px] font-bold text-slate-500">
+                                                                        {new Date(rev.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-0.5">
+                                                                {[1, 2, 3, 4, 5].map(num => (
+                                                                    <Star key={num} size={14} className={rev.rating >= num ? "fill-amber-400 stroke-amber-400" : "fill-slate-100 stroke-slate-200"} />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <p className="text-sm font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">
+                                                            {rev.review_text}
+                                                        </p>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <p className="text-center text-sm font-bold text-slate-400 py-8">No reviews yet. Be the first to share your experience!</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </section>
                         </div>
 
@@ -2528,8 +2560,8 @@ const OpportunityDetails: React.FC = () => {
                             </p>
                             <button
                                 type="button"
-                                onClick={() => window.open('mailto:support@studlyf.com?subject=Report Issue&body=' + encodeURIComponent(`Issue with: ${opportunity.title}\n${window.location.href}`))}
-                                className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors flex items-center gap-1.5"
+                                onClick={() => window.location.href = 'mailto:support@studlyf.com?subject=Report Issue&body=' + encodeURIComponent(`Issue with: ${opportunity.title}\n${window.location.href}`)}
+                                className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors flex items-center gap-1.5 cursor-pointer"
                             >
                                 <AlertCircle size={12} /> Report an Issue
                             </button>
@@ -2558,7 +2590,7 @@ const OpportunityDetails: React.FC = () => {
                                     <div className="flex items-center gap-3 mb-5 p-2">
                                         <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center border-2 border-purple-200 shrink-0 overflow-hidden">
                                             {sidebarProfilePhoto ? (
-                                                <img src={sidebarProfilePhoto} alt="Avatar" className="w-full h-full object-cover" />
+                                                <AvatarImage src={sidebarProfilePhoto} alt="Avatar" className="w-full h-full object-cover" />
                                             ) : (
                                                 <span className="text-purple-700 font-black text-xl">
                                                     {user.full_name ? user.full_name.charAt(0).toUpperCase() : 'U'}
@@ -2632,10 +2664,7 @@ const OpportunityDetails: React.FC = () => {
                                     }
                                 })()}
 
-                                <div className="mt-5 flex items-center justify-center gap-2 text-slate-600 font-semibold text-sm">
-                                    <span className="cursor-pointer hover:text-slate-900 transition-colors">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-                                    </span>
+                                <div className="mt-5 flex items-center justify-center text-slate-600 font-semibold text-sm">
                                     <span><span className="text-slate-800 font-bold">{(stats.participants || 0).toLocaleString()}</span> Registered</span>
                                 </div>
                             </div>
@@ -2892,9 +2921,9 @@ const OpportunityDetails: React.FC = () => {
                                                                     )}
                                                                 </label>
 
-                                                                {field.id === 'profile_type' ? (
-                                                                    <div className="flex gap-4 mt-1.5">
-                                                                        {(['Student', 'Working Professional'] as const).map((typeOpt) => {
+                                                                 {field.id === 'profile_type' ? (
+                                                                     <div className="flex gap-4 mt-1.5">
+                                                                         {(['Student', 'Working Professional', 'Fresher'] as const).map((typeOpt) => {
                                                                             const isSelected = regAnswers[field.id] === typeOpt || (!regAnswers[field.id] && typeOpt === 'Student');
                                                                             return (
                                                                                 <button
