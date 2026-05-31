@@ -736,7 +736,7 @@ def fix_progress(prog, default_status="locked"):
     # Merge defaults with actual data
     return {**defaults, **fix_id(prog)}
 
-from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes
+from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes, stage_endpoints
 from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
@@ -818,6 +818,7 @@ app.include_router(participant_card_routes.router)
 app.include_router(event_certificate_routes.router)
 app.include_router(event_certificate_routes.verification_router)
 app.include_router(registration_flow_routes.router)
+app.include_router(stage_endpoints.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -5976,6 +5977,13 @@ async def update_profile(user_id: str, data: dict = Body(...)):
                 {"$set": core_update}
             )
 
+        # 2b. Sync userType → profile_type on users_col for eligibility checks
+        if "userType" in data and data["userType"]:
+            await users_col.update_one(
+                {"user_id": user_id},
+                {"$set": {"profile_type": data["userType"]}}
+            )
+
         # 3. All extended profile data → learner_profiles collection
         profile_update = {
             "user_id": user_id,
@@ -6489,6 +6497,16 @@ async def login(credentials: UserLogin, request: Request):
             except Exception:
                 pass
 
+    # Fallback to learner_profiles.userType if profile_type not set on users_col
+    profile_type_login = user.get("profile_type", "")
+    if not profile_type_login:
+        try:
+            learner = await db["learner_profiles"].find_one({"user_id": user["user_id"]})
+            if learner and learner.get("userType"):
+                profile_type_login = learner["userType"]
+        except Exception:
+            pass
+
     access_token = create_access_token(
         data={"sub": user["email"], "user_id": user["user_id"], "role": user["role"]}
     )
@@ -6496,17 +6514,18 @@ async def login(credentials: UserLogin, request: Request):
         "access_token": access_token,
         "token_type": "bearer",
         "user": {
-            "email": user["email"],
-            "full_name": user.get("full_name"),
-            "role": user["role"],
-            "user_id": user["user_id"],
-            "institution_id": resolved_institution_id,
-            "institution_name": user.get("institution_name"),
-            "college_name": user.get("college_name"),
-            "graduation_year": user.get("graduation_year"),
-            "status": user.get("status"),
-            "last_login": login_time
-        }
+             "email": user["email"],
+             "full_name": user.get("full_name"),
+             "role": user["role"],
+             "user_id": user["user_id"],
+             "profile_type": profile_type_login,
+             "institution_id": resolved_institution_id,
+             "institution_name": user.get("institution_name"),
+             "college_name": user.get("college_name"),
+             "graduation_year": user.get("graduation_year"),
+             "status": user.get("status"),
+             "last_login": login_time
+         }
     }
 
 
@@ -6555,6 +6574,12 @@ async def get_me(user_payload: dict = Depends(get_current_user)):
     user = await users_col.find_one({"user_id": user_payload["user_id"]})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    # Fallback to learner_profiles.userType if profile_type not set on users_col
+    profile_type = user.get("profile_type", "")
+    if not profile_type:
+        learner = await db["learner_profiles"].find_one({"user_id": user["user_id"]})
+        if learner and learner.get("userType"):
+            profile_type = learner["userType"]
     return {
         "email": user["email"],
         "full_name": user.get("full_name"),
@@ -6565,7 +6590,8 @@ async def get_me(user_payload: dict = Depends(get_current_user)):
         "college_name": user.get("college_name"),
         "graduation_year": user.get("graduation_year"),
         "status": user.get("status"),
-        "profilePhoto": user.get("profilePhoto")
+        "profilePhoto": user.get("profilePhoto"),
+        "profile_type": profile_type
     }
 
 class UserRoleUpdate(BaseModel):
