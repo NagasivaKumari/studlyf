@@ -154,10 +154,9 @@ def _apply_event_snapshot_to_opportunity(doc: dict, ev: dict) -> None:
                     break
 
     # Prizes (optional; only show if institution provided)
-    if ev.get("prize_pool") is not None:
-        doc["prize_pool"] = ev.get("prize_pool")
-    elif ev.get("prizePool") is not None:
-        doc["prize_pool"] = ev.get("prizePool")
+    prize_val = ev.get("prize_pool") or ev.get("prizePool")
+    if prize_val and str(prize_val).strip():
+        doc["prize_pool"] = prize_val
     if ev.get("prize_distribution") is not None:
         doc["prize_distribution"] = ev.get("prize_distribution")
     elif ev.get("prizeDistribution") is not None:
@@ -275,8 +274,29 @@ async def _hydrate_opportunity_list_from_events(docs: List[dict]) -> List[dict]:
     return docs
 
 
+def _all_stages_completed(event: dict) -> bool:
+    """Check if all stages in an event are completed (end_date past or stored_status completed/cancelled)."""
+    stages = event.get("stages", [])
+    if not isinstance(stages, list) or not stages:
+        return False  # No stages means we can't determine completion
+    now = datetime.now(timezone.utc)
+    for stage in stages:
+        if not isinstance(stage, dict):
+            continue
+        stored = str(stage.get("stored_status", "") or "").lower().strip()
+        if stored in ("completed", "cancelled"):
+            continue
+        end_raw = stage.get("end_date") or stage.get("endDate") or stage.get("deadline")
+        if not end_raw:
+            return False  # Stage with no end date → cannot confirm completion
+        end_dt = _safe_dt(end_raw)
+        if end_dt is None or now <= end_dt:
+            return False  # Stage still active or date unparseable
+    return True
+
+
 async def _filter_public_opportunities(docs: List[dict]) -> List[dict]:
-    """Omit mirrored listings while the source event is still DRAFT (or missing)."""
+    """Omit mirrored listings while the source event is still DRAFT (or missing), or when all stages are completed."""
     link_ids = []
     for d in docs:
         eid = d.get("event_link_id")
@@ -300,7 +320,7 @@ async def _filter_public_opportunities(docs: List[dict]) -> List[dict]:
             out.append(d)
             continue
         ev = event_by_id.get(str(eid))
-        if ev and _event_status_listable(ev.get("status")):
+        if ev and _event_status_listable(ev.get("status")) and not _all_stages_completed(ev):
             # Check plan-based listing access duration after deadline
             inst_id = ev.get("institution_id")
             deadline = d.get("deadline")
@@ -529,12 +549,20 @@ async def apply_for_opportunity(application_data: dict) -> dict:
                 members = application_data.get("teamMembers") or application_data.get("team_members") or []
                 if not members or not isinstance(members, list) or len(members) == 0:
                     raise ValueError("This opportunity requires team applications. Provide team members to apply.")
-                # Validate min/max team size if present
-                min_ts = int(opp.get("minTeamSize") or opp.get("min_team_size") or 0)
-                max_ts = int(opp.get("maxTeamSize") or opp.get("max_team_size") or 0)
-                if min_ts and len(members) < min_ts:
+                # Validate team size strictly from opportunity config
+                min_raw = opp.get("minTeamSize") if opp else None
+                if min_raw is None and opp:
+                    min_raw = opp.get("min_team_size")
+                max_raw = opp.get("maxTeamSize") if opp else None
+                if max_raw is None and opp:
+                    max_raw = opp.get("max_team_size")
+                if min_raw is None or max_raw is None:
+                    raise ValueError("Team size is not configured for this opportunity")
+                min_ts = int(min_raw)
+                max_ts = int(max_raw)
+                if len(members) < min_ts:
                     raise ValueError(f"Team must have at least {min_ts} members to apply")
-                if max_ts and len(members) > max_ts:
+                if len(members) > max_ts:
                     raise ValueError(f"Team must have at most {max_ts} members to apply")
             # Enforce registration deadline - with better error handling
             deadline = opp.get("deadline")
@@ -664,10 +692,15 @@ def _safe_dt(val):
     if not val:
         return None
     if isinstance(val, datetime):
+        if val.tzinfo is None:
+            return val.replace(tzinfo=timezone.utc)
         return val
     try:
         # iso string (allow Z)
-        return datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
     except Exception:
         return None
 

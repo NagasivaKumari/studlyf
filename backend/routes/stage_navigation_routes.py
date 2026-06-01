@@ -26,7 +26,7 @@ from services.registration_service import (
     get_registration_fields_with_prefill,
     check_registration_status,
 )
-from stage_access_control import check_stage_deadline
+from stage_access_control import check_stage_deadline, check_stage_submission_access
 from typing import Optional
 from bson import ObjectId
 from datetime import datetime, timezone
@@ -45,10 +45,14 @@ async def list_event_stages(event_id: str):
         raise HTTPException(status_code=404, detail="Event not found or no stages configured")
     return {"event_id": event_id, "stages": stages}
 
+from routes.registration_flow_routes import resolve_event_id
+
 @router.get("/events/{event_id}/progress")
 async def get_progress(event_id: str, user: dict = Depends(get_auth_user)):
     """Get current stage progress and next actions for learner."""
-    progress = await get_participant_stage_progress(event_id, user["user_id"])
+    # Resolve event_id in case it's an opportunity_id
+    resolved_id = await resolve_event_id(event_id)
+    progress = await get_participant_stage_progress(resolved_id, user["user_id"])
     if "error" in progress:
         raise HTTPException(status_code=400, detail=progress["error"])
     return progress
@@ -149,8 +153,8 @@ async def create_new_team(
         event_id=data.get("event_id"),
         user_id=user["user_id"],
         team_name=data.get("team_name"),
-        team_size_min=data.get("min_size", 1),
-        team_size_max=data.get("max_size", 5),
+        team_size_min=data.get("min_size"),
+        team_size_max=data.get("max_size"),
     )
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -208,6 +212,51 @@ async def get_team_info(team_id: str):
         raise HTTPException(status_code=404, detail=result["error"])
     return result
 
+@router.post("/teams/finalize")
+async def finalize_existing_team(
+    data: dict = Body(...),
+    user: dict = Depends(get_auth_user)
+):
+    """Finalize/lock a team for an event (leader only)."""
+    event_id = data.get("event_id")
+    if not event_id:
+        raise HTTPException(status_code=400, detail="Missing event_id")
+        
+    from db import teams_col, events_col
+    from bson import ObjectId
+    
+    # Find team where user is leader and matches event_id
+    team = await teams_col.find_one({
+        "event_id": str(event_id),
+        "team_leader_id": str(user["user_id"])
+    })
+    
+    if not team:
+        raise HTTPException(status_code=404, detail="You are not the leader of any team for this event.")
+        
+    if team.get("status") == "finalized":
+        return {"status": "success", "message": "Team is already finalized"}
+        
+    # Get size constraints
+    min_size = team.get("size_min", 1)
+    max_size = team.get("size_max", 5)
+    
+    current_members = len(team.get("members", []))
+    if current_members < min_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Your team has {current_members} members, but this event requires at least {min_size} members to finalize."
+        )
+        
+    # Lock the team
+    from datetime import datetime, timezone
+    await teams_col.update_one(
+        {"_id": team["_id"]},
+        {"$set": {"status": "finalized", "updated_at": datetime.now(timezone.utc)}}
+    )
+    
+    return {"status": "success", "message": "Team has been finalized and locked successfully!"}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SUBMISSION STAGE ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -220,6 +269,35 @@ async def get_existing_submission(
     user: dict = Depends(get_auth_user)
 ):
     """Get existing submission data for a stage (if any)."""
+    # Resolve event_id in case it's an opportunity_id
+    resolved_id = await resolve_event_id(event_id)
+    stages = await get_event_stages(resolved_id)
+    target_stage = None
+    if stages:
+        for s in stages:
+            if s.get("id") == stage_id:
+                target_stage = s
+                break
+                
+    if not target_stage and stages:
+        # Fallback to SUBMISSION type if stage_id is missing or doesn't match
+        for s in stages:
+            if str(s.get("type", "")).upper() == "SUBMISSION":
+                target_stage = s
+                break
+
+    if not target_stage:
+        raise HTTPException(status_code=404, detail="Stage not found")
+
+    stage_type = str(target_stage.get("type", "")).lower()
+    await check_stage_submission_access(
+        event_id=resolved_id,
+        user_id=user["user_id"],
+        team_id=team_id,
+        stage_type=stage_type,
+        stage=target_stage
+    )
+
     result = await get_submission_data(
         event_id=event_id,
         stage_id=stage_id,
@@ -241,6 +319,35 @@ async def submit_stage(
     form_data = data.get("data", {})
     team_id = data.get("team_id")
     
+    # Resolve event_id in case it's an opportunity_id
+    resolved_id = await resolve_event_id(event_id)
+    stages = await get_event_stages(resolved_id)
+    target_stage = None
+    if stages:
+        for s in stages:
+            if s.get("id") == stage_id:
+                target_stage = s
+                break
+                
+    if not target_stage and stages:
+        # Fallback to SUBMISSION type if stage_id is missing or doesn't match
+        for s in stages:
+            if str(s.get("type", "")).upper() == "SUBMISSION":
+                target_stage = s
+                break
+
+    if not target_stage:
+        raise HTTPException(status_code=404, detail="Stage not found")
+
+    stage_type = str(target_stage.get("type", "")).lower()
+    await check_stage_submission_access(
+        event_id=resolved_id,
+        user_id=user["user_id"],
+        team_id=team_id,
+        stage_type=stage_type,
+        stage=target_stage
+    )
+
     result = await submit_stage_data(
         event_id=event_id,
         stage_id=stage_id,

@@ -43,15 +43,20 @@ async def send_join_request(
         team = await teams_col.find_one({"_id": ObjectId(team_id)})
         if not team:
             return {"error": "Team not found"}
+
+        team_lead_id = str(team.get("team_leader_id") or "")
+        if not team_lead_id:
+            return {"error": "Team has no leader configured"}
         
         # Check if team is full
-        max_size = team.get("max_size", 5)
-        member_ids = team.get("members", [])
-        if len(member_ids) >= max_size:
+        max_size = int(team.get("size_max", 5) or 5)
+        members = team.get("members", [])
+        if len(members) >= max_size:
             return {"error": "Team is at full capacity"}
         
         # Check if requester already in team
-        if str(requester_user_id) in [str(m) for m in member_ids]:
+        member_ids = [str(m.get("user_id")) for m in members]
+        if str(requester_user_id) in member_ids:
             return {"error": "You are already a member of this team"}
         
         # Check if request already pending
@@ -71,7 +76,7 @@ async def send_join_request(
             "event_id": str(event_id),
             "team_id": str(team_id),
             "requester_user_id": str(requester_user_id),
-            "team_lead_user_id": str(team.get("created_by")),
+            "team_lead_user_id": team_lead_id,
             "requester_name": requester.get("full_name", ""),
             "requester_email": requester.get("email", ""),
             "requester_college": requester.get("college", ""),
@@ -89,10 +94,10 @@ async def send_join_request(
         
         # Create notification for team lead
         await create_notification(
-            user_id=str(team.get("created_by")),
+            user_id=team_lead_id,
             type="join_request",
             title=f"Join Request from {requester.get('full_name', 'A student')}",
-            message=f"{requester.get('full_name')} requested to join your team '{team.get('name')}'",
+            message=f"{requester.get('full_name')} requested to join your team '{team.get('team_name')}'",
             related_id=str(result.inserted_id),
             related_type="join_request",
             event_id=str(event_id),
@@ -108,6 +113,64 @@ async def send_join_request(
     
     except Exception as e:
         print(f"[ERROR] send_join_request: {e}")
+        return {"error": str(e)}
+
+async def send_join_request_by_code(
+    event_id: str,
+    invite_code: str,
+    requester_user_id: str,
+    message: str = ""
+) -> Dict[str, Any]:
+    """
+    Student sends join request to a team using an invite code.
+    Looks up the team by invite code and sends request to team lead.
+    """
+    try:
+        code = str(invite_code or "").strip().upper()
+        if not code:
+            return {"error": "Invite code is required"}
+
+        # Find team by invite code (supports both permanent and invites[] codes)
+        team = await teams_col.find_one({
+            "event_id": str(event_id),
+            "$or": [{"invite_code": code}, {"invites.code": code}]
+        })
+        if not team:
+            return {"error": "Invalid invite code for this event"}
+
+        # Verify the invite code is not revoked
+        if team.get("invite_code") == code:
+            invites = team.get("invites") or []
+            for inv in invites:
+                if inv.get("code") == code and inv.get("revoked"):
+                    return {"error": "This invite code has been revoked"}
+        else:
+            inv = next((i for i in team.get("invites", []) if i.get("code") == code), None)
+            if not inv:
+                return {"error": "Invite code not found"}
+            if inv.get("revoked"):
+                return {"error": "This invite code has been revoked"}
+            try:
+                exp = inv.get("expires_at")
+                if exp:
+                    exp_dt = datetime.fromisoformat(str(exp).replace("Z", "+00:00")) if isinstance(exp, str) else exp
+                    if hasattr(exp_dt, 'tzinfo') and exp_dt.tzinfo is None:
+                        exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) > exp_dt:
+                        return {"error": "This invite code has expired"}
+            except Exception:
+                pass
+
+        # Delegate to send_join_request
+        return await send_join_request(
+            event_id=event_id,
+            team_id=str(team["_id"]),
+            requester_user_id=requester_user_id,
+            message=message,
+        )
+
+    except Exception as e:
+        print(f"[ERROR] send_join_request_by_code: {e}")
         return {"error": str(e)}
 
 async def approve_join_request(
@@ -129,7 +192,7 @@ async def approve_join_request(
         
         # Verify approver is team lead
         team = await teams_col.find_one({"_id": ObjectId(join_request["team_id"])})
-        if not team or str(team.get("created_by")) != str(approver_user_id):
+        if not team or str(team.get("team_leader_id") or "") != str(approver_user_id):
             return {"error": "You are not authorized to approve this request"}
         
         # Check request not expired
@@ -145,10 +208,18 @@ async def approve_join_request(
         
         # Add member to team
         requester_id = str(join_request["requester_user_id"])
+        requester = await users_col.find_one({"user_id": requester_id})
+        new_member = {
+            "user_id": requester_id,
+            "name": (requester.get("full_name") if requester else "") or join_request.get("requester_name", ""),
+            "email": (requester.get("email") if requester else "") or "",
+            "role": "MEMBER",
+            "joined_at": datetime.now(timezone.utc),
+        }
         await teams_col.update_one(
             {"_id": ObjectId(join_request["team_id"])},
             {
-                "$push": {"members": requester_id},
+                "$push": {"members": new_member},
                 "$set": {"updated_at": datetime.now(timezone.utc)}
             }
         )
@@ -162,8 +233,8 @@ async def approve_join_request(
             {
                 "$set": {
                     "team_id": str(join_request["team_id"]),
-                    "team_name": team.get("name", ""),
-                    "team_lead_id": str(team.get("created_by")),
+                    "team_name": team.get("team_name", ""),
+                    "team_lead_id": str(team.get("team_leader_id") or ""),
                     "joined_team_at": datetime.now(timezone.utc),
                     "updated_at": datetime.now(timezone.utc),
                 }
@@ -241,7 +312,7 @@ async def reject_join_request(
         
         # Verify rejector is team lead
         team = await teams_col.find_one({"_id": ObjectId(join_request["team_id"])})
-        if not team or str(team.get("created_by")) != str(rejector_user_id):
+        if not team or str(team.get("team_leader_id") or "") != str(rejector_user_id):
             return {"error": "You are not authorized to reject this request"}
         
         # Check request not already responded
@@ -353,7 +424,7 @@ async def get_team_join_requests(
     try:
         # Verify user is team lead
         team = await teams_col.find_one({"_id": ObjectId(team_id)})
-        if not team or str(team.get("created_by")) != str(user_id):
+        if not team or str(team.get("team_leader_id") or "") != str(user_id):
             return {"error": "You are not the team lead"}
         
         query = {"team_id": str(team_id)}

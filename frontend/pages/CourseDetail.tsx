@@ -182,7 +182,20 @@ const CourseDetail: React.FC = () => {
   const handleEnrollNow = () => navigate(`/learn/enroll/ai?courseId=${course?._id}`);
   const handleGoToCourse = () => navigate(`/learn/course-player/${course?._id}`);
 
-  if (loading || !course) return <div className="min-h-screen bg-white flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-[#6C2BFF]"></div></div>;
+  if (loading || !course) return (
+    <div className="min-h-screen bg-white px-6 py-32 flex items-start justify-center">
+      <div className="w-full max-w-5xl rounded-[2.5rem] border border-gray-100 bg-white shadow-sm p-8 sm:p-10">
+        <div className="flex items-center gap-3 mb-6 text-[#6C2BFF] font-black text-[10px] uppercase tracking-[0.3em]">
+          <div className="w-4 h-4 rounded-full border-2 border-[#6C2BFF]/20 border-t-[#6C2BFF] animate-spin" />
+          Loading course details
+        </div>
+        <div className="h-12 w-3/4 rounded-full bg-gray-100 animate-pulse mb-4" />
+        <div className="h-5 w-full rounded-full bg-gray-100 animate-pulse mb-2" />
+        <div className="h-5 w-5/6 rounded-full bg-gray-100 animate-pulse mb-2" />
+        <div className="h-5 w-2/3 rounded-full bg-gray-100 animate-pulse" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans pb-24 overflow-x-hidden selection:bg-[#6C2BFF]/20 selection:text-gray-900">
@@ -213,7 +226,7 @@ const CourseDetail: React.FC = () => {
               </h1>
 
               <p className="text-lg text-gray-300 mb-8 max-w-2xl leading-relaxed">Your complete beginner-to-advanced roadmap to understand, build and apply AI in real-world scenarios using modern tools.</p>
-              <img src="/images/ai_foundations_1779792498429.png" alt="AI Foundations" className="my-6 rounded-lg" />
+              <img loading="lazy" src="/images/ai_foundations_1779792498429.png" alt="AI Foundations" className="my-6 rounded-lg" />
 
               <div className="flex flex-wrap gap-3 mb-10">
                 {(course.skills || []).map((skill, idx) => (

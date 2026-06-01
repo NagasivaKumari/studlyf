@@ -6,10 +6,6 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user, role, loading } = useAuth();
     const location = useLocation();
 
-    if (loading) {
-        return <div className="h-screen flex items-center justify-center font-mono text-xs tracking-widest uppercase text-[#7C3AED]">Synchronizing Protocol...</div>;
-    }
-
     if (user) {
         console.log("[PublicRoute] User already logged in. Role:", role);
         
@@ -18,11 +14,6 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             return <>{children}</>;
         }
         
-        // Wait for role to be fetched before redirecting
-        if (role === null && loading === false) {
-            return <div className="h-screen flex items-center justify-center font-mono text-xs tracking-widest uppercase text-[#7C3AED]">Identifying Authority...</div>;
-        }
-
         if (role === 'super_admin' || role === 'admin') {
             return <Navigate to="/admin" replace />;
         }

@@ -52,15 +52,23 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
     const [copiedCode, setCopiedCode] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
+    const [successMsg, setSuccessMsg] = useState<string | null>(null);
+    const [showEmailModal, setShowEmailModal] = useState(false);
+    const [inviteEmail, setInviteEmail] = useState('');
     const autoJoinAttempted = useRef(false);
 
     const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
     const [joinRequestMessage, setJoinRequestMessage] = useState('');
     const [showRequestForm, setShowRequestForm] = useState(false);
     const [sentRequest, setSentRequest] = useState<string | null>(null);
+    const [codeRequestSent, setCodeRequestSent] = useState<string | null>(null);
+    const [pendingSentRequests, setPendingSentRequests] = useState<any[]>([]);
 
-    const minSize = opportunity?.minTeamSize ?? opportunity?.min_team_size ?? 1;
-    const maxSize = opportunity?.maxTeamSize ?? opportunity?.max_team_size ?? 5;
+    const minSizeRaw = opportunity?.minTeamSize ?? opportunity?.min_team_size;
+    const maxSizeRaw = opportunity?.maxTeamSize ?? opportunity?.max_team_size;
+    const teamSizeConfigured = minSizeRaw != null && maxSizeRaw != null;
+    const minSize = teamSizeConfigured ? Number(minSizeRaw) : null;
+    const maxSize = teamSizeConfigured ? Number(maxSizeRaw) : null;
 
     const shareableLink = generatedInvite
         ? `${FRONTEND_URL}/#/opportunities/${eventId}?tab=team&invite=${generatedInvite}`
@@ -108,10 +116,25 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
         } catch { }
     };
 
+    const fetchUserSentRequests = async () => {
+        if (!eventId || !user?.user_id) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/teams/requests/my-requests?event_id=${encodeURIComponent(eventId)}`, {
+                headers: { ...authHeaders() },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setPendingSentRequests((data.requests || []).filter((r: any) => r.status === 'PENDING'));
+            }
+        } catch { }
+    };
+
+    
     useEffect(() => {
         if (!eventId) { setLoading(false); return; }
         fetchProgress();
-    }, [eventId]);
+        fetchUserSentRequests();
+    }, [eventId, user?.user_id]);
 
     useEffect(() => {
         if (team?._id) {
@@ -125,31 +148,77 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
             autoJoinAttempted.current = true;
             setInviteCode(codeFromUrl.toUpperCase());
         }
+        const joined = searchParams.get('joined');
+        if (joined === 'true') {
+            setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('joined');
+                navigate(`${url.pathname}${url.search}`, { replace: true });
+            }, 100);
+        }
     }, [searchParams]);
 
     useEffect(() => {
-        if (inviteCode && !team && registered && !loading && autoJoinAttempted.current) {
+        if (inviteCode && !team && !codeRequestSent && registered && !loading && autoJoinAttempted.current) {
             handleJoinTeam(new Event('submit') as any);
         }
-    }, [inviteCode, team, registered, loading]);
+    }, [inviteCode, team, codeRequestSent, registered, loading]);
+
+    const handleFinalizeTeam = async () => {
+        if (!eventId || !team) return;
+        if (!window.confirm('Are you sure you want to finalize and lock your team? Once finalized, no more members can join, and your team structure is locked for the rest of the event.')) return;
+        
+        setError(null);
+        setSuccessMsg(null);
+        setActionLoading(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/v1/stages/teams/finalize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ event_id: eventId }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.detail || data.error || 'Failed to finalize team.');
+            }
+            setSuccessMsg('Team finalized and locked successfully!');
+            await fetchProgress();
+            setTimeout(() => setSuccessMsg(null), 4000);
+        } catch (err: any) {
+            setError(err.message || 'Failed to finalize team.');
+        } finally {
+            setActionLoading(false);
+        }
+    };
 
     const handleCreateTeam = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!eventId || !teamName.trim()) return;
+        const name = teamName.trim();
+        if (!eventId || name.length < 3) {
+            setError('Team name must be at least 3 characters.');
+            return;
+        }
         setError(null);
+        setSuccessMsg(null);
         setActionLoading(true);
         try {
             const response = await fetch(`${API_BASE_URL}/api/v1/stages/teams/create`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ event_id: eventId, team_name: teamName.trim(), min_size: minSize, max_size: maxSize }),
+                body: JSON.stringify({ event_id: eventId, team_name: name, min_size: minSize, max_size: maxSize }),
             });
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
                 throw new Error(err.detail || err.error || 'Failed to create team.');
             }
+            const result = await response.json();
+            if (!result?.team?._id && !result?.team_id) {
+                throw new Error('Team creation failed — no team returned from server.');
+            }
             await fetchProgress();
             setTeamName('');
+            setSuccessMsg(`Team "${name}" created successfully!`);
+            setTimeout(() => setSuccessMsg(null), 4000);
         } catch (err: any) {
             setError(err.message || 'Failed to create team.');
         } finally {
@@ -159,23 +228,31 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
 
     const handleJoinTeam = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!eventId || !inviteCode.trim()) return;
+        if (!inviteCode.trim() || !eventId) return;
         setError(null);
+        setSuccessMsg(null);
         setActionLoading(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/v1/stages/teams/join`, {
+            const response = await fetch(`${API_BASE_URL}/api/v1/teams/requests/send-by-code`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ event_id: eventId, invite_code: inviteCode.trim() }),
+                body: JSON.stringify({
+                    event_id: eventId,
+                    invite_code: inviteCode.trim(),
+                    message: '',
+                }),
             });
+            const data = await response.json().catch(() => ({}));
             if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.detail || err.error || 'Invalid invite code.');
+                throw new Error(data.detail || data.error || 'Failed to send join request.');
             }
-            await fetchProgress();
             setInviteCode('');
+            setCodeRequestSent(data.request_id || 'sent');
+            setSuccessMsg('Join request sent to team leader for approval!');
+            fetchUserSentRequests();
+            setTimeout(() => setSuccessMsg(null), 4000);
         } catch (err: any) {
-            setError(err.message || 'Failed to join team.');
+            setError(err.message || 'Failed to send join request.');
         } finally {
             setActionLoading(false);
         }
@@ -203,29 +280,6 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
             setGeneratedInvite(null);
         } catch (err: any) {
             setError(err.message || 'Failed to leave team.');
-        } finally {
-            setActionLoading(false);
-        }
-    };
-
-    const handleGenerateInvite = async () => {
-        if (!team?._id) return;
-        setError(null);
-        setActionLoading(true);
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/v1/stages/teams/${team._id}/invite`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ ttl_hours: 720 }),
-            });
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.detail || err.error || 'Failed to generate invite code.');
-            }
-            const data = await response.json();
-            setGeneratedInvite(data.invite_code || data.code || null);
-        } catch (err: any) {
-            setError(err.message || 'Failed to generate invite code.');
         } finally {
             setActionLoading(false);
         }
@@ -260,6 +314,33 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
         }
     };
 
+    const handleSendEmailInvite = async () => {
+        if (!team?._id || !inviteEmail.trim()) return;
+        setError(null);
+        setActionLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/teams/send-invite`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ team_id: team._id, invite_email: inviteEmail.trim(), event_id: eventId })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || err.error || 'Failed to send invite email.');
+            }
+            const data = await res.json();
+            setShowEmailModal(false);
+            setInviteEmail('');
+            setSuccessMsg(data.message || 'Invite sent');
+            setTimeout(() => setSuccessMsg(null), 4000);
+            await fetchProgress();
+        } catch (err: any) {
+            setError(err.message || 'Failed to send invite email.');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     const handleApproveRequest = async (requestId: string) => {
         setActionLoading(true);
         try {
@@ -272,7 +353,7 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                 await fetchProgress();
             } else {
                 const err = await res.json();
-                throw new Error(err.detail || 'Failed to approve');
+                throw new Error(err.detail || 'Failed to approve request');
             }
         } catch (err: any) {
             setError(err.message);
@@ -342,13 +423,19 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
             <div className="mb-6">
                 <h1 className="text-2xl font-black text-slate-900">Team Hub</h1>
                 <p className="text-slate-500 font-medium mt-1">
-                    {opportunity?.title || 'Event'} · {minSize}–{maxSize} members per team
+                    {opportunity?.title || 'Event'} · {teamSizeConfigured ? `${minSize}–${maxSize} members per team` : 'team size not configured'}
                 </p>
             </div>
 
             {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-sm font-semibold mb-5">
                     {error}
+                </div>
+            )}
+
+            {successMsg && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-2xl text-sm font-semibold mb-5">
+                    {successMsg}
                 </div>
             )}
 
@@ -381,8 +468,15 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                                     <p className="text-purple-200 text-xs font-black uppercase tracking-widest mb-1">Your Team</p>
                                     <h2 className="text-white text-xl font-black">{team.team_name}</h2>
                                 </div>
-                                <div className="bg-white/20 rounded-xl px-3 py-1.5 text-white text-sm font-black">
-                                    {memberCount}/{maxSize}
+                                <div className="flex items-center gap-2">
+                                    {(team as any).status === 'finalized' && (
+                                        <span className="inline-flex items-center gap-1 bg-emerald-500/30 text-emerald-100 border border-emerald-400/30 rounded-xl px-2.5 py-1 text-xs font-black uppercase tracking-wider animate-pulse">
+                                            🔒 Finalized
+                                        </span>
+                                    )}
+                                    <div className="bg-white/20 rounded-xl px-3 py-1.5 text-white text-sm font-black">
+                                        {teamSizeConfigured ? `${memberCount}/${maxSize}` : `${memberCount}`}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -411,33 +505,24 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                                         </div>
                                     );
                                 })}
-                                {Array.from({ length: Math.max(0, maxSize - memberCount) }).map((_, i) => (
+                                {teamSizeConfigured && (team as any).status !== 'finalized' ? Array.from({ length: Math.max(0, (maxSize as number) - memberCount) }).map((_, i) => (
                                     <div key={`empty-${i}`} className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-200 rounded-xl">
                                         <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
                                             <UserPlus size={14} className="text-slate-300" />
                                         </div>
                                         <p className="text-sm font-medium text-slate-300">Open slot</p>
                                     </div>
-                                ))}
+                                )) : null}
                             </div>
                         </div>
                     </div>
 
-                    {/* Invite section — leader only */}
-                    {isLeader && (
+                    {/* Invite section — leader only (only if not finalized) */}
+                    {isLeader && (team as any).status !== 'finalized' && (
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Invite Members</p>
 
-                            {!generatedInvite ? (
-                                <button
-                                    type="button"
-                                    onClick={handleGenerateInvite}
-                                    disabled={actionLoading}
-                                    className="w-full py-3 bg-purple-600 text-white rounded-xl text-sm font-black hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                                >
-                                    <Hash size={16} /> Generate Invite Code
-                                </button>
-                            ) : (
+                            {generatedInvite ? (
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
                                         <Hash size={16} className="text-purple-600 shrink-0" />
@@ -467,14 +552,51 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                                         </div>
                                     )}
 
-                                    <p className="text-xs text-slate-400 font-medium text-center">This code never expires — share it with your teammates</p>
+                                    <div className="flex gap-2">
+                                        <button type="button" onClick={() => setShowEmailModal(true)} className="flex-1 px-3 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold">Email Invite</button>
+                                        {shareableLink && (
+                                            <>
+                                                <a href={`https://wa.me/?text=${encodeURIComponent(`Join my team "${team?.team_name}" on Studlyf! Use code: ${generatedInvite} — ${shareableLink}`)}`} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm font-bold text-center hover:bg-green-100 transition-colors">Share on WhatsApp</a>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    <p className="text-xs text-slate-400 font-medium text-center">Share this code with your teammates to join the team</p>
                                 </div>
+                            ) : (
+                                <p className="text-sm text-slate-500 text-center">Loading invite code...</p>
                             )}
                         </div>
                     )}
 
-                    {/* Join Requests — leader can approve/reject */}
-                    {isLeader && joinRequests.filter(r => r.status === 'PENDING').length > 0 && (
+                    {isLeader && (team as any).status === 'finalized' && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center shadow-inner relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+                            <p className="text-sm font-black text-slate-100 flex items-center justify-center gap-1.5">🔒 Team Finalized & Locked</p>
+                            <p className="text-xs text-slate-400 mt-1 font-semibold">Your team structure has been submitted and locked for the event. You are now ready to make submissions!</p>
+                        </div>
+                    )}
+
+                    {showEmailModal && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                            <div className="w-full max-w-md bg-white rounded-2xl p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-black">Email Invite</h3>
+                                    <button onClick={() => setShowEmailModal(false)} className="text-sm font-bold">Close</button>
+                                </div>
+                                <p className="text-sm text-slate-500 mb-3">Send an invite link to a teammate's email address.</p>
+                                <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="teammate@example.com" className="w-full px-4 py-3 rounded-xl border border-slate-200 mb-3" />
+                                {error && <div className="text-rose-500 text-sm mb-2">{error}</div>}
+                                <div className="flex gap-3">
+                                    <button onClick={() => setShowEmailModal(false)} className="flex-1 px-4 py-3 rounded-xl bg-white border border-slate-200 font-bold">Cancel</button>
+                                    <button onClick={handleSendEmailInvite} disabled={actionLoading} className="flex-1 px-4 py-3 rounded-xl bg-purple-600 text-white font-black">{actionLoading ? 'Sending...' : 'Send Invite'}</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Join Requests — leader can approve/reject (only if not finalized) */}
+                    {isLeader && (team as any).status !== 'finalized' && joinRequests.filter(r => r.status === 'PENDING').length > 0 && (
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Pending Join Requests</p>
                             <div className="space-y-3">
@@ -488,7 +610,7 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                                         <div className="flex gap-2 ml-3">
                                             <button
                                                 onClick={() => handleApproveRequest(req._id)}
-                                                disabled={actionLoading || memberCount >= maxSize}
+                                                disabled={actionLoading || !teamSizeConfigured || memberCount >= (maxSize as number)}
                                                 className="p-2 bg-emerald-100 text-emerald-700 rounded-xl hover:bg-emerald-200 transition-colors disabled:opacity-50"
                                                 title="Approve"
                                             >
@@ -509,15 +631,40 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                         </div>
                     )}
 
-                    {/* Leave team */}
-                    <button
-                        type="button"
-                        onClick={handleLeaveTeam}
-                        disabled={actionLoading}
-                        className="w-full py-3 border border-red-200 text-red-600 rounded-xl text-sm font-black hover:bg-red-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                        <LogOut size={16} /> {isLeader ? 'Delete Team' : 'Leave Team'}
-                    </button>
+                    {/* Finalize Team Button — leader only */}
+                    {isLeader && (team as any).status !== 'finalized' && (
+                        memberCount >= (minSize || 1) ? (
+                            <button
+                                type="button"
+                                onClick={handleFinalizeTeam}
+                                disabled={actionLoading}
+                                className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-sm font-black uppercase tracking-wider shadow-md hover:shadow-lg transition-all duration-300 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                🔒 Finalize & Submit Team
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                disabled
+                                className="w-full py-4 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-sm font-black uppercase tracking-wider cursor-not-allowed flex items-center justify-center gap-2"
+                                title={`Requires at least ${minSize} members to submit`}
+                            >
+                                🔒 Finalize & Submit Team (Needs {minSize} members)
+                            </button>
+                        )
+                    )}
+
+                    {/* Leave team — only if not finalized */}
+                    {(team as any).status !== 'finalized' && (
+                        <button
+                            type="button"
+                            onClick={handleLeaveTeam}
+                            disabled={actionLoading}
+                            className="w-full py-3 border border-red-200 text-red-600 rounded-xl text-sm font-black hover:bg-red-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
+                        >
+                            <LogOut size={16} /> {isLeader ? 'Delete Team' : 'Leave Team'}
+                        </button>
+                    )}
                 </div>
             ) : team && !isTeamMember ? (
                 /* ── VIEWING SOMEONE ELSE'S TEAM (request to join) ── */
@@ -527,7 +674,7 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                     </div>
                     <h2 className="text-lg font-black text-slate-900 mb-1">{team.team_name}</h2>
                     <p className="text-sm text-slate-500 font-medium mb-2">
-                        Led by {team.leader_name || 'Team Leader'} · {memberCount}/{maxSize} members
+                        Led by {team.leader_name || 'Team Leader'} · {teamSizeConfigured ? `${memberCount}/${maxSize} members` : `${memberCount} members`}
                     </p>
 
                     {sentRequest ? (
@@ -560,71 +707,123 @@ const TeamManager: React.FC<TeamManagerProps> = ({ eventId, opportunity }) => {
                                 </button>
                             </div>
                         </div>
-                    ) : memberCount < maxSize ? (
+                    ) : teamSizeConfigured && memberCount < (maxSize as number) ? (
                         <button
                             onClick={() => setShowRequestForm(true)}
-                            disabled={actionLoading}
+                            disabled={actionLoading || !teamSizeConfigured}
                             className="mt-6 px-6 py-3 bg-purple-600 text-white rounded-xl text-sm font-black hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mx-auto"
                         >
                             <Send size={14} /> Request to Join
                         </button>
                     ) : (
                         <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-                            <p className="text-sm font-medium text-slate-500">This team is full.</p>
+                            <p className="text-sm font-medium text-slate-500">
+                                {teamSizeConfigured ? 'This team is full.' : 'Team size is not configured for this opportunity.'}
+                            </p>
                         </div>
                     )}
                 </div>
             ) : (
                 /* ── NO TEAM VIEW ── */
-                <div className="grid md:grid-cols-2 gap-4">
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center mb-4">
-                            <Users size={20} className="text-purple-600" />
+                <div>
+                    {pendingSentRequests.length > 0 && (
+                        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-3">
+                            <Send size={18} className="text-amber-600 shrink-0" />
+                            <div>
+                                <p className="text-sm font-bold text-amber-800">
+                                    {pendingSentRequests.length} pending join request{pendingSentRequests.length > 1 ? 's' : ''}
+                                </p>
+                                <p className="text-xs text-amber-600">Waiting for team leader{pendingSentRequests.length > 1 ? 's' : ''} to approve.</p>
+                            </div>
                         </div>
-                        <h3 className="text-base font-black text-slate-900 mb-1">Create a Team</h3>
-                        <p className="text-xs text-slate-500 font-medium mb-4">Start a new team and invite others.</p>
-                        <form onSubmit={handleCreateTeam} className="space-y-3">
-                            <input
-                                type="text"
-                                value={teamName}
-                                onChange={(e) => setTeamName(e.target.value)}
-                                placeholder="Team name"
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-300 outline-none transition-all"
-                                required
-                            />
+                    )}
+                    {/* Participate Solo Option */}
+                    {(String(opportunity?.participationType || opportunity?.participation_type || '').toLowerCase() === 'both') && (
+                        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl border border-purple-200 p-6 mb-6 text-center shadow-sm">
+                            <h3 className="text-base font-black text-slate-900 mb-1 flex items-center justify-center gap-2">
+                                👤 Participate Solo
+                            </h3>
+                            <p className="text-xs text-slate-500 font-bold mb-4">
+                                You can participate in this event solo. Skip team formation and proceed directly to submission.
+                            </p>
                             <button
-                                type="submit"
-                                disabled={actionLoading || !teamName.trim()}
-                                className="w-full py-3 bg-purple-600 text-white rounded-xl text-sm font-black hover:bg-purple-700 transition-colors disabled:opacity-50"
+                                type="button"
+                                onClick={() => {
+                                    const oppPath = eventId ? `/opportunities/${encodeURIComponent(String(eventId))}` : '';
+                                    if (oppPath) {
+                                        navigate(`${oppPath}?tab=submissions`);
+                                    }
+                                }}
+                                className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-sm"
                             >
-                                {actionLoading ? 'Creating...' : 'Create Team'}
+                                Continue as Solo
                             </button>
-                        </form>
-                    </div>
+                        </div>
+                    )}
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                            <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center mb-4">
+                                <Users size={20} className="text-purple-600" />
+                            </div>
+                            <h3 className="text-base font-black text-slate-900 mb-1">Create a Team</h3>
+                            <p className="text-xs text-slate-500 font-medium mb-4">Start a new team and invite others.</p>
+                            <form onSubmit={handleCreateTeam} className="space-y-3">
+                                <input
+                                    type="text"
+                                    value={teamName}
+                                    onChange={(e) => setTeamName(e.target.value)}
+                                    placeholder="Team name"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:ring-4 focus:ring-purple-50 focus:border-purple-300 outline-none transition-all"
+                                    required
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={actionLoading || teamName.trim().length < 3}
+                                    className="w-full py-3 bg-purple-600 text-white rounded-xl text-sm font-black hover:bg-purple-700 transition-colors disabled:opacity-50"
+                                >
+                                    {actionLoading ? 'Creating...' : 'Create Team'}
+                                </button>
+                            </form>
+                        </div>
 
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-                        <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-                            <Hash size={20} className="text-green-600" />
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                            <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-4">
+                                <Hash size={20} className="text-green-600" />
+                            </div>
+                            <h3 className="text-base font-black text-slate-900 mb-1">Join a Team</h3>
+                            <p className="text-xs text-slate-500 font-medium mb-4">Enter an invite code from your team leader.</p>
+                            {codeRequestSent ? (
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-center">
+                                    <Send size={20} className="text-amber-500 mx-auto mb-2" />
+                                    <p className="text-sm font-bold text-amber-800">Request Sent!</p>
+                                    <p className="text-xs text-amber-600 mt-1">Waiting for the team leader to approve your request.</p>
+                                    <button
+                                        onClick={() => setCodeRequestSent(null)}
+                                        className="mt-3 text-xs font-bold text-amber-700 underline hover:no-underline"
+                                    >
+                                        Send another request
+                                    </button>
+                                </div>
+                            ) : (
+                                <form onSubmit={handleJoinTeam} className="space-y-3">
+                                    <input
+                                        type="text"
+                                        value={inviteCode}
+                                        onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                                        placeholder="Invite code"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 tracking-widest focus:ring-4 focus:ring-green-50 focus:border-green-300 outline-none transition-all"
+                                        required
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={actionLoading || !inviteCode.trim()}
+                                        className="w-full py-3 bg-green-600 text-white rounded-xl text-sm font-black hover:bg-green-700 transition-colors disabled:opacity-50"
+                                    >
+                                        {actionLoading ? 'Sending Request...' : 'Send Join Request'}
+                                    </button>
+                                </form>
+                            )}
                         </div>
-                        <h3 className="text-base font-black text-slate-900 mb-1">Join a Team</h3>
-                        <p className="text-xs text-slate-500 font-medium mb-4">Enter an invite code from your team leader.</p>
-                        <form onSubmit={handleJoinTeam} className="space-y-3">
-                            <input
-                                type="text"
-                                value={inviteCode}
-                                onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                                placeholder="Invite code"
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 tracking-widest focus:ring-4 focus:ring-green-50 focus:border-green-300 outline-none transition-all"
-                                required
-                            />
-                            <button
-                                type="submit"
-                                disabled={actionLoading || !inviteCode.trim()}
-                                className="w-full py-3 bg-green-600 text-white rounded-xl text-sm font-black hover:bg-green-700 transition-colors disabled:opacity-50"
-                            >
-                                {actionLoading ? 'Joining...' : 'Join Team'}
-                            </button>
-                        </form>
                     </div>
                 </div>
             )}

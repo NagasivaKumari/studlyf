@@ -65,26 +65,35 @@ async def get_my_event_registrations(user: dict = Depends(get_auth_user)):
     uid = str(user.get("user_id") or "")
     if not uid:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    hidden_event_statuses = {"DELETED", "ENDED", "CLOSED", "COMPLETED"}
     
     tracked_event_ids = set()
     results = []
     
     # --- Part 1: Event participants ---
-    cursor = participants_col.find({"user_id": uid}).sort("registered_at", -1)
-    async for p in cursor:
+    participants = await participants_col.find({"user_id": uid}).sort("registered_at", -1).to_list(None)
+    event_ids = [ObjectId(p.get("event_id")) for p in participants if p.get("event_id")]
+    
+    events_dict = {}
+    if event_ids:
+        events_cursor = events_col.find({"_id": {"$in": event_ids}})
+        async for event in events_cursor:
+            events_dict[str(event["_id"])] = event
+
+    for p in participants:
         eid = str(p.get("event_id") or "")
         if not eid:
             continue
         tracked_event_ids.add(eid)
-        try:
-            event = await events_col.find_one({"_id": ObjectId(eid)})
-        except Exception:
-            event = None
+        
+        event = events_dict.get(eid)
         if not event:
             continue
         
         event_stages = event.get("stages", [])
         total_stages = len(event_stages) if isinstance(event_stages, list) else 0
+        event_status = str(event.get("status") or "DRAFT").upper()
         
         current_stage = p.get("current_stage")
         last_submitted = p.get("last_stage_submitted")
@@ -95,10 +104,16 @@ async def get_my_event_registrations(user: dict = Depends(get_auth_user)):
         stages_cleared = len(completed_stages)
         pct = round((stages_cleared / total_stages) * 100) if total_stages > 0 else 0
 
+        # Hide events that are no longer active or have been fully completed by the learner.
+        if event_status in hidden_event_statuses:
+            continue
+        if total_stages > 0 and stages_cleared >= total_stages:
+            continue
+
         results.append({
             "event_id": eid,
             "event_title": event.get("title", "Untitled Event"),
-            "event_status": event.get("status", "DRAFT"),
+            "event_status": event_status,
             "event_category": event.get("category", ""),
             "participant_id": str(p["_id"]),
             "current_stage": current_stage,
@@ -130,6 +145,30 @@ async def get_my_event_registrations(user: dict = Depends(get_auth_user)):
             linked_eid = str(opp["event_link_id"])
             if linked_eid in tracked_event_ids:
                 continue
+            try:
+                linked_event = await events_col.find_one({"_id": ObjectId(linked_eid)})
+            except Exception:
+                linked_event = None
+            if linked_event:
+                linked_status = str(linked_event.get("status") or "").upper()
+                linked_stages = linked_event.get("stages", [])
+                total_linked_stages = len(linked_stages) if isinstance(linked_stages, list) else 0
+                if linked_status in hidden_event_statuses:
+                    continue
+                if total_linked_stages > 0:
+                    try:
+                        completed_for_link = await participants_col.count_documents({
+                            "event_id": linked_eid,
+                            "user_id": uid,
+                            "completed_stages.0": {"$exists": True},
+                        })
+                    except Exception:
+                        completed_for_link = 0
+                    if completed_for_link > 0:
+                        participant_doc = await participants_col.find_one({"event_id": linked_eid, "user_id": uid})
+                        completed_linked_stages = participant_doc.get("completed_stages", []) if participant_doc else []
+                        if isinstance(completed_linked_stages, list) and len(completed_linked_stages) >= total_linked_stages:
+                            continue
         
         results.append({
             "event_id": oid,

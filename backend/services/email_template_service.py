@@ -481,24 +481,24 @@ DEFAULT_TEMPLATES = {
         "placeholders": ["participant_name", "event_title", "organization_name", "event_type", "event_mode", "registration_deadline", "prize_pool", "eligibility", "short_description", "event_link"],
         "is_default": True,
         "emoji": "🚀",
-        "body_html": """<p style="margin: 0 0 16px 0; font-size: 16px; color: #1e293b;">Hi <strong>{{participant_name}}</strong>,</p>
-<p style="margin: 0 0 24px 0; font-size: 15px; color: #475569; line-height: 1.6;">A brilliant new opportunity matching your profile was just posted on Studlyf!</p>
+        "body_html": """<p style="margin: 0 0 16px 0; font-size: 15px; color: #1e293b;">Hi <strong>{{participant_name}}</strong>,</p>
+<p style="margin: 0 0 24px 0; font-size: 14px; color: #475569; line-height: 1.6;">A new opportunity matching your profile has been posted on Studlyf. Here are the details:</p>
 <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 24px;">
-    <h3 style="margin: 0 0 6px 0; font-size: 18px; font-weight: 800; color: #7C3AED;">{{event_title}}</h3>
-    <p style="margin: 0 0 16px 0; font-size: 13px; color: #64748b; font-weight: 600;">Hosted by: {{organization_name}}</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; color: #374151; margin-bottom: 16px;">
-        <tr><td style="padding: 4px 0; color: #6b7280; width: 100px;">Format:</td><td style="padding: 4px 0; font-weight: 600;">{{event_type}} ({{event_mode}})</td></tr>
-        <tr><td style="padding: 4px 0; color: #6b7280;">Prize Pool:</td><td style="padding: 4px 0; font-weight: 600; color: #166534;">{{prize_pool}}</td></tr>
-        <tr><td style="padding: 4px 0; color: #6b7280;">Deadline:</td><td style="padding: 4px 0; font-weight: 600;">{{registration_deadline}}</td></tr>
+    <h3 style="margin: 0 0 4px 0; font-size: 17px; font-weight: 800; color: #7C3AED;">{{event_title}}</h3>
+    <p style="margin: 0 0 16px 0; font-size: 12px; color: #64748b; font-weight: 600;">Hosted by {{organization_name}}</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; color: #374151;">
+        <tr><td style="padding: 5px 0; color: #6b7280; width: 90px;">Type</td><td style="padding: 5px 0; font-weight: 600;">{{event_type}}</td></tr>
+        <tr><td style="padding: 5px 0; color: #6b7280;">Mode</td><td style="padding: 5px 0; font-weight: 600;">{{event_mode}}</td></tr>
+        <tr><td style="padding: 5px 0; color: #6b7280;">Prize Pool</td><td style="padding: 5px 0; font-weight: 700; color: #166534;">{{prize_pool}}</td></tr>
+        <tr><td style="padding: 5px 0; color: #6b7280;">Deadline</td><td style="padding: 5px 0; font-weight: 600;">{{registration_deadline}}</td></tr>
+        <tr><td style="padding: 5px 0; color: #6b7280;">Eligibility</td><td style="padding: 5px 0; font-weight: 600;">{{eligibility}}</td></tr>
     </table>
-    <div style="background-color: #f1f5f9; border-radius: 8px; padding: 12px; font-size: 13px; color: #475569;">
-        <strong>Eligibility:</strong> {{eligibility}}
-    </div>
 </div>
 <p style="margin: 0 0 24px 0; font-size: 14px; color: #475569; line-height: 1.6;">{{short_description}}</p>
-<div style="text-align: center;">
-    <a href="{{event_link}}" style="background-color: #7C3AED; color: #ffffff; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block;">Learn More & Register</a>
-</div>"""
+<div style="text-align: center; margin-bottom: 24px;">
+    <a href="{{event_link}}" style="background-color: #7C3AED; color: #ffffff; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 14px; display: inline-block;">Register Now</a>
+</div>
+<p style="margin: 0; font-size: 12px; color: #94a3b8; text-align: center;">If the button doesn't work, copy and paste this link in your browser:<br><span style="color: #7C3AED;">{{event_link}}</span></p>"""
     },
     "payment_confirmation": {
         "name": "Payment Confirmed",
@@ -895,7 +895,7 @@ AVAILABLE_STAGE_VARIABLES = {
     "team_name": {"description": "Name of the student's team", "example": "Apex Coders", "scopes": ["all"]},
     "team_leader_name": {"description": "Name of the team leader initiating actions", "example": "John Doe", "scopes": ["all"]},
     "current_team_size": {"description": "Current number of members in the team", "example": "3", "scopes": ["all"]},
-    "max_team_size": {"description": "Maximum allowed members in the team", "example": "5", "scopes": ["all"]},
+    "max_team_size": {"description": "Maximum allowed members in the team", "example": "configured value", "scopes": ["all"]},
     "team_link": {"description": "Direct URL link to the Team page", "example": "http://localhost:3000/dashboard/team/123", "scopes": ["all"]},
     
     # Event & Round details

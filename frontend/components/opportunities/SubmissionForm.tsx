@@ -53,7 +53,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage, partici
         () => normalizeFields(resolvedStage?.fields || resolvedStage?.config?.fields || []),
         [resolvedStage]
     );
-    const isSolo = participationType === 'individual';
+    const isSolo = participationType === 'individual' || (participationType === 'both' && !teamId);
     const isTeamOnly = participationType === 'team';
     const teamRequired = isTeamOnly || Boolean(resolvedStage?.team_required || resolvedStage?.teamRequired || stage?.team_required || stage?.teamRequired);
     const [teamDisplayName, setTeamDisplayName] = useState('');
@@ -164,6 +164,10 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage, partici
                     if (typeof data?.can_edit === 'boolean') {
                         setCanEditSubmission(data.can_edit);
                     }
+                } else {
+                    const errData = await submissionRes.json().catch(() => ({}));
+                    const errMsg = errData.detail || errData.error || 'Access denied or failed to load submission details.';
+                    setError(errMsg);
                 }
             } catch (err: any) {
                 setError(err.message || 'Failed to load submission details.');
@@ -251,6 +255,50 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ eventId, stage, partici
 
     if (loading) {
         return <div className="text-center p-8">Loading submission details...</div>;
+    }
+
+    const isAccessDeniedError = error && (
+        error.toLowerCase().includes('cannot submit') ||
+        error.toLowerCase().includes('only shortlisted') ||
+        error.toLowerCase().includes('locked') ||
+        error.toLowerCase().includes('register before') ||
+        error.toLowerCase().includes('not found') ||
+        error.toLowerCase().includes('access denied') ||
+        error.toLowerCase().includes('rejected') ||
+        error.toLowerCase().includes('not shortlisted') ||
+        error.toLowerCase().includes('not approved')
+    );
+
+    if (isAccessDeniedError) {
+        return (
+            <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-950 p-10 rounded-2xl border border-slate-800 shadow-2xl text-center max-w-2xl mx-auto my-6 transform hover:scale-[1.01] transition-all duration-300">
+                {/* Visual Glassmorphic Accent */}
+                <div className="absolute top-0 right-0 w-40 h-40 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-40 h-40 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
+                
+                {/* Premium Lock Icon Container with subtle animation */}
+                <div className="relative w-20 h-20 bg-slate-800 border border-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-6 text-rose-500 shadow-inner group">
+                    <div className="absolute inset-0 bg-gradient-to-tr from-rose-500/10 to-purple-500/10 rounded-2xl opacity-50 blur-sm group-hover:opacity-100 transition-opacity" />
+                    <svg className="w-10 h-10 animate-pulse relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                </div>
+
+                <h2 className="text-2xl font-black text-slate-100 mb-3 tracking-tight">{stageTitle} Locked</h2>
+                <div className="h-0.5 w-16 bg-gradient-to-r from-rose-500 to-purple-600 mx-auto mb-4 rounded-full" />
+                
+                <p className="text-slate-400 font-medium text-sm leading-relaxed max-w-md mx-auto mb-6">
+                    {error}
+                </p>
+
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 max-w-md mx-auto">
+                    <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">How to progress</p>
+                    <p className="text-xs text-slate-400">
+                        Admin approval or shortlisting is required to unlock this stage. Ensure your previous submissions are complete and approved.
+                    </p>
+                </div>
+            </div>
+        );
     }
 
     if (!registered && !isPublicStage) {

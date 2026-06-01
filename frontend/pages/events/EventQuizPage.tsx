@@ -146,8 +146,21 @@ const EventQuizPage: React.FC = () => {
 
     const canSubmit = useMemo(() => Array.isArray(quiz?.questions) && quiz.questions.length > 0, [quiz?.questions]);
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Loading quiz...</div>;
-    if (error) return <div className="min-h-screen flex items-center justify-center text-red-600 font-semibold">{error}</div>;
+    if (loading) return (
+        <div className="min-h-screen bg-slate-50 px-6 py-24 flex items-start justify-center">
+            <div className="w-full max-w-3xl rounded-[2rem] bg-white border border-slate-100 shadow-sm p-8 text-center">
+                <div className="w-10 h-10 border-4 border-purple-100 border-t-purple-600 rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Loading quiz</p>
+            </div>
+        </div>
+    );
+    if (error) return (
+        <div className="min-h-screen bg-slate-50 px-6 py-24 flex items-start justify-center">
+            <div className="w-full max-w-3xl rounded-[2rem] bg-white border border-red-100 shadow-sm p-8 text-center">
+                <p className="text-red-600 font-semibold">{error}</p>
+            </div>
+        </div>
+    );
     if (alreadySubmitted) return (
         <div className="min-h-screen flex items-center justify-center py-10">
             <div className="max-w-md mx-auto px-4 text-center">

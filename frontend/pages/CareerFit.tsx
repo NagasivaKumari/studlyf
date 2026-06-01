@@ -48,8 +48,16 @@ const CareerFit: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="pt-32 pb-24 px-6 bg-white min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
+      <div className="pt-32 pb-24 px-6 bg-white min-h-screen">
+        <div className="max-w-5xl mx-auto rounded-[2.5rem] border border-gray-100 bg-white shadow-sm p-8 sm:p-10">
+          <div className="flex items-center gap-3 mb-6 text-[#7C3AED] font-black text-[10px] uppercase tracking-[0.3em]">
+            <div className="w-4 h-4 rounded-full border-2 border-purple-200 border-t-purple-600 animate-spin" />
+            Calculating career fit
+          </div>
+          <div className="h-12 w-2/3 rounded-full bg-gray-100 animate-pulse mb-4" />
+          <div className="h-5 w-full rounded-full bg-gray-100 animate-pulse mb-2" />
+          <div className="h-5 w-4/5 rounded-full bg-gray-100 animate-pulse" />
+        </div>
       </div>
     );
   }
@@ -111,6 +119,11 @@ const CareerFit: React.FC = () => {
                         </div>
                       </div>
                     ))}
+                    {results.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-[#7C3AED]/20 bg-white p-6 text-sm text-[#475569]">
+                        No assessment results yet.
+                      </div>
+                    )}
                   </div>
                   <button onClick={() => { setCompleted(false); setActiveStep(0); setAnswers([]); setResults([]); }}
                     className="mt-10 text-[9px] font-black uppercase tracking-widest text-[#7C3AED] underline underline-offset-4">Retake Discovery</button>

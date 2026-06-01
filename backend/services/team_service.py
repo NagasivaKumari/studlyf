@@ -2,19 +2,21 @@
 Team Formation Service - Dynamic Team Creation/Joining with Invite Codes
 """
 
-from db import teams_col, participants_col, users_col, events_col
-from bson import ObjectId
 from datetime import datetime, timezone, timedelta
 import secrets
 import string
 from typing import Optional
 
+from bson import ObjectId
+
+from db import teams_col, participants_col, users_col, events_col
+
 async def create_team(
     event_id: str,
     user_id: str,
     team_name: str,
-    team_size_min: int = 1,
-    team_size_max: int = 5
+    team_size_min: Optional[int] = None,
+    team_size_max: Optional[int] = None
 ) -> dict:
     """Create a new team for an event."""
     try:
@@ -33,6 +35,25 @@ async def create_team(
             ptype = str(event.get("participationType") or "").lower().strip()
             if ptype == "individual":
                 return {"error": "This event is for individual participation only. Teams are not allowed.", "status": "restricted"}
+
+        event_min_size = event.get("min_team_size") if event else None
+        if event_min_size is None and event:
+            event_min_size = event.get("minTeamSize")
+        event_max_size = event.get("max_team_size") if event else None
+        if event_max_size is None and event:
+            event_max_size = event.get("maxTeamSize")
+
+        if event_min_size is None or event_max_size is None:
+            return {"error": "Team size is not configured for this event", "status": "missing_team_size_config"}
+
+        try:
+            event_min_size = int(event_min_size)
+            event_max_size = int(event_max_size)
+        except Exception:
+            return {"error": "Team size is not configured for this event", "status": "missing_team_size_config"}
+
+        if event_max_size < event_min_size:
+            return {"error": "Invalid team size config", "status": "error"}
         
         # Check if already in a team
         if participant.get("team_id"):
@@ -50,6 +71,10 @@ async def create_team(
         # Get user details
         user = await users_col.find_one({"user_id": str(user_id)})
         
+        # Generate permanent invite code
+        alphabet = string.ascii_uppercase + string.digits
+        invite_code = ''.join(secrets.choice(alphabet) for _ in range(12))
+        
         # Create team
         team_doc = {
             "event_id": str(event_id),
@@ -66,8 +91,10 @@ async def create_team(
                 }
             ],
             "status": "active",
-            "size_min": team_size_min,
-            "size_max": team_size_max,
+            "size_min": event_min_size,
+            "size_max": event_max_size,
+            "invite_code": invite_code,
+            "invites": [],
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc),
         }
@@ -80,7 +107,7 @@ async def create_team(
             {"_id": participant["_id"]},
             {"$set": {"team_id": team_id, "updated_at": datetime.now(timezone.utc)}}
         )
-        
+
         return {
             "status": "success",
             "message": f"Team '{team_name}' created successfully",
@@ -89,7 +116,8 @@ async def create_team(
                 "team_name": team_name,
                 "team_leader_id": str(user_id),
                 "members": team_doc["members"],
-                "size_info": f"1/{team_size_max}",
+                "size_info": f"1/{event_max_size}",
+                "invite_code": invite_code,
             }
         }
     except Exception as e:
@@ -97,26 +125,46 @@ async def create_team(
         return {"error": str(e), "status": "error"}
 
 async def generate_invite_code(team_id: str, ttl_hours: int = 72) -> dict:
-    """Return the team's permanent invite code, generating it once if it doesn't exist."""
+    """Generate an invite code.
+
+    If `ttl_hours` is provided and > 0, create a temporary invite entry under `team.invites` with expiry.
+    If `ttl_hours` is falsy, create/return a permanent `invite_code` on the team document (backwards-compatible).
+    """
     try:
         team = await teams_col.find_one({"_id": ObjectId(team_id)})
         if not team:
             return {"error": "Team not found"}
 
-        # Return existing permanent code if already set
-        existing_code = team.get("invite_code")
-        if existing_code:
-            return {"status": "success", "invite_code": existing_code}
-
-        # Generate once — cryptographically unique, 12-char uppercase alphanumeric
         import string
         alphabet = string.ascii_uppercase + string.digits
         code = ''.join(secrets.choice(alphabet) for _ in range(12))
 
-        # Persist permanently on the team document
+        now = datetime.now(timezone.utc)
+
+        # Temporary invite (ttl provided)
+        if ttl_hours and int(ttl_hours) > 0:
+            expires_at = now + timedelta(hours=int(ttl_hours))
+            invite_obj = {
+                "code": code,
+                "email": None,
+                "created_at": now,
+                "expires_at": expires_at,
+                "revoked": False,
+            }
+            await teams_col.update_one(
+                {"_id": ObjectId(team_id)},
+                {"$push": {"invites": invite_obj}, "$set": {"updated_at": now}}
+            )
+            return {"status": "success", "invite_code": code, "expires_at": expires_at.isoformat()}
+
+        # Permanent invite (backwards compatible)
+        existing_code = team.get("invite_code")
+        if existing_code:
+            return {"status": "success", "invite_code": existing_code}
+
         await teams_col.update_one(
             {"_id": ObjectId(team_id)},
-            {"$set": {"invite_code": code, "updated_at": datetime.now(timezone.utc)}}
+            {"$set": {"invite_code": code, "updated_at": now}}
         )
 
         return {"status": "success", "invite_code": code}
@@ -151,20 +199,55 @@ async def join_team_with_code(
         if participant.get("team_id"):
             return {"error": "You are already in a team. Leave your current team first."}
         
-        # Find team with this code (permanent invite_code field)
+        # Find team with this code: check permanent invite_code first, then temporary invites array
         team = await teams_col.find_one({
             "event_id": str(event_id),
-            "invite_code": invite_code.upper()
+            "$or": [
+                {"invite_code": invite_code.upper()},
+                {"invites.code": invite_code.upper()}
+            ]
         })
-        
+
         if not team:
             return {"error": "Invalid invite code"}
-        
-        valid_invite = True  # permanent code, always valid
+
+        # Block if team is already finalized
+        if team.get("status") == "finalized":
+            return {"error": "This team has already been finalized and locked."}
+
+        # If matched a temporary invite object, validate expiry and revoked state
+        valid_invite = False
+        if team.get("invite_code") and str(team.get("invite_code")) == invite_code.upper():
+            valid_invite = True
+        else:
+            # search invites array for matching code
+            for inv in team.get("invites", []):
+                if str(inv.get("code", "")).upper() == invite_code.upper():
+                    # check revoked/expiry
+                    if inv.get("revoked"):
+                        return {"error": "Invite has been revoked"}
+                    expires_at = inv.get("expires_at")
+                    if expires_at:
+                        try:
+                            exp_dt = expires_at if isinstance(expires_at, datetime) else datetime.fromisoformat(expires_at)
+                        except Exception:
+                            exp_dt = None
+                        if exp_dt and exp_dt < datetime.now(timezone.utc):
+                            return {"error": "Invite has expired"}
+                    valid_invite = True
+                    break
         
         # Check if team is full
         current_members = len(team.get("members", []))
-        max_size = team.get("size_max", 5)
+        max_size = team.get("size_max")
+        if max_size is None and event:
+            max_size = event.get("max_team_size") if event.get("max_team_size") is not None else event.get("maxTeamSize")
+        if max_size is None:
+            return {"error": "Team size is not configured for this event", "status": "missing_team_size_config"}
+        try:
+            max_size = int(max_size)
+        except Exception:
+            return {"error": "Team size is not configured for this event", "status": "missing_team_size_config"}
         if current_members >= max_size:
             return {"error": "Team is full"}
         
@@ -176,6 +259,32 @@ async def join_team_with_code(
         # Get user details
         user = await users_col.find_one({"user_id": str(user_id)})
         
+        # If temporary invite, increment uses and possibly revoke
+        invites = team.get("invites", [])
+        if not team.get("invite_code") or team.get("invite_code") != invite_code.upper():
+            for i, inv in enumerate(invites):
+                if str(inv.get("code", "")).upper() == invite_code.upper():
+                    if inv.get("revoked"):
+                        return {"error": "Invite has been revoked"}
+                    expires_at = inv.get("expires_at")
+                    if expires_at:
+                        try:
+                            exp_dt = expires_at if isinstance(expires_at, datetime) else datetime.fromisoformat(expires_at)
+                        except Exception:
+                            exp_dt = None
+                        if exp_dt and exp_dt < datetime.now(timezone.utc):
+                            return {"error": "Invite has expired"}
+                    uses = int(inv.get("uses", 0) or 0)
+                    max_uses = inv.get("max_uses")
+                    if max_uses is not None and uses >= int(max_uses):
+                        return {"error": "Invite has been used"}
+                    # increment uses
+                    invites[i]["uses"] = uses + 1
+                    if max_uses is not None and invites[i]["uses"] >= int(max_uses):
+                        invites[i]["revoked"] = True
+                        invites[i]["revoked_at"] = datetime.now(timezone.utc).isoformat()
+                    await teams_col.update_one({"_id": team["_id"]}, {"$set": {"invites": invites, "updated_at": datetime.now(timezone.utc)}})
+
         # Add member to team
         new_member = {
             "user_id": str(user_id),
@@ -197,7 +306,7 @@ async def join_team_with_code(
             {"_id": participant["_id"]},
             {"$set": {"team_id": str(team["_id"]), "updated_at": datetime.now(timezone.utc)}}
         )
-        
+
         return {
             "status": "success",
             "message": f"Successfully joined team '{team.get('team_name')}'",
@@ -309,6 +418,7 @@ async def get_team_details(team_id: str) -> dict:
                 "can_add_more": len(enriched_members) < team.get("size_max", 5),
                 "status": team.get("status"),
                 "created_at": team.get("created_at"),
+                "invite_code": team.get("invite_code"),
             }
         }
     except Exception as e:

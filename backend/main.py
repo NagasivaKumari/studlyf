@@ -4,6 +4,7 @@ import inspect
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Header, Request, status, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 import pdfplumber
@@ -32,6 +33,18 @@ os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 load_dotenv()
+
+# ── Sentry Error Tracking ──
+sentry_dsn = os.getenv("SENTRY_DSN")
+if sentry_dsn:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        environment=os.getenv("ENVIRONMENT", "development"),
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
+    print("Sentry initialized")
 
 # Touch file to trigger uvicorn reload when env changes during local dev
 # reload trigger
@@ -92,6 +105,8 @@ if os.getenv("ENVIRONMENT", "development").lower() == "development":
         "http://127.0.0.1:3003",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
         "http://localhost:8000"
     ])
 
@@ -100,7 +115,7 @@ origins = [origin for origin in origins if origin]
 # Remove duplicates
 origins = list(set(origins))
 
-origin_regex = r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):(3000|3001|3002|3003|5173|8000)$"
+origin_regex = r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):(3000|3001|3002|3003|5173|4173|8000)$"
 
 app.add_middleware(
     CORSMiddleware,
@@ -115,7 +130,62 @@ app.add_middleware(
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+    # CSP headers (nonce-based for inline scripts)
+    if os.getenv("ENVIRONMENT", "development") == "production":
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob: https:; "
+            "connect-src 'self' https:; "
+            "frame-src 'self' https:; "
+            "object-src 'none'"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Cache-control for static assets
+    if any(request.url.path.startswith(p) for p in ("/static/", "/uploads/")):
+        response.headers["Cache-Control"] = "public, max-age=86400, immutable"
+    elif request.method == "GET":
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
+
+# ── Cloudflare Real IP Middleware ──
+@app.middleware("http")
+async def cloudflare_real_ip(request: Request, call_next):
+    cf_ip = request.headers.get("CF-Connecting-IP")
+    if cf_ip:
+        request.scope["client"] = (cf_ip, 0)
+    return await call_next(request)
+
+# ── Rate Limiting Middleware ──
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    # Skip rate limiting for health checks, static files, and uploads
+    skip_paths = ("/health", "/static/", "/uploads/", "/docs", "/redoc", "/openapi.json")
+    if request.method in ("GET", "HEAD", "OPTIONS") or request.url.path.startswith(skip_paths):
+        return await call_next(request)
+    try:
+        from rate_limiter import check_rate_limit
+        if request.url.path.startswith("/api/auth/login"):
+            check_rate_limit(request, "login", "auth")
+        elif request.url.path.startswith("/api/auth/"):
+            check_rate_limit(request, "register", "auth")
+        elif request.url.path.startswith("/api/upload"):
+            check_rate_limit(request, "upload")
+        elif request.url.path.startswith("/api/search"):
+            check_rate_limit(request, "search")
+        else:
+            check_rate_limit(request, "general")
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Fail open if rate limiter errors
+    return await call_next(request)
 
 
 @app.on_event("startup")
@@ -216,10 +286,17 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    # Simple health check without exposing database connection details
+    """Health check endpoint with optional database connectivity test."""
+    try:
+        await db.client.admin.command("ping")
+        db_status = "connected"
+    except Exception:
+        db_status = "unavailable"
     return {
-        "status": "ok",
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "database": db_status,
+        "allowed_origins": origins
     }
 
 
@@ -742,6 +819,7 @@ from routes import evaluation_criteria_routes, quiz_visibility_routes, notificat
 from routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
 from routes import student_features_routes
 from routes import event_certificate_routes, registration_flow_routes
+from routes import websocket_routes
 import hackathon_integration_routes
 import participant_card_routes
 from rate_limiter import rate_limit, check_rate_limit
@@ -785,6 +863,8 @@ async def startup_db_client():
 async def shutdown_db_client():
     from db import db
     await db.disconnect()
+    from services.redis_pubsub import close as close_redis
+    await close_redis()
 
 # --- Activate Rate Limiting ---
 app.state.limiter = limiter
@@ -819,6 +899,7 @@ app.include_router(event_certificate_routes.router)
 app.include_router(event_certificate_routes.verification_router)
 app.include_router(registration_flow_routes.router)
 app.include_router(stage_endpoints.router)
+app.include_router(websocket_routes.router)
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -1132,21 +1213,6 @@ async def generate_assessment(req: AssessmentRequest):
     except Exception as e:
         print(f"Error generating assessment: {e}")
         raise HTTPException(status_code=500, detail="AI generation failed. Using local fallback.")
-
-@app.get("/health")
-async def health_check():
-    try:
-        await db.client.admin.command("ping")
-        db_status = "connected"
-    except Exception:
-        db_status = "error"
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "database": db_status,
-        "allowed_origins": origins
-    }
-
 
 # Get Groq API key from environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")

@@ -233,8 +233,41 @@ async def get_event_submissions(
 @router.get("/institution/{institution_id}/submissions")
 async def get_institution_hackathon_submissions(institution_id: str):
     """List all hackathon submissions for an institution."""
-    cursor = hackathon_submissions_col.find({"institutionId": institution_id})
-    cursor = cursor.sort("createdAt", -1)
+    from bson import ObjectId
+    from db import events_col, opportunities_col
+
+    inst_variants = [institution_id, str(institution_id)]
+    try:
+        if len(str(institution_id)) == 24:
+            inst_variants.append(ObjectId(institution_id))
+    except:
+        pass
+
+    events = await events_col.find({"institution_id": {"$in": inst_variants}}).to_list(length=None)
+    opps = await opportunities_col.find({
+        "$or": [
+            {"institution_id": {"$in": inst_variants}},
+            {"createdBy": {"$in": inst_variants}}
+        ]
+    }).to_list(length=None)
+
+    event_ids = [str(e["_id"]) for e in events]
+    event_ids.extend([str(o["_id"]) for o in opps])
+    try:
+        event_ids.extend([ObjectId(e["_id"]) for e in events if len(str(e["_id"])) == 24])
+        event_ids.extend([ObjectId(o["_id"]) for o in opps if len(str(o["_id"])) == 24])
+    except:
+        pass
+
+    query = {
+        "$or": [
+            {"institutionId": institution_id},
+            {"hackathonId": {"$in": event_ids}},
+            {"eventId": {"$in": event_ids}}
+        ]
+    }
+
+    cursor = hackathon_submissions_col.find(query).sort("createdAt", -1)
     submissions = await cursor.to_list(length=None)
     return [fix_id(s) for s in submissions]
 

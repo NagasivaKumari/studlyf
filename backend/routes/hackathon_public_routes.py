@@ -185,7 +185,10 @@ async def select_problem(event_id: str, body: dict, user: dict = Depends(get_cur
 
     problem_id = body.get("problem_id")
     team_name = (body.get("team_name") or "").strip()
-    team_size = int(body.get("team_size") or 1)
+    team_size_raw = body.get("team_size")
+    if team_size_raw is None or str(team_size_raw).strip() == "":
+        raise HTTPException(status_code=400, detail="team_size is required")
+    team_size = int(team_size_raw)
     if not problem_id:
         raise HTTPException(status_code=400, detail="problem_id is required")
     if not team_name:
@@ -196,7 +199,10 @@ async def select_problem(event_id: str, body: dict, user: dict = Depends(get_cur
         raise HTTPException(status_code=404, detail="Problem not found or inactive")
 
     team_count = await hackathon_selections_col.count_documents({"problem_id": str(problem_id)})
-    if team_count >= int(problem.get("max_teams") or 5):
+    max_teams_raw = problem.get("max_teams")
+    if max_teams_raw is None:
+        raise HTTPException(status_code=400, detail="max_teams is not configured for this problem")
+    if team_count >= int(max_teams_raw):
         raise HTTPException(status_code=400, detail="This problem has reached its maximum team capacity")
 
     email = (user.get("email") or "").strip().lower()

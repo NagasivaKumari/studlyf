@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../../AuthContext';
 import { 
     User, 
     Bell, 
@@ -135,6 +136,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
         return null;
     };
 
+    const { user } = useAuth();
+
     useEffect(() => {
         let isMounted = true;
         
@@ -158,6 +161,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                         logo_url: data.logo_url || data.logoUrl || prev.logo_url,
                         banner_url: data.banner_url || data.bannerUrl || prev.banner_url,
                         notifications: data.notifications || prev.notifications
+                    }));
+                } else if (isMounted) {
+                    // If backend profile doesn't exist yet, prefill from authenticated user where possible
+                    setProfile(prev => ({
+                        ...prev,
+                        name: prev.name || (user as any)?.institution_name || '',
+                        email: prev.email || user?.email || '',
+                        logo_url: prev.logo_url || (user as any)?.logo_url || prev.logo_url,
                     }));
                 }
             } catch (err) {

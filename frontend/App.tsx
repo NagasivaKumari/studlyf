@@ -3,21 +3,21 @@ import React, { Suspense, useEffect, lazy, useState } from 'react';
 import { motion } from 'framer-motion';
 import { HashRouter as Router, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 
-import Navigation from './components/Navigation';
-import Footer from './components/Footer';
+// Lazy-loaded components (code-split)
+const Navigation = lazy(() => import('./components/Navigation'));
+const Footer = lazy(() => import('./components/Footer'));
+const EnquiryForm = lazy(() => import('./components/EnquiryForm'));
+const ResourceCenter = lazy(() => import('./components/ResourceCenter'));
+const Testimonials = lazy(() => import('./components/Testimonials'));
+const Impact = lazy(() => import('./components/Impact'));
+const RightHoverPanel = lazy(() => import('./components/RightHoverPanel'));
+const SplashScreen = lazy(() => import('./components/SplashScreen'));
+const RoleFixer = lazy(() => import('./RoleFixer'));
+
 import { AuthProvider, useAuth } from './AuthContext';
 import ProtectedRoute from './ProtectedRoute';
 import PublicRoute from './PublicRoute';
 import { HeroUIProvider } from "@heroui/react";
-
-// Non-route components (rendered directly in JSX outside <Routes>)
-import EnquiryForm from './components/EnquiryForm';
-import ResourceCenter from './components/ResourceCenter';
-import Testimonials from './components/Testimonials';
-import Impact from './components/Impact';
-import RightHoverPanel from './components/RightHoverPanel';
-import SplashScreen from './components/SplashScreen';
-import RoleFixer from './RoleFixer';
 
 // Lazy-loaded pages (code-split per route)
 import Home from './pages/Home';
@@ -38,6 +38,7 @@ const About = lazy(() => import('./pages/About'));
 import UnifiedAuth from './pages/UnifiedAuth';
 const JudgeInvitation = lazy(() => import('./pages/JudgeInvitation'));
 import LearnerDashboard from './pages/LearnerDashboard';
+const JoinTeamPage = lazy(() => import('./pages/events/JoinTeam'));
 import PartnerDashboard from './pages/PartnerDashboard';
 import DashboardHome from './pages/DashboardHome';
 const Blog = lazy(() => import('./pages/Blog'));
@@ -284,6 +285,8 @@ const App: React.FC = () => {
               }
             />
 
+            <Route path="/events/join-team" element={<PublicRoute><JoinTeamPage /></PublicRoute>} />
+
             {/* Learning */}
             <Route
               path="/learn/courses-overview"
@@ -445,6 +448,7 @@ const App: React.FC = () => {
 
             {/* Events */}
             <Route path="/events/:eventId" element={<ProtectedRoute><EventHub /></ProtectedRoute>} />
+            <Route path="/events/:eventId/hub" element={<ProtectedRoute><EventHub /></ProtectedRoute>} />
             <Route path="/events/:eventId/package" element={<ProtectedRoute><EventPackagePage /></ProtectedRoute>} />
             <Route path="/events/:eventId/package/card" element={<ProtectedRoute><ParticipantCardPage /></ProtectedRoute>} />
             <Route path="/events/:eventId/portal" element={<ProtectedRoute><ParticipantPortal /></ProtectedRoute>} />
@@ -551,7 +555,7 @@ const AppWrapper: React.FC = () => {
         <AuthProvider>
           <ScrollToTop />
           {showSplash ? (
-            <SplashScreen duration={7500} onFinish={handleSplashFinish} />
+            <SplashScreen duration={2000} onFinish={handleSplashFinish} />
           ) : (
             <motion.div
               initial={{ opacity: 0 }}

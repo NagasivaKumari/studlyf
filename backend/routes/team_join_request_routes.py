@@ -5,6 +5,7 @@ Team Join Request Routes - REST API for team join request workflow
 from fastapi import APIRouter, Depends, HTTPException, Body
 from services.team_join_request_service import (
     send_join_request,
+    send_join_request_by_code,
     approve_join_request,
     reject_join_request,
     withdraw_join_request,
@@ -12,6 +13,7 @@ from services.team_join_request_service import (
     get_user_sent_requests,
 )
 from routes.auth import get_current_user as get_auth_user
+from stage_access_control import check_stage_deadline
 
 router = APIRouter(prefix="/api/v1/teams/requests", tags=["Team Join Requests"])
 
@@ -45,6 +47,41 @@ async def send_request(
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     
+    return result
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SEND JOIN REQUEST BY INVITE CODE
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/send-by-code")
+async def send_request_by_code(
+    data: dict = Body(...),
+    user: dict = Depends(get_auth_user)
+):
+    """
+    Send join request to a team using an invite code.
+    Looks up the team by invite code and event_id, sends request to team lead.
+    """
+    event_id = data.get("event_id")
+    invite_code = data.get("invite_code")
+    message = data.get("message", "")
+
+    if not event_id or not invite_code:
+        raise HTTPException(status_code=400, detail="event_id and invite_code required")
+
+    # Only allow joining during team formation stage
+    await check_stage_deadline(event_id=event_id, stage_name="Team Formation")
+
+    result = await send_join_request_by_code(
+        event_id=event_id,
+        invite_code=invite_code,
+        requester_user_id=user["user_id"],
+        message=message
+    )
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
     return result
 
 # ─────────────────────────────────────────────────────────────────────────────

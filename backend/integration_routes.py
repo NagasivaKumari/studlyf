@@ -45,6 +45,25 @@ def _is_live_like_status(value: str) -> bool:
     return str(value or "").strip().upper() in {"LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"}
 
 
+def _strict_team_size_bounds(event_data: dict) -> Optional[tuple[int, int]]:
+    min_raw = event_data.get("minTeamSize") if event_data else None
+    if min_raw is None and event_data:
+        min_raw = event_data.get("min_team_size")
+    max_raw = event_data.get("maxTeamSize") if event_data else None
+    if max_raw is None and event_data:
+        max_raw = event_data.get("max_team_size")
+    if min_raw is None or max_raw is None:
+        return None
+    try:
+        min_team = int(min_raw)
+        max_team = int(max_raw)
+    except Exception:
+        return None
+    if min_team < 1 or max_team < min_team:
+        return None
+    return min_team, max_team
+
+
 def _event_id_query(event_id: str) -> dict:
     """
     Build a MongoDB query that finds an event regardless of whether
@@ -3595,6 +3614,16 @@ async def update_event_stage(event_id: str, stage_id: str, stage_update: dict, u
     )
     existing_stage = event["stages"][0] if event and event.get("stages") else {}
     merged_stage = {**existing_stage, **stage_update}
+    
+    # [FIX] Validate stage separation
+    new_type = str(merged_stage.get("type", "")).upper()
+    if new_type in ["REGISTRATION", "TEAM_FORMATION"]:
+        # Check if other stages already have this type
+        event_full = await events_col.find_one({"_id": ObjectId(event_id)})
+        for s in (event_full.get("stages") or []):
+            if s.get("id") != stage_id and str(s.get("type", "")).upper() == new_type:
+                raise HTTPException(status_code=400, detail=f"An event can only have one {new_type} stage.")
+    
     await events_col.update_one(
         {"_id": ObjectId(event_id), "stages.id": stage_id},
         {"$set": {"stages.$": merged_stage}}
@@ -4995,6 +5024,10 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
             )
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
+
+        participation_type = str(event_data.get("participationType") or event_data.get("participation_type") or "").lower().strip()
+        if participation_type in ("team", "both") and _strict_team_size_bounds(event_data) is None:
+            raise HTTPException(status_code=400, detail="Team size must be configured before making this event live")
         
     print("=== FINAL EVENT DATA ===")
     print("logo_url in event_data:", event_data.get("logo_url", "MISSING"))
@@ -5075,16 +5108,12 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
         opp_data["eligibleOrganizations"] = _norm_list(event_data.get("eligibleOrganizations") or event_data.get("eligible_organizations") or [])
         opp_data["eligibleGenders"] = _norm_list(event_data.get("eligibleGenders") or event_data.get("eligible_genders") or [])
         opp_data["participationType"] = str(event_data.get("participationType") or event_data.get("participation_type") or "both")
-        # Normalize numeric team sizes
-        try:
-            opp_data["minTeamSize"] = int(event_data.get("minTeamSize") if event_data.get("minTeamSize") is not None else event_data.get("min_team_size") if event_data.get("min_team_size") is not None else 1)
-        except:
-            opp_data["minTeamSize"] = 1
-        try:
-            opp_data["maxTeamSize"] = int(event_data.get("maxTeamSize") if event_data.get("maxTeamSize") is not None else event_data.get("max_team_size") if event_data.get("max_team_size") is not None else 5)
-        except:
-            opp_data["maxTeamSize"] = 5
-        if opp_data["minTeamSize"] > opp_data["maxTeamSize"]:
+        team_bounds = _strict_team_size_bounds(event_data)
+        if team_bounds is None and str(opp_data["participationType"]).lower().strip() in ("team", "both"):
+            raise HTTPException(status_code=400, detail="Team size must be configured before making this event live")
+        if team_bounds is not None:
+            opp_data["minTeamSize"], opp_data["maxTeamSize"] = team_bounds
+        if team_bounds is not None and opp_data["minTeamSize"] > opp_data["maxTeamSize"]:
             raise HTTPException(status_code=400, detail="Minimum team size cannot be greater than maximum team size")
         
         # Ensure deadline is datetime
@@ -5326,15 +5355,12 @@ async def update_pro_event(event_id: str, request: Request, user: dict = Depends
             opp_data["eligibleOrganizations"] = _norm_list(updated_event.get("eligibleOrganizations") or updated_event.get("eligible_organizations") or [])
             opp_data["eligibleGenders"] = _norm_list(updated_event.get("eligibleGenders") or updated_event.get("eligible_genders") or [])
             opp_data["participationType"] = str(updated_event.get("participationType") or updated_event.get("participation_type") or "both")
-            try:
-                opp_data["minTeamSize"] = int(updated_event.get("minTeamSize") if updated_event.get("minTeamSize") is not None else updated_event.get("min_team_size") if updated_event.get("min_team_size") is not None else 1)
-            except:
-                opp_data["minTeamSize"] = 1
-            try:
-                opp_data["maxTeamSize"] = int(updated_event.get("maxTeamSize") if updated_event.get("maxTeamSize") is not None else updated_event.get("max_team_size") if updated_event.get("max_team_size") is not None else 5)
-            except:
-                opp_data["maxTeamSize"] = 5
-            if opp_data["minTeamSize"] > opp_data["maxTeamSize"]:
+            team_bounds = _strict_team_size_bounds(updated_event)
+            if team_bounds is None and str(opp_data["participationType"]).lower().strip() in ("team", "both"):
+                raise HTTPException(status_code=400, detail="Team size must be configured before making this event live")
+            if team_bounds is not None:
+                opp_data["minTeamSize"], opp_data["maxTeamSize"] = team_bounds
+            if team_bounds is not None and opp_data["minTeamSize"] > opp_data["maxTeamSize"]:
                 raise HTTPException(status_code=400, detail="Minimum team size cannot be greater than maximum team size")
 
             opp_data["status"] = "active" if _is_live_like_status(updated_event.get("status")) else "draft"

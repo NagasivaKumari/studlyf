@@ -217,6 +217,15 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [expandedRegId, setExpandedRegId] = useState<string | null>(null);
     const [notifyingApproved, setNotifyingApproved] = useState(false);
     const [issuingCertificates, setIssuingCertificates] = useState(false);
+    
+    // Server-driven registration form & eligibility (propagate profile_type prefill/lock)
+    const [registrationFormDef, setRegistrationFormDef] = useState<any | null>(null);
+    const [registrationUiFields, setRegistrationUiFields] = useState<any[]>([]);
+    const [registrationPrefillMap, setRegistrationPrefillMap] = useState<Record<string, any>>({});
+    const [registrationEligibility, setRegistrationEligibility] = useState<any>(null);
+    const [registrationEligible, setRegistrationEligible] = useState<boolean | null>(null);
+    const [registrationEligibilityReason, setRegistrationEligibilityReason] = useState<string | null>(null);
+    const [profileTypeLockedForPrefill, setProfileTypeLockedForPrefill] = useState(false);
 
     const fetchRegistrations = async () => {
         if (!eventId || activeTab !== 'registrations') return;
@@ -549,10 +558,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         const fetchData = async () => {
             if (!eventId) return;
             try {
+                // Fetch basic event details first as we need institution_id for other calls
                 const eventRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/details`, { headers: { ...authHeaders() } });
                 const eventData = await eventRes.json();
                 
-                // Proactively strip ProseMirror attributes (like data-start, data-end, data-section-id) to make the text clean and readable
                 if (eventData && typeof eventData.description === 'string') {
                     eventData.description = eventData.description
                         .replace(/data-start="[^"]*"/g, '')
@@ -572,53 +581,34 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 setStages(
                     (Array.isArray(eventData.stages) ? eventData.stages : []).map((s: any, idx: number) => ({
                         ...s,
-                        // Critical: ensure stable id so edits don't apply to every row
                         id: s?.id || `${eventId}-${idx}-${Math.random().toString(36).slice(2, 9)}`,
                         roundMode: s?.roundMode || s?.mode || s?.round_mode || '',
                     }))
                 );
+                setCriteria(eventData.judging_criteria || []);
 
-                // Fetch institution profile
                 const instId = eventData.institution_id;
-                if (instId) {
-                    try {
-                        const instRes = await fetch(`${API_BASE_URL}/api/v1/institution/profile/${instId}`, { headers: { ...authHeaders() } });
-                        const instData = await instRes.json();
-                        setInstitution(instData);
-                    } catch { /* non-fatal */ }
-                }
+                
+                // Parallelize all other data fetches
+                const fetchPromises = [
+                    fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/participants`, { headers: { ...authHeaders() } }).then(r => r.json()).catch(() => []),
+                    fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes`, { headers: { ...authHeaders() } }).then(r => r.json()).catch(() => []),
+                    fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams`, { headers: { ...authHeaders() } }).then(r => r.json()).catch(() => []),
+                    fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/submissions`, { headers: { ...authHeaders() } }).then(r => r.json()).catch(() => []),
+                    instId ? fetch(`${API_BASE_URL}/api/v1/institution/profile/${instId}`, { headers: { ...authHeaders() } }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+                ];
 
-                // Fetch participants (always, even if institution_id missing)
-                try {
-                    const partRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/participants`, { headers: { ...authHeaders() } });
-                    const partData = await partRes.json();
-                    setParticipants(Array.isArray(partData) ? partData : []);
-                } catch {
-                    setParticipants([]);
-                }
+                const [partData, quizData, teamsData, subData, instData] = await Promise.all(fetchPromises);
 
-                const quizRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/quizzes`, { headers: { ...authHeaders() } });
-                const quizData = await quizRes.json();
+                setParticipants(Array.isArray(partData) ? partData : []);
                 setQuizzes(quizData || []);
+                setTeams(Array.isArray(teamsData) ? teamsData : []);
+                setSubmissions(Array.isArray(subData) ? subData : []);
+                setInstitution(instData);
 
-                // Fetch teams for overview
-                try {
-                    const teamsRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams`, { headers: { ...authHeaders() } });
-                    const teamsData = await teamsRes.json();
-                    setTeams(Array.isArray(teamsData) ? teamsData : []);
-                } catch { setTeams([]); }
-
-                // Fetch submissions for overview
-                try {
-                    const subRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/submissions`, { headers: { ...authHeaders() } });
-                    const subData = await subRes.json();
-                    setSubmissions(Array.isArray(subData) ? subData : []);
-                } catch { setSubmissions([]); }
-
-                // Admin-only enhancement: super-admins/admins can use the richer event submission view.
-                // Institution users must stay on institution-scoped endpoints to avoid 403s.
-                try {
-                    if (role === 'super_admin' || role === 'admin') {
+                // Secondary parallel fetch for admin-specific data if needed
+                if (role === 'super_admin' || role === 'admin') {
+                    try {
                         const adminRes = await fetch(`${API_BASE_URL}/api/admin/events/${eventId}/submissions`, {
                             headers: {
                                 ...authHeaders(),
@@ -628,24 +618,16 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
 
                         if (adminRes.ok) {
                             const adminData = await adminRes.json();
-                            // Replace stages with admin-provided stages (preserves empty stages)
                             if (adminData.stages && Array.isArray(adminData.stages)) {
                                 setStages(adminData.stages);
-                                // Flatten submissions for existing submission management UI
                                 const flatSubs = adminData.stages.flatMap((s: any) => (Array.isArray(s.submissions) ? s.submissions : []));
                                 setSubmissions(flatSubs);
-                                // Aggregate participants from stages
                                 const aggregatedParts = adminData.stages.flatMap((s: any) => (Array.isArray(s.participants) ? s.participants : []));
                                 setParticipants(aggregatedParts);
                             }
                         }
-                    }
-                } catch (e) {
-                    // non-fatal
+                    } catch (e) { /* non-fatal */ }
                 }
-                
-                // Only use judging criteria from DB — no static fallback
-                setCriteria(eventData.judging_criteria || []);
             } catch (err) {
                 console.error("Failed to load event data");
             } finally {
@@ -654,6 +636,79 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         };
         fetchData();
     }, [eventId, refreshCounter]);
+
+    // Fetch server-driven registration form and eligibility when admin views registrations
+    useEffect(() => {
+        if (!eventId || activeTab !== 'registrations') return;
+        let cancelled = false;
+        (async () => {
+
+    const buildPrefillForRegistration = (reg: any) => {
+        const base = { ...(registrationPrefillMap || {}) };
+        // overlay registration's custom answers
+        if (reg && reg.custom_answers && typeof reg.custom_answers === 'object') {
+            for (const [k, v] of Object.entries(reg.custom_answers)) {
+                base[String(k)] = v;
+            }
+        }
+        // overlay registration profile snapshot values
+        if (reg && reg.profile_snapshot && typeof reg.profile_snapshot === 'object') {
+            const snap = reg.profile_snapshot;
+            if (snap.email) base['email'] = base['email'] ?? snap.email;
+            if (snap.full_name) base['full_name'] = base['full_name'] ?? snap.full_name;
+        }
+        return base;
+    };
+            try {
+                // fetch form definition
+                const formRes = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/form`, { headers: { ...authHeaders() } });
+                if (formRes.ok) {
+                    const formJson = await formRes.json();
+                    if (cancelled) return;
+                    setRegistrationFormDef(formJson || null);
+                    const defs = Array.isArray(formJson?.fields_definitions) ? formJson.fields_definitions : (Array.isArray(formJson?.fields) ? formJson.fields : []);
+                    setRegistrationUiFields(buildUiFieldsFromBackend(defs));
+
+                    // build prefill map from server-provided prefilled values
+                    const prefill: Record<string, any> = {};
+                    for (const f of defs) {
+                        const key = String(f.field_id || f.id || f.label || '').trim();
+                        if (!key) continue;
+                        if (f.prefilled_value !== undefined && f.prefilled_value !== null && String(f.prefilled_value).trim() !== '') {
+                            prefill[key] = f.prefilled_value;
+                        }
+                    }
+                    setProfileTypeLockedForPrefill(false);
+                    setRegistrationPrefillMap(prefill);
+                }
+
+                // fetch eligibility
+                try {
+                    const elRes = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/eligibility`, { headers: { ...authHeaders() } });
+                    if (elRes.ok) {
+                        const elJson = await elRes.json();
+                        if (cancelled) return;
+                        setRegistrationEligibility(elJson || null);
+                        if (typeof elJson?.eligible === 'boolean') {
+                            setRegistrationEligible(elJson.eligible);
+                            setRegistrationEligibilityReason(elJson.reason || null);
+                        } else {
+                            setRegistrationEligible(null);
+                        }
+                    } else {
+                        setRegistrationEligibility(null);
+                        setRegistrationEligible(null);
+                    }
+                } catch (e) {
+                    setRegistrationEligibility(null);
+                    setRegistrationEligible(null);
+                }
+            } catch (e) {
+                // non-fatal
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [eventId, activeTab, user]);
 
     const fetchBundle = async (tVal: number) => {
         console.log('[BUNDLE] fetchBundle called', { eventId, activeTab, tVal });
@@ -917,23 +972,20 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 setHasUnsavedChanges(false);
                 setShowSaveSuccess(true);
                 
-                // Simple direct sync - update all opportunities
-                try {
-                    console.log('DIRECT SYNC: Force updating all opportunities for event:', eventId);
-                    const syncRes = await fetch(`${API_BASE_URL}/api/direct-sync/force-update/${eventId}`, {
-                        method: 'POST',
-                        headers: { ...authHeaders() }
-                    });
+                // Background sync - update all opportunities without blocking UI
+                console.log('DIRECT SYNC: Triggering background synchronization for event:', eventId);
+                fetch(`${API_BASE_URL}/api/direct-sync/force-update/${eventId}`, {
+                    method: 'POST',
+                    headers: { ...authHeaders() }
+                }).then(syncRes => {
                     if (syncRes.ok) {
-                        const syncData = await syncRes.json();
-                        console.log('DIRECT SYNC: Force update successful:', syncData);
+                        console.log('DIRECT SYNC: Background sync successful');
                     } else {
-                        const errorData = await syncRes.json().catch(() => ({}));
-                        console.error('DIRECT SYNC: Force update failed:', errorData);
+                        console.error('DIRECT SYNC: Background sync failed');
                     }
-                } catch (syncErr) {
-                    console.error('DIRECT SYNC: Network error:', syncErr);
-                }
+                }).catch(syncErr => {
+                    console.error('DIRECT SYNC: Background network error:', syncErr);
+                });
             } else {
                 const errorData = await res.json().catch(() => ({}));
                 alert(`Failed to save event: ${errorData.detail || 'Unknown error'}`);
@@ -1201,40 +1253,57 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     if (loading) return <div className="h-96 flex items-center justify-center"><div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div></div>;
     if (!event) return <div>Event not found</div>;
 
-    const getCurrentStageInfo = () => {
+    const getStageStatus = (stage: any) => {
+        const explicit = String(stage?.status || '').trim().toLowerCase();
+        if (explicit) return explicit;
+
+        const normalizeDate = (value: any, endOfDay = false) => {
+            if (!value) return null;
+            const raw = String(value).trim();
+            if (!raw) return null;
+            const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})$/);
+            if (dateOnly) {
+                const [year, month, day] = dateOnly[1].split('-').map(Number);
+                return endOfDay
+                    ? new Date(year, month - 1, day, 23, 59, 59, 999)
+                    : new Date(year, month - 1, day, 0, 0, 0, 0);
+            }
+            const parsed = new Date(raw);
+            if (Number.isNaN(parsed.getTime())) return null;
+            if (endOfDay && parsed.getHours() === 0 && parsed.getMinutes() === 0 && parsed.getSeconds() === 0 && parsed.getMilliseconds() === 0) {
+                parsed.setHours(23, 59, 59, 999);
+            }
+            return parsed;
+        };
+
         const now = new Date();
+        const start = normalizeDate(stage?.start_date || stage?.startDate, false);
+        const end = normalizeDate(stage?.end_date || stage?.endDate, true);
+        if (start && now < start) return 'upcoming';
+        if (end && now > end) return 'completed';
+        return 'active';
+    };
+
+    const getCurrentStageInfo = () => {
         const sortedStages = [...stages].sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
         const totalStages = sortedStages.length;
         
-        // Find active stage (today falls within its date range)
-        let activeStageIndex = -1;
-        for (let i = 0; i < sortedStages.length; i++) {
-            const start = new Date(sortedStages[i].start_date);
-            const end = new Date(sortedStages[i].end_date);
-            end.setUTCHours(23, 59, 59, 999);
-            if (now >= start && now <= end) {
-                activeStageIndex = i;
-                break;
-            }
-        }
-        
-        // If no active stage found, find the most recent completed or upcoming stage
-        if (activeStageIndex === -1 && sortedStages.length > 0) {
-            for (let i = sortedStages.length - 1; i >= 0; i--) {
-                if (now >= new Date(sortedStages[i].end_date)) {
-                    activeStageIndex = i;
-                    break;
+        const activeStageIndex = sortedStages.findIndex((stage) => getStageStatus(stage) === 'active');
+        const selectedStageIndex = activeStageIndex !== -1
+            ? activeStageIndex
+            : Math.max(0, sortedStages.findLastIndex ? sortedStages.findLastIndex((stage) => getStageStatus(stage) !== 'upcoming') : (() => {
+                for (let i = sortedStages.length - 1; i >= 0; i--) {
+                    if (getStageStatus(sortedStages[i]) !== 'upcoming') return i;
                 }
-            }
-            if (activeStageIndex === -1) activeStageIndex = 0;
-        }
+                return 0;
+            })());
         
-        const stageNumber = activeStageIndex + 1; // 1-based
-        const stageName = sortedStages[activeStageIndex]?.name || '';
+        const stageNumber = selectedStageIndex + 1; // 1-based
+        const stageName = sortedStages[selectedStageIndex]?.name || '';
         const isFinalStage = stageNumber === totalStages && totalStages > 0;
         
         // Get next stage name if available (for "advance to" messages)
-        const nextStageIndex = activeStageIndex + 1;
+        const nextStageIndex = selectedStageIndex + 1;
         const nextStageName = nextStageIndex < totalStages 
             ? sortedStages[nextStageIndex]?.name || ''
             : "";
@@ -2578,6 +2647,52 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     <div className="absolute -right-20 -top-20 w-80 h-80 bg-[#6C3BFF]/10 rounded-full blur-[100px]"></div>
                 </div>
 
+                {/* 1b. Registration Form Preview */}
+                {registrationUiFields.length > 0 && (
+                    <div className="bg-white border border-slate-100 rounded-[2.5rem] shadow-sm p-6 lg:p-8 space-y-5">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-500">Admin Preview</p>
+                                <h4 className="text-lg font-black text-slate-900 mt-1">Registration fields in order</h4>
+                            </div>
+                            <span className="px-3 py-1.5 rounded-full bg-purple-50 text-[#6C3BFF] border border-purple-100 text-[10px] font-black uppercase tracking-widest">
+                                {registrationUiFields.length} fields
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                            {registrationUiFields.map((field: any, idx: number) => {
+                                const sourceField = Array.isArray(registrationFormDef?.fields_definitions)
+                                    ? registrationFormDef.fields_definitions.find((f: any) => String(f.id || f.field_id || f.label || '') === String(field.id || field.label || ''))
+                                    : null;
+                                const hasPrefill = Boolean(sourceField?.prefilled_value);
+                                return (
+                                    <div key={`${field.id}-${idx}`} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <div className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-400">Field {idx + 1}</div>
+                                                <div className="font-bold text-slate-900 text-sm truncate mt-1">{field.label}</div>
+                                                <div className="text-[10px] font-medium text-slate-500 mt-1 uppercase tracking-wider">{field.type}</div>
+                                            </div>
+                                            {hasPrefill && (
+                                                <span className="shrink-0 px-2 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 text-[9px] font-black uppercase tracking-widest">
+                                                    Prefilled
+                                                </span>
+                                            )}
+                                        </div>
+                                        {sourceField?.prefilled_value ? (
+                                            <p className="mt-3 text-xs font-semibold text-slate-600 truncate">
+                                                {String(sourceField.prefilled_value)}
+                                            </p>
+                                        ) : (
+                                            <p className="mt-3 text-xs font-semibold text-slate-400 italic">Admin kept blank, user will enter manually</p>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* 2. Metrics Roster Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                     {[
@@ -3503,6 +3618,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         <tr>
                                             <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Name</th>
                                             <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Email</th>
+                                            {/* Dynamically render custom fields headers */}
+                                            {(event.registration_settings?.profile_fields_config ? Object.keys(event.registration_settings.profile_fields_config) : []).slice(0, 3).map((field) => (
+                                                <th key={field} className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">{field.replace('_', ' ')}</th>
+                                            ))}
                                             <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Source</th>
                                             <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                                             <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Registered</th>
@@ -3513,6 +3632,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         {participants.length > 0 ? (
                                             participants.map((p: any) => {
                                                 const src = p.source || '';
+                                                const registrationData = p.registration_data || p.profile_snapshot || {};
                                                 const canReview =
                                                     Boolean(p.opportunity_application_id) ||
                                                     ['opportunity_application', 'opportunity_portal', 'opportunity_portal_backfill'].includes(src) ||
@@ -3521,8 +3641,12 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                 const rowBusy = reviewingParticipantId !== null && reviewingParticipantId === rowBusyId;
                                                 return (
                                                 <tr key={p._id} className="hover:bg-slate-50/50">
-                                                    <td className="px-10 py-6 font-black text-slate-900">{p.full_name || p.name || '—'}</td>
-                                                    <td className="px-10 py-6 text-sm font-bold text-slate-600">{p.email || '—'}</td>
+                                                    <td className="px-10 py-6 font-black text-slate-900">{p.full_name || p.name || p.registration_data?.full_name || p.profile_snapshot?.full_name || '—'}</td>
+                                                    <td className="px-10 py-6 text-sm font-bold text-slate-600">{p.email || p.registration_data?.email || p.profile_snapshot?.email || '—'}</td>
+                                                    {/* Dynamically render custom fields values */}
+                                                    {(event.registration_settings?.profile_fields_config ? Object.keys(event.registration_settings.profile_fields_config) : []).slice(0, 3).map((field) => (
+                                                        <td key={field} className="px-10 py-6 text-sm font-bold text-slate-600">{registrationData[field] || p.registration_data?.[field] || p.profile_snapshot?.[field] || '—'}</td>
+                                                    ))}
                                                     <td className="px-10 py-6 text-xs font-bold text-slate-500 uppercase tracking-wider">
                                                         {src === 'opportunity_application' || src === 'opportunity_portal' || src === 'opportunity_portal_backfill'
                                                             ? 'Portal apply'

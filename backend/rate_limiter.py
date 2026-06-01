@@ -56,8 +56,10 @@ class MemoryRateLimiter:
     """In-memory rate limiter as fallback when Redis is not available."""
     
     def __init__(self):
-        self.requests: Dict[str, Dict[str, list]] = {}
-    
+        if not hasattr(self, '_initialized'):
+            self.requests: Dict[str, Dict[str, list]] = {}
+            self._initialized = True
+
     def is_allowed(self, key: str, limit: int, window: int) -> tuple[bool, Dict[str, int]]:
         """
         Check if request is allowed based on rate limit.
@@ -99,6 +101,9 @@ class MemoryRateLimiter:
                 "remaining": 0,
                 "reset": int(current_time + window)
             }
+
+# Module-level singleton used by all code paths
+_memory_limiter = MemoryRateLimiter()
 
 def get_rate_limit_string(limit_str: str) -> tuple[int, int]:
     """
@@ -173,8 +178,7 @@ def check_rate_limit(
                 redis_client.expire(key, window)
         except redis.RedisError:
             # Fallback to memory limiter if Redis fails
-            memory_limiter = MemoryRateLimiter()
-            allowed, info = memory_limiter.is_allowed(client_ip, limit, window)
+            allowed, info = _memory_limiter.is_allowed(client_ip, limit, window)
             if not allowed:
                 raise HTTPException(
                     status_code=429,
@@ -187,8 +191,7 @@ def check_rate_limit(
                 )
     else:
         # Use memory-based rate limiting
-        memory_limiter = MemoryRateLimiter()
-        allowed, info = memory_limiter.is_allowed(client_ip, limit, window)
+        allowed, info = _memory_limiter.is_allowed(client_ip, limit, window)
         if not allowed:
             raise HTTPException(
                 status_code=429,

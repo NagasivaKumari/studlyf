@@ -558,16 +558,33 @@ const EventHub: React.FC = () => {
                         )}
 
                         {activeTab === 'submissions' && (() => {
-                            const minTeam = (event as any)?.min_team_size ?? 1;
-                            const maxTeam = (event as any)?.max_team_size ?? 99;
-                            const needsTeam = minTeam > 1;
+                            const minTeamRaw = (event as any)?.min_team_size ?? (event as any)?.minTeamSize;
+                            const maxTeamRaw = (event as any)?.max_team_size ?? (event as any)?.maxTeamSize;
+                            const teamSizeConfigured = minTeamRaw != null && maxTeamRaw != null;
+                            const minTeam = teamSizeConfigured ? Number(minTeamRaw) : null;
+                            const maxTeam = teamSizeConfigured ? Number(maxTeamRaw) : null;
+                            const needsTeam = teamSizeConfigured && (minTeam as number) > 1;
                             const memberCount = team?.members?.length || 0;
-                            const teamMeetsSize = !needsTeam || (team && memberCount >= minTeam);
+                            const teamMeetsSize = !teamSizeConfigured || !needsTeam || (team && memberCount >= (minTeam as number));
 
-                            // Find SUBMISSION stage and its dynamic fields
-                            const submissionStage = (event?.stages || []).find(
-                                (s: any) => s.type?.toUpperCase() === 'SUBMISSION'
-                            );
+                            // Find currently active stage and its dynamic fields
+                             const activeStage = (event?.stages || []).find(
+                                 (s: any) => {
+                                     // Normalize dates to UTC for consistent comparison
+                                     const start = new Date(s.start_date || s.startDate);
+                                     const end = new Date(s.end_date || s.endDate || s.deadline);
+
+                                     // Ensure end date covers the full day if not specified with time
+                                     if (end.getHours() === 0 && end.getMinutes() === 0) {
+                                         end.setUTCHours(23, 59, 59, 999);
+                                     }
+
+                                     const now = new Date();
+                                     return now >= start && now <= end;
+                                 }
+                             );
+
+                            const submissionStage = activeStage;
                             const dynamicFields = submissionStage?.config?.fields || [];
                             const hasDynamicFields = dynamicFields.length > 0;
 
@@ -612,11 +629,10 @@ const EventHub: React.FC = () => {
                                             <div>
                                                 <h3 className="text-xl font-black text-slate-900">Team Required</h3>
                                                 <p className="text-slate-600 font-medium mt-1 leading-relaxed">
-                                                    This event requires a team of <strong className="text-amber-700">{minTeam}–{maxTeam} members</strong> to submit. 
-                                                    {!team ? (
-                                                        <> You haven't formed a team yet. Please go to the <strong>Team</strong> tab to create or join one.</>
+                                                    {teamSizeConfigured ? (
+                                                        <>This event requires a team of <strong className="text-amber-700">{minTeam}–{maxTeam} members</strong> to submit. {!team ? (<> You haven't formed a team yet. Please go to the <strong>Team</strong> tab to create or join one.</>) : (<> Your team <strong>"{team.team_name}"</strong> currently has <strong className="text-red-600">{memberCount} member{memberCount !== 1 ? 's' : ''}</strong>. You need at least <strong>{minTeam}</strong> to submit.</>)}</>
                                                     ) : (
-                                                        <> Your team <strong>"{team.team_name}"</strong> currently has <strong className="text-red-600">{memberCount} member{memberCount !== 1 ? 's' : ''}</strong>. You need at least <strong>{minTeam}</strong> to submit.</>
+                                                        <>Team size is not configured for this event yet. Ask the organizer to set the team range before publishing.</>
                                                     )}
                                                 </p>
                                             </div>
@@ -962,7 +978,7 @@ const EventHub: React.FC = () => {
                                                     <h3 className="text-3xl font-black mt-2">{team.team_name}</h3>
                                                 </div>
                                                 <div className="px-4 py-2 bg-white/10 rounded-full text-[10px] font-black uppercase tracking-widest">
-                                                    {team.members?.length || 1} member{(team.members?.length || 1) !== 1 ? 's' : ''}
+                                                    {team.members?.length ?? 0} member{(team.members?.length ?? 0) !== 1 ? 's' : ''}
                                                 </div>
                                             </div>
 
@@ -971,11 +987,15 @@ const EventHub: React.FC = () => {
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-purple-300">Members</p>
                                                 {team.members?.map((m: any, i: number) => (
                                                     <div key={i} className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl backdrop-blur-sm">
-                                                        <div className="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-sm font-black">
-                                                            {(m.name || m.email || '?').charAt(0).toUpperCase()}
+                                                        <div className="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-sm font-black overflow-hidden">
+                                                            {m.profile_image ? (
+                                                                <img src={m.profile_image} alt={m.name || 'Member'} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                (m.name || m.full_name || m.email || '?').charAt(0).toUpperCase()
+                                                            )}
                                                         </div>
                                                         <div className="flex-1">
-                                                            <p className="font-black text-sm">{m.name || 'Unknown'}</p>
+                                                            <p className="font-black text-sm">{m.name || m.full_name || m.email || 'Unknown'}</p>
                                                             <p className="text-xs text-purple-300 font-medium">{m.email}</p>
                                                         </div>
                                                         {m.is_leader && (

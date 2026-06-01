@@ -14,6 +14,7 @@ interface User {
     college_name?: string;
     graduation_year?: string;
     status?: string;
+    profile_type?: string;
     profilePhoto?: string | null;
 }
 
@@ -23,6 +24,7 @@ interface AuthContextType {
     loading: boolean;
     login: (token: string, userData: User) => void;
     logout: () => void;
+    updateUser: (updates: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -30,7 +32,8 @@ const AuthContext = createContext<AuthContextType>({
     role: null, 
     loading: true,
     login: () => {},
-    logout: () => {}
+    logout: () => {},
+    updateUser: () => {}
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -45,12 +48,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
         }
 
+        // Create a controller to abort the fetch if it takes too long
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second timeout
+
         try {
             const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
-                }
+                },
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
 
             if (response.ok) {
                 const userData = await response.json();
@@ -60,16 +70,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUser(userData);
                 setRole(userData.role);
             } else if (response.status === 401 || response.status === 403) {
-                // Explicitly unauthorized - clear session
                 localStorage.removeItem('auth_token');
                 setUser(null);
                 setRole(null);
             }
-            // For other errors (500, network), we keep the token and state as is
-            // to avoid aggressive logging out on transient errors
-        } catch (error) {
-            console.error("[AuthContext] Auth check failed:", error);
-            // Don't clear state on network failure
+        } catch (error: any) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                console.warn("[AuthContext] Auth check timed out. Proceeding as guest.");
+            } else {
+                console.error("[AuthContext] Auth check failed:", error);
+            }
+            // Proceed as guest to avoid blocking the UI
         } finally {
             setLoading(false);
         }
@@ -95,9 +107,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         window.location.href = '/';
     };
 
+    const updateUser = (updates: Partial<User>) => {
+        setUser(prev => prev ? { ...prev, ...updates } : prev);
+    };
+
     return (
-        <AuthContext.Provider value={{ user, role, loading, login, logout }}>
-            {!loading && children}
+        <AuthContext.Provider value={{ user, role, loading, login, logout, updateUser }}>
+            {children}
         </AuthContext.Provider>
     );
 };

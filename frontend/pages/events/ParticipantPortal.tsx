@@ -76,7 +76,7 @@ const ParticipantPortal: React.FC = () => {
 
     const [modalProblem, setModalProblem] = useState<Problem | null>(null);
     const [modalEmail, setModalEmail] = useState(user?.email || '');
-    const [modalMobile, setModalMobile] = useState('');
+    const [modalMobile, setModalMobile] = useState(user?.mobile || (user as any)?.phone || '');
 
     const fetchPortal = async () => {
         if (!eventId) return;
@@ -146,7 +146,7 @@ const ParticipantPortal: React.FC = () => {
                 body: JSON.stringify({
                     problem_id: modalProblem.problem_id || modalProblem.id || modalProblem._id,
                     team_name: teamName,
-                    team_size: Number(teamSize) || 1,
+                    team_size: teamSize ? Number(teamSize) : undefined,
                     email: modalEmail,
                     mobile: modalMobile,
                 }),
@@ -359,11 +359,11 @@ const ParticipantPortal: React.FC = () => {
                                             <div className="space-y-3">
                                                 <div className="p-4 rounded-2xl bg-white border border-slate-200">
                                                     <div className="flex items-center justify-between text-sm font-bold text-slate-700">
-                                                        <span>{p.team_count || 0}/{p.max_teams || 5} teams</span>
+                                                        <span>{p.team_count ?? 0}/{p.max_teams ?? '—'} teams</span>
                                                         <span className="text-slate-400">{p.slots_left || 0} left</span>
                                                     </div>
                                                     <div className="h-2 mt-3 rounded-full bg-slate-100 overflow-hidden">
-                                                        <div className="h-full bg-gradient-to-r from-[#E32879] to-[#931F6B]" style={{ width: `${Math.min(100, ((p.team_count || 0) / (p.max_teams || 1)) * 100)}%` }} />
+                                                        <div className="h-full bg-gradient-to-r from-[#E32879] to-[#931F6B]" style={{ width: `${p.max_teams ? Math.min(100, ((p.team_count ?? 0) / p.max_teams) * 100) : 0}%` }} />
                                                     </div>
                                                 </div>
                                                 <button disabled={joining || !!mySelection || p.is_full} onClick={() => setModalProblem(p)} className="w-full py-3 rounded-full font-black text-white bg-[#6C3BFF] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">

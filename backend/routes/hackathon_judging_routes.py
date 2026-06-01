@@ -284,9 +284,19 @@ async def get_leaderboard(opportunity_id: str):
         }
         
         # Attach rubric breakdown for the matrix
-        scores_cursor = submission_scores_col.find({"submission_id": str(doc["_id"])})
-        async for s in scores_cursor:
-            r = await rubrics_col.find_one({"_id": ObjectId(s["rubric_id"])})
+        # Pre-fetch scores for this submission
+        all_sub_scores = await submission_scores_col.find({"submission_id": str(doc["_id"])}).to_list(length=None)
+        
+        # Batch fetch all required rubrics for this submission
+        rubric_ids = [ObjectId(s["rubric_id"]) for s in all_sub_scores if s.get("rubric_id")]
+        rubrics_map = {}
+        if rubric_ids:
+            rubrics_cursor = rubrics_col.find({"_id": {"$in": rubric_ids}})
+            async for r in rubrics_cursor:
+                rubrics_map[str(r["_id"])] = r
+                
+        for s in all_sub_scores:
+            r = rubrics_map.get(str(s.get("rubric_id")))
             if r:
                 entry["rubric_scores"][r["title"]] = s["score"]
                 

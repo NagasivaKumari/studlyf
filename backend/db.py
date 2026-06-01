@@ -173,6 +173,15 @@ class DatabaseManager:
             # ── Opportunities (student-facing dashboard) ──
             await self.db.opportunities.create_index([("institution_id", 1), ("status", 1)])
             await self.db.opportunities.create_index("status")
+            await self.db.opportunities.create_index("createdBy")
+            await self.db.opportunities.create_index("event_link_id")
+            await self.db.opportunities.create_index([("status", 1), ("createdAt", -1)])
+            
+            # ── Opportunity Applications ──
+            await self.db.opportunity_applications.create_index("opportunity_id")
+            await self.db.opportunity_applications.create_index("user_id")
+            await self.db.opportunity_applications.create_index([("opportunity_id", 1), ("user_id", 1)])
+
             
             # ── Messages ──
             await self.db.messages.create_index([("user_id", 1), ("is_read", 1)])
@@ -203,6 +212,12 @@ class DatabaseManager:
             await self.db.email_queue.create_index("idempotency_key", sparse=True)
             await self.db.email_delivery_logs.create_index([("recipient", 1), ("status", 1)])
             await self.db.email_delivery_logs.create_index("created_at", expireAfterSeconds=90*24*60*60)
+            # ── Learner Profiles (eligibility checks) ──
+            await self.db.learner_profiles.create_index("user_id", unique=True)
+
+            # ── Announcements & Audit ──
+            await self.db.announcements.create_index([("event_id", 1), ("created_at", -1)])
+            await self.db.announcement_audit.create_index([("announcement_id", 1), ("recipient", 1)])
             
             logger.info("All production indexes ensured successfully")
         except Exception as e:
@@ -320,6 +335,11 @@ gamification_col = db["gamification"]
 user_gamification_col = db["user_gamification"]
 user_stats_col = db["user_stats"]
 
+# Announcements (institution / event level announcement jobs)
+announcements_col = db["announcements"]
+# Per-recipient audit for announcement enqueues and status
+announcement_audit_col = db["announcement_audit"]
+
 # Hackathon Management (Problem Statements & Team Selection)
 hackathon_problems_col = db["hackathon_problems"]
 hackathon_selections_col = db["hackathon_selections"]
@@ -348,3 +368,6 @@ def _get_gridfs_bucket():
 
 # Remove global initialization - will be created lazily when needed
 gridfs_bucket = None
+
+# Team invite acceptances (audit trail for invite lifecycle)
+team_invite_acceptances_col = db["team_invite_acceptances"]

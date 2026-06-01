@@ -16,7 +16,7 @@ interface SectionRendererProps {
 
 function DescriptionSection({ data, title }: { data: any; title?: string }) {
   if (!data) return null;
-  const content = typeof data === 'string' ? data : data.content || data.html || '';
+  const content = (typeof data === 'string' ? data : data.content || data.html || '').replace(/<img/g, '<img loading="lazy"');
   if (!content) return null;
   return (
     <section className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm space-y-4">

@@ -268,8 +268,8 @@ class Event(BaseModel):
     # Participation
     participation_mode: str = "BOTH"  # INDIVIDUAL, TEAM, BOTH
     max_participants: Optional[int] = None
-    min_team_size: int = 1
-    max_team_size: int = 5
+    min_team_size: Optional[int] = None
+    max_team_size: Optional[int] = None
 
     # Prizes & Rules
     prize_pool: Optional[str] = None
@@ -283,6 +283,9 @@ class Event(BaseModel):
     # Workflow Stages (Unstop-Style)
     stages: List[dict] = [] 
     # [{name, type, deadline, passing_criteria: {min_score, submission_required}}]
+
+    # Registration Settings
+    registration_settings: Optional[dict] = {}
 
     # Features
     has_submission: bool = True

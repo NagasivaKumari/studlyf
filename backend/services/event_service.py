@@ -5,6 +5,25 @@ from datetime import datetime
 from typing import List, Optional
 import asyncio
 
+
+def _strict_team_size_limits(event_data: dict) -> Optional[tuple[int, int]]:
+    min_raw = event_data.get("min_team_size") if event_data else None
+    if min_raw is None and event_data:
+        min_raw = event_data.get("minTeamSize")
+    max_raw = event_data.get("max_team_size") if event_data else None
+    if max_raw is None and event_data:
+        max_raw = event_data.get("maxTeamSize")
+    if min_raw is None or max_raw is None:
+        return None
+    try:
+        min_team = int(min_raw)
+        max_team = int(max_raw)
+    except Exception:
+        return None
+    if min_team < 1 or max_team < min_team:
+        return None
+    return min_team, max_team
+
 async def _create_opportunity_for_event(event_data: dict, opportunities_col):
     """Helper: Create or update opportunity mirror for an event."""
     try:
@@ -80,6 +99,11 @@ async def create_event(event_data: dict):
     # Default status to LIVE if not specified (for production)
     if "status" not in event_data or not event_data.get("status"):
         event_data["status"] = "LIVE"
+
+    if str(event_data.get("status", "")).upper() in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
+        participation_type = str(event_data.get("participationType") or event_data.get("participation_type") or "").lower().strip()
+        if participation_type in ("team", "both") and _strict_team_size_limits(event_data) is None:
+            raise ValueError("Team size must be configured before making this event live")
     
     result = await events_col.insert_one(event_data)
     event_data["_id"] = str(result.inserted_id)
@@ -169,6 +193,13 @@ async def update_event_status(event_id: str, status: str):
         status = "CLOSED"
     
     # Update event status
+    if status and str(status).upper() in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
+        event = await events_col.find_one({"_id": ObjectId(event_id)})
+        if event:
+            participation_type = str(event.get("participationType") or event.get("participation_type") or "").lower().strip()
+            if participation_type in ("team", "both") and _strict_team_size_limits(event) is None:
+                raise ValueError("Team size must be configured before making this event live")
+
     updated_event = await update_event(event_id, {"status": status})
     
     # If status is being set to LIVE, create or update opportunity

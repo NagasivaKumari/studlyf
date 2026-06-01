@@ -14,7 +14,7 @@ import {
 import AvatarImage from '../components/AvatarImage';
 
 const MyProfile: React.FC = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState('basic');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -210,6 +210,10 @@ const MyProfile: React.FC = () => {
 
       const message = `${section} saved successfully!`;
       setSaveStatus({ type: 'success', message });
+      // Sync userType → AuthContext so eligibility checks work immediately
+      if (formData.userType) {
+        updateUser({ profile_type: formData.userType });
+      }
       if (section === 'Education') {
         setSectionStatus({ section, type: 'success', message });
         setTimeout(() => setSectionStatus(current => current?.section === section ? null : current), 3000);
@@ -1728,9 +1732,9 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
                     className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-2xl text-sm font-bold focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#7C3AED]/5 focus:border-[#7C3AED]/30 transition-all appearance-none"
                   >
                     <option value="">Select Type</option>
-                    <option value="student">Student</option>
-                    <option value="fresher">Fresher</option>
-                    <option value="professional">Professional</option>
+                    <option value="student">College Students</option>
+                    <option value="fresher">Freshers</option>
+                    <option value="professional">Professionals</option>
                   </select>
                </div>
             </div>
@@ -2922,14 +2926,6 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
         )}
       </AnimatePresence>
 
-      {/* ── Loading Overlay ── */}
-      {profileLoading && (
-        <div className="fixed inset-0 bg-white/70 backdrop-blur-sm z-40 flex flex-col items-center justify-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#7C3AED]/20 border-t-[#7C3AED] rounded-full animate-spin" />
-          <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Loading Profile...</p>
-        </div>
-      )}
-
       {/* Header with Back Button */}
       <div className="flex items-center gap-6 mb-6 pt-0 sm:pt-0 lg:pt-1">
         <button 
@@ -2943,6 +2939,13 @@ const publicProfileUrl = user?.user_id && typeof window !== 'undefined'
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-1">Configure your professional identity</p>
         </div>
       </div>
+
+      {profileLoading && (
+        <div className="mb-6 inline-flex items-center gap-3 rounded-2xl border border-[#7C3AED]/10 bg-white px-4 py-3 shadow-sm">
+          <div className="w-4 h-4 rounded-full border-2 border-[#7C3AED]/20 border-t-[#7C3AED] animate-spin" />
+          <span className="text-[10px] font-black uppercase tracking-[0.24em] text-gray-400">Loading profile data</span>
+        </div>
+      )}
 
       <div className="mb-12 grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
         <motion.div

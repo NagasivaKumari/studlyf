@@ -28,15 +28,28 @@ async def submit_project(data: dict = Body(...), current_user: dict = Depends(ge
             raise HTTPException(status_code=400, detail="Team/User has already submitted for this opportunity")
 
         # Check if user is team leader for team submissions
+        team_name = ""
         if team_id:
             from db import teams_col
             team = await teams_col.find_one({"_id": ObjectId(team_id)})
             if not team:
                 raise HTTPException(status_code=404, detail="Team not found")
-            
+
             team_leader_id = team.get("team_leader_id") or team.get("leader_id")
             if str(user_id) != team_leader_id:
                 raise HTTPException(status_code=403, detail="Only team leaders can submit projects")
+            
+            team_name = team.get("team_name") or team.get("name") or ""
+            data["team_name"] = team_name
+
+            # Dedup by team name to prevent duplicate submissions with same team name
+            if team_name:
+                name_dup = await submissions_col.find_one({
+                    "event_id": event_id,
+                    "team_name": team_name
+                })
+                if name_dup and str(name_dup.get("team_id")) != team_id:
+                    raise HTTPException(status_code=400, detail=f"A submission already exists for team '{team_name}'")
         
         return await create_submission(data)
     except Exception as e:
@@ -105,9 +118,80 @@ async def student_view_submissions(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ADMIN SUBMISSION VIEWING & MANAGEMENT
-# ─────────────────────────────────────────────────────────────────────────────
+@router.post("/admin/notify-shortlisted")
+async def notify_shortlisted(
+    data: dict = Body(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Admin endpoint: Bulk notify shortlisted candidates.
+    Supports 'dry_run' mode for verification.
+    """
+    from db import submissions_col, events_col, users_col, teams_col
+    from services.email_service import send_notification_email
+    from bson import ObjectId
+    import asyncio
+    
+    submission_ids = data.get("submission_ids", [])
+    dry_run = data.get("dry_run", False)
+    
+    if not submission_ids:
+        raise HTTPException(status_code=400, detail="No submission IDs provided")
+    
+    results = {"success": 0, "failed": 0, "logs": []}
+    
+    for sub_id in submission_ids:
+        try:
+            sub = await submissions_col.find_one({"_id": ObjectId(sub_id)})
+            if not sub:
+                results["failed"] += 1
+                results["logs"].append(f"Sub {sub_id}: Not found")
+                continue
+            
+            # Verify event ownership
+            event_id = str(sub.get("event_id"))
+            event = await events_col.find_one({"_id": ObjectId(event_id)})
+            if not event or str(event.get("institution_id")) != str(user.get("institution_id")):
+                results["failed"] += 1
+                results["logs"].append(f"Sub {sub_id}: Permission denied")
+                continue
+            
+            # Get recipient info
+            email = ""
+            name = ""
+            if sub.get("team_id"):
+                team = await teams_col.find_one({"_id": ObjectId(sub.get("team_id"))})
+                name = team.get("team_name") if team else "Team"
+                # For teams, we might need a better way to get leader email
+                # For now, simplistic approach or skipping if complex
+            else:
+                usr = await users_col.find_one({"user_id": sub.get("user_id")})
+                if usr:
+                    email = usr.get("email")
+                    name = usr.get("full_name") or usr.get("name")
+            
+            if not email:
+                results["failed"] += 1
+                results["logs"].append(f"Sub {sub_id}: No email found")
+                continue
+                
+            subject = f"Congratulations! Shortlisted for {event.get('title')}"
+            body = f"<p>Hi {name},</p><p>Congratulations! You have been shortlisted for the next stage of <strong>{event.get('title')}</strong>.</p>"
+            
+            if dry_run:
+                results["logs"].append(f"Sub {sub_id}: DRY RUN - Would send to {email}")
+            else:
+                await send_notification_email(email, subject, body)
+                results["logs"].append(f"Sub {sub_id}: Sent to {email}")
+                
+            results["success"] += 1
+            
+        except Exception as e:
+            results["failed"] += 1
+            results["logs"].append(f"Sub {sub_id}: Error - {str(e)}")
+            
+    return {"status": "success", "results": results}
+
 
 @router.get("/admin/events/{event_id}/submissions")
 async def admin_view_event_submissions(

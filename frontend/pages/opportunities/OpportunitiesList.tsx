@@ -6,6 +6,21 @@ import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
 import { plainTextFromRichContent, formatOpportunityLocation } from '../../utils/text';
 
+const clientSideEligible = (opp: any, user: any) => {
+    if (!opp) return true;
+    const candidateTypes = opp.candidateTypes || opp.candidate_types || [];
+    if (!candidateTypes || candidateTypes.length === 0) return true;
+    const allowed = (Array.isArray(candidateTypes) ? candidateTypes : [candidateTypes]).map((x: any) => String(x).toLowerCase());
+    if (allowed.some((a: string) => a.includes('everyone'))) return true;
+    const profileType = (user?.profile_type || user?.profileType || user?.userType || '').toString().toLowerCase();
+    const userCollege = (user?.college || user?.institution || user?.college_name || '').toString().toLowerCase();
+
+    // simple heuristics
+    if (profileType && allowed.some((a: string) => a.includes(profileType))) return true;
+    if (allowed.some((a: string) => a.includes('student')) && (userCollege || profileType === 'student')) return true;
+    return false;
+}
+
 const typeOptions = ['All', 'Hackathon', 'Competition', 'Challenge', 'Conference', 'Workshop', 'Internship', 'Job'];
 
 const normalizeText = (value: unknown) => String(value ?? '').toLowerCase();
@@ -43,40 +58,83 @@ const safeDateValue = (value: unknown) => {
     const date = new Date(String(value ?? ''));
     return Number.isNaN(date.getTime()) ? new Date(0) : date;
 };
+
+const FILTER_STORAGE_KEY = 'studlyf:opportunities:filters';
+
+const getStoredFilters = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = window.localStorage.getItem(FILTER_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+};
+
 const OpportunitiesList: React.FC = () => {
+    const storedFilters = getStoredFilters();
     const [opportunities, setOpportunities] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [selectedType, setSelectedType] = useState('All');
-    const [selectedLocation, setSelectedLocation] = useState('All');
-    const [selectedStatus, setSelectedStatus] = useState('All');
-    const [selectedParticipation, setSelectedParticipation] = useState('All');
-    const [selectedTeamSize, setSelectedTeamSize] = useState('All');
-    const [selectedPayment, setSelectedPayment] = useState('All');
-    const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+    const [searchQuery, setSearchQuery] = useState(() => typeof storedFilters?.searchQuery === 'string' ? storedFilters.searchQuery : '');
+    const [selectedType, setSelectedType] = useState(() => typeof storedFilters?.selectedType === 'string' ? storedFilters.selectedType : 'All');
+    const [selectedLocation, setSelectedLocation] = useState(() => typeof storedFilters?.selectedLocation === 'string' ? storedFilters.selectedLocation : 'All');
+    const [selectedStatus, setSelectedStatus] = useState(() => typeof storedFilters?.selectedStatus === 'string' ? storedFilters.selectedStatus : 'All');
+    const [selectedParticipation, setSelectedParticipation] = useState(() => typeof storedFilters?.selectedParticipation === 'string' ? storedFilters.selectedParticipation : 'All');
+    const [selectedTeamSize, setSelectedTeamSize] = useState(() => typeof storedFilters?.selectedTeamSize === 'string' ? storedFilters.selectedTeamSize : 'All');
+    const [selectedPayment, setSelectedPayment] = useState(() => typeof storedFilters?.selectedPayment === 'string' ? storedFilters.selectedPayment : 'All');
+    const [selectedSkills, setSelectedSkills] = useState<string[]>(() => Array.isArray(storedFilters?.selectedSkills) ? storedFilters.selectedSkills.filter((item: unknown): item is string => typeof item === 'string') : []);
     const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
     const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
         location: false, category: false, status: false, teamSize: false, participation: false, skills: false,
     });
     const [appliedIds, setAppliedIds] = useState<string[]>([]);
+    const [eligibilityMap, setEligibilityMap] = useState<Record<string, { eligible: boolean; reason?: string }>>({});
     const navigate = useNavigate();
     const { user } = useAuth();
+    const [ineligibleModal, setIneligibleModal] = useState<{ visible: boolean; reason?: string; eventId?: string; opp?: any }>({ visible: false });
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+                searchQuery,
+                selectedType,
+                selectedLocation,
+                selectedStatus,
+                selectedParticipation,
+                selectedTeamSize,
+                selectedPayment,
+                selectedSkills,
+            }));
+        } catch {
+            // Ignore storage failures and keep the page functional.
+        }
+    }, [searchQuery, selectedType, selectedLocation, selectedStatus, selectedParticipation, selectedTeamSize, selectedPayment, selectedSkills]);
+
+    const checkEligibilityThenNavigate = (opp: any) => {
+        navigate(`/opportunities/${opp._id}`);
+    };
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [oppRes, appRes] = await Promise.all([
-                    fetch(`${API_BASE_URL}/api/opportunities`),
-                    user ? fetch(`${API_BASE_URL}/api/opportunities/user/${user.user_id}/applications`, {
-                        headers: { ...authHeaders() }
-                    }) : Promise.resolve({ ok: true, json: () => [] } as any)
-                ]);
-                
+                const oppRes = await fetch(`${API_BASE_URL}/api/opportunities`);
                 const opps = oppRes.ok ? await oppRes.json() : [];
-                const apps = (appRes as any).ok ? await (appRes as any).json() : [];
-                
+
                 setOpportunities(Array.isArray(opps) ? opps : []);
-                setAppliedIds(Array.isArray(apps) ? apps.map((a: any) => a.opportunity_id) : []);
+
+                if (user?.user_id) {
+                    fetch(`${API_BASE_URL}/api/opportunities/user/${user.user_id}/applications`, {
+                        headers: { ...authHeaders() }
+                    })
+                        .then((res) => (res.ok ? res.json() : []))
+                        .then((apps) => {
+                            setAppliedIds(Array.isArray(apps) ? apps.map((a: any) => a.opportunity_id) : []);
+                        })
+                        .catch(() => setAppliedIds([]));
+                } else {
+                    setAppliedIds([]);
+                }
             } catch (err) {
                 console.error("Fetch error:", err);
             } finally {
@@ -136,10 +194,40 @@ const OpportunitiesList: React.FC = () => {
         setSelectedPayment('All');
         setSelectedSkills([]);
         setSearchQuery('');
+        if (typeof window !== 'undefined') {
+            try {
+                window.localStorage.removeItem(FILTER_STORAGE_KEY);
+            } catch {
+                // Ignore storage failures.
+            }
+        }
     };
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] pb-20 font-sans">
+            {/* Ineligible Modal */}
+            <AnimatePresence>
+                {ineligibleModal.visible && (
+                    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIneligibleModal({ visible: false })}>
+                        <motion.div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-6" initial={{ scale: 0.98, y: 8 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.98, y: 8 }} onClick={e => e.stopPropagation()}>
+                            <h3 className="text-lg font-black text-slate-900">Not eligible to apply</h3>
+                            <p className="text-sm text-slate-600 mt-2">{ineligibleModal.reason || 'You do not meet the eligibility criteria for this event.'}</p>
+
+                            <div className="mt-6 flex gap-3 justify-end">
+                                <button type="button" onClick={() => { setIneligibleModal({ visible: false }); navigate(`/opportunities/${ineligibleModal.opp?._id}`); }} className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold hover:bg-slate-50">View details</button>
+                                {user ? (
+                                    <button type="button" onClick={() => { setIneligibleModal({ visible: false }); navigate('/my-profile'); }} className="px-4 py-2 rounded-xl bg-[#6C3BFF] text-white text-sm font-black">Update profile</button>
+                                ) : (
+                                    <button type="button" onClick={() => { setIneligibleModal({ visible: false }); navigate(`/login?next=/profile`); }} className="px-4 py-2 rounded-xl bg-[#6C3BFF] text-white text-sm font-black">Login to update</button>
+                                )}
+                                {(ineligibleModal.opp && (ineligibleModal.opp.contact_email || ineligibleModal.opp.contactEmail)) ? (
+                                    <a href={`mailto:${ineligibleModal.opp.contact_email || ineligibleModal.opp.contactEmail}`} className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-sm font-bold">Contact host</a>
+                                ) : null}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
             {/* Header Section */}
             <div className="bg-white border-b border-slate-100 pt-32 pb-12 px-6">
                 <div className="max-w-7xl mx-auto space-y-8">
@@ -245,28 +333,67 @@ const OpportunitiesList: React.FC = () => {
             {/* Content Section */}
             <div className="max-w-7xl mx-auto px-6 mt-12">
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-32 space-y-4">
-                        <div className="relative">
-                            <div className="w-12 h-12 border-4 border-purple-100 border-t-purple-600 rounded-full animate-spin" />
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-2 h-2 bg-purple-600 rounded-full animate-pulse" />
+                    <div className="space-y-5">
+                        <div className="flex items-center justify-between gap-4 bg-white border border-slate-100 rounded-[28px] px-5 py-4 shadow-sm">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-500">Loading</p>
+                                <h2 className="text-lg font-black text-slate-900 mt-1">Bringing your opportunities into view</h2>
+                                <p className="text-sm font-medium text-slate-500 mt-1">Your selected filters stay active while results hydrate.</p>
+                            </div>
+                            <div className="hidden sm:flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                                <div className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />
+                                Synchronizing stream
                             </div>
                         </div>
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Synchronizing Stream...</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {Array.from({ length: 6 }).map((_, idx) => (
+                                <div key={idx} className="bg-white rounded-[32px] p-[2px] shadow-sm overflow-hidden animate-pulse">
+                                    <div className="bg-white rounded-[30px] p-6 h-full flex flex-col gap-4">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                <div className="w-10 h-10 rounded-xl bg-slate-100" />
+                                                <div className="space-y-2 flex-1">
+                                                    <div className="h-3 w-3/4 rounded-full bg-slate-100" />
+                                                    <div className="h-2.5 w-1/2 rounded-full bg-slate-100" />
+                                                </div>
+                                            </div>
+                                            <div className="h-6 w-14 rounded-full bg-slate-100" />
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <div className="h-6 w-16 rounded-lg bg-slate-100" />
+                                            <div className="h-6 w-20 rounded-lg bg-slate-100" />
+                                            <div className="h-6 w-14 rounded-lg bg-slate-100" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="h-3 rounded-full bg-slate-100" />
+                                            <div className="h-3 rounded-full bg-slate-100 w-5/6" />
+                                            <div className="h-3 rounded-full bg-slate-100 w-2/3" />
+                                        </div>
+                                        <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between">
+                                            <div className="h-3.5 w-28 rounded-full bg-slate-100" />
+                                            <div className="h-3.5 w-10 rounded-full bg-slate-100" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 ) : filteredOpportunities.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filteredOpportunities.map((opp, idx) => {
                             const isApplied = appliedIds.includes(opp._id);
+                            const eventId = String(opp.event_link_id || opp.event_id || opp._id || '');
+                            const serverEligibility = eligibilityMap[eventId];
                             const locationText = formatOpportunityLocation(opp.location);
                             const isRemote = locationText.toLowerCase().includes('remote') || locationText.toLowerCase().includes('online');
                             const isEvent = ['Hackathon', 'Competition', 'Conference', 'Workshop', 'Challenge'].includes(opp.type);
+                            const likelyEligible = clientSideEligible(opp, user);
                             return (
                                 <motion.div
                                     initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05, duration: 0.5 }}
                                     key={opp._id}
-                                    onClick={() => navigate(`/opportunities/${opp._id}`)}
-                                    className="group bg-white rounded-[32px] p-[2px] shadow-sm hover:shadow-2xl hover:shadow-purple-900/10 transition-all duration-500 cursor-pointer relative overflow-hidden"
+                                    onClick={() => { checkEligibilityThenNavigate(opp); }}
+                                    className={`group bg-white rounded-[32px] p-[2px] shadow-sm transition-all duration-500 relative overflow-hidden ${likelyEligible ? 'hover:shadow-2xl hover:shadow-purple-900/10 cursor-pointer' : 'opacity-90 cursor-not-allowed'}`}
                                 >
                                     <div className="absolute inset-0 bg-gradient-to-r from-purple-200 via-indigo-200 to-purple-200 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                                     <div className="bg-white rounded-[30px] p-6 h-full flex flex-col relative z-10 overflow-hidden">
@@ -286,6 +413,20 @@ const OpportunitiesList: React.FC = () => {
                                             <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-[0.15em] shadow-sm ${getTypeColor(opp.type)}`}>
                                                 {opp.type}
                                             </span>
+                                            {serverEligibility ? (
+                                                serverEligibility.eligible ? (
+                                                    <span className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-[0.15em] bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1 shadow-sm">
+                                                        Can apply
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setIneligibleModal({ visible: true, reason: serverEligibility?.reason || 'You are not eligible for this event.', eventId, opp }); }}
+                                                        className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-[0.15em] bg-rose-50 text-rose-600 border border-rose-100 flex items-center gap-1 shadow-sm"
+                                                    >
+                                                        Not eligible
+                                                    </button>
+                                                )
+                                            ) : null}
                                             {isRemote && (
                                                 <span className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-[0.15em] bg-blue-50 text-blue-600 border border-blue-200 flex items-center gap-1 shadow-sm">
                                                     <Globe size={10} /> {isEvent ? 'Online' : 'Remote'}
@@ -296,11 +437,27 @@ const OpportunitiesList: React.FC = () => {
                                                     Applied
                                                 </span>
                                             )}
+                                            {!likelyEligible && (
+                                                <span title="You are likely not eligible" className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-[0.15em] bg-rose-50 text-rose-600 border border-rose-100 flex items-center gap-1 shadow-sm">
+                                                    Not eligible
+                                                </span>
+                                            )}
+                                            {likelyEligible && user && Array.isArray(opp.candidateTypes) && opp.candidateTypes.length > 0 && !opp.candidateTypes.includes('Everyone can apply') && (
+                                                <span title="You are eligible for this opportunity" className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-[0.15em] bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1 shadow-sm">
+                                                    Eligible
+                                                </span>
+                                            )}
                                         </div>
 
                                         <p className="text-xs font-medium text-slate-500 line-clamp-2 leading-relaxed mb-auto">
-                                            {plainTextFromRichContent(opp.description)}
-                                        </p>
+                                             {plainTextFromRichContent(opp.description)}
+                                         </p>
+
+                                         {Array.isArray(opp.candidateTypes) && opp.candidateTypes.length > 0 && !opp.candidateTypes.includes('Everyone can apply') && (
+                                             <div className="mt-2 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                                 Eligible: {opp.candidateTypes.join(', ')}
+                                             </div>
+                                         )}
 
                                         <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
                                             <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
