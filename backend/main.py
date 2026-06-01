@@ -34,6 +34,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 load_dotenv()
 
+<<<<<<< HEAD
 # ── Sentry Error Tracking ──
 sentry_dsn = os.getenv("SENTRY_DSN")
 if sentry_dsn:
@@ -46,6 +47,12 @@ if sentry_dsn:
     )
     print("Sentry initialized")
 
+=======
+from routes.skill_assessment_controller import router as skill_assessment_router
+ 
+# ── ADD this line in your app startup / router registration block ──
+app.include_router(skill_assessment_router)
+>>>>>>> a5019d2ffee849d255ffc527bed040ef64ebbac1
 # Touch file to trigger uvicorn reload when env changes during local dev
 # reload trigger
 
@@ -908,6 +915,8 @@ async def get_user_badges(user_id: str):
     if not user_profile:
         return {"badges": []}
     return {"badges": user_profile.get("badges", [])}
+
+
 
 
 

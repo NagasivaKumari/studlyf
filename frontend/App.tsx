@@ -31,6 +31,8 @@ const SystemDeconstructionLab = lazy(() => import('./pages/SystemDeconstructionL
 const SDLProjectCreate = lazy(() => import('./pages/SDLProjectCreate'));
 const SDLProjectDetail = lazy(() => import('./pages/SDLProjectDetail'));
 const MockInterview = lazy(() => import('./pages/MockInterview'));
+const SkillAssessment = lazy(() => import('./pages/SkillAssessment'));
+const SkillAssessmentHistory = lazy(() => import('./pages/SkillAssessmentHistory'));
 const GroupDiscussion = lazy(() => import('./pages/GroupDiscussion'));
 const PlayLearnEarn = lazy(() => import('./pages/PlayLearnEarn'));
 const GoalSelector = lazy(() => import('./pages/GoalSelector'));
@@ -394,6 +396,8 @@ const App: React.FC = () => {
             <Route path="/job-prep/projects/create" element={<ProtectedRoute><SDLProjectCreate /></ProtectedRoute>} />
             <Route path="/job-prep/projects/:projectId" element={<ProtectedRoute><SDLProjectDetail /></ProtectedRoute>} />
             <Route path="/job-prep/mock-interview" element={<ProtectedRoute><MockInterview /></ProtectedRoute>} />
+            <Route path="/skill-assessment" element={<ProtectedRoute><SkillAssessment /></ProtectedRoute>} />
+            <Route path="/skill-assessment/history" element={<ProtectedRoute><SkillAssessmentHistory /></ProtectedRoute>} />
             <Route path="/job-prep/group-discussion" element={<ProtectedRoute><GroupDiscussion /></ProtectedRoute>} />
             <Route path="/job-prep/play-learn-earn" element={<ProtectedRoute><PlayLearnEarn /></ProtectedRoute>} />
 
