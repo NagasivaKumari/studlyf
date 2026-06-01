@@ -179,3 +179,9 @@ participant-card/
 
 # Backend diagnostic files
 backend/db_diagnostics.txt
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
