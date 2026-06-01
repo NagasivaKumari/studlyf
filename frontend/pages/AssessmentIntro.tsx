@@ -181,7 +181,7 @@ const AssessmentIntro: React.FC = () => {
                             .as-label { position:relative; z-index:5; display:flex; align-items:center; gap:16px; }
                         `}</style>
                         <button
-                            onClick={() => navigate('/learn/assessment')}
+                            onClick={() => navigate('/skill-assessment')}
                             className="as-btn"
                         >
                             <span className="as-orb as-orb1" />

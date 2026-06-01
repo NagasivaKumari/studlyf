@@ -296,7 +296,7 @@ career_assessments_col = db["career_assessments"]
 career_goals_col = db["career_goals"]
 assessment_questions_col = db["assessment_questions"]
 career_assessment_templates_col = db["career_assessment_templates"]
-
+skill_assessments_col = db.skill_assessments
 # Content & Community
 blogs_col = db["blogs"]
 learning_tracks_col = db["learning_tracks"]
