@@ -80,7 +80,24 @@ const featuresData: Record<string, {
 const FeaturePreview: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const [loading, setLoading] = useState(true);
     const feature = id ? featuresData[id] : null;
+
+    useEffect(() => {
+        const timer = setTimeout(() => setLoading(false), 500);
+        return () => clearTimeout(timer);
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-50 pt-32 px-6">
+                <div className="max-w-7xl mx-auto space-y-8">
+                    <div className="w-64 h-10 bg-gray-200 rounded-xl animate-pulse"></div>
+                    <div className="w-full h-96 bg-white rounded-3xl border border-gray-100 animate-pulse"></div>
+                </div>
+            </div>
+        );
+    }
 
     if (!feature) {
         return (

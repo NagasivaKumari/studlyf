@@ -624,4 +624,4 @@ async def get_user_stats(user_id: str):
             "courses_enrolled": course_count,
             "top_roles": []
         }
-    return stats
+    return fix_id(stats)

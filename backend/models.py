@@ -306,6 +306,12 @@ class EventFAQ(BaseModel):
     category: str = "General"
     order: int = 0
     is_published: bool = True
+    is_featured: bool = False
+    priority_score: int = 0
+    views: int = 0
+    helpful_count: int = 0
+    tags: List[str] = []
+    auto_pin_enabled: bool = True
     created_by: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -502,6 +508,8 @@ class Opportunity(BaseModel):
     location: Optional[str] = None
     deadline: datetime
     applicantsCount: int = 0
+    average_rating: float = 0.0
+    total_reviews: int = 0
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     createdBy: str  # institutionId
     status: str = "active"  # active / closed
@@ -517,6 +525,7 @@ class OpportunityApplication(BaseModel):
     status: str = "pending" # pending, accepted, rejected
     applied_at: datetime = Field(default_factory=datetime.utcnow)
 
+<<<<<<< HEAD
 
 # ========== Skill Assessment Models ==========
 
@@ -577,3 +586,27 @@ class AssessmentResponse(BaseModel):
     mistakeAnalysis:    List[MistakeAnalysis] = []
     completedAt:        datetime
     createdAt:          Optional[datetime] = None
+=======
+class OpportunityReview(BaseModel):
+    id: Optional[str] = Field(None, alias="_id")
+    opportunity_id: str
+    user_id: str
+    user_name: str
+    rating: int = Field(..., ge=1, le=5)
+    review_text: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class Avatar(BaseModel):
+    id: str = Field(..., alias="_id")
+    label: str
+    image_url: str
+    category: Optional[str] = None
+    crop_x: Optional[int] = None
+    crop_y: Optional[int] = None
+    crop_w: Optional[int] = None
+    crop_h: Optional[int] = None
+    is_active: bool = True
+    order: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+>>>>>>> 0f603fb500162118610dca3c09a778513e360563

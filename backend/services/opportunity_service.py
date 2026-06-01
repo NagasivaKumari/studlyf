@@ -170,7 +170,9 @@ def _apply_event_snapshot_to_opportunity(doc: dict, ev: dict) -> None:
         doc["attachments"] = ev.get("attachments")
     elif ev.get("documents") is not None:
         doc["attachments"] = ev.get("documents")
-    if ev.get("contact") is not None:
+    if ev.get("contacts") is not None:
+        doc["contacts"] = ev.get("contacts")
+    elif ev.get("contact") is not None:
         doc["contact"] = ev.get("contact")
     elif ev.get("organiserContact") is not None:
         doc["contact"] = ev.get("organiserContact")

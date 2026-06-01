@@ -289,6 +289,7 @@ internships_col = db["internships"]
 applications_col = db["applications"] # Tracks Selections, Rejections, and Status
 opportunities_col = db["opportunities"]
 opportunity_applications_col = db["opportunity_applications"]
+opportunity_reviews_col = db["opportunity_reviews"]
 
 # Career Assessment & Goals
 career_assessments_col = db["career_assessments"]
@@ -325,6 +326,9 @@ hackathon_selections_col = db["hackathon_selections"]
 hackathon_event_config_col = db["hackathon_event_config"]
 # Institution Event Packages (dynamic event-package feature)
 institution_event_packages_col = db["institution_event_packages"]
+
+# Avatar Management
+avatars_col = db["avatars"]
 
 # Certificate Management
 cert_templates_col = db["cert_templates"]

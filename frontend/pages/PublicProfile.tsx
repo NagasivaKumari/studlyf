@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { API_BASE_URL } from '../apiConfig';
 import { ArrowLeft, Award, BadgeCheck, BookOpen, Briefcase, Calendar, Copy, Globe, MapPin, Share2, Sparkles, Star, TrendingUp, User } from 'lucide-react';
+import AvatarImage from '../components/AvatarImage';
 
 const PublicProfile: React.FC = () => {
   const { userId } = useParams();
@@ -87,17 +88,25 @@ const PublicProfile: React.FC = () => {
     { title: 'Recognition', detail: `${achievements.length} achievements and ${certifications.length} certifications are shown.` },
   ];
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#F4F4F6] flex items-center justify-center px-6">
-        <div className="w-full max-w-xl rounded-[3rem] border border-gray-100 bg-white p-10 text-center shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-4 border-[#7C3AED]/20 border-t-[#7C3AED]" />
-          <h1 className="text-2xl font-black text-gray-900">Loading profile</h1>
-          <p className="mt-2 text-sm text-gray-500">Fetching the public profile surface.</p>
-        </div>
-      </div>
-    );
-  }
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-[#F4F4F6] px-4 py-8 sm:px-6 lg:px-10">
+                <div className="mx-auto max-w-7xl space-y-6">
+                    <div className="w-32 h-10 bg-gray-200 rounded-2xl animate-pulse"></div>
+                    <div className="grid gap-6 xl:grid-cols-[1.35fr_0.9fr]">
+                        <div className="h-64 bg-white rounded-[3rem] p-10 animate-pulse border border-gray-100 flex gap-8">
+                            <div className="w-24 h-24 bg-gray-100 rounded-[2rem] shrink-0"></div>
+                            <div className="flex-1 space-y-4">
+                                <div className="w-1/2 h-10 bg-gray-100 rounded-lg"></div>
+                                <div className="w-1/3 h-6 bg-gray-100 rounded-lg"></div>
+                            </div>
+                        </div>
+                        <div className="h-64 bg-white rounded-[3rem] p-10 animate-pulse border border-gray-100"></div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
   if (error || !profile) {
     return (
@@ -136,7 +145,7 @@ const PublicProfile: React.FC = () => {
             <div className="relative flex flex-col gap-8 lg:flex-row lg:items-center">
               <div className="flex items-start gap-5 flex-1">
                 <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[2rem] border border-white bg-gray-50 shadow-xl ring-4 ring-[#7C3AED]/10">
-                  {profile.profilePhoto ? <img src={profile.profilePhoto} alt={name} className="h-full w-full object-cover" /> : <User className="h-10 w-10 text-gray-300" />}
+                  {profile.profilePhoto ? <AvatarImage src={profile.profilePhoto} alt={name} className="h-full w-full object-cover" /> : <User className="h-10 w-10 text-gray-300" />}
                 </div>
                 <div className="min-w-0">
                   <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#7C3AED]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-[#7C3AED]">

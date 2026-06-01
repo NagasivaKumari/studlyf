@@ -53,6 +53,7 @@ import {
     UserPlus,
     FileCheck,
     Trash2,
+    UploadCloud,
     Zap,
     Lightbulb,
     Globe,
@@ -61,6 +62,8 @@ import {
     FileImage,
     FileVideo
 } from 'lucide-react';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
+GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs';
 import { motion, AnimatePresence as FramerAnimatePresence } from 'framer-motion';
 import LeaderboardPage from './LeaderboardPage';
 import { useNavigate } from 'react-router-dom';
@@ -182,6 +185,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [isBulkMode, setIsBulkMode] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
     const [faqSearch, setFaqSearch] = useState('');
+    const [showFaqBulkImport, setShowFaqBulkImport] = useState(false);
+    const [faqBulkImportText, setFaqBulkImportText] = useState('');
+    const [faqBulkImportLoading, setFaqBulkImportLoading] = useState(false);
 
     const [hackathonPackageEnabled, setHackathonPackageEnabled] = useState(false);
     const [hackathonSubmissions, setHackathonSubmissions] = useState<any[]>([]);
@@ -199,6 +205,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
 
     // ─── DECOUPLED REGISTRATION SYSTEM STATES ──────────────────────────────────────
     const [registrations, setRegistrations] = useState<any[]>([]);
+    const [rosterSolos, setRosterSolos] = useState<any[]>([]);
+    const [rosterTeams, setRosterTeams] = useState<any[]>([]);
     const [regStats, setRegStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, waitlisted: 0 });
     const [regPage, setRegPage] = useState(1);
     const [regTotalPages, setRegTotalPages] = useState(1);
@@ -215,19 +223,19 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         setRegLoading(true);
         try {
             const queryParams = new URLSearchParams({
-                page: String(regPage),
-                limit: '10',
                 search: regSearch,
-                status_filter: regStatusFilter
+                status: regStatusFilter
             });
-            const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/participants?${queryParams.toString()}`, {
+            const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/roster?${queryParams.toString()}`, {
                 headers: authHeaders()
             });
             if (res.ok) {
                 const data = await res.json();
-                setRegistrations(data.registrations || []);
+                setRosterSolos(data.roster?.solos || []);
+                setRosterTeams(data.roster?.teams || []);
+                setRegistrations(data.roster?.solos || []); // fallback
                 setRegStats(data.stats || { total: 0, approved: 0, pending: 0, rejected: 0, waitlisted: 0 });
-                setRegTotalPages(data.total_pages || 1);
+                setRegTotalPages(1);
             }
         } catch (err) {
             console.error('Failed to fetch registrations:', err);
@@ -235,7 +243,6 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             setRegLoading(false);
         }
     };
-
     useEffect(() => {
         fetchRegistrations();
     }, [eventId, activeTab, regPage, regStatusFilter, refreshCounter]);
@@ -249,6 +256,34 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }, 350);
         return () => clearTimeout(handler);
     }, [regSearch]);
+
+    const handleUpdateTeamStatus = async (teamId: string, newStatus: string) => {
+        if (!eventId) return;
+        setRegActionBusy(teamId);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/teams/${teamId}/status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...authHeaders()
+                },
+                body: JSON.stringify({ status_update: newStatus })
+            });
+            if (res.ok) {
+                setRefreshCounter(prev => prev + 1);
+                setShowSaveSuccess(true);
+                setTimeout(() => setShowSaveSuccess(false), 2000);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(`Failed to update team status: ${err.detail || 'Unknown error'}`);
+            }
+        } catch (err) {
+            console.error('Error updating team status:', err);
+            alert('Network error while updating team status.');
+        } finally {
+            setRegActionBusy(null);
+        }
+    };
 
     const handleUpdateRegistrationStatus = async (registrationId: string, newStatus: string) => {
         if (!eventId) return;
@@ -2631,6 +2666,244 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
+                                    {/* --- TEAM BUNDLES --- */}
+                                    {rosterTeams.length > 0 && rosterTeams.map((team: any) => {
+                                        const isTeamExpanded = expandedRegId === team.team_id;
+                                        const isActionBusy = regActionBusy === team.team_id;
+                                        return (
+                                            <React.Fragment key={team.team_id}>
+                                                <tr className="hover:bg-purple-50/40 transition-colors group bg-slate-50/30">
+                                                    <td className="px-8 py-5">
+                                                        <button 
+                                                            onClick={() => setExpandedRegId(isTeamExpanded ? null : team.team_id)}
+                                                            className="p-1.5 hover:bg-purple-100 rounded-lg text-purple-400 hover:text-[#6C3BFF] transition-all shadow-sm"
+                                                            title={isTeamExpanded ? "Collapse Team" : "Expand Team Details"}
+                                                        >
+                                                            <ChevronRight 
+                                                                size={14} 
+                                                                className={`transform transition-transform duration-300 ${isTeamExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`} 
+                                                            />
+                                                        </button>
+                                                    </td>
+                                                    <td className="px-8 py-5">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 bg-[#6C3BFF] text-white rounded-xl flex items-center justify-center font-black text-sm shadow-inner shrink-0 uppercase tracking-widest">
+                                                                {(team.team_name || 'T').substring(0, 2)}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="font-black text-slate-900 text-sm leading-tight mb-0.5 truncate max-w-[200px]">{team.team_name}</p>
+                                                                <p className="text-[11px] font-bold text-purple-600 truncate uppercase tracking-widest">{team.members?.length || 0} Members</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-8 py-5">
+                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+                                                            Bundled Application
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-8 py-5">
+                                                        <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${
+                                                            team.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
+                                                            team.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100/50' :
+                                                            team.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
+                                                            'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
+                                                        }`}>
+                                                            {team.status === 'PENDING_APPROVAL' ? 'Pending' : team.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-8 py-5 text-right">
+                                                        <div className="flex justify-end gap-2 items-center">
+                                                            {team.status !== 'APPROVED' && (
+                                                                <button
+                                                                    onClick={() => handleUpdateTeamStatus(team.team_id, 'APPROVED')}
+                                                                    disabled={isActionBusy}
+                                                                    className="px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm border border-emerald-100"
+                                                                >
+                                                                    {isActionBusy ? <Loader2 size={12} className="animate-spin" /> : 'Approve'}
+                                                                </button>
+                                                            )}
+                                                            {team.status !== 'REJECTED' && (
+                                                                <button
+                                                                    onClick={() => handleUpdateTeamStatus(team.team_id, 'REJECTED')}
+                                                                    disabled={isActionBusy}
+                                                                    className="px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm border border-rose-100"
+                                                                >
+                                                                    {isActionBusy ? <Loader2 size={12} className="animate-spin" /> : 'Reject'}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                {/* Expanded Members */}
+                                                {isTeamExpanded && team.members?.map((reg: any, idx: number) => {
+                                                    const isExpanded = expandedRegId === reg._id;
+                                                    const customAnswers = reg.custom_answers || {};
+                                                    const prof = reg.profile_snapshot || {};
+                                                    return (
+                                                        <React.Fragment key={reg._id}>
+                                                        <tr className="bg-slate-50/10 hover:bg-slate-50 transition-colors group">
+                                                            <td className="px-8 py-4 border-l-2 border-purple-200 flex items-center gap-3">
+                                                                <button 
+                                                                    onClick={() => setExpandedRegId(isExpanded ? null : reg._id)}
+                                                                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-[#6C3BFF] transition-all"
+                                                                    title={isExpanded ? "Collapse Details" : "Expand Custom Answers & Profile"}
+                                                                >
+                                                                    <ChevronRight 
+                                                                        size={14} 
+                                                                        className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`} 
+                                                                    />
+                                                                </button>
+                                                                <span className="text-[9px] font-black text-slate-300"># {idx + 1}</span>
+                                                            </td>
+                                                            <td className="px-8 py-4">
+                                                                <div className="flex flex-col min-w-0">
+                                                                    <p className="font-bold text-slate-700 text-xs leading-tight mb-0.5 truncate">{prof.full_name || 'Anonymous User'}</p>
+                                                                    <p className="text-[10px] font-medium text-slate-400 truncate">{prof.email || '—'}</p>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-8 py-4">
+                                                                <div className="text-xs">
+                                                                    <p className="font-semibold text-slate-600 leading-tight truncate">{prof.college || 'No college'}</p>
+                                                                    <p className="text-[10px] text-slate-400 mt-0.5">
+                                                                        {prof.degree || ''}{prof.degree && prof.branch ? ' • ' : ''}{prof.branch || ''}
+                                                                        {prof.graduation_year ? ` • ${prof.graduation_year}` : ''}
+                                                                    </p>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-8 py-4">
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Inherits Team Status</span>
+                                                            </td>
+                                                            <td className="px-8 py-4 text-right">
+                                                                <div className="flex justify-end gap-1.5 items-center">
+                                                                    {prof.resume_url && (
+                                                                        <a href={prof.resume_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-white text-slate-400 hover:text-[#6C3BFF] rounded-lg border border-slate-200 transition-all shadow-sm" title="Resume">
+                                                                            <FileText size={12} />
+                                                                        </a>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                        {isExpanded && (
+                                                            <tr>
+                                                                <td colSpan={5} className="px-10 py-10 bg-slate-50 border-t border-b border-slate-100 shadow-inner">
+                                                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                                                                        {/* Full Global Profile info */}
+                                                                        <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">
+                                                                            <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
+                                                                                <div className="w-2 h-6 bg-[#6C3BFF] rounded-full"></div>
+                                                                                <h4 className="text-base font-black text-slate-800 uppercase tracking-wider">Candidate Profile Snapshot</h4>
+                                                                            </div>
+                                                                            <div className="grid grid-cols-2 gap-6 text-sm">
+                                                                                <div className="space-y-1">
+                                                                                    <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Graduation Year</span>
+                                                                                    <p className="font-bold text-slate-800">{prof.graduation_year || '—'}</p>
+                                                                                </div>
+                                                                                <div className="space-y-1">
+                                                                                    <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Phone Number</span>
+                                                                                    <p className="font-bold text-slate-800">{prof.phone || '—'}</p>
+                                                                                </div>
+                                                                                <div className="space-y-1">
+                                                                                    <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Gender</span>
+                                                                                    <p className="font-bold text-slate-800 uppercase tracking-wider text-xs">{prof.gender || '—'}</p>
+                                                                                </div>
+                                                                                <div className="space-y-1">
+                                                                                    <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">CGPA</span>
+                                                                                    <p className="font-bold text-slate-800">{prof.cgpa || '—'}</p>
+                                                                                </div>
+                                                                                <div className="space-y-1 col-span-2">
+                                                                                    <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Academics</span>
+                                                                                    <p className="font-bold text-slate-800">
+                                                                                        {prof.degree || 'Degree unspecified'} {prof.branch ? `(${prof.branch})` : ''}
+                                                                                    </p>
+                                                                                </div>
+                                                                                {prof.skills && prof.skills.length > 0 && (
+                                                                                    <div className="col-span-2 space-y-2">
+                                                                                        <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Candidate Skills</span>
+                                                                                        <div className="flex flex-wrap gap-1.5">
+                                                                                            {(Array.isArray(prof.skills) ? prof.skills : String(prof.skills).split(',')).map((s: string, sIdx: number) => (
+                                                                                                <span key={sIdx} className="px-3 py-1 bg-purple-50 text-[#6C3BFF] border border-purple-100/30 rounded-lg text-[10px] font-bold">
+                                                                                                    {String(s).trim()}
+                                                                                                </span>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Custom stage questions and answers */}
+                                                                        <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm space-y-6">
+                                                                            <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
+                                                                                <div className="w-2 h-6 bg-[#6C3BFF] rounded-full"></div>
+                                                                                <h4 className="text-base font-black text-slate-800 uppercase tracking-wider font-sans">Dynamic Challenge Responses</h4>
+                                                                            </div>
+                                                                            <div className="space-y-6 max-h-[300px] overflow-y-auto pr-2 no-scrollbar">
+                                                                                {event.custom_questions && event.custom_questions.length > 0 ? (
+                                                                                    event.custom_questions.map((q: any, qIdx: number) => {
+                                                                                        const ans = customAnswers[q.id];
+                                                                                        const isFile = String(ans || '').startsWith('http');
+                                                                                        return (
+                                                                                            <div key={qIdx} className="space-y-1.5">
+                                                                                                <p className="text-xs font-black text-slate-400 uppercase tracking-wider">{q.label}</p>
+                                                                                                {isFile ? (
+                                                                                                    <a 
+                                                                                                        href={ans} 
+                                                                                                        target="_blank" 
+                                                                                                        rel="noopener noreferrer" 
+                                                                                                        className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-[#6C3BFF] border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-inner transition-all"
+                                                                                                    >
+                                                                                                        <Download size={14} /> View File Attachment
+                                                                                                    </a>
+                                                                                                ) : (
+                                                                                                    <p className="text-sm font-bold text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                                                                                        {ans ? String(ans) : <span className="text-slate-300 italic">No answer supplied</span>}
+                                                                                                    </p>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        );
+                                                                                    })
+                                                                                ) : Object.keys(customAnswers).length > 0 ? (
+                                                                                    Object.entries(customAnswers).map(([k, v]: any, qIdx: number) => {
+                                                                                        const isFile = String(v || '').startsWith('http');
+                                                                                        return (
+                                                                                            <div key={qIdx} className="space-y-1.5">
+                                                                                                <p className="text-xs font-black text-slate-400 uppercase tracking-wider">{k}</p>
+                                                                                                {isFile ? (
+                                                                                                    <a 
+                                                                                                        href={v} 
+                                                                                                        target="_blank" 
+                                                                                                        rel="noopener noreferrer" 
+                                                                                                        className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-[#6C3BFF] border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-inner transition-all"
+                                                                                                    >
+                                                                                                        <Download size={14} /> View Attachment
+                                                                                                    </a>
+                                                                                                ) : (
+                                                                                                    <p className="text-sm font-bold text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                                                                                        {v ? String(v) : <span className="text-slate-300 italic">No answer</span>}
+                                                                                                    </p>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        );
+                                                                                    })
+                                                                                ) : (
+                                                                                    <div className="py-12 text-center text-slate-300 font-black text-xs uppercase tracking-widest opacity-60">
+                                                                                        No custom questions answered.
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                        </React.Fragment>
+                                                    );
+                                                })}
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                    
+                                    {/* --- SOLO APPLICANTS --- */}
                                     {registrations.length > 0 ? (
                                         registrations.map((reg) => {
                                             const prof = reg.profile_snapshot || {};
@@ -3562,10 +3835,16 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
                                                 >
                                                     <option value="">Auto-detect</option>
-                                                    <option value="trophy">Trophy</option>
-                                                    <option value="cash">Cash</option>
-                                                    <option value="placement">Placement / PPO</option>
-                                                    <option value="certificate">Certificate</option>
+                                                    <option value="trophy">🏆 Trophy</option>
+                                                    <option value="cash">💰 Cash Prize</option>
+                                                    <option value="placement">💼 Placement / PPO</option>
+                                                    <option value="internship">📋 Internship</option>
+                                                    <option value="certificate">📜 Certificate</option>
+                                                    <option value="swag">🎁 Swag</option>
+                                                    <option value="mentorship">🤝 Mentorship</option>
+                                                    <option value="merch">👕 Merch</option>
+                                                    <option value="gift">🎀 Gift</option>
+                                                    <option value="recognition">🏅 Recognition</option>
                                                 </select>
                                             </div>
                                             <div>
@@ -3591,13 +3870,16 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                         type="text"
                                                         value={prize.icon_url || ''}
                                                         onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            if (val && val.startsWith('data:')) return;
                                                             const updated = [...prizeDistribution];
-                                                            updated[i] = {...updated[i], icon_url: e.target.value};
+                                                            updated[i] = {...updated[i], icon_url: val};
                                                             setPrizeDistribution(updated);
                                                         }}
                                                         placeholder="https://example.com/icon.png"
-                                                        className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium"
+                                                        className={`flex-1 px-3 py-2.5 bg-slate-50 border ${(prize.icon_url || '').startsWith('data:') ? 'border-red-400 bg-red-50' : 'border-slate-100'} rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium`}
                                                     />
+                                                    {(prize.icon_url || '').startsWith('data:') && <p className="text-[10px] text-red-500 font-bold mt-1">Only https:// URLs allowed</p>}
                                                     {prize.icon_url && (
                                                         <div className="w-9 h-9 shrink-0 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center overflow-hidden">
                                                             <img src={prize.icon_url} alt="" className="w-6 h-6 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
@@ -3628,7 +3910,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 );
             case 'faqs':
                 return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <><div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="flex items-center justify-between">
                             <div>
                                 <h2 className="text-2xl font-black text-slate-900 tracking-tight">Frequently Asked Questions</h2>
@@ -3645,6 +3927,14 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 >
                                     <Plus size={14} />
                                     Add FAQ
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowFaqBulkImport(true)}
+                                    className="flex items-center gap-2 px-5 py-3 bg-white border border-dashed border-slate-300 rounded-xl text-[11px] font-bold text-slate-500 hover:border-emerald-400 hover:text-emerald-600 transition-all"
+                                >
+                                    <UploadCloud size={14} />
+                                    Bulk Import
                                 </button>
                                 {(event?.faqs || []).length > 0 && (
                                     <button
@@ -3756,7 +4046,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400 resize-y"
                                                 />
                                             </div>
-                                            <div className="grid grid-cols-2 gap-4">
+                                            <div className="grid grid-cols-4 gap-3">
                                                 <div>
                                                     <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
                                                     <select
@@ -3768,12 +4058,21 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                         }}
                                                         className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400 bg-white"
                                                     >
-                                                        <option value="General">General</option>
-                                                        <option value="Registration">Registration</option>
-                                                        <option value="Eligibility">Eligibility</option>
-                                                        <option value="Submission">Submission</option>
-                                                        <option value="Prizes">Prizes</option>
-                                                        <option value="Technical">Technical</option>
+                                                        <option value="General">📋 General</option>
+                                                        <option value="Registration">📝 Registration</option>
+                                                        <option value="Eligibility">✅ Eligibility</option>
+                                                        <option value="Participation">👥 Participation</option>
+                                                        <option value="Submission">📤 Submission</option>
+                                                        <option value="Technical">💻 Technical</option>
+                                                        <option value="Evaluation">📊 Evaluation</option>
+                                                        <option value="Prizes">🏆 Prizes</option>
+                                                        <option value="Certificates">📜 Certificates</option>
+                                                        <option value="Mentorship">🤝 Mentorship</option>
+                                                        <option value="Results">🏁 Results</option>
+                                                        <option value="Timeline">📅 Timeline</option>
+                                                        <option value="Rules">⚖️ Rules</option>
+                                                        <option value="Support">🆘 Support</option>
+                                                        <option value="Opportunities">🚀 Opportunities</option>
                                                     </select>
                                                 </div>
                                                 <div>
@@ -3789,6 +4088,85 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                         className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
                                                     />
                                                 </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Featured</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = [...(event?.faqs || [])];
+                                                            updated[i] = { ...updated[i], is_featured: !(faq.is_featured ?? faq.featured) };
+                                                            setEvent({ ...event, faqs: updated });
+                                                        }}
+                                                        className={`w-full px-3 py-2.5 rounded-xl border text-[11px] font-bold transition-all flex items-center justify-center gap-2 ${
+                                                            (faq.is_featured ?? faq.featured) ? 'bg-purple-50 border-purple-300 text-purple-700' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                                                        }`}
+                                                    >
+                                                        {(faq.is_featured ?? faq.featured) ? '📌 Pinned' : 'Pin'}
+                                                    </button>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">🔓 Auto-Pin</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = [...(event?.faqs || [])];
+                                                            updated[i] = { ...updated[i], auto_pin_enabled: !(faq.auto_pin_enabled ?? true) };
+                                                            setEvent({ ...event, faqs: updated });
+                                                        }}
+                                                        className={`w-full px-3 py-2.5 rounded-xl border text-[11px] font-bold transition-all flex items-center justify-center gap-2 ${
+                                                            (faq.auto_pin_enabled ?? true) ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                                                        }`}
+                                                    >
+                                                        {(faq.auto_pin_enabled ?? true) ? 'Auto' : 'Manual'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-3">
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Priority Score</label>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        value={faq.priority_score ?? ''}
+                                                        onChange={e => {
+                                                            const updated = [...(event?.faqs || [])];
+                                                            updated[i] = { ...updated[i], priority_score: parseInt(e.target.value) || 0 };
+                                                            setEvent({ ...event, faqs: updated });
+                                                        }}
+                                                        placeholder="Auto-computed"
+                                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">👍 Helpful Count</label>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        value={faq.helpful_count ?? ''}
+                                                        onChange={e => {
+                                                            const updated = [...(event?.faqs || [])];
+                                                            updated[i] = { ...updated[i], helpful_count: parseInt(e.target.value) || 0 };
+                                                            setEvent({ ...event, faqs: updated });
+                                                        }}
+                                                        placeholder="0"
+                                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">👁️ Views</label>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        value={faq.views ?? ''}
+                                                        onChange={e => {
+                                                            const updated = [...(event?.faqs || [])];
+                                                            updated[i] = { ...updated[i], views: parseInt(e.target.value) || 0 };
+                                                            setEvent({ ...event, faqs: updated });
+                                                        }}
+                                                        placeholder="0"
+                                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -3796,6 +4174,171 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             </div>
                         )}
                     </div>
+                    {showFaqBulkImport && (
+                        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowFaqBulkImport(false)}>
+                            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl p-6 space-y-5" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-lg font-black text-slate-900">Bulk Import FAQs</h3>
+                                        <p className="text-sm text-slate-500 font-medium mt-1">Paste text or upload a PDF. One Q&A per entry.</p>
+                                    </div>
+                                    <button onClick={() => setShowFaqBulkImport(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><X size={18} /></button>
+                                </div>
+                                <div className="bg-slate-50 rounded-xl p-4 text-[11px] font-mono text-slate-500 border border-slate-100 leading-relaxed">
+                                    Q: What is the eligibility?<br />
+                                    A: All students can participate.<br />
+                                    Category: General<br />
+                                    Order: 1<br />
+                                    <br />
+                                    Q: What is the team size?<br />
+                                    A: 1-5 members per team.<br />
+                                    Category: Registration<br />
+                                    Order: 2
+                                </div>
+
+                                {/* Tab: Paste or Upload */}
+                                <div className="flex items-center gap-3 pb-2">
+                                    <label className={`flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer text-[11px] font-bold transition-all ${faqBulkImportText && !faqBulkImportLoading ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-50 text-slate-500 border border-slate-200 hover:bg-white'}`}>
+                                        <Upload size={14} />
+                                        Upload PDF
+                                        <input
+                                            type="file"
+                                            accept="application/pdf"
+                                            className="hidden"
+                                            disabled={faqBulkImportLoading}
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+                                                setFaqBulkImportLoading(true);
+                                                try {
+                                                    const buf = await file.arrayBuffer();
+                                                    const pdf = await getDocument(buf).promise;
+                                                    let text = '';
+                                                    for (let i = 1; i <= pdf.numPages; i++) {
+                                                        const page = await pdf.getPage(i);
+                                                        const content = await page.getTextContent();
+                                                        text += content.items.map((item: any) => item.str).join(' ') + '\n';
+                                                    }
+                                                    setFaqBulkImportText(text);
+                                                } catch {
+                                                    alert('Failed to read PDF. Make sure it contains selectable text.');
+                                                }
+                                                setFaqBulkImportLoading(false);
+                                                e.target.value = '';
+                                            }}
+                                        />
+                                    </label>
+                                    {faqBulkImportLoading && <span className="text-xs text-slate-400 font-medium animate-pulse">Reading PDF...</span>}
+                                    {!faqBulkImportLoading && faqBulkImportText && (
+                                        <button onClick={() => setFaqBulkImportText('')} className="text-[11px] text-red-500 font-bold hover:underline">Clear</button>
+                                    )}
+                                </div>
+
+                                <textarea
+                                    value={faqBulkImportText}
+                                    onChange={e => setFaqBulkImportText(e.target.value)}
+                                    rows={12}
+                                    placeholder="Paste your FAQs here, or upload a PDF above..."
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-medium resize-none focus:bg-white focus:border-emerald-300 transition-all"
+                                />
+                                <div className="flex items-center justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowFaqBulkImport(false); setFaqBulkImportText(''); }}
+                                        className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-full transition-all"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const AUTO_PIN_KEYWORDS = ['registration', 'last date', 'deadline', 'apply before', 'eligible', 'who can participate', 'allowed', 'criteria', 'team size', 'individual', 'team participation', 'cross-college', 'fee', 'paid', 'free', 'registration cost', 'certificate', 'participation certificate', 'winner certificate', 'online', 'offline', 'hybrid', 'location', 'prize', 'reward', 'cash', 'winning amount', 'submission', 'final submit', 'upload deadline', 'evaluation', 'judging', 'scoring', 'plagiarism', 'cheating', 'disqualification', 'rules', 'internship', 'PPO', 'placement', 'hiring', 'support', 'contact', 'help', 'issue'];
+                                            const MAX_AUTO_PIN = 8;
+                                            const analyzeFaq = (q: string, a: string) => {
+                                                const text = (q + ' ' + a).toLowerCase();
+                                                const score = AUTO_PIN_KEYWORDS.reduce((s, kw) => text.includes(kw) ? s + 10 : s, 0);
+                                                return { priority_score: score };
+                                            };
+
+                                            const text = faqBulkImportText.trim();
+                                            const parsed: any[] = [];
+
+                                            // Try FAQ N  Question  ...  Answer  ...  Category  ...  Order  ... format
+                                            const hasFaqFormat = /\bFAQ\s+\d+/i.test(text);
+                                            if (hasFaqFormat) {
+                                                const entries = text.split(/\bFAQ\s+\d+\s*/i).filter(Boolean);
+                                                for (const entry of entries) {
+                                                    const norm = entry.replace(/\s+/g, ' ').trim();
+                                                    const qMatch = norm.match(/\bQuestion\s+(.+?)(?=\s+Answer\s|\s+Category\s|\s+Order\s|$)/i);
+                                                    const aMatch = norm.match(/\bAnswer\s+(.+?)(?=\s+Category\s|\s+Order\s|$)/i);
+                                                    const cMatch = norm.match(/\bCategory\s+(.+?)(?=\s+Order\s|$)/i);
+                                                    const oMatch = norm.match(/\bOrder\s+(\d+)/i);
+                                                    if (qMatch || aMatch) {
+                                                        const question = qMatch ? qMatch[1].trim() : '';
+                                                        const answer = aMatch ? aMatch[1].trim() : '';
+                                                        parsed.push({
+                                                            question,
+                                                            answer,
+                                                            category: cMatch ? cMatch[1].trim().replace(/^FAQ\s+\d+\s*/i, '') : 'General',
+                                                            order: oMatch ? parseInt(oMatch[1], 10) || 0 : 0,
+                                                            ...analyzeFaq(question, answer),
+                                                        });
+                                                    }
+                                                }
+                                            } else {
+                                                // Per-line format: Q:/Question:/A:/Answer:/Category:/Order:
+                                                const lines = text.split('\n');
+                                                let current: any = {};
+                                                for (const line of lines) {
+                                                    const trimmed = line.trim();
+                                                    if (!trimmed) {
+                                                        if (current.question || current.answer) {
+                                                            parsed.push({ category: 'General', order: (event?.faqs || []).length + parsed.length, ...current, ...analyzeFaq(current.question || '', current.answer || '') });
+                                                            current = {};
+                                                        }
+                                                        continue;
+                                                    }
+                                                    if (trimmed.toUpperCase().startsWith('Q:') || trimmed.toUpperCase().startsWith('QUESTION:')) {
+                                                        if (current.question || current.answer) {
+                                                            parsed.push({ category: 'General', order: (event?.faqs || []).length + parsed.length, ...current, ...analyzeFaq(current.question || '', current.answer || '') });
+                                                            current = {};
+                                                        }
+                                                        current.question = trimmed.replace(/^(Q:|Question:)\s*/i, '').trim();
+                                                    } else if (trimmed.toUpperCase().startsWith('A:') || trimmed.toUpperCase().startsWith('ANSWER:')) {
+                                                        current.answer = trimmed.replace(/^(A:|Answer:)\s*/i, '').trim();
+                                                    } else if (trimmed.toUpperCase().startsWith('CATEGORY:')) {
+                                                        current.category = trimmed.slice(9).trim();
+                                                    } else if (trimmed.toUpperCase().startsWith('ORDER:')) {
+                                                        current.order = parseInt(trimmed.slice(6).trim()) || 0;
+                                                    }
+                                                }
+                                                if (current.question || current.answer) {
+                                                    parsed.push({ category: 'General', order: (event?.faqs || []).length + parsed.length, ...current, ...analyzeFaq(current.question || '', current.answer || '') });
+                                                }
+                                            }
+                                            // Pin top N by priority score
+                                            const scored = parsed.map((f: any) => ({ ...f }));
+                                            scored.sort((a: any, b: any) => (b.priority_score || 0) - (a.priority_score || 0));
+                                            scored.forEach((f: any, idx: number) => {
+                                                f.is_featured = idx < MAX_AUTO_PIN && (f.priority_score || 0) > 0;
+                                                f.auto_pin_enabled = f.is_featured;
+                                            });
+                                            if (scored.length > 0) {
+                                                setEvent(prev => ({ ...prev, faqs: [...(prev?.faqs || []), ...scored] }));
+                                            }
+                                            setFaqBulkImportText('');
+                                            setShowFaqBulkImport(false);
+                                        }}
+                                        className="flex items-center gap-2 px-6 py-2.5 bg-emerald-500 text-white rounded-full text-sm font-bold hover:bg-emerald-600 transition-all"
+                                    >
+                                        <UploadCloud size={14} />
+                                        Import ({(() => { const t = faqBulkImportText.trim(); if (/\bFAQ\s+\d+/i.test(t)) { return (t.match(/\bFAQ\s+\d+/gi) || []).length; } return t.split('\n').filter(l => { const u = l.trim().toUpperCase(); return u.startsWith('Q:') || u.startsWith('QUESTION:'); }).length; })()} FAQs)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </>
                 );
 
             case 'leaderboard':
