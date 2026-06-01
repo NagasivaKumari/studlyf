@@ -6,7 +6,7 @@ import uuid
 import shutil
 import json
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile, Body, Depends, Query
+from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile, Body, Depends, Query, Response
 from auth_institution import get_auth_user, get_auth_user_optional, assert_institution_scope, assert_institution_owns_event
 from services.email_service import (
     send_notification_email,
@@ -23,7 +23,7 @@ from services.email_service import (
 from services.institutional_analytics_service import analytics_service
 from services.institutional_certificate_service import certificate_service
 from services.leaderboard_service import leaderboard_service
-from db import leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col, event_certificates_col, avatars_col
+from db import db, leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col, event_certificates_col, avatars_col
 from bson import ObjectId
 from services.audit_service import log_admin_action
 from notification_helpers import notify_institution
@@ -2537,7 +2537,7 @@ async def create_submission(submission_data: dict):
     
     # Notify Institution
     try:
-        inst_id = str(user.get("institution_id") or "").strip()
+        inst_id = str(submission_data.get("institution_id") or "").strip()
         if inst_id:
             asyncio.create_task(notify_institution(
                 institution_id=inst_id,
