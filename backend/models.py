@@ -528,7 +528,6 @@ class OpportunityApplication(BaseModel):
     status: str = "pending" # pending, accepted, rejected
     applied_at: datetime = Field(default_factory=datetime.utcnow)
 
-<<<<<<< HEAD
 
 # ========== Skill Assessment Models ==========
 
@@ -589,7 +588,7 @@ class AssessmentResponse(BaseModel):
     mistakeAnalysis:    List[MistakeAnalysis] = []
     completedAt:        datetime
     createdAt:          Optional[datetime] = None
-=======
+
 class OpportunityReview(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     opportunity_id: str
@@ -612,4 +611,3 @@ class Avatar(BaseModel):
     order: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
->>>>>>> 0f603fb500162118610dca3c09a778513e360563
