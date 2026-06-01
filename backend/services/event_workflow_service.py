@@ -40,8 +40,16 @@ class EventWorkflowService:
                     team = await teams_col.find_one({"_id": ObjectId(participant["team_id"])})
                     if team:
                         members = team.get("members", [])
-                        min_size = stage_config.get("min_team_size", 1) or event.get("min_team_size", 1)
-                        max_size = stage_config.get("max_team_size", 5) or event.get("max_team_size", 5)
+                        min_size = stage_config.get("min_team_size") if stage_config else None
+                        if min_size is None:
+                            min_size = event.get("min_team_size")
+                        max_size = stage_config.get("max_team_size") if stage_config else None
+                        if max_size is None:
+                            max_size = event.get("max_team_size")
+                        if min_size is None or max_size is None:
+                            raise Exception("Team size is not configured for this event")
+                        min_size = int(min_size)
+                        max_size = int(max_size)
                         if len(members) < min_size or len(members) > max_size:
                             raise Exception(f"Team size ({len(members)}) out of range ({min_size}-{max_size})")
 

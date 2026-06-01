@@ -25,7 +25,14 @@ const CertificateVerification: React.FC = () => {
     if (id) verify();
   }, [id]);
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-bold italic text-gray-400">Verifying Institutional Record...</div>;
+  if (loading) return (
+    <div className="min-h-screen bg-[#fafafa] flex items-start justify-center px-6 py-28">
+      <div className="w-full max-w-2xl rounded-[2.5rem] border border-gray-100 bg-white shadow-sm p-8 sm:p-10 text-center">
+        <div className="w-12 h-12 border-4 border-purple-100 border-t-purple-600 rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Verifying institutional record</p>
+      </div>
+    </div>
+  );
   
   if (error || !certData) return (
     <div className="min-h-screen bg-red-50 flex items-center justify-center p-8">

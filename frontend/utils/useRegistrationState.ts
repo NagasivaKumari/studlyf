@@ -32,6 +32,15 @@ export function useRegistrationState(input: RegistrationStateInput): Registratio
       return { variant: 'external', label: 'Register on External Site', url: input.externalLink };
     }
 
+    // Already registered users should keep seeing the registered state even after deadlines close.
+    if (input.isRegistered) {
+      // Check if team is full (if team leader viewing)
+      if (input.maxTeamSize && input.currentTeamSize && input.currentTeamSize >= input.maxTeamSize && input.isTeamLeader) {
+        return { variant: 'team_full', label: 'Team Full', reason: `Your team has reached the maximum of ${input.maxTeamSize} members` };
+      }
+      return { variant: 'registered', label: 'Registered', teamStatus: input.currentTeamSize && input.maxTeamSize ? `${input.currentTeamSize}/${input.maxTeamSize}` : undefined };
+    }
+
     // Check deadline
     if (input.deadline) {
       const deadlineDate = new Date(input.deadline);
@@ -53,15 +62,6 @@ export function useRegistrationState(input: RegistrationStateInput): Registratio
     // Check eligibility
     if (input.eligibilityPassed === false) {
       return { variant: 'closed', label: 'Not Eligible', reason: 'You do not meet the eligibility criteria' };
-    }
-
-    // Already registered
-    if (input.isRegistered) {
-      // Check if team is full (if team leader viewing)
-      if (input.maxTeamSize && input.currentTeamSize && input.currentTeamSize >= input.maxTeamSize && input.isTeamLeader) {
-        return { variant: 'team_full', label: 'Team Full', reason: `Your team has reached the maximum of ${input.maxTeamSize} members` };
-      }
-      return { variant: 'registered', label: 'Registered', teamStatus: input.currentTeamSize && input.maxTeamSize ? `${input.currentTeamSize}/${input.maxTeamSize}` : undefined };
     }
 
     // Default: can register

@@ -5,11 +5,14 @@ from datetime import datetime
 from db import email_delivery_logs_col, email_queue_col
 from pymongo import ReturnDocument
 from services.email_service import send_notification_email
+from services.circuit_breaker import get_circuit_breaker
 
 logger = logging.getLogger("email_queue_service")
 
 MAX_RETRY_ATTEMPTS = 5
 POLL_INTERVAL_SECONDS = 5
+
+_email_cb = get_circuit_breaker("email_smtp", failure_threshold=3, recovery_timeout=60.0)
 
 
 async def enqueue_email(recipient: str, subject: str, body: str, metadata: dict | None = None, idempotency_key: str | None = None, priority: int = 0):
@@ -96,7 +99,10 @@ async def start_email_queue_worker():
                 continue
 
             logger.info(f"Processing queued email to {job['recipient']} (attempt {job['attempts']})")
-            success = await send_notification_email(job["recipient"], job["subject"], job["body"])
+            try:
+                success = await _email_cb.call(send_notification_email, job["recipient"], job["subject"], job["body"])
+            except Exception:
+                success = False
             await _finalize_email_job(job, success, None if success else "Delivery failed")
         except Exception as exc:
             logger.exception(f"Email queue worker error: {exc}")

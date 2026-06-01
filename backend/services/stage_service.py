@@ -177,6 +177,143 @@ async def get_event_stages(event_id: str) -> List[dict]:
         print(f"[ERROR] get_event_stages: {e}")
         return []
 
+async def _get_participant_fallback(event_id: str, user_id: str) -> Optional[dict]:
+    """Helper to query participant with fallback for legacy human-readable event_id strings and self-healing opportunity apps."""
+    try:
+        participant = await participants_col.find_one({
+            "event_id": str(event_id),
+            "user_id": str(user_id)
+        })
+        if participant:
+            return participant
+            
+        ev = None
+        # Fallback 1: check if event_id is a valid ObjectId and map to human-readable event_id
+        try:
+            ev = await events_col.find_one({"_id": ObjectId(event_id)})
+            if ev and ev.get("event_id"):
+                participant = await participants_col.find_one({
+                    "event_id": str(ev["event_id"]),
+                    "user_id": str(user_id)
+                })
+                if participant:
+                    return participant
+        except:
+            pass
+            
+        # Fallback 2: check if event_id is human-readable and map to ObjectId string
+        try:
+            ev = await events_col.find_one({"event_id": event_id})
+            if ev and ev.get("_id"):
+                participant = await participants_col.find_one({
+                    "event_id": str(ev["_id"]),
+                    "user_id": str(user_id)
+                })
+                if participant:
+                    return participant
+        except:
+            pass
+
+        # Fallback 3 (Self-healing): Check if user has an application in opportunity_applications
+        opp = None
+        # Find opportunity by ID or event_link_id
+        try:
+            opp = await opportunities_col.find_one({"_id": ObjectId(event_id)})
+        except:
+            pass
+        if not opp:
+            opp = await opportunities_col.find_one({"event_link_id": event_id})
+        if not opp and ev:
+            opp = await opportunities_col.find_one({"event_link_id": ev.get("event_id")})
+            if not opp:
+                opp = await opportunities_col.find_one({"event_link_id": str(ev.get("_id"))})
+
+        if opp:
+            from db import opportunity_applications_col, opportunities_col
+            opp_app = await opportunity_applications_col.find_one({
+                "opportunity_id": str(opp["_id"]),
+                "user_id": str(user_id)
+            })
+            if opp_app:
+                app_status = str(opp_app.get("status") or "").strip().lower()
+                # Check if the application is approved, accepted, shortlisted, or active
+                if app_status in ["shortlisted", "accepted", "approved", "applied", "selected", "hired", "registered"]:
+                    # User is registered via opportunity application! Let's dynamically create the participant record
+                    user_doc = await users_col.find_one({"user_id": str(user_id)})
+                    email = (user_doc or {}).get("email", "")
+                    name = (user_doc or {}).get("full_name") or (user_doc or {}).get("name") or "Participant"
+                    
+                    # Find matching event
+                    target_event = ev
+                    if not target_event:
+                        try:
+                            if opp.get("event_link_id"):
+                                target_event = await events_col.find_one({"event_id": opp["event_link_id"]})
+                                if not target_event:
+                                    target_event = await events_col.find_one({"_id": ObjectId(opp["event_link_id"])})
+                        except:
+                            pass
+                    
+                    first_stage = None
+                    if target_event and target_event.get("stages"):
+                        stages = target_event["stages"]
+                        if stages:
+                            first_stage = stages[0].get("name") or stages[0].get("type")
+                            
+                    inst_id = ""
+                    if target_event:
+                        inst_id = str(target_event.get("institution_id") or target_event.get("createdBy") or "")
+                    elif opp:
+                        inst_id = str(opp.get("institution_id") or opp.get("createdBy") or "")
+
+                    participant_doc = {
+                        "event_id": str(event_id),
+                        "user_id": str(user_id),
+                        "institution_id": inst_id,
+                        "name": name,
+                        "email": email,
+                        "current_stage": first_stage,
+                        "registration_data": opp_app.get("profile_snapshot") or {},
+                        "status": "registered",
+                        "registered_at": opp_app.get("applied_at") or datetime.now(timezone.utc),
+                        "updated_at": datetime.now(timezone.utc)
+                    }
+                    
+                    # Write to participants_col
+                    await participants_col.update_one(
+                        {"event_id": str(event_id), "user_id": str(user_id)},
+                        {"$set": participant_doc},
+                        upsert=True
+                    )
+                    
+                    # If the fallback event_id is different, sync it too
+                    alt_event_id = str(target_event["_id"]) if target_event else None
+                    if alt_event_id and alt_event_id != str(event_id):
+                        alt_doc = dict(participant_doc)
+                        alt_doc["event_id"] = alt_event_id
+                        await participants_col.update_one(
+                            {"event_id": alt_event_id, "user_id": str(user_id)},
+                            {"$set": alt_doc},
+                            upsert=True
+                        )
+                        
+                    alt_event_code = target_event.get("event_id") if target_event else None
+                    if alt_event_code and alt_event_code != str(event_id) and alt_event_code != alt_event_id:
+                        alt_doc = dict(participant_doc)
+                        alt_doc["event_id"] = alt_event_code
+                        await participants_col.update_one(
+                            {"event_id": alt_event_code, "user_id": str(user_id)},
+                            {"$set": alt_doc},
+                            upsert=True
+                        )
+                        
+                    return participant_doc
+            
+    except Exception as e:
+        print(f"[ERROR] _get_participant_fallback: {e}")
+        
+    return None
+
 async def get_participant_stage_progress(event_id: str, user_id: str) -> dict:
     """Get current stage, submissions, and next actions for a participant.
     
@@ -187,10 +324,7 @@ async def get_participant_stage_progress(event_id: str, user_id: str) -> dict:
     """
     try:
         # Get participant
-        participant = await participants_col.find_one({
-            "event_id": str(event_id),
-            "user_id": str(user_id)
-        })
+        participant = await _get_participant_fallback(event_id, user_id)
         
         if not participant:
             return {"status": "not_registered", "message": "Please register for this event first"}
@@ -403,10 +537,7 @@ async def _handle_registration_stage(event_id: str, user_id: str, stage: dict) -
                     })
         
         # Check if already registered for this event
-        participant = await participants_col.find_one({
-            "event_id": str(event_id),
-            "user_id": str(user_id)
-        })
+        participant = await _get_participant_fallback(event_id, user_id)
         
         return {
             "stage_type": "REGISTRATION",
@@ -424,18 +555,20 @@ async def _handle_team_formation_stage(event_id: str, user_id: str, stage: dict)
     """Team formation: Show team creation/join UI."""
     try:
         # Check if user is registered
-        participant = await participants_col.find_one({
-            "event_id": str(event_id),
-            "user_id": str(user_id)
-        })
+        participant = await _get_participant_fallback(event_id, user_id)
         
         if not participant:
             return {"error": "You must register first"}
         
         # Get event to check team requirements
         event = await events_col.find_one({"_id": ObjectId(event_id)})
-        min_team_size = event.get("min_team_size", 1) if event else 1
-        max_team_size = event.get("max_team_size", 5) if event else 5
+        min_team_size = None
+        max_team_size = None
+        if event:
+            min_team_size = event.get("min_team_size") if event.get("min_team_size") is not None else event.get("minTeamSize")
+            max_team_size = event.get("max_team_size") if event.get("max_team_size") is not None else event.get("maxTeamSize")
+        if min_team_size is None or max_team_size is None:
+            return {"error": "Team size is not configured for this event"}
         
         # Check if user already in a team
         existing_team = None
@@ -470,10 +603,7 @@ async def _handle_team_formation_stage(event_id: str, user_id: str, stage: dict)
 async def _handle_submission_stage(event_id: str, user_id: str, stage: dict) -> dict:
     """Submission stage: Show dynamic form based on admin-defined fields."""
     try:
-        participant = await participants_col.find_one({
-            "event_id": str(event_id),
-            "user_id": str(user_id)
-        })
+        participant = await _get_participant_fallback(event_id, user_id)
         
         if not participant:
             return {"error": "You must register first"}
@@ -522,10 +652,7 @@ async def _handle_submission_stage(event_id: str, user_id: str, stage: dict) -> 
 async def _handle_final_stage(event_id: str, user_id: str, stage: dict) -> dict:
     """Final stage: Display submitted content (view-only)."""
     try:
-        participant = await participants_col.find_one({
-            "event_id": str(event_id),
-            "user_id": str(user_id)
-        })
+        participant = await _get_participant_fallback(event_id, user_id)
         
         if not participant:
             return {"error": "You must register first"}

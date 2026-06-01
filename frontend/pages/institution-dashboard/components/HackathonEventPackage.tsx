@@ -198,7 +198,7 @@ export default function HackathonEventPackage({ institutionId }: HackathonEventP
                                 <label className="text-sm font-bold text-slate-700 w-36">
                                     Max Teams
                                     <input type="number" value={form.max_teams}
-                                        onChange={e => setForm({ ...form, max_teams: parseInt(e.target.value) || 5 })} min={1}
+                                        onChange={e => setForm({ ...form, max_teams: e.target.value ? parseInt(e.target.value, 10) : undefined })} min={1}
                                         className="w-full mt-1 p-3 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none" />
                                 </label>
                                 <button type="submit"
@@ -396,7 +396,7 @@ export default function HackathonEventPackage({ institutionId }: HackathonEventP
                                     <label className="text-sm font-bold text-slate-700">
                                         Max Teams
                                         <input type="number" value={editModal.max_teams}
-                                            onChange={e => setEditModal({ ...editModal, max_teams: parseInt(e.target.value) || 5 })} min={1}
+                                            onChange={e => setEditModal({ ...editModal, max_teams: e.target.value ? parseInt(e.target.value, 10) : undefined })} min={1}
                                             className="w-full mt-1 p-3 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none" />
                                     </label>
                                     <label className="text-sm font-bold text-slate-700">

@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       proxy: {
         '^/api/.*': {
-          target: env.RENDER_EXTERNAL_URL || '',
+          target: env.VITE_API_PROXY || 'http://localhost:8000',
           changeOrigin: true,
           secure: false,
         }
@@ -20,11 +20,15 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     build: {
       emptyOutDir: false,
-      chunkSizeWarningLimit: 6000,
+      chunkSizeWarningLimit: 1000, 
       rollupOptions: {
         output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom', 'framer-motion', 'lucide-react']
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              return 'vendor';
+            }
+            if (id.includes('CoursePlayer')) return 'chunk-course-player';
+            if (id.includes('OperationLog')) return 'chunk-operation-log';
           }
         }
       }
@@ -32,7 +36,7 @@ export default defineConfig(({ mode }) => {
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || ''),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || ''),
-      'import.meta.env.FRONTEND_URL': JSON.stringify(env.FRONTEND_URL || process.env.FRONTEND_URL || 'https://studlyf-thub.vercel.app'),
+      'import.meta.env.FRONTEND_URL': JSON.stringify(env.FRONTEND_URL || process.env.FRONTEND_URL || 'https://studlyfhub.vercel.app'),
       'import.meta.env.RENDER_EXTERNAL_URL': JSON.stringify(env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_URL || 'https://studlyf-tlkk.onrender.com'),
       'import.meta.env.ADDITIONAL_CORS_ORIGINS': JSON.stringify(env.ADDITIONAL_CORS_ORIGINS || process.env.ADDITIONAL_CORS_ORIGINS || 'https://studlyf-tlkk.onrender.com')
     },

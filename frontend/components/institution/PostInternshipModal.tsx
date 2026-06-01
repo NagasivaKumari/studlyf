@@ -22,14 +22,14 @@ const PostInternshipModal: React.FC<PostInternshipModalProps> = ({ isOpen, onClo
     const [formData, setFormData] = useState({
         // 1. Internship Basic Details
         title: '',
-        category: 'IT',
-        type: 'Full-time',
+        category: '',
+        type: '',
         duration: '',
         startDate: '',
         location: '',
 
         // 2. Organization Details
-        organizationName: 'Institution Name', // Mock auto-fill
+        organizationName: '',
         aboutOrganization: '',
         websiteLink: '',
         
@@ -296,6 +296,7 @@ const PostInternshipModal: React.FC<PostInternshipModalProps> = ({ isOpen, onClo
                                             <div className="col-span-2 md:col-span-1">
                                                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Role Category</label>
                                                 <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-emerald-500 transition-all font-medium text-slate-900">
+                                                    <option value="" disabled>Select category</option>
                                                     {categoryOptions.map(cat => <option key={cat}>{cat}</option>)}
                                                 </select>
                                             </div>
@@ -305,6 +306,7 @@ const PostInternshipModal: React.FC<PostInternshipModalProps> = ({ isOpen, onClo
                                             <div>
                                                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Internship Type</label>
                                                 <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-emerald-500 transition-all font-medium text-slate-900">
+                                                    <option value="" disabled>Select type</option>
                                                     <option>Full-time</option>
                                                     <option>Part-time</option>
                                                     <option>Remote</option>

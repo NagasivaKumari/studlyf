@@ -258,7 +258,22 @@ const Courses: React.FC = () => {
     return courses.filter(c => c.role_tag === activeCategory);
   }, [activeCategory, courses]);
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-mono text-xs tracking-widest uppercase text-[#7C3AED]">Synchronizing Protocol...</div>;
+  if (loading) return (
+    <div className="min-h-screen bg-white px-6 py-32 flex items-start justify-center">
+      <div className="w-full max-w-5xl rounded-[2.5rem] border border-gray-100 bg-white shadow-sm p-8 sm:p-10">
+        <div className="flex items-center gap-3 mb-6 text-[#7C3AED] font-black text-[10px] uppercase tracking-[0.3em]">
+          <div className="w-4 h-4 rounded-full border-2 border-[#7C3AED]/20 border-t-[#7C3AED] animate-spin" />
+          Loading courses
+        </div>
+        <div className="h-10 w-80 max-w-full rounded-full bg-gray-100 animate-pulse mb-4" />
+        <div className="space-y-3">
+          <div className="h-4 w-full rounded-full bg-gray-100 animate-pulse" />
+          <div className="h-4 w-5/6 rounded-full bg-gray-100 animate-pulse" />
+          <div className="h-4 w-2/3 rounded-full bg-gray-100 animate-pulse" />
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="pt-40 pb-32 px-6 bg-white min-h-screen relative overflow-hidden">

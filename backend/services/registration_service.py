@@ -41,7 +41,7 @@ async def validate_event_restrictions(
         user = await users_col.find_one({"user_id": str(user_id)})
         if not user:
             return "User not found"
-        user_profile = await get_user_profile_data(user_id)
+        user_profile = await get_user_profile_data(user_id, user=user)
 
         # --- participationType is NOT checked here (affects submission/team, not registration) ---
 
@@ -56,7 +56,7 @@ async def validate_event_restrictions(
 
                 # Build heuristics — use get_user_profile_data for consistency with form auto-fill
                 profile_type = str(user_profile.get("profile_type") or "").lower().strip()
-                is_college_student = bool(user_college) and not bool(user_company) and profile_type != "fresher"
+                is_college_student = (bool(user_college) or profile_type == "student") and not bool(user_company) and profile_type != "fresher"
                 is_fresher = profile_type == "fresher"
                 is_professional = bool(user_company) or user_role in ("professional", "institution", "alumni")
                 is_school_student = "school" in user_college.lower() if user_college else False
@@ -126,11 +126,12 @@ async def validate_event_restrictions(
         print(f"[WARNING] validate_event_restrictions error: {e}")
         return None  # Don't block on validation errors — fail open
 
-async def get_user_profile_data(user_id: str) -> Dict[str, Any]:
+async def get_user_profile_data(user_id: str, user: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Fetch user profile data (name, email, college, education, etc.) for auto-fill.
     Merges base user fields with extended learner profile (education history)."""
     try:
-        user = await users_col.find_one({"user_id": str(user_id)})
+        if user is None:
+            user = await users_col.find_one({"user_id": str(user_id)})
         if not user:
             return {}
 
@@ -143,20 +144,23 @@ async def get_user_profile_data(user_id: str) -> Dict[str, Any]:
             college_raw = ""
         
         profile_data = {
-            "full_name": full_name,
-            "name": user.get("name", "") or full_name,
-            "email": user.get("email", ""),
-            "phone": user.get("phone", ""),
-            "college": college_raw,
-            "institution": user.get("institution", "") or user.get("college", "") or user.get("college_name", "") or user.get("company", "") or user.get("organization", ""),
-            "gender": user.get("gender", ""),
-            "skills": user.get("skills", []),
-        }
+             "full_name": full_name,
+             "name": user.get("name", "") or full_name,
+             "email": user.get("email", ""),
+             "phone": user.get("phone", ""),
+             "college": college_raw,
+             "institution": user.get("institution", "") or user.get("college", "") or user.get("college_name", "") or user.get("company", "") or user.get("organization", ""),
+             "gender": user.get("gender", ""),
+             "skills": user.get("skills", []),
+             "profile_type": user.get("profile_type", ""),
+         }
 
         # Merge education from learner_profiles (extended profile)
         try:
             learner = await db["learner_profiles"].find_one({"user_id": str(user_id)})
             if learner:
+                if not profile_data["profile_type"]:
+                    profile_data["profile_type"] = learner.get("userType", "")
                 edu_list = learner.get("educationList", [])
                 if isinstance(edu_list, list) and len(edu_list) > 0:
                     edu = edu_list[0]
@@ -513,12 +517,42 @@ async def check_registration_status(
     event_id: str,
     user_id: str
 ) -> Dict[str, Any]:
-    """Check if user is already registered for an event."""
+    """Check if user is already registered for an event.
+    
+    Performs fallback lookups using alternative event_id formats
+    (ObjectId string vs human-readable event_id) to avoid false negatives
+    caused by event_id format mismatches.
+    """
     try:
+        from db import events_col
+        
         participant = await participants_col.find_one({
             "event_id": str(event_id),
             "user_id": str(user_id)
         })
+        
+        if not participant:
+            # Fallback: try alternative event_id formats
+            try:
+                ev = await events_col.find_one({"_id": ObjectId(event_id)})
+                if ev and ev.get("event_id"):
+                    participant = await participants_col.find_one({
+                        "event_id": str(ev["event_id"]),
+                        "user_id": str(user_id)
+                    })
+            except:
+                pass
+        
+        if not participant:
+            try:
+                ev = await events_col.find_one({"event_id": event_id})
+                if ev:
+                    participant = await participants_col.find_one({
+                        "event_id": str(ev["_id"]),
+                        "user_id": str(user_id)
+                    })
+            except:
+                pass
         
         if participant:
             return {

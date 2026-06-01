@@ -206,10 +206,11 @@ const OpportunityDetails: React.FC = () => {
     const [loadingFields, setLoadingFields] = useState(false);
     const [showRegistrationModal, setShowRegistrationModal] = useState(false);
     const [showReferModal, setShowReferModal] = useState(false);
+    const [userProfileData, setUserProfileData] = useState<any>(null);
     // Decoupled global profile onboarding states
     const [registrationStatus, setRegistrationStatus] = useState<string>('NOT_REGISTERED');
     const effectiveRegStatus = useMemo(() => {
-        if (registrationStatus === 'APPROVED') return 'APPROVED';
+        if (registrationStatus === 'APPROVED' || registrationStatus === 'REGISTERED') return 'APPROVED';
         if (myApplication && ['shortlisted', 'accepted', 'approved'].includes(String(myApplication.status).toLowerCase())) return 'APPROVED';
         return registrationStatus;
     }, [registrationStatus, myApplication]);
@@ -232,19 +233,43 @@ const OpportunityDetails: React.FC = () => {
     const eventId = String(opportunity?.event_link_id || opportunity?.event_id || id || '');
 
     const computeStageStatus = (stage: any) => {
-        if (stage?.status) return stage.status;
+        const normalizeDate = (value: any, endOfDay = false) => {
+            if (!value) return null;
+            const raw = String(value).trim();
+            if (!raw) return null;
+            const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})$/);
+            if (dateOnly) {
+                const [year, month, day] = dateOnly[1].split('-').map(Number);
+                return endOfDay
+                    ? new Date(year, month - 1, day, 23, 59, 59, 999)
+                    : new Date(year, month - 1, day, 0, 0, 0, 0);
+            }
+            const parsed = new Date(raw);
+            if (Number.isNaN(parsed.getTime())) return null;
+            if (endOfDay && parsed.getHours() === 0 && parsed.getMinutes() === 0 && parsed.getSeconds() === 0 && parsed.getMilliseconds() === 0) {
+                parsed.setHours(23, 59, 59, 999);
+            }
+            return parsed;
+        };
+
         const now = new Date();
+
+        // Parse dates. If date string is just YYYY-MM-DD, treat as local midnight.
         const startRaw = stage?.startDate || stage?.start_date;
         const endRaw = stage?.endDate || stage?.end_date;
-        const start = startRaw ? new Date(startRaw) : null;
-        const end = endRaw ? new Date(endRaw) : null;
+        const start = normalizeDate(startRaw, false);
+        const end = normalizeDate(endRaw, true);
 
-        if (end && end.getHours() === 0 && end.getMinutes() === 0 && !String(endRaw).includes('T')) {
-            end.setHours(23, 59, 59, 999);
+        if (start || end) {
+            if (start && now < start) return 'upcoming';
+            if (end && now > end) return 'completed';
+            return 'active';
         }
 
-        if (start && now < start) return 'upcoming';
-        if (end && now > end) return 'completed';
+        // Normalize any explicit status provided by backend to lowercase for consistent checks
+        const explicit = String(stage?.status || '').trim().toLowerCase();
+        if (explicit) return explicit;
+
         return 'active';
     };
 
@@ -292,6 +317,7 @@ const OpportunityDetails: React.FC = () => {
             .then(data => {
                 if (data) {
                     setSidebarProfilePhoto(data.profilePhoto || null);
+                    setUserProfileData(data);
                 }
             })
             .catch(() => {});
@@ -438,7 +464,12 @@ const OpportunityDetails: React.FC = () => {
                     }
                 }
 
-                setIsApplied(Boolean(mine));
+                // Set isApplied from legacy applications list.
+                // Note: the /form endpoint's NOT_REGISTERED status will override
+                // this if the participant was deleted from the DB.
+                if (mine) {
+                    setIsApplied(true);
+                }
             } catch (error) {
                 console.error('Failed to fetch opportunity details', error);
             } finally {
@@ -489,10 +520,26 @@ const OpportunityDetails: React.FC = () => {
                         }
                     });
                 }
-                
+
+                // Prefill core profile_data from previous registration snapshot if present
+                if (data.registration?.profile_data) {
+                    Object.assign(initialAnswers, data.registration.profile_data);
+                }
+
                 // Prefill custom questions if snapshots exist
                 if (data.registration?.custom_answers) {
                     Object.assign(initialAnswers, data.registration.custom_answers);
+                }
+
+                // Mark that user already has a registration snapshot
+                if (data.registration && data.status !== 'NOT_REGISTERED') {
+                    setIsApplied(true);
+                    // keep `submitted` true so we can display status, but we allow editing until deadline below
+                    setSubmitted(Boolean(data.registration));
+                } else if (data.status === 'NOT_REGISTERED') {
+                    // Backend says not registered — reset stale applied state
+                    setIsApplied(false);
+                    setSubmitted(false);
                 }
                 
                 setRegAnswers(prev => ({ ...prev, ...initialAnswers }));
@@ -501,6 +548,46 @@ const OpportunityDetails: React.FC = () => {
         .catch(err => console.error("Error loading registration form config:", err))
         .finally(() => setLoadingFields(false));
     }, [user, eventId, isApplied]);
+
+    useEffect(() => {
+        if (!formConfig?.fields_definitions || !userProfileData) return;
+
+        const profileSources = {
+            ...(userProfileData || {}),
+            ...(user || {}),
+        };
+
+        const readAllowedProfileValue = (field: any) => {
+            const label = String(field?.label || '').trim().toLowerCase();
+            const id = String(field?.id || '').trim().toLowerCase();
+
+            const pick = (...candidates: string[]) => {
+                for (const key of candidates) {
+                    const value = (profileSources as any)[key];
+                    if (value !== undefined && value !== null && String(value).trim() !== '') {
+                        return String(value);
+                    }
+                }
+                return '';
+            };
+
+            if (/full\s*name|^name$/.test(label) || id === 'full_name' || id === 'name') return pick('full_name', 'name', 'firstName', 'first_name');
+            if (/email/.test(label) || id === 'email') return pick('email');
+            if (/phone|mobile/.test(label) || id === 'phone' || id === 'mobile_number') return pick('phone', 'mobile', 'mobile_number');
+            return '';
+        };
+
+        setRegAnswers(prev => {
+            const next = { ...prev };
+            for (const fd of formConfig.fields_definitions || []) {
+                const value = readAllowedProfileValue(fd);
+                if (value && !String(next[fd.id] || '').trim()) {
+                    next[fd.id] = value;
+                }
+            }
+            return next;
+        });
+    }, [formConfig?.event_id, userProfileData, user]);
 
     const registrationFields: RegField[] = formConfig?.fields_definitions
         ? [
@@ -526,6 +613,9 @@ const OpportunityDetails: React.FC = () => {
         : [];
     const useStageRegistration = Boolean(formConfig);
     const useInstitutionForm = registrationFields.length > 0;
+    const registrationDeadlineValue = formConfig?.registrationDeadline || formConfig?.registration_deadline || opportunity?.registrationDeadline || opportunity?.registration_deadline || opportunity?.deadline || '';
+    const registrationDeadlineDate = registrationDeadlineValue ? new Date(registrationDeadlineValue) : null;
+    const canEditSubmittedRegistration = !submitted || !registrationDeadlineDate || new Date() <= registrationDeadlineDate;
 
     const buildLegacyPayload = () => {
         const name = formData.name || user?.full_name || user?.name || 'Anonymous Applicant';
@@ -658,6 +748,8 @@ const OpportunityDetails: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        console.log("Submitting registration...", { useStageRegistration, eventId, regAnswers });
+        
         if (!user) {
             navigate('/login');
             return;
@@ -669,21 +761,45 @@ const OpportunityDetails: React.FC = () => {
         }
 
         if (useStageRegistration) {
+            console.log("Using stage registration flow");
+            // ... (rest of the logic)
+
             const profile_data: Record<string, any> = {};
             const custom_answers: Record<string, any> = {};
+            const missingFields: string[] = [];
+
+            const isEmptyValue = (value: any) => {
+                if (value === null || value === undefined) return true;
+                if (typeof value === 'string') return value.trim() === '';
+                if (Array.isArray(value)) return value.length === 0;
+                return false;
+            };
 
             // Populate core fields
             if (formConfig?.fields_definitions) {
                 for (const fd of formConfig.fields_definitions) {
-                    profile_data[fd.id] = regAnswers[fd.id] || '';
+                    const value = regAnswers[fd.id] ?? fd.prefilled_value ?? '';
+                    profile_data[fd.id] = value;
+                    if (fd.required !== false && isEmptyValue(value)) {
+                        missingFields.push(String(fd.label || fd.id || 'Required field'));
+                    }
                 }
             }
 
             // Populate custom fields
             if (formConfig?.custom_questions) {
                 for (const q of formConfig.custom_questions) {
-                    custom_answers[q.id] = regAnswers[q.id] || '';
+                    const value = regAnswers[q.id] ?? q.prefilled_value ?? '';
+                    custom_answers[q.id] = value;
+                    if (q.required !== false && isEmptyValue(value)) {
+                        missingFields.push(String(q.label || q.id || 'Required question'));
+                    }
                 }
+            }
+
+            if (missingFields.length > 0) {
+                alert(`Please complete the required fields before submitting:\n\n${missingFields.slice(0, 10).join('\n')}${missingFields.length > 10 ? `\n...and ${missingFields.length - 10} more` : ''}`);
+                return;
             }
 
             setSubmitting(true);
@@ -944,7 +1060,44 @@ const OpportunityDetails: React.FC = () => {
                 window.open(extLink, '_blank', 'noopener,noreferrer');
                 return;
             }
-            if (regStatusStr === 'APPROVED') return;
+            if (regStatusStr === 'APPROVED' && !canEditSubmittedRegistration) {
+                // Navigate to the next stage automatically instead of just showing an alert
+                const stages = opportunity?.stages || [];
+                const currentIdx = stages.findIndex((st: any) => st === s || st.id === s.id);
+                const nextStage = currentIdx >= 0 ? stages[currentIdx + 1] : null;
+                if (nextStage) {
+                    const ntype = nextStage.type?.toUpperCase() || '';
+                    const nname = (nextStage.name || '').toUpperCase();
+                    if ((ntype === 'TEAM_FORMATION' || nname.includes('TEAM')) && oppPath) {
+                        navigate(`${oppPath}?tab=team`);
+                        return;
+                    } else if ((ntype === 'SUBMISSION' || nname.includes('SUBMISSION')) && oppPath) {
+                        navigate(`${oppPath}?tab=submissions`);
+                        return;
+                    } else if (ntype === 'QUIZ' || ntype === 'ASSESSMENT' || nname.includes('QUIZ') || nname.includes('ASSESSMENT')) {
+                        const quizId = nextStage.config?.quiz_id || nextStage.quiz_id || nextStage.config?.quizId || nextStage.quizId;
+                        if (quizId) {
+                            navigate(`/events/${encodeURIComponent(event_hub_id)}/quiz/${quizId}`);
+                        } else {
+                            navigate(`/events/${encodeURIComponent(event_hub_id)}`);
+                        }
+                        return;
+                    }
+                }
+                // Fallback: try to navigate to team tab if any team stage exists, else event hub
+                const hasTeamStage = stages.some((st: any) => {
+                    const t = st.type?.toUpperCase() || '';
+                    const n = (st.name || '').toUpperCase();
+                    return t === 'TEAM_FORMATION' || n.includes('TEAM');
+                });
+                if (hasTeamStage && oppPath) {
+                    navigate(`${oppPath}?tab=team`);
+                    return;
+                }
+                // Final fallback: navigate to event hub
+                navigate(`/events/${encodeURIComponent(event_hub_id)}`);
+                return;
+            }
             setShowRegistrationModal(true);
             return;
         }
@@ -1160,43 +1313,6 @@ const OpportunityDetails: React.FC = () => {
                                 Submissions
                             </button>
                         )}
-                        {!hideLeaderboard && (
-                            <button
-                                type="button"
-                                onClick={() => scrollToSection('leaderboard')}
-                                className={`pb-0.5 border-b-2 transition-colors ${
-                                    activeSection === 'leaderboard' ? 'text-purple-600 border-purple-600' : 'border-transparent hover:text-slate-800'
-                                }`}
-                            >
-                                Leaderboard
-                            </button>
-                        )}
-                        {hasDatesSection && (
-                            <button
-                                type="button"
-                                onClick={() => scrollToSection('dates')}
-                                className={`pb-0.5 border-b-2 transition-colors ${
-                                    activeSection === 'dates'
-                                        ? 'text-purple-600 border-purple-600'
-                                        : 'border-transparent hover:text-slate-800'
-                                }`}
-                            >
-                                Dates &amp; Deadlines
-                            </button>
-                        )}
-                        {hasPrizesSection ? (
-                            <button
-                                type="button"
-                                onClick={() => scrollToSection('prizes')}
-                                className={`pb-0.5 border-b-2 transition-colors ${
-                                    activeSection === 'prizes'
-                                        ? 'text-purple-600 border-purple-600'
-                                        : 'border-transparent hover:text-slate-800'
-                                }`}
-                            >
-                                Prizes
-                            </button>
-                        ) : null}
                         <button
                             type="button"
                             onClick={() => scrollToSection('reviews')}
@@ -1225,13 +1341,12 @@ const OpportunityDetails: React.FC = () => {
                             <ChevronLeft size={18} /> Back
                         </button>
                         {user ? (
-                            // Hide the Dashboard link when viewing the submissions tab — keep only Back
                             activeTab !== 'submissions' ? (
                                 <Link
                                     to="/dashboard/learner"
-                                    className="text-sm font-bold text-slate-600 hover:text-purple-600"
+                                    className="hidden sm:inline-flex items-center gap-1 text-sm font-bold text-slate-500 hover:text-purple-600"
                                 >
-                                    Dashboard
+                                    Dashboard <ChevronRight size={18} />
                                 </Link>
                             ) : null
                         ) : (
@@ -2649,8 +2764,12 @@ const OpportunityDetails: React.FC = () => {
                                                 </button>
                                             );
                                         case 'registered':
-                                            return (
-                                                <button type="button" disabled className="w-full py-3.5 bg-emerald-500 text-white rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2">
+                                            return canEditSubmittedRegistration ? (
+                                                <button type="button" onClick={() => setShowRegistrationModal(true)} className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2 transition-all cursor-pointer">
+                                                    <CheckCircle2 size={20} /> Update Registration
+                                                </button>
+                                            ) : (
+                                                <button type="button" disabled className="w-full py-3.5 bg-emerald-500 text-white rounded-full text-base font-bold tracking-wide shadow-md flex justify-center items-center gap-2 opacity-80 cursor-not-allowed">
                                                     <CheckCircle2 size={20} /> {regCTA.label}
                                                 </button>
                                             );
@@ -2723,8 +2842,11 @@ const OpportunityDetails: React.FC = () => {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        onClick={() => setShowRegistrationModal(false)}
+                        onClick={(e) => {
+                            console.log("Backdrop clicked");
+                        }}
                     >
+                        {console.log("Registration modal rendering...")}
                         <motion.div
                             className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
                             initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -2735,7 +2857,7 @@ const OpportunityDetails: React.FC = () => {
                             <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-100">
                                 <div>
                                     <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                                        Decoupled Event Onboarding
+                                        {submitted && canEditSubmittedRegistration ? 'Update Registration' : 'Decoupled Event Onboarding'}
                                     </h2>
                                     <p className="text-xs text-slate-500 mt-1">{opportunity?.title}</p>
                                 </div>
@@ -2747,7 +2869,7 @@ const OpportunityDetails: React.FC = () => {
                                 </button>
                             </div>
 
-                            {submitted ? (
+                            {submitted && !canEditSubmittedRegistration ? (
                                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
                                     <CheckCircle2 size={48} className="text-emerald-500 mb-4" />
                                     <h3 className="text-lg font-black text-slate-900">Registration Submitted!</h3>
@@ -2771,7 +2893,10 @@ const OpportunityDetails: React.FC = () => {
                                         )}
 
                                     <button
-                                        onClick={() => { setShowRegistrationModal(false); navigate(`/opportunities/${id}`); }}
+                                        onClick={() => {
+                                            setShowRegistrationModal(false);
+                                            scrollToSection('details');
+                                        }}
                                         className="mt-6 px-6 py-3 bg-[#6C3BFF] text-white rounded-xl font-black text-xs uppercase tracking-wider"
                                     >
                                         Go to Details
@@ -2779,39 +2904,47 @@ const OpportunityDetails: React.FC = () => {
                                 </div>
                             ) : (
                                 (() => {
-                                    const isProfessional = regAnswers['profile_type'] === 'Working Professional';
-
-                                    let identityFields = (formConfig?.fields_definitions || []).filter((fd: any) => fd.category === 'Identity');
-                                    let educationFields = (formConfig?.fields_definitions || []).filter((fd: any) => fd.category === 'Education');
-                                    const professionalFields = (formConfig?.fields_definitions || []).filter((fd: any) => fd.category === 'Professional');
+                                    // Simplify registration UI: render one admin-driven step
                                     const customQuestionsList = formConfig?.custom_questions || [];
+                                    const allAdminFields = [ ...(formConfig?.fields_definitions || []), ...customQuestionsList ];
 
-                                    if (isProfessional) {
-                                        // Move 'college' field (which acts as company name) from Education to Identity, and rename it
-                                        const collegeField = educationFields.find((fd: any) => fd.id === 'college');
-                                        if (collegeField) {
-                                            const updatedCollege = { 
-                                                ...collegeField, 
-                                                label: 'Current Company / Employer',
-                                                placeholder: 'e.g. Google, Stripe, Microsoft'
-                                            };
-                                            identityFields = [...identityFields, updatedCollege];
-                                        }
-                                        educationFields = educationFields.filter((fd: any) => fd.id !== 'college');
-                                    }
+                                    // Ensure common identity fields appear first: Full Name, Email, Phone
+                                    const fieldPriority = [
+                                        /full\s*name/i,
+                                        /^name$/i,
+                                        /email/i,
+                                        /phone/i,
+                                        /mobile/i,
+                                        /location/i,
+                                        /date\s*of\s*birth/i,
+                                        /\bdob\b/i,
+                                        /gender/i,
+                                        /skills?/i,
+                                        /college/i,
+                                        /degree/i,
+                                        /branch|department/i,
+                                        /graduation\s*year/i,
+                                        /cgpa/i,
+                                    ];
 
-                                    const activeSteps = [];
-                                    if (identityFields.length > 0) activeSteps.push({ id: 'identity', title: 'Identity', fields: identityFields, type: 'core' });
-                                    if (educationFields.length > 0 && !isProfessional) activeSteps.push({ id: 'education', title: 'Education', fields: educationFields, type: 'core' });
-                                    if (professionalFields.length > 0) activeSteps.push({ id: 'professional', title: 'Professional', fields: professionalFields, type: 'core' });
-                                    if (customQuestionsList.length > 0) activeSteps.push({ id: 'custom', title: 'Questions', fields: customQuestionsList, type: 'custom' });
-                                    
+                                    const orderedFields = [...allAdminFields]
+                                        .map((field: any, index: number) => ({ field, index }))
+                                        .sort((a, b) => {
+                                            const aText = `${String(a.field.id || '')} ${String(a.field.label || '')}`;
+                                            const bText = `${String(b.field.id || '')} ${String(b.field.label || '')}`;
+                                            const aRank = fieldPriority.findIndex((rx) => rx.test(aText));
+                                            const bRank = fieldPriority.findIndex((rx) => rx.test(bText));
+                                            const rankA = aRank === -1 ? 99 : aRank;
+                                            const rankB = bRank === -1 ? 99 : bRank;
+                                            if (rankA !== rankB) return rankA - rankB;
+                                            return a.index - b.index;
+                                        })
+                                        .map((item) => item.field);
+
                                     const pType = String(opportunity?.participationType || opportunity?.participation_type || 'individual').toLowerCase();
                                     const allowsTeams = pType === 'team' || pType === 'both';
-                                    
-                                    if (allowsTeams) {
-                                        activeSteps.push({ id: 'team_details', title: 'Team', fields: [], type: 'team' });
-                                    }
+
+                                    const activeSteps = orderedFields.length > 0 ? [{ id: 'registration', title: 'Registration', fields: orderedFields, type: 'core' }] : (allowsTeams ? [{ id: 'team_details', title: 'Team', fields: [], type: 'team' }] : []);
 
                                     if (activeSteps.length === 0) {
                                         return (
@@ -2832,7 +2965,7 @@ const OpportunityDetails: React.FC = () => {
                                                         disabled={submitting}
                                                         className="px-6 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider"
                                                     >
-                                                        {submitting ? <Loader2 size={14} className="animate-spin" /> : 'Register'}
+                                                        {submitting ? <Loader2 size={14} className="animate-spin" /> : submitted ? 'Update Registration' : 'Register'}
                                                     </button>
                                                 </div>
                                             </form>
@@ -2921,32 +3054,7 @@ const OpportunityDetails: React.FC = () => {
                                                                     )}
                                                                 </label>
 
-                                                                 {field.id === 'profile_type' ? (
-                                                                     <div className="flex gap-4 mt-1.5">
-                                                                         {(['Student', 'Working Professional', 'Fresher'] as const).map((typeOpt) => {
-                                                                            const isSelected = regAnswers[field.id] === typeOpt || (!regAnswers[field.id] && typeOpt === 'Student');
-                                                                            return (
-                                                                                <button
-                                                                                    key={typeOpt}
-                                                                                    type="button"
-                                                                                    onClick={() => {
-                                                                                        setRegAnswers(prev => ({ 
-                                                                                            ...prev, 
-                                                                                            [field.id]: typeOpt 
-                                                                                        }));
-                                                                                    }}
-                                                                                    className={`flex-1 py-3 px-4 rounded-xl border text-xs font-bold text-center transition-all duration-200 ${
-                                                                                        isSelected
-                                                                                            ? 'bg-[#6C3BFF]/5 text-[#6C3BFF] border-[#6C3BFF] ring-2 ring-purple-100 shadow-sm'
-                                                                                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-600 shadow-sm'
-                                                                                    }`}
-                                                                                >
-                                                                                    {typeOpt}
-                                                                                </button>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                ) : field.type === 'file' ? (
+                                                                {field.type === 'file' ? (
                                                                     <div className="space-y-2">
                                                                         <input
                                                                             type="file"
@@ -3038,7 +3146,7 @@ const OpportunityDetails: React.FC = () => {
                                                                     </div>
                                                                 ) : field.type === 'textarea' || field.type === 'paragraph' ? (
                                                                     <textarea
-                                                                        value={regAnswers[field.id] || ''}
+                                                                        value={regAnswers[field.id] ?? field.prefilled_value ?? ''}
                                                                         onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.value }))}
                                                                         readOnly={isEmail}
                                                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm resize-none min-h-[90px] focus:border-[#6C3BFF] transition-colors"
@@ -3055,7 +3163,7 @@ const OpportunityDetails: React.FC = () => {
                                                                     </label>
                                                                 ) : field.type === 'select' || field.type === 'dropdown' ? (
                                                                     <select
-                                                                        value={regAnswers[field.id] || ''}
+                                                                        value={regAnswers[field.id] ?? field.prefilled_value ?? ''}
                                                                         onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.value }))}
                                                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm focus:border-[#6C3BFF] transition-colors"
                                                                     >
@@ -3067,10 +3175,10 @@ const OpportunityDetails: React.FC = () => {
                                                                 ) : (
                                                                     <input
                                                                         type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                                                                        value={regAnswers[field.id] || ''}
+                                                                        value={regAnswers[field.id] ?? field.prefilled_value ?? ''}
                                                                         onChange={e => setRegAnswers(p => ({ ...p, [field.id]: e.target.value }))}
                                                                         readOnly={isEmail}
-                                                                        placeholder={field.placeholder || (field.id === 'college' ? (isProfessional ? 'e.g. Google, Stripe' : 'e.g. Stanford University') : '')}
+                                                                        placeholder={field.placeholder || (field.id === 'college' ? ((user?.role === 'professional' || user?.isProfessional) ? 'e.g. Google, Stripe' : 'e.g. Stanford University') : '')}
                                                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none text-sm focus:border-[#6C3BFF] transition-colors"
                                                                     />
                                                                 )}
@@ -3121,7 +3229,7 @@ const OpportunityDetails: React.FC = () => {
                                                             className="px-6 py-2.5 bg-[#6C3BFF] hover:bg-purple-700 disabled:opacity-40 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2"
                                                         >
                                                             {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
-                                                            {submitting ? 'Submitting...' : 'Submit Registration'}
+                                                            {submitting ? 'Submitting...' : submitted ? 'Update Registration' : 'Submit Registration'}
                                                         </button>
                                                     )}
                                                 </div>

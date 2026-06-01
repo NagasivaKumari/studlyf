@@ -119,7 +119,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
     const labelClasses = "block text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1.5 ml-1";
 
     return (
-        <AuthCard title="Welcome Back" maxWidth="max-w-[450px]" transparent={transparent}>
+        <AuthCard title="Welcome Back" maxWidth="max-w-[450px]" transparent={transparent} compact={true}>
             <div className="relative overflow-visible">
                 <AnimatePresence>
                     {showTerms && <TermsOverlay onClose={() => setShowTerms(false)} />}
@@ -153,18 +153,18 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToSignup, transparent = f
                 )}
 
                 <div>
-                    <label className={labelClasses}>Email Address</label>
-                    <input
-                        type="email"
-                        name="email"
-                        autoComplete="email"
-                        placeholder={selectedRole === 'institution' ? "admin@institution.edu" : "shiva@gmail.com"}
-                        className={inputClasses}
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                    />
-                </div>
+                     <label className={labelClasses}>Email Address</label>
+                     <input
+                         type="email"
+                         name="email"
+                         autoComplete="email"
+                         placeholder={selectedRole === 'institution' ? "admin@institution.edu" : "shiva@gmail.com"}
+                         className={inputClasses}
+                         value={email}
+                         onChange={(e) => setEmail(e.target.value)}
+                         required
+                     />
+                 </div>
 
                 <div>
                     <div className="flex justify-between items-center mb-1.5">

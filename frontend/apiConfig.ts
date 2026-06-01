@@ -3,17 +3,8 @@
 const viteEnv = import.meta.env as Record<string, string | undefined>;
 
 function resolveDefaultApiBaseUrl(): string {
-    if (typeof window === 'undefined') {
-        return 'http://localhost:8000';
-    }
-
-    const { protocol, hostname } = window.location;
-
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || /^192\.168\.\d+\.\d+$/.test(hostname)) {
-        return `${protocol}//${hostname}:8000`;
-    }
-
-    return 'http://localhost:8000';
+    // Return empty string for local dev so requests like /api/... use the Vite proxy
+    return ''; 
 }
 
 let resolvedUrl = viteEnv.VITE_API_BASE_URL ??

@@ -26,14 +26,6 @@ export default function PlanConfirmationModal({ isOpen, onClose, onConfirm, onCa
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
-        {/* Demo Mode Banner */}
-        <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-2">
-          <AlertTriangle size={16} className="text-amber-600 shrink-0" />
-          <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">
-            Demo Mode — Payment flow is simulated for development purposes
-          </span>
-        </div>
-
         {/* Header */}
         <div className="px-6 pt-6 pb-2 flex items-center justify-between">
           <h2 className="text-lg font-black text-slate-800">Confirm Plan Change</h2>

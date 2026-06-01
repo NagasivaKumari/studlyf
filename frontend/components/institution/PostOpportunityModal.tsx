@@ -26,7 +26,7 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         title: '',
-        organisation: 'Loading...', 
+        organisation: '', 
         opportunityType: 'Hackathons & Coding Challenges',
         opportunitySubType: 'Online Coding Challenge',
         festivalName: '',
@@ -35,8 +35,8 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
         description: '',
         skills: '',
         participationType: 'both', 
-        minTeamSize: 1,
-        maxTeamSize: 5,
+        minTeamSize: undefined as number | undefined,
+        maxTeamSize: undefined as number | undefined,
         opportunityMode: 'online', 
         venueAddress: '',
         city: '',
@@ -181,8 +181,8 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                     description: '',
                     skills: '',
                     participationType: 'both', 
-                    minTeamSize: 1,
-                    maxTeamSize: 5,
+                    minTeamSize: undefined as number | undefined,
+                    maxTeamSize: undefined as number | undefined,
                     opportunityMode: 'online', 
                     venueAddress: '',
                     city: '',
@@ -318,8 +318,8 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                         description: data.description || '',
                         skills: data.skills || '',
                         participationType: data.participationType || 'both',
-                        minTeamSize: data.minTeamSize || 1,
-                        maxTeamSize: data.maxTeamSize || 5,
+                        minTeamSize: data.minTeamSize ?? undefined,
+                        maxTeamSize: data.maxTeamSize ?? undefined,
                         opportunityMode: data.opportunityMode || 'online',
                         venueAddress: data.venueAddress || '',
                         city: data.city || '',
@@ -442,6 +442,10 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
             setStep(step + 1);
         } else {
             // Validate team size
+            if (formData.minTeamSize == null || formData.maxTeamSize == null) {
+                alert('Please set both minimum and maximum team size for team-based events');
+                return;
+            }
             if (Number(formData.minTeamSize) > Number(formData.maxTeamSize)) {
                 alert('Minimum team size cannot be greater than maximum team size');
                 return;
@@ -568,6 +572,10 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
             return;
         }
         // Validate team size before saving
+        if (formData.minTeamSize == null || formData.maxTeamSize == null) {
+            alert('Please set both minimum and maximum team size for team-based events');
+            return;
+        }
         if (Number(formData.minTeamSize) > Number(formData.maxTeamSize)) {
             alert('Minimum team size cannot be greater than maximum team size');
             return;
@@ -1482,8 +1490,8 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-300">Min:</span>
                                                                         <input 
                                                                             type="number" 
-                                                                            value={formData.minTeamSize}
-                                                                            onChange={(e) => setFormData({...formData, minTeamSize: parseInt(e.target.value)})}
+                                                                            value={formData.minTeamSize ?? ''}
+                                                                            onChange={(e) => setFormData({...formData, minTeamSize: e.target.value ? parseInt(e.target.value, 10) : undefined})}
                                                                             className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#6C3BFF] font-bold text-sm"
                                                                         />
                                                                     </div>
@@ -1491,8 +1499,8 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
                                                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-300">Max:</span>
                                                                         <input 
                                                                             type="number" 
-                                                                            value={formData.maxTeamSize}
-                                                                            onChange={(e) => setFormData({...formData, maxTeamSize: parseInt(e.target.value)})}
+                                                                            value={formData.maxTeamSize ?? ''}
+                                                                            onChange={(e) => setFormData({...formData, maxTeamSize: e.target.value ? parseInt(e.target.value, 10) : undefined})}
                                                                             className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#6C3BFF] font-bold text-sm"
                                                                         />
                                                                     </div>

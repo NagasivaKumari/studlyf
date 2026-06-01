@@ -5,6 +5,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Building2, Info, ChevronRight, Zap, Clock } from 'lucide-react';
 import Sidebar from '../../components/institution/Sidebar';
+
+import InviteAudit from './InviteAudit';
 import InstitutionNavbar from '../../components/institution/InstitutionNavbar';
 import StatsSection from '../../components/institution/StatsSection';
 import RecentListings from '../../components/institution/RecentListings';
@@ -53,6 +55,8 @@ const InstitutionDashboard: React.FC = () => {
             setActiveTab('judges');
         } else if (path.includes('/events')) {
             setActiveTab('events');
+        } else if (path.includes('/invite-audit')) {
+            setActiveTab('invite-audit');
         } else if (path.includes('/opportunities')) {
             setActiveTab('opportunities');
         } else if (path.includes('/participants')) {
@@ -94,7 +98,7 @@ const InstitutionDashboard: React.FC = () => {
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
     const { user, role } = useAuth();
-    const institutionId = institutionIdFromUser(user);
+    const institutionId = (user as any)?.institution_id || user?.user_id || 'default_inst';
 
     React.useEffect(() => {
         if (user && !hasInstitutionScope(user)) {
@@ -224,6 +228,8 @@ const InstitutionDashboard: React.FC = () => {
                 );
             case 'analytics':
                 return <ReportsPage institutionId={institutionId} />;
+            case 'invite-audit':
+                return <InviteAudit />;
             case 'downloads':
                 return <DownloadsPage institutionId={institutionId} onNavigate={setActiveTab} />;
             case 'certificates':
@@ -244,7 +250,7 @@ const InstitutionDashboard: React.FC = () => {
                                     Manage your events, opportunities, and participants <Info size={14} className="text-slate-300" />
                                 </p>
                             </div>
-                            <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2">
                                 <div id="team-manage-icon" className="px-2.5 py-1 bg-slate-100 rounded-full flex items-center justify-center text-[10px] font-black text-slate-500">KN</div>
                                 <button 
                                     onClick={() => setIsCreditModalOpen(true)}
@@ -252,6 +258,7 @@ const InstitutionDashboard: React.FC = () => {
                                 >
                                     Credit Balance
                                 </button>
+
                                 <button 
                                     onClick={() => setIsTourOpen(true)}
                                     className="w-9 h-9 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-[#6C3BFF] transition-all shadow-sm"

@@ -4,6 +4,7 @@ import inspect
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Header, Request, status, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 import pdfplumber
@@ -33,6 +34,20 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 load_dotenv()
 
+# ── Sentry Error Tracking ──
+sentry_dsn = os.getenv("SENTRY_DSN")
+if sentry_dsn:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        environment=os.getenv("ENVIRONMENT", "development"),
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
+    print("Sentry initialized")
+
+from routes.skill_assessment_controller import router as skill_assessment_router
+app.include_router(skill_assessment_router)
 # Touch file to trigger uvicorn reload when env changes during local dev
 # reload trigger
 
@@ -92,6 +107,8 @@ if os.getenv("ENVIRONMENT", "development").lower() == "development":
         "http://127.0.0.1:3003",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
         "http://localhost:8000"
     ])
 
@@ -100,7 +117,7 @@ origins = [origin for origin in origins if origin]
 # Remove duplicates
 origins = list(set(origins))
 
-origin_regex = r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):(3000|3001|3002|3003|5173|8000)$"
+origin_regex = r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):(3000|3001|3002|3003|5173|4173|8000)$"
 
 app.add_middleware(
     CORSMiddleware,
@@ -115,7 +132,62 @@ app.add_middleware(
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+    # CSP headers (nonce-based for inline scripts)
+    if os.getenv("ENVIRONMENT", "development") == "production":
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob: https:; "
+            "connect-src 'self' https:; "
+            "frame-src 'self' https:; "
+            "object-src 'none'"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Cache-control for static assets
+    if any(request.url.path.startswith(p) for p in ("/static/", "/uploads/")):
+        response.headers["Cache-Control"] = "public, max-age=86400, immutable"
+    elif request.method == "GET":
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
+
+# ── Cloudflare Real IP Middleware ──
+@app.middleware("http")
+async def cloudflare_real_ip(request: Request, call_next):
+    cf_ip = request.headers.get("CF-Connecting-IP")
+    if cf_ip:
+        request.scope["client"] = (cf_ip, 0)
+    return await call_next(request)
+
+# ── Rate Limiting Middleware ──
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    # Skip rate limiting for health checks, static files, and uploads
+    skip_paths = ("/health", "/static/", "/uploads/", "/docs", "/redoc", "/openapi.json")
+    if request.method in ("GET", "HEAD", "OPTIONS") or request.url.path.startswith(skip_paths):
+        return await call_next(request)
+    try:
+        from rate_limiter import check_rate_limit
+        if request.url.path.startswith("/api/auth/login"):
+            check_rate_limit(request, "login", "auth")
+        elif request.url.path.startswith("/api/auth/"):
+            check_rate_limit(request, "register", "auth")
+        elif request.url.path.startswith("/api/upload"):
+            check_rate_limit(request, "upload")
+        elif request.url.path.startswith("/api/search"):
+            check_rate_limit(request, "search")
+        else:
+            check_rate_limit(request, "general")
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Fail open if rate limiter errors
+    return await call_next(request)
 
 
 @app.on_event("startup")
@@ -216,10 +288,17 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    # Simple health check without exposing database connection details
+    """Health check endpoint with optional database connectivity test."""
+    try:
+        await db.client.admin.command("ping")
+        db_status = "connected"
+    except Exception:
+        db_status = "unavailable"
     return {
-        "status": "ok",
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "database": db_status,
+        "allowed_origins": origins
     }
 
 
@@ -736,12 +815,13 @@ def fix_progress(prog, default_status="locked"):
     # Merge defaults with actual data
     return {**defaults, **fix_id(prog)}
 
-from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes
+from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes, stage_endpoints
 from routes import auth
 from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, test_sync_routes, direct_sync_routes, hackathon_submission_routes
 from routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
 from routes import student_features_routes
 from routes import event_certificate_routes, registration_flow_routes
+
 import hackathon_integration_routes
 import participant_card_routes
 from rate_limiter import rate_limit, check_rate_limit
@@ -785,6 +865,8 @@ async def startup_db_client():
 async def shutdown_db_client():
     from db import db
     await db.disconnect()
+    from services.redis_pubsub import close as close_redis
+    await close_redis()
 
 # --- Activate Rate Limiting ---
 app.state.limiter = limiter
@@ -818,6 +900,8 @@ app.include_router(participant_card_routes.router)
 app.include_router(event_certificate_routes.router)
 app.include_router(event_certificate_routes.verification_router)
 app.include_router(registration_flow_routes.router)
+app.include_router(stage_endpoints.router)
+
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -826,6 +910,8 @@ async def get_user_badges(user_id: str):
     if not user_profile:
         return {"badges": []}
     return {"badges": user_profile.get("badges", [])}
+
+
 
 
 
@@ -1131,21 +1217,6 @@ async def generate_assessment(req: AssessmentRequest):
     except Exception as e:
         print(f"Error generating assessment: {e}")
         raise HTTPException(status_code=500, detail="AI generation failed. Using local fallback.")
-
-@app.get("/health")
-async def health_check():
-    try:
-        await db.client.admin.command("ping")
-        db_status = "connected"
-    except Exception:
-        db_status = "error"
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "database": db_status,
-        "allowed_origins": origins
-    }
-
 
 # Get Groq API key from environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -3237,6 +3308,8 @@ def generate_next_interview_message(
     is_round_start: bool,
     is_skip: bool = False,
     api_key: Optional[str] = None,
+    recent_analysis: Optional[Dict[str, Any]] = None,
+    question_count: int = 0,
 ) -> Dict[str, Any]:
     round_type = current_round.get("round_type", "technical")
     persona = current_round.get("persona", fallback_persona(session["company"], round_type))
@@ -3808,7 +3881,7 @@ async def register_student(data: dict, x_admin_email: str = Header(...)):
         if existing:
             raise HTTPException(status_code=400, detail=f"User with email {email} already exists")
         
-        from auth import get_password_hash
+        from auth_utils import get_password_hash
         import uuid
         temp_password = "Temp@123456"  # Forces password reset on first login
         hashed = get_password_hash(temp_password)
@@ -5976,6 +6049,13 @@ async def update_profile(user_id: str, data: dict = Body(...)):
                 {"$set": core_update}
             )
 
+        # 2b. Sync userType → profile_type on users_col for eligibility checks
+        if "userType" in data and data["userType"]:
+            await users_col.update_one(
+                {"user_id": user_id},
+                {"$set": {"profile_type": data["userType"]}}
+            )
+
         # 3. All extended profile data → learner_profiles collection
         profile_update = {
             "user_id": user_id,
@@ -6489,6 +6569,16 @@ async def login(credentials: UserLogin, request: Request):
             except Exception:
                 pass
 
+    # Fallback to learner_profiles.userType if profile_type not set on users_col
+    profile_type_login = user.get("profile_type", "")
+    if not profile_type_login:
+        try:
+            learner = await db["learner_profiles"].find_one({"user_id": user["user_id"]})
+            if learner and learner.get("userType"):
+                profile_type_login = learner["userType"]
+        except Exception:
+            pass
+
     access_token = create_access_token(
         data={"sub": user["email"], "user_id": user["user_id"], "role": user["role"]}
     )
@@ -6496,17 +6586,18 @@ async def login(credentials: UserLogin, request: Request):
         "access_token": access_token,
         "token_type": "bearer",
         "user": {
-            "email": user["email"],
-            "full_name": user.get("full_name"),
-            "role": user["role"],
-            "user_id": user["user_id"],
-            "institution_id": resolved_institution_id,
-            "institution_name": user.get("institution_name"),
-            "college_name": user.get("college_name"),
-            "graduation_year": user.get("graduation_year"),
-            "status": user.get("status"),
-            "last_login": login_time
-        }
+             "email": user["email"],
+             "full_name": user.get("full_name"),
+             "role": user["role"],
+             "user_id": user["user_id"],
+             "profile_type": profile_type_login,
+             "institution_id": resolved_institution_id,
+             "institution_name": user.get("institution_name"),
+             "college_name": user.get("college_name"),
+             "graduation_year": user.get("graduation_year"),
+             "status": user.get("status"),
+             "last_login": login_time
+         }
     }
 
 
@@ -6555,6 +6646,12 @@ async def get_me(user_payload: dict = Depends(get_current_user)):
     user = await users_col.find_one({"user_id": user_payload["user_id"]})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    # Fallback to learner_profiles.userType if profile_type not set on users_col
+    profile_type = user.get("profile_type", "")
+    if not profile_type:
+        learner = await db["learner_profiles"].find_one({"user_id": user["user_id"]})
+        if learner and learner.get("userType"):
+            profile_type = learner["userType"]
     return {
         "email": user["email"],
         "full_name": user.get("full_name"),
@@ -6565,7 +6662,8 @@ async def get_me(user_payload: dict = Depends(get_current_user)):
         "college_name": user.get("college_name"),
         "graduation_year": user.get("graduation_year"),
         "status": user.get("status"),
-        "profilePhoto": user.get("profilePhoto")
+        "profilePhoto": user.get("profilePhoto"),
+        "profile_type": profile_type
     }
 
 class UserRoleUpdate(BaseModel):
@@ -6634,9 +6732,13 @@ async def get_global_leaderboard():
         return {"rankings": rankings}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/institution/dashboard/stats")
+async def get_institution_stats(institution_id: str):
     """
     DYNAMIC STATS: Aggregates real-time data from MongoDB for the dashboard.
     """
+    inst_id = institution_id
     try:
         # 1. Total Events for this institution
         total_events = await events_col.count_documents({"institution_id": inst_id})

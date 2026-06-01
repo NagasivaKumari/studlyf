@@ -29,7 +29,9 @@ async def send_new_opportunity_email(opportunity: dict, event: dict = None) -> d
         event_data = event or {}
         org_name = opportunity.get("organization") or event_data.get("organisation") or "Unknown Organization"
         event_mode = opportunity.get("location") or event_data.get("opportunityMode") or "Online"
-        prize_pool = opportunity.get("prizePool") or event_data.get("prize_pool") or opportunity.get("prize_pool") or "Not specified"
+        prize_pool = opportunity.get("prizePool") or opportunity.get("prize_pool") or event_data.get("prize_pool") or event_data.get("prizePool")
+        if not prize_pool or str(prize_pool).strip() == '':
+            prize_pool = "Not specified"
         eligibility = opportunity.get("candidateTypes") or event_data.get("candidateTypes") or []
         eligibility_str = ", ".join(eligibility) if isinstance(eligibility, list) else (str(eligibility) or "Open to all")
         short_desc = opportunity.get("description") or event_data.get("description") or ""
@@ -54,7 +56,7 @@ async def send_new_opportunity_email(opportunity: dict, event: dict = None) -> d
 
         email_subject = f"New Opportunity: {opp_title} by {org_name}"
         frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
-        event_link = f"{frontend_url}/opportunities/{opp_id}"
+        event_link = f"{frontend_url}/#/opportunities/{opp_id}"
 
         # Resolve template from DB (event-level > institution-level > default)
         template = await get_active_template(opp_id, institution_id, "new_opportunity")
@@ -175,7 +177,7 @@ async def send_deadline_reminder_emails(days_until: int = 3) -> dict:
                             event_title=opp_title,
                             organization_name=opp_org,
                             registration_deadline=reminder_date,
-                            event_link=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/opportunities/{opp_id}",
+                            event_link=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/#/opportunities/{opp_id}",
                         )
                         sent_count += 1
                         
@@ -258,7 +260,7 @@ async def send_daily_digest_email() -> dict:
                         <p style="margin: 0 0 8px 0; color: #64748b; font-size: 13px;">{opp.get('organization') or ''}</p>
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="color: #64748b; font-size: 12px;">📅 {deadline_str} <span style="color: #f59e0b; font-weight: 600;">({days_left}d left)</span></span>
-                            <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/opportunities/{str(opp.get('_id'))}" style="background: #667eea; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: 600;">View</a>
+                            <a href="{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/#/opportunities/{str(opp.get('_id'))}" style="background: #667eea; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: 600;">View</a>
                         </div>
                     </div>
                     """

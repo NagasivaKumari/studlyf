@@ -134,8 +134,16 @@ async def submit_stage_data(
                 team = await teams_col.find_one({"_id": ObjectId(team_id)})
                 members = team.get("members", []) if team else []
                 # event-level team size constraints
-                min_ts = int(event.get("minTeamSize") or event.get("min_team_size") or 0)
-                max_ts = int(event.get("maxTeamSize") or event.get("max_team_size") or 0)
+                min_raw = event.get("minTeamSize") if event else None
+                if min_raw is None and event:
+                    min_raw = event.get("min_team_size")
+                max_raw = event.get("maxTeamSize") if event else None
+                if max_raw is None and event:
+                    max_raw = event.get("max_team_size")
+                if min_raw is None or max_raw is None:
+                    return {"error": "Team size is not configured for this event", "status": "missing_team_size_config"}
+                min_ts = int(min_raw)
+                max_ts = int(max_raw)
                 count = len(members) if isinstance(members, list) else 0
                 if min_ts and count < min_ts:
                     return {"error": f"This team does not meet the minimum team size of {min_ts}", "status": "team_size_invalid"}
@@ -195,28 +203,64 @@ async def submit_stage_data(
         else:
             query["user_id"] = str(user_id)
         
-        submission_doc = {
-            "event_id": str(event_id),
-            "institution_id": str(event.get("institution_id", "")),
-            "stage_id": str(stage_id),
-            "stage_name": target_stage.get("name", ""),
-            "stage_type": target_stage.get("type", "SUBMISSION"),
-            "submission_kind": "stage",
-            "user_id": str(user_id),
-            "team_id": str(team_id) if team_id else None,
-            "data": form_data,
-            "submitted_at": datetime.now(timezone.utc),
-            "status": "submitted",
-            "updated_at": datetime.now(timezone.utc),
-        }
+        # Check for existing submission to track changes
+        existing_sub = await submission_data_col.find_one(query)
+        now = datetime.now(timezone.utc)
         
-        # Upsert submission (update if exists, insert if new)
-        result = await submission_data_col.update_one(
-            query,
-            {"$set": submission_doc},
-            upsert=True
-        )
-        
+        if existing_sub:
+            # Prepare tracking data
+            old_data = existing_sub.get("data", {})
+            change_log = existing_sub.get("change_log", [])
+            edit_count = existing_sub.get("edit_count", 0) + 1
+            
+            # Identify changes
+            for field, new_value in form_data.items():
+                if new_value != old_data.get(field):
+                    change_log.append({
+                        "timestamp": now,
+                        "field": field,
+                        "old_value": old_data.get(field),
+                        "new_value": new_value,
+                        "action": "edit"
+                    })
+            
+            # Prepare update document
+            update_doc = {
+                "$set": {
+                    "data": form_data,
+                    "last_updated_at": now,
+                    "edit_count": edit_count,
+                    "change_log": change_log,
+                    "status": "submitted"
+                }
+            }
+            
+            result = await submission_data_col.update_one(query, update_doc)
+            submission_id = str(existing_sub.get("_id"))
+            
+        else:
+            # New submission
+            submission_doc = {
+                "event_id": str(event_id),
+                "institution_id": str(event.get("institution_id", "")),
+                "stage_id": str(stage_id),
+                "stage_name": target_stage.get("name", ""),
+                "stage_type": target_stage.get("type", "SUBMISSION"),
+                "submission_kind": "stage",
+                "user_id": str(user_id),
+                "team_id": str(team_id) if team_id else None,
+                "data": form_data,
+                "submitted_at": now,
+                "first_submitted_at": now,
+                "last_updated_at": now,
+                "status": "submitted",
+                "edit_count": 0,
+                "change_log": []
+            }
+            
+            result = await submission_data_col.insert_one(submission_doc)
+            submission_id = str(result.inserted_id)
+            
         # Update participant's last submission
         await participants_col.update_one(
             {"_id": participant["_id"]},

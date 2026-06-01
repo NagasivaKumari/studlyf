@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Mail, Lock, User, Building2, CheckCircle2, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, Phone, Building2, CheckCircle2, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
 import AuthCard from './AuthCard';
 import TermsOverlay from './TermsOverlay';
@@ -20,6 +20,7 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
+    const [phone, setPhone] = useState('');
     const [otp, setOtp] = useState('');
     const [institutionName, setInstitutionName] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -107,12 +108,13 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    email,
-                    password,
-                    full_name: fullName,
-                    role: selectedRole,
-                    institution_name: isInstitution ? institutionName : undefined,
-                }),
+                     email,
+                     password,
+                     full_name: fullName,
+                     phone,
+                     role: selectedRole,
+                     institution_name: isInstitution ? institutionName : undefined,
+                 }),
             });
 
             if (signupRes.ok) {
@@ -228,7 +230,22 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
                                     </div>
                                 </div>
 
-                                <div className={isInstitution ? 'md:col-span-2' : ''}>
+                                 <div>
+                                     <label className={labelClasses}>Phone Number</label>
+                                     <div className="relative">
+                                         <Phone className="absolute left-3 top-3.5 text-gray-300" size={18} />
+                                         <input
+                                             type="tel"
+                                             placeholder="+91 98765 43210"
+                                             className={`${inputBase} pl-10`}
+                                             value={phone}
+                                             onChange={(e) => setPhone(e.target.value)}
+                                             required
+                                         />
+                                     </div>
+                                 </div>
+
+                                 <div className={isInstitution ? 'md:col-span-2' : ''}>
                                     <label className={labelClasses}>Secure Password</label>
                                     <div className="relative">
                                         <Lock className="absolute left-3 top-3.5 text-gray-300" size={18} />
@@ -330,7 +347,7 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
             </AnimatePresence>
 
             {step < 3 && (
-                <div className="mt-8 text-center pt-6 border-t border-gray-50">
+                 <div className="mt-1 pt-1 text-center">
                     <p className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">
                         Already have an account?{' '}
                         <button

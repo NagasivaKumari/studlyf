@@ -21,6 +21,25 @@ from services.email_service import send_notification_email
 
 router = APIRouter(prefix="/api/opportunities", tags=["Opportunities"])
 
+
+def _strict_team_size_bounds(ev: dict) -> Optional[tuple[int, int]]:
+    min_raw = ev.get("min_team_size") if ev else None
+    if min_raw is None and ev:
+        min_raw = ev.get("minTeamSize")
+    max_raw = ev.get("max_team_size") if ev else None
+    if max_raw is None and ev:
+        max_raw = ev.get("maxTeamSize")
+    if min_raw is None or max_raw is None:
+        return None
+    try:
+        min_team = int(min_raw)
+        max_team = int(max_raw)
+    except Exception:
+        return None
+    if min_team < 1 or max_team < min_team:
+        return None
+    return min_team, max_team
+
 @router.post("/")
 async def post_opportunity(data: dict = Body(...), user: dict = Depends(get_auth_user)):
     """API to post a new opportunity."""
@@ -881,16 +900,25 @@ async def learner_submit_stage_data(
                 status_code=403,
                 detail="This event requires team participation. Please form or join a team before submitting."
             )
-    # Enforce team size requirement (applies for 'team' and 'both')
-    min_team = ev.get("min_team_size", ev.get("minTeamSize", 1))
-    if isinstance(min_team, int) and min_team > 1:
-        if p.get("team_id"):
-            from db import teams_col as _t_col
-            _team = await _t_col.find_one({"_id": ObjectId(p["team_id"])})
-            if _team and len(_team.get("members", [])) < min_team:
+    # Enforce team size requirement (strictly from event config; no defaults)
+    team_bounds = _strict_team_size_bounds(ev)
+    if team_bounds is None:
+        raise HTTPException(status_code=400, detail="Team size is not configured for this event. Ask the admin to set it before publishing.")
+    min_team, max_team = team_bounds
+    if p.get("team_id"):
+        from db import teams_col as _t_col
+        _team = await _t_col.find_one({"_id": ObjectId(p["team_id"])} )
+        if _team:
+            member_count = len(_team.get("members", []))
+            if member_count < min_team:
                 raise HTTPException(
                     status_code=403,
-                    detail=f"Your team has {len(_team.get('members', []))} member(s) but needs at least {min_team}."
+                    detail=f"Your team has {member_count} member(s) but needs at least {min_team}."
+                )
+            if member_count > max_team:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Your team has {member_count} member(s) but exceeds the maximum allowed size of {max_team}."
                 )
 
     # If in a team, ONLY team leader can submit
@@ -1058,22 +1086,29 @@ async def hackathon_project_submit(
                 status_code=403,
                 detail="This event requires team participation. Please form or join a team before submitting."
             )
-        min_team = ev.get("min_team_size", ev.get("minTeamSize", 1))
-        if isinstance(min_team, int) and min_team > 1:
-            if not p.get("team_id"):
+        team_bounds = _strict_team_size_bounds(ev)
+        if team_bounds is None:
+            raise HTTPException(status_code=400, detail="Team size is not configured for this event. Ask the admin to set it before publishing.")
+        min_team, max_team = team_bounds
+        if not p.get("team_id"):
+            raise HTTPException(
+                status_code=403,
+                detail=f"This event requires a team of at least {min_team} members. Please form or join a team first."
+            )
+        from db import teams_col as _teams_col
+        team = await _teams_col.find_one({"_id": ObjectId(p["team_id"])} )
+        if team:
+            member_count = len(team.get("members", []))
+            if member_count < min_team:
                 raise HTTPException(
                     status_code=403,
-                    detail=f"This event requires a team of at least {min_team} members. Please form or join a team first."
+                    detail=f"Your team has {member_count} member(s) but this event requires at least {min_team}. Invite more members before submitting."
                 )
-            from db import teams_col as _teams_col
-            team = await _teams_col.find_one({"_id": ObjectId(p["team_id"])})
-            if team:
-                member_count = len(team.get("members", []))
-                if member_count < min_team:
-                    raise HTTPException(
-                        status_code=403,
-                        detail=f"Your team has {member_count} member(s) but this event requires at least {min_team}. Invite more members before submitting."
-                    )
+            if member_count > max_team:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Your team has {member_count} member(s) but this event allows at most {max_team}."
+                )
 
     # Build submission doc — lightweight, links only
     from db import submissions_col

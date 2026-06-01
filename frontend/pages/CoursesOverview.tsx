@@ -383,8 +383,17 @@ const CoursesOverview: React.FC = () => {
   }, [activeCategory, courses, searchQuery]);
 
   if (loading) return (
-    <div className="h-screen flex items-center justify-center bg-[#F8F9FC]">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#6C2BFF]"></div>
+    <div className="min-h-screen bg-[#F8F9FC] px-6 py-32">
+      <div className="max-w-7xl mx-auto rounded-[2.5rem] bg-white border border-gray-100 shadow-sm p-8 sm:p-10">
+        <div className="flex items-center gap-3 mb-6 text-[#6C2BFF] font-black text-[10px] uppercase tracking-[0.3em]">
+          <div className="w-4 h-4 rounded-full border-2 border-[#6C2BFF]/20 border-t-[#6C2BFF] animate-spin" />
+          Loading courses overview
+        </div>
+        <div className="h-14 w-4/5 rounded-full bg-gray-100 animate-pulse mb-4" />
+        <div className="h-5 w-full rounded-full bg-gray-100 animate-pulse mb-2" />
+        <div className="h-5 w-5/6 rounded-full bg-gray-100 animate-pulse mb-2" />
+        <div className="h-5 w-2/3 rounded-full bg-gray-100 animate-pulse" />
+      </div>
     </div>
   );
 
