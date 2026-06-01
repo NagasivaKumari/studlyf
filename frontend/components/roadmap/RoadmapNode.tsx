@@ -69,7 +69,7 @@ const RoadmapNode: React.FC<RoadmapNodeProps> = ({
             <p className={`text-sm mt-1 line-clamp-1 ${
               isCompleted ? 'text-gray-500' : isLocked ? 'text-gray-400' : 'text-gray-600'
             }`}>
-              {node.description}
+              {node.simpleExplanation}
             </p>
           </div>
           

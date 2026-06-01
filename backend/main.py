@@ -34,7 +34,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 load_dotenv()
 
-<<<<<<< HEAD
 # ── Sentry Error Tracking ──
 sentry_dsn = os.getenv("SENTRY_DSN")
 if sentry_dsn:
@@ -47,12 +46,8 @@ if sentry_dsn:
     )
     print("Sentry initialized")
 
-=======
 from routes.skill_assessment_controller import router as skill_assessment_router
- 
-# ── ADD this line in your app startup / router registration block ──
 app.include_router(skill_assessment_router)
->>>>>>> a5019d2ffee849d255ffc527bed040ef64ebbac1
 # Touch file to trigger uvicorn reload when env changes during local dev
 # reload trigger
 
@@ -826,7 +821,7 @@ from routes import evaluation_criteria_routes, quiz_visibility_routes, notificat
 from routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
 from routes import student_features_routes
 from routes import event_certificate_routes, registration_flow_routes
-from routes import websocket_routes
+
 import hackathon_integration_routes
 import participant_card_routes
 from rate_limiter import rate_limit, check_rate_limit
@@ -906,7 +901,7 @@ app.include_router(event_certificate_routes.router)
 app.include_router(event_certificate_routes.verification_router)
 app.include_router(registration_flow_routes.router)
 app.include_router(stage_endpoints.router)
-app.include_router(websocket_routes.router)
+
 
 
 @app.get("/api/user/{user_id}/badges")
@@ -3313,6 +3308,8 @@ def generate_next_interview_message(
     is_round_start: bool,
     is_skip: bool = False,
     api_key: Optional[str] = None,
+    recent_analysis: Optional[Dict[str, Any]] = None,
+    question_count: int = 0,
 ) -> Dict[str, Any]:
     round_type = current_round.get("round_type", "technical")
     persona = current_round.get("persona", fallback_persona(session["company"], round_type))
@@ -3884,7 +3881,7 @@ async def register_student(data: dict, x_admin_email: str = Header(...)):
         if existing:
             raise HTTPException(status_code=400, detail=f"User with email {email} already exists")
         
-        from auth import get_password_hash
+        from auth_utils import get_password_hash
         import uuid
         temp_password = "Temp@123456"  # Forces password reset on first login
         hashed = get_password_hash(temp_password)
@@ -6735,9 +6732,13 @@ async def get_global_leaderboard():
         return {"rankings": rankings}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/institution/dashboard/stats")
+async def get_institution_stats(institution_id: str):
     """
     DYNAMIC STATS: Aggregates real-time data from MongoDB for the dashboard.
     """
+    inst_id = institution_id
     try:
         # 1. Total Events for this institution
         total_events = await events_col.count_documents({"institution_id": inst_id})
